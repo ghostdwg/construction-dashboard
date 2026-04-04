@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+
+model Bid {
+  id          Int      @id @default(autoincrement())
+  projectName String
+  location    String?
+  dueDate     DateTime?
+  description String?
+  createdAt   DateTime @default(now())
+
+  trades      Trade[]
+}
+
+model Trade {
+  id        Int     @id @default(autoincrement())
+  name      String
+  costCode  String?
+
+  bidId     Int
+  bid       Bid @relation(fields: [bidId], references: [id])
+
+  subcontractors Subcontractor[]
+}
+
+model Subcontractor {
+  id      Int    @id @default(autoincrement())
+  name    String
+  company String?
+  email   String?
+
+  tradeId Int
+  trade   Trade @relation(fields: [tradeId], references: [id])
+
+  contacts Contact[]
+}
+
+model Contact {
+  id      Int    @id @default(autoincrement())
+  name    String
+  email   String
+
+  subcontractorId Int
+  subcontractor   Subcontractor @relation(fields: [subcontractorId], references: [id])
+}
