@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import ExcelJS from "exceljs";
+import { logOutreachEvent } from "@/lib/logging/outreachLogger";
 
 export async function POST(
   _request: Request,
@@ -98,6 +99,21 @@ export async function POST(
       fileName,
     },
   });
+
+  // Log one outreach event per exported selection — fire-and-forget
+  for (const selection of bid.selections) {
+    try {
+      await logOutreachEvent({
+        bidId: bid.id,
+        subcontractorId: selection.subcontractorId,
+        channel: "export",
+        status: "exported",
+        sentAt: new Date(),
+      });
+    } catch (err) {
+      console.error("[outreachLogger] recipients export log failed:", err);
+    }
+  }
 
   return new Response(buffer as ArrayBuffer, {
     status: 200,

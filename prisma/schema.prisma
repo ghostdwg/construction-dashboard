@@ -38,6 +38,7 @@ model Bid {
   scopeItems      ScopeItem[]
   aiExportBatches AiExportBatch[]
   gapFindings     AiGapFinding[]
+  outreachLogs    OutreachLog[]
 }
 
 model BidTrade {
@@ -63,9 +64,10 @@ model Subcontractor {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  contacts   Contact[]
-  subTrades  SubcontractorTrade[]
-  selections BidInviteSelection[]
+  contacts     Contact[]
+  subTrades    SubcontractorTrade[]
+  selections   BidInviteSelection[]
+  outreachLogs OutreachLog[]
 }
 
 model SubcontractorTrade {
@@ -90,6 +92,7 @@ model Contact {
   createdAt       DateTime @default(now())
 
   subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+  outreachLogs  OutreachLog[]
 }
 
 model BidInviteSelection {
@@ -189,5 +192,27 @@ model GeneratedQuestion {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  gapFinding AiGapFinding? @relation(fields: [gapFindingId], references: [id])
+  gapFinding   AiGapFinding? @relation(fields: [gapFindingId], references: [id])
+  outreachLogs OutreachLog[]
+}
+
+model OutreachLog {
+  id              Int       @id @default(autoincrement())
+  bidId           Int
+  subcontractorId Int?
+  contactId       Int?
+  questionId      Int?
+  channel         String?
+  status          String    @default("exported")
+  sentAt          DateTime?
+  respondedAt     DateTime?
+  responseNotes   String?
+  followUpDue     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  bid           Bid                @relation(fields: [bidId], references: [id])
+  subcontractor Subcontractor?     @relation(fields: [subcontractorId], references: [id])
+  contact       Contact?           @relation(fields: [contactId], references: [id])
+  question      GeneratedQuestion? @relation(fields: [questionId], references: [id])
 }

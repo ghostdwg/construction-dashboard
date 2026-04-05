@@ -37,6 +37,12 @@ export default function RootLayout({
             <a href="/subcontractors" className="text-sm text-zinc-500 hover:text-zinc-900">
               Subcontractors
             </a>
+            <a href="/outreach" className="text-sm text-zinc-500 hover:text-zinc-900">
+              Outreach
+            </a>
+            <a href="/reports" className="text-sm text-zinc-500 hover:text-zinc-900">
+              Reports
+            </a>
           </div>
         </nav>
         {children}

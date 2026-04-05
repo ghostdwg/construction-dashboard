@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { logOutreachEvent } from "@/lib/logging/outreachLogger";
 
 const VALID_STATUSES = ["draft", "approved", "queued", "sent", "answered", "unanswered"];
 
@@ -33,7 +34,23 @@ export async function PATCH(
   const question = await prisma.generatedQuestion.update({
     where: { id: questionId },
     data,
+    include: {
+      gapFinding: { select: { bidId: true } },
+    },
   });
+
+  if (status === "queued" && question.gapFinding?.bidId !== undefined) {
+    try {
+      await logOutreachEvent({
+        bidId: question.gapFinding.bidId,
+        questionId: question.id,
+        channel: "question",
+        status: "queued",
+      });
+    } catch (err) {
+      console.error("[outreachLogger] question queued log failed:", err);
+    }
+  }
 
   return Response.json(question);
 }
