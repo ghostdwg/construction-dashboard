@@ -7,6 +7,7 @@ import StatusButton from "./StatusButton";
 import TradesTab from "./TradesTab";
 import SubsTab from "./SubsTab";
 import ScopeTab from "./ScopeTab";
+import AiReviewTab from "./AiReviewTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -123,6 +124,10 @@ export default async function BidDetailPage({
 
       {tab === "scope" && (
         <ScopeTab bidId={bid.id} />
+      )}
+
+      {tab === "ai-review" && (
+        <AiReviewTab bidId={bid.id} />
       )}
 
       {tab === "documents" && (

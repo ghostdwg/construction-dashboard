@@ -32,10 +32,11 @@ model Bid {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  bidTrades     BidTrade[]
-  selections    BidInviteSelection[]
-  exportBatches ExportBatch[]
-  scopeItems    ScopeItem[]
+  bidTrades       BidTrade[]
+  selections      BidInviteSelection[]
+  exportBatches   ExportBatch[]
+  scopeItems      ScopeItem[]
+  aiExportBatches AiExportBatch[]
 }
 
 model BidTrade {
@@ -143,4 +144,47 @@ model ExportBatch {
   fileName    String
 
   bid Bid @relation(fields: [bidId], references: [id])
+}
+
+model AiExportBatch {
+  id              Int       @id @default(autoincrement())
+  bidId           Int
+  exportedBy      String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  restrictedCount Int       @default(0)
+  status          String    @default("complete")
+  createdAt       DateTime  @default(now())
+
+  bid         Bid            @relation(fields: [bidId], references: [id])
+  gapFindings AiGapFinding[]
+}
+
+model AiGapFinding {
+  id              Int      @id @default(autoincrement())
+  aiExportBatchId Int
+  tradeName       String?
+  findingText     String
+  confidence      String?
+  status          String   @default("pending_review")
+  reviewNotes     String?
+  createdAt       DateTime @default(now())
+
+  aiExportBatch      AiExportBatch      @relation(fields: [aiExportBatchId], references: [id])
+  generatedQuestions GeneratedQuestion[]
+}
+
+model GeneratedQuestion {
+  id           Int       @id @default(autoincrement())
+  gapFindingId Int?
+  tradeName    String?
+  questionText String
+  isInternal   Boolean   @default(true)
+  status       String    @default("draft")
+  approvedAt   DateTime?
+  sentAt       DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  gapFinding AiGapFinding? @relation(fields: [gapFindingId], references: [id])
 }

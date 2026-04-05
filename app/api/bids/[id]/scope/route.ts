@@ -11,31 +11,37 @@ export async function GET(
     return Response.json({ error: "Invalid id" }, { status: 400 });
   }
 
-  const items = await prisma.scopeItem.findMany({
-    where: { bidId },
-    include: {
-      trade: true,
-      tradeAssignments: { include: { trade: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  try {
+    const items = await prisma.scopeItem.findMany({
+      where: { bidId },
+      include: {
+        trade: true,
+        tradeAssignments: { include: { trade: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
-  type TradeShape = { id: number; name: string };
-  type ItemShape = (typeof items)[number];
-  const byTrade: Record<string, { trade: TradeShape; items: ItemShape[] }> = {};
-  const unassigned: ItemShape[] = [];
+    type TradeShape = { id: number; name: string };
+    type ItemShape = (typeof items)[number];
+    const byTrade: Record<string, { trade: TradeShape; items: ItemShape[] }> = {};
+    const unassigned: ItemShape[] = [];
 
-  for (const item of items) {
-    if (item.tradeId && item.trade) {
-      const key = String(item.tradeId);
-      if (!byTrade[key]) byTrade[key] = { trade: item.trade, items: [] };
-      byTrade[key].items.push(item);
-    } else {
-      unassigned.push(item);
+    for (const item of items) {
+      if (item.tradeId && item.trade) {
+        const key = String(item.tradeId);
+        if (!byTrade[key]) byTrade[key] = { trade: item.trade, items: [] };
+        byTrade[key].items.push(item);
+      } else {
+        unassigned.push(item);
+      }
     }
-  }
 
-  return Response.json({ byTrade, unassigned });
+    return Response.json({ byTrade, unassigned });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[GET /scope] error:", err);
+    return Response.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(
