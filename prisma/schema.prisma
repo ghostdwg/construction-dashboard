@@ -17,7 +17,8 @@ model Trade {
 
   bidTrades        BidTrade[]
   subTrades        SubcontractorTrade[]
-  scopeAssignments ScopeTradeAssignment[]
+  scopeItems       ScopeItem[]
+  tradeAssignments ScopeTradeAssignment[]
 }
 
 model Bid {
@@ -102,24 +103,33 @@ model BidInviteSelection {
 }
 
 model ScopeItem {
-  id           Int      @id @default(autoincrement())
-  bidId        Int
-  description  String
-  notes        String?
-  isRestricted Boolean  @default(false)
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  bidId       Int
+  tradeId     Int?
+  description String
+  inclusion   Boolean  @default(true)
+  specSection String?
+  drawingRef  String?
+  notes       String?
+  riskFlag    Boolean  @default(false)
+  restricted  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   bid              Bid                    @relation(fields: [bidId], references: [id])
+  trade            Trade?                 @relation(fields: [tradeId], references: [id])
   tradeAssignments ScopeTradeAssignment[]
 }
 
 model ScopeTradeAssignment {
-  id          Int @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   scopeItemId Int
   tradeId     Int
+  isPrimary   Boolean  @default(false)
+  notes       String?
+  createdAt   DateTime @default(now())
 
-  scopeItem ScopeItem @relation(fields: [scopeItemId], references: [id], onDelete: Cascade)
+  scopeItem ScopeItem @relation(fields: [scopeItemId], references: [id])
   trade     Trade     @relation(fields: [tradeId], references: [id])
 
   @@unique([scopeItemId, tradeId])

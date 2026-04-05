@@ -168,6 +168,54 @@ async function main() {
     }
   })
 
+  // 6 scope items on bid1 only — mix of included/excluded, one riskFlag, one restricted
+  await prisma.scopeItem.createMany({
+    data: [
+      {
+        bidId: bid1.id,
+        tradeId: electrical.id,
+        description: "Furnish and install electrical service entrance, distribution panels, and all branch circuit wiring per drawings E-100 through E-315",
+        inclusion: true,
+        specSection: "26 00 00",
+      },
+      {
+        bidId: bid1.id,
+        tradeId: electrical.id,
+        description: "Temporary construction power and lighting — coordinate with GC phasing schedule",
+        inclusion: true,
+        specSection: "01 50 00",
+        riskFlag: true,
+      },
+      {
+        bidId: bid1.id,
+        tradeId: hvac.id,
+        description: "Furnish and install complete HVAC system including all ductwork, terminal equipment, and controls",
+        inclusion: true,
+        drawingRef: "M-101",
+      },
+      {
+        bidId: bid1.id,
+        tradeId: hvac.id,
+        description: "Kitchen exhaust hood and dedicated makeup air — by Owner's food service contractor, not in scope",
+        inclusion: false,
+      },
+      {
+        bidId: bid1.id,
+        tradeId: framing.id,
+        description: "Provide all rough framing per structural drawings including blocking, backing, and rough openings at all penetrations",
+        inclusion: true,
+        drawingRef: "S-100",
+      },
+      {
+        bidId: bid1.id,
+        tradeId: framing.id,
+        description: "Allowance: structural steel connection detailing and field welding — unit price per connection",
+        inclusion: true,
+        restricted: true,
+      },
+    ],
+  })
+
   console.log("✅ Seed complete.")
   console.log(`   Trades: ${TRADES.length}`)
   console.log(`   Subcontractors: apex, summit, ironclad, peak, cornerstone`)
