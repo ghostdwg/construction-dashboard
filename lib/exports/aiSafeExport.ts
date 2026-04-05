@@ -74,9 +74,7 @@ export async function buildAiSafePayload(bidId: number): Promise<{
 }> {
   const bid = await prisma.bid.findUnique({
     where: { id: bidId },
-    select: {
-      projectName: true,
-      description: true,
+    include: {
       scopeItems: {
         include: {
           trade: {

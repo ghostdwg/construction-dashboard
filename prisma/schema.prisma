@@ -37,6 +37,7 @@ model Bid {
   exportBatches   ExportBatch[]
   scopeItems      ScopeItem[]
   aiExportBatches AiExportBatch[]
+  gapFindings     AiGapFinding[]
 }
 
 model BidTrade {
@@ -162,7 +163,8 @@ model AiExportBatch {
 
 model AiGapFinding {
   id              Int      @id @default(autoincrement())
-  aiExportBatchId Int
+  bidId           Int
+  aiExportBatchId Int?
   tradeName       String?
   findingText     String
   confidence      String?
@@ -170,7 +172,8 @@ model AiGapFinding {
   reviewNotes     String?
   createdAt       DateTime @default(now())
 
-  aiExportBatch      AiExportBatch      @relation(fields: [aiExportBatchId], references: [id])
+  bid                Bid            @relation(fields: [bidId], references: [id])
+  aiExportBatch      AiExportBatch? @relation(fields: [aiExportBatchId], references: [id])
   generatedQuestions GeneratedQuestion[]
 }
 

@@ -8,6 +8,7 @@ import TradesTab from "./TradesTab";
 import SubsTab from "./SubsTab";
 import ScopeTab from "./ScopeTab";
 import AiReviewTab from "./AiReviewTab";
+import QuestionsTab from "./QuestionsTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -128,6 +129,10 @@ export default async function BidDetailPage({
 
       {tab === "ai-review" && (
         <AiReviewTab bidId={bid.id} />
+      )}
+
+      {tab === "questions" && (
+        <QuestionsTab bidId={bid.id} />
       )}
 
       {tab === "documents" && (
