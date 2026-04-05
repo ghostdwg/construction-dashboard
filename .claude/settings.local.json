@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cat c:/Users/jjcou/bid-dashboard/prisma/migrations/*/migration.sql)"
+      "Bash(cat c:/Users/jjcou/bid-dashboard/prisma/migrations/*/migration.sql)",
+      "Bash(npx prisma:*)",
+      "Bash(npm run:*)",
+      "Bash(ls c:/Users/jjcou/bid-dashboard/.env*)",
+      "Bash(node -e \"const {PrismaClient} = require\\('@prisma/client'\\); console.log\\(Object.keys\\(PrismaClient.prototype\\)\\)\")",
+      "Bash(node -e ':*)",
+      "Bash(node -e \"const a = require\\('@prisma/adapter-libsql'\\); console.log\\(a.PrismaLibSql.toString\\(\\).slice\\(0, 300\\)\\)\")"
     ]
   }
 }
