@@ -239,3 +239,318 @@ git push
 Never leave a session without committing working code.
 If something is broken at end of session, commit anyway with message:
 `[Module X] WIP — [describe what is broken]`
+
+---
+
+## STEP 5b — Estimate Import Pipeline
+### Added based on workflow: estimates received as .docx, .pdf, .xlsx — standardized to PDF via Bluebeam
+
+**Position in build order:** After Step 5 (Scope Normalization) is validated, before Step 6 (Safe AI Export) is heavily used.
+
+**Goal:** Upload a Bluebeam-printed PDF estimate and have the system parse it into ScopeItems automatically, grouped by trade, ready for human review before AI export.
+
+---
+
+### Phase 1 — Your Own Estimate Format (Build First)
+You control the format. Cost codes are known. Parser confidence is high.
+
+What to build:
+- PDF upload on the bid detail page (new Documents tab function)
+- pdf-parse library extracts raw text from uploaded PDF
+- Parser scans text for cost code patterns from cost_codes_full.ts
+- Matched codes map to parent Trade via trade_seed.ts costCode field
+- Creates ScopeItem draft records marked status: "imported" (not confirmed)
+- Human review screen: confirm, edit, or reject each parsed item
+- Confirmed items become live ScopeItems feeding into Safe AI Export
+
+Install required:
+- pdf-parse: PDF text extraction
+- OR pdfjs-dist: more robust, handles more PDF types
+
+Schema addition needed:
+- Add importedFrom String? to ScopeItem (tracks which upload batch)
+- Add importStatus String? to ScopeItem: "imported" | "confirmed" | "rejected"
+
+---
+
+### Phase 2 — Sub Estimate Parsing (Build Second)
+Sub estimates have no standard format. Fuzzy matching required.
+
+Matching strategy:
+- First pass: exact cost code match (e.g. "3.013")
+- Second pass: CSI code match (e.g. "03 30 00")  
+- Third pass: keyword match against trade names and descriptions
+- Unmatched lines flagged for manual assignment
+
+---
+
+### Parse Quality by Source
+| Source | Method | Expected Quality |
+|--------|--------|-----------------|
+| Your Excel estimate → Bluebeam PDF | Cost code exact match | Very high |
+| Sub Excel estimate → Bluebeam PDF | Fuzzy code + keyword | High |
+| Word scope narrative → Bluebeam PDF | Keyword only | Medium |
+| Scanned/image PDF | OCR required | Deferred |
+
+---
+
+### What Is Needed Before Building
+One sample PDF export from your own estimate with dollar amounts 
+removed or zeroed out. This confirms the layout before the parser is written.
+
+Without a sample, the parser will be written generically and will need 
+heavy tuning against your real format.
+
+---
+
+### Commit message when built:
+`[Step 5b] Estimate import — PDF parser, draft scope items, human review screen`
+
+---
+
+## TIER 4 — DOCUMENT INTELLIGENCE
+### Goal: Cross-reference spec books and drawings against bid scope to catch gaps before invite
+
+---
+
+### Step 14a — Spec Book Upload + CSI Coverage Gap Report
+**Capability: High confidence — buildable now**
+
+The spec book is a text document structured by CSI division.
+Your trade dictionary already has CSI codes.
+This module bridges the two.
+
+What to build:
+
+1. Spec book upload on bid detail Documents tab
+   - Accept PDF only (Bluebeam-printed specs)
+   - Store in /documents/specs/ folder linked to bid
+
+2. CSI Section Extractor service
+   - pdf-parse extracts full text
+   - Parser identifies section headers by pattern:
+     "SECTION 03 30 00" or "03 30 00 - CAST-IN-PLACE CONCRETE"
+   - Builds array of: { csiCode, sectionTitle, rawText }
+
+3. Coverage gap detection
+   - For each extracted CSI section:
+     - Check if bid has a trade assigned with matching csiCode
+     - If no match: flag as UNCOVERED
+     - If match exists: flag as COVERED
+   - Output: { covered: [], uncovered: [], partial: [] }
+
+4. Spec Coverage tab on bid detail (or section within AI Review tab)
+   - Table showing every spec section found
+   - Green = covered by assigned trade
+   - Red = no trade assigned
+   - Yellow = partial match (CSI prefix matches but not exact)
+   - "Assign Trade" button on uncovered rows
+
+5. Send uncovered sections to Claude
+   - Builds prompt automatically:
+     "These spec sections exist in the project spec book but have
+      no assigned trade on this bid. For each section, identify
+      what scope is required and which trade typically carries it."
+   - Returns findings into AiGapFinding workflow
+
+Schema additions needed:
+model SpecSection {
+  id          Int      @id @default(autoincrement())
+  bidId       Int
+  csiCode     String
+  title       String
+  rawText     String
+  covered     Boolean  @default(false)
+  tradeId     Int?
+  createdAt   DateTime @default(now())
+
+  bid   Bid    @relation(fields: [bidId], references: [id])
+  trade Trade? @relation(fields: [tradeId], references: [id])
+}
+
+Install required: pdf-parse
+
+Commit message: [Step 14a] Spec book upload — CSI extraction, coverage gap report
+
+Done when:
+- Upload a spec book PDF and see every CSI section listed
+- Uncovered sections highlighted in red
+- Can assign a trade to an uncovered section
+- Can send uncovered sections to Claude for gap analysis
+
+---
+
+### Step 14b — Drawing Sheet Index Parsing + Trade Coverage Check
+**Capability: High confidence — buildable now**
+
+Drawing sheet indexes are consistent enough to parse reliably.
+Sheet discipline codes (A, S, M, E, P, C, L) map directly to trades.
+
+Sheet discipline → Trade mapping:
+A  = Architectural        → Framing, Drywall, Doors, Glazing, Finishes
+S  = Structural           → Structural Steel, Concrete, Rebar
+C  = Civil                → Site Work, Paving, Site Utilities
+L  = Landscape            → Landscaping, Grading
+M  = Mechanical           → HVAC / Mechanical
+P  = Plumbing             → Plumbing
+E  = Electrical           → Electrical
+FP = Fire Protection      → Fire Suppression
+T  = Technology / Low V   → Low Voltage / Communications
+
+What to build:
+
+1. Drawing set upload on bid detail Documents tab
+   - Accept PDF (full drawing set or sheet index only)
+   - If full set: extract first 3 pages (usually sheet index)
+   - If sheet index only: extract all pages
+
+2. Sheet Index Parser service
+   - Extract text from sheet index pages
+   - Identify sheet entries by pattern: letter(s)-number description
+     e.g. "A-101 First Floor Plan" or "M-201 Mechanical Plan Level 2"
+   - Build array: { sheetNumber, discipline, title }
+
+3. Discipline → Trade gap check
+   - For each discipline found in drawing set:
+     - Check if bid has corresponding trade assigned
+     - If no match: flag as MISSING TRADE
+   - Example: drawing set has M sheets but no HVAC trade assigned → flag
+
+4. Drawing Coverage panel on bid detail
+   - List of disciplines found in drawing set
+   - Green = trade assigned
+   - Red = no trade assigned for this discipline
+   - "Add Trade" button on red rows
+
+5. Feed gaps into AI Review
+   - "Drawing set shows Plumbing discipline sheets but
+      no Plumbing sub is selected — confirm scope coverage"
+
+Schema additions needed:
+model DrawingSet {
+  id          Int      @id @default(autoincrement())
+  bidId       Int
+  fileName    String
+  uploadedAt  DateTime @default(now())
+  sheets      DrawingSheet[]
+
+  bid Bid @relation(fields: [bidId], references: [id])
+}
+
+model DrawingSheet {
+  id           Int    @id @default(autoincrement())
+  drawingSetId Int
+  sheetNumber  String
+  discipline   String
+  title        String
+  covered      Boolean @default(false)
+
+  drawingSet DrawingSet @relation(fields: [drawingSetId], references: [id])
+}
+
+Commit message: [Step 14b] Drawing sheet index — discipline parsing, trade coverage check
+
+Done when:
+- Upload a drawing set PDF and see sheet index parsed
+- Each discipline shows whether a trade is assigned
+- Missing trades flagged and actionable
+
+---
+
+### Step 14c — Drawing Content Review (Deferred)
+**Capability: Medium confidence today — defer 12-18 months**
+
+What this would do:
+- Claude Vision API reviews individual drawing sheets
+- Answers targeted questions per sheet type:
+  Floor plans: "Does this plan show a mechanical room?"
+  Reflected ceiling plans: "What ceiling types are shown?"
+  MEP plans: "What systems are shown on this sheet?"
+  Details: "What specialty items require coordination?"
+
+Why deferred:
+- Hallucination risk on technical drawings still too high
+- 400-sheet set = 400 AI calls = slow and expensive
+- Sheet index parsing (14b) catches 70% of gaps at 5% of the cost
+- Claude Vision capability improving rapidly — revisit in 2026
+
+Trigger to build:
+- Claude Vision demonstrates reliable drawing interpretation
+  on a test set of 20 real project sheets with < 5% error rate
+
+---
+
+### Step 5b — Estimate Sanitization Module
+**Updated spec — not a cost code parser, a redaction engine**
+
+What you receive: sub estimates in any format, any layout
+What the system does: strips identity and money, preserves scope
+
+Sanitization rules:
+STRIP company identity:
+- Company name, address, phone, email, contact name
+- Replace with token: [SUBCONTRACTOR A], [SUBCONTRACTOR B]
+- Store mapping internally: token → subcontractorId (never exported)
+
+STRIP money patterns:
+- Any value preceded by $
+- Numbers with comma formatting: 1,250,000
+- Numbers followed by /SF, /LF, /EA, /unit, /each
+- Words: total, lump sum, LS, allowance, unit price, per unit, bid amount
+- Column headers: price, cost, amount, rate, value, bid, fee, proposal
+
+PRESERVE:
+- All scope description text
+- Inclusion and exclusion language
+- Trade and CSI references
+- Schedule and lead time notes
+- Clarification notes
+- "Per plans and specifications" language
+
+Format handling:
+| Format | Method | Quality |
+|--------|--------|---------|
+| Excel (.xlsx) | Strip money columns by header | Very high |
+| Word (.docx) | Regex pass on paragraphs | High |
+| Text PDF | Extract then regex | High |
+| Scanned PDF | OCR required | Deferred |
+
+Output:
+- Anonymized text document attached to bid
+- Internal mapping: SUBCONTRACTOR A = Apex Electrical (id: 3)
+- Safe to send to Claude for scope comparison across multiple subs
+- Safe to display in leveling meetings without exposing pricing
+
+AI use case once sanitized:
+"Here are three anonymized scope proposals for the Electrical trade.
+Compare what each one includes and excludes.
+What scope appears in none of the three proposals?"
+
+Commit message: [Step 5b] Estimate sanitization — redaction engine, anonymization, AI-safe output
+
+---
+
+## FULL UPDATED BUILD SEQUENCE
+
+### Tier 1 — Foundation ✅ Complete
+Step 0  Schema v0.2 clean reset
+Step 1  Subcontractor directory UI
+Step 2  Bid detail page with tabs
+Step 3  Sub selection per bid
+Step 4  Excel export for Outlook
+        Trade dictionary — 46 real trades seeded
+
+### Tier 2 — Intelligence (In Progress)
+Step 5  Scope normalization — ScopeItem, ScopeTradeAssignment
+Step 5b Estimate sanitization — redaction engine (after Step 7)
+Step 6  Safe AI export — redaction service, approval flow ✅ Built
+Step 7  AI gap findings import + question generation
+
+### Tier 3 — Workflow
+Step 8  Outreach and response logging UI
+Step 9  Reporting dashboard
+
+### Tier 4 — Document Intelligence
+Step 14a Spec book upload — CSI extraction, coverage gap report
+Step 14b Drawing sheet index — discipline parsing, trade coverage
+Step 14c Drawing content review — deferred, revisit 2026
