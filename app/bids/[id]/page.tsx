@@ -10,6 +10,7 @@ import ScopeTab from "./ScopeTab";
 import AiReviewTab from "./AiReviewTab";
 import QuestionsTab from "./QuestionsTab";
 import ActivityTab from "./ActivityTab";
+import LevelingTab from "./LevelingTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -46,6 +47,39 @@ export default async function BidDetailPage({
   });
 
   if (!bid) notFound();
+
+  // Leveling tab: subs with estimate-worthy RFQ status + any existing uploads
+  const levelingSubs =
+    tab === "leveling"
+      ? bid.selections
+          .filter((s) =>
+            ["received", "reviewing", "accepted"].includes(s.rfqStatus)
+          )
+          .map((s) => ({
+            id: s.subcontractor.id,
+            company: s.subcontractor.company,
+            tier: s.subcontractor.tier,
+          }))
+      : [];
+
+  const estimateUploads =
+    tab === "leveling"
+      ? await prisma.estimateUpload.findMany({
+          where: { bidId },
+          select: {
+            id: true,
+            subcontractorId: true,
+            fileName: true,
+            fileType: true,
+            fileSize: true,
+            scopeLines: true,
+            parseStatus: true,
+            parseError: true,
+            uploadedAt: true,
+          },
+          orderBy: { uploadedAt: "desc" },
+        })
+      : [];
 
   return (
     <div className="max-w-4xl mx-auto py-10 px-4">
@@ -138,6 +172,14 @@ export default async function BidDetailPage({
 
       {tab === "questions" && (
         <QuestionsTab bidId={bid.id} />
+      )}
+
+      {tab === "leveling" && (
+        <LevelingTab
+          bidId={bid.id}
+          subs={levelingSubs}
+          initialUploads={estimateUploads}
+        />
       )}
 
       {tab === "activity" && (

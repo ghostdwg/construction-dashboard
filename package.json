@@ -13,7 +13,9 @@
     "@prisma/adapter-libsql": "^7.6.0",
     "@prisma/client": "^7.6.0",
     "exceljs": "^4.4.0",
+    "mammoth": "^1.12.0",
     "next": "16.2.2",
+    "pdf-parse": "^2.4.5",
     "prisma": "^7.6.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -25,6 +27,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

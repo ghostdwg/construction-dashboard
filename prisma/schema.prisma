@@ -33,13 +33,14 @@ model Bid {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  bidTrades       BidTrade[]
-  selections      BidInviteSelection[]
-  exportBatches   ExportBatch[]
-  scopeItems      ScopeItem[]
-  aiExportBatches AiExportBatch[]
-  gapFindings     AiGapFinding[]
-  outreachLogs    OutreachLog[]
+  bidTrades        BidTrade[]
+  selections       BidInviteSelection[]
+  exportBatches    ExportBatch[]
+  scopeItems       ScopeItem[]
+  aiExportBatches  AiExportBatch[]
+  gapFindings      AiGapFinding[]
+  outreachLogs     OutreachLog[]
+  estimateUploads  EstimateUpload[]
 }
 
 model BidTrade {
@@ -73,11 +74,12 @@ model Subcontractor {
   doNotUse        Boolean  @default(false)
   doNotUseReason  String?
 
-  contacts      Contact[]
-  subTrades     SubcontractorTrade[]
-  selections    BidInviteSelection[]
-  outreachLogs      OutreachLog[]
+  contacts           Contact[]
+  subTrades          SubcontractorTrade[]
+  selections         BidInviteSelection[]
+  outreachLogs       OutreachLog[]
   preferredForTrades PreferredSub[]
+  estimateUploads    EstimateUpload[]
 }
 
 model SubcontractorTrade {
@@ -244,4 +246,32 @@ model OutreachLog {
   subcontractor Subcontractor?     @relation(fields: [subcontractorId], references: [id])
   contact       Contact?           @relation(fields: [contactId], references: [id])
   question      GeneratedQuestion? @relation(fields: [questionId], references: [id])
+}
+
+enum ParseStatus {
+  pending
+  processing
+  complete
+  failed
+}
+
+model EstimateUpload {
+  id              Int         @id @default(autoincrement())
+  bidId           Int
+  subcontractorId Int
+  fileName        String
+  fileType        String
+  fileSize        Int
+  rawFilePath     String
+  scopeLines      String      @default("")
+  pricingData     String      @default("")
+  parseStatus     ParseStatus @default(pending)
+  parseError      String?
+  uploadedAt      DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  bid           Bid           @relation(fields: [bidId], references: [id])
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+
+  @@unique([bidId, subcontractorId])
 }
