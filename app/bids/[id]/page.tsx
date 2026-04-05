@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import TabBar from "./TabBar";
 import StatusButton from "./StatusButton";
 import TradesTab from "./TradesTab";
+import SubsTab from "./SubsTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -26,6 +27,17 @@ export default async function BidDetailPage({
     where: { id: bidId },
     include: {
       bidTrades: { include: { trade: true }, orderBy: { id: "asc" } },
+      selections: {
+        include: {
+          subcontractor: {
+            include: {
+              contacts: { where: { isPrimary: true }, take: 1 },
+              subTrades: { include: { trade: true } },
+            },
+          },
+        },
+        orderBy: { id: "asc" },
+      },
     },
   });
 
@@ -105,9 +117,7 @@ export default async function BidDetailPage({
       )}
 
       {tab === "subs" && (
-        <div className="rounded-md border border-zinc-200 p-6 text-center text-sm text-zinc-400">
-          Sub selection coming in Step 3.
-        </div>
+        <SubsTab bidId={bid.id} initialSelections={bid.selections} />
       )}
 
       {tab === "documents" && (
