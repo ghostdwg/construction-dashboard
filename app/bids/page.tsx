@@ -30,12 +30,20 @@ export default async function BidsPage() {
                   <span className="capitalize">{bid.status}</span>
                 </div>
               </div>
-              <Link
-                href={`/bids/${bid.id}/leveling`}
-                className="text-sm text-zinc-500 hover:underline"
-              >
-                Level Bids →
-              </Link>
+              <div className="flex gap-3">
+                <Link
+                  href={`/bids/${bid.id}`}
+                  className="text-sm text-zinc-500 hover:underline"
+                >
+                  View →
+                </Link>
+                <Link
+                  href={`/bids/${bid.id}/leveling`}
+                  className="text-sm text-zinc-500 hover:underline"
+                >
+                  Level →
+                </Link>
+              </div>
             </li>
           ))}
         </ul>

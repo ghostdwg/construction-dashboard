@@ -1,0 +1,120 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import { prisma } from "@/lib/prisma";
+import TabBar from "./TabBar";
+import StatusButton from "./StatusButton";
+import TradesTab from "./TradesTab";
+
+type PageParams = Promise<{ id: string }>;
+type SearchParams = Promise<{ tab?: string }>;
+
+export default async function BidDetailPage({
+  params,
+  searchParams,
+}: {
+  params: PageParams;
+  searchParams: SearchParams;
+}) {
+  const { id } = await params;
+  const { tab = "overview" } = await searchParams;
+  const bidId = parseInt(id, 10);
+
+  if (isNaN(bidId)) notFound();
+
+  const bid = await prisma.bid.findUnique({
+    where: { id: bidId },
+    include: {
+      bidTrades: { include: { trade: true }, orderBy: { id: "asc" } },
+    },
+  });
+
+  if (!bid) notFound();
+
+  return (
+    <div className="max-w-4xl mx-auto py-10 px-4">
+      {/* Header */}
+      <div className="mb-6">
+        <Link href="/bids" className="text-sm text-zinc-500 hover:underline">
+          ← Bids
+        </Link>
+        <div className="flex items-start justify-between mt-2">
+          <div>
+            <h1 className="text-2xl font-semibold">{bid.projectName}</h1>
+            {bid.location && (
+              <p className="text-sm text-zinc-500 mt-0.5">{bid.location}</p>
+            )}
+          </div>
+          <StatusButton bidId={bid.id} current={bid.status} />
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <Suspense fallback={<div className="h-10 border-b border-zinc-200 mb-6" />}>
+        <TabBar bidId={bid.id} />
+      </Suspense>
+
+      {/* Tab content */}
+      {tab === "overview" && (
+        <div className="flex flex-col gap-6">
+          <section className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+                Project Name
+              </p>
+              <p className="text-sm">{bid.projectName}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+                Location
+              </p>
+              <p className="text-sm">{bid.location || "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+                Status
+              </p>
+              <p className="text-sm capitalize">{bid.status}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+                Due Date
+              </p>
+              <p className="text-sm">
+                {bid.dueDate
+                  ? new Date(bid.dueDate).toLocaleDateString()
+                  : "—"}
+              </p>
+            </div>
+            {bid.description && (
+              <div className="col-span-2">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+                  Description
+                </p>
+                <p className="text-sm text-zinc-600 whitespace-pre-wrap">
+                  {bid.description}
+                </p>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {tab === "trades" && (
+        <TradesTab bidId={bid.id} bidTrades={bid.bidTrades} />
+      )}
+
+      {tab === "subs" && (
+        <div className="rounded-md border border-zinc-200 p-6 text-center text-sm text-zinc-400">
+          Sub selection coming in Step 3.
+        </div>
+      )}
+
+      {tab === "documents" && (
+        <div className="rounded-md border border-zinc-200 p-6 text-center text-sm text-zinc-400">
+          Documents coming in a future step.
+        </div>
+      )}
+    </div>
+  );
+}
