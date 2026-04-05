@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import AddContactForm from "./AddContactForm";
 import SubIntelligencePanel from "./SubIntelligencePanel";
+import TradesSection from "./TradesSection";
 
 export default async function SubcontractorDetailPage({
   params,
@@ -19,6 +20,7 @@ export default async function SubcontractorDetailPage({
     include: {
       subTrades: { include: { trade: true }, orderBy: { id: "asc" } },
       contacts: { orderBy: [{ isPrimary: "desc" }, { id: "asc" }] },
+      preferredForTrades: { select: { id: true, tradeId: true } },
     },
   });
 
@@ -82,20 +84,11 @@ export default async function SubcontractorDetailPage({
       {/* Trades */}
       <section className="mb-8">
         <h2 className="text-base font-semibold mb-3">Trades</h2>
-        {sub.subTrades.length === 0 ? (
-          <p className="text-sm text-zinc-400">No trades assigned.</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {sub.subTrades.map((st) => (
-              <span
-                key={st.id}
-                className="rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-700"
-              >
-                {st.trade.name}
-              </span>
-            ))}
-          </div>
-        )}
+        <TradesSection
+          subId={sub.id}
+          subTrades={sub.subTrades}
+          initialPreferred={sub.preferredForTrades}
+        />
       </section>
 
       {/* Contacts */}
