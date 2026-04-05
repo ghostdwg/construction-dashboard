@@ -19,6 +19,7 @@ model Trade {
   subTrades        SubcontractorTrade[]
   scopeItems       ScopeItem[]
   tradeAssignments ScopeTradeAssignment[]
+  preferredSubs    PreferredSub[]
 }
 
 model Bid {
@@ -64,10 +65,19 @@ model Subcontractor {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  contacts     Contact[]
-  subTrades    SubcontractorTrade[]
-  selections   BidInviteSelection[]
-  outreachLogs OutreachLog[]
+  tier            String  @default("new")
+  projectTypes    String  @default("")
+  region          String?
+  lastBidDate     DateTime?
+  internalNotes   String?
+  doNotUse        Boolean  @default(false)
+  doNotUseReason  String?
+
+  contacts      Contact[]
+  subTrades     SubcontractorTrade[]
+  selections    BidInviteSelection[]
+  outreachLogs      OutreachLog[]
+  preferredForTrades PreferredSub[]
 }
 
 model SubcontractorTrade {
@@ -103,8 +113,27 @@ model BidInviteSelection {
   notes           String?
   createdAt       DateTime @default(now())
 
+  rfqStatus          String    @default("no_response")
+  invitedAt          DateTime?
+  estimateReceivedAt DateTime?
+  estimateFileName   String?
+  followUpCount      Int       @default(0)
+  selectionNotes     String?
+
   bid           Bid           @relation(fields: [bidId], references: [id])
   subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+}
+
+model PreferredSub {
+  id              Int      @id @default(autoincrement())
+  tradeId         Int
+  subcontractorId Int
+  createdAt       DateTime @default(now())
+
+  trade         Trade         @relation(fields: [tradeId], references: [id])
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+
+  @@unique([tradeId, subcontractorId])
 }
 
 model ScopeItem {
