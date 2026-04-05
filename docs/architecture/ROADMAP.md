@@ -533,24 +533,45 @@ Commit message: [Step 5b] Estimate sanitization — redaction engine, anonymizat
 ## FULL UPDATED BUILD SEQUENCE
 
 ### Tier 1 — Foundation ✅ Complete
-Step 0  Schema v0.2 clean reset
-Step 1  Subcontractor directory UI
-Step 2  Bid detail page with tabs
-Step 3  Sub selection per bid
-Step 4  Excel export for Outlook
-        Trade dictionary — 46 real trades seeded
+Step 0  ✅ Schema v0.2 clean reset
+Step 1  ✅ Subcontractor directory UI
+Step 2  ✅ Bid detail page with tabs
+Step 3  ✅ Sub selection per bid
+Step 4  ✅ Excel export for Outlook
+           Trade dictionary — 46 real trades seeded
 
-### Tier 2 — Intelligence (In Progress)
-Step 5  Scope normalization — ScopeItem, ScopeTradeAssignment
-Step 5b Estimate sanitization — redaction engine (after Step 7)
-Step 6  Safe AI export — redaction service, approval flow ✅ Built
-Step 7  AI gap findings import + question generation
+### Tier 2 — Intelligence ✅ Complete
+Step 5  ✅ Scope normalization — ScopeItem, ScopeTradeAssignment
+Step 6  ✅ Safe AI export — redaction service, approval flow
+Step 7  ✅ AI gap findings import + question generation
 
-### Tier 3 — Workflow
-Step 8  Outreach and response logging UI
-Step 9  Reporting dashboard
+### Tier 3 — Workflow ✅ Complete
+Step 8  ✅ Outreach and response logging UI
+Step 9  ✅ Reporting dashboard
 
-### Tier 4 — Document Intelligence
-Step 14a Spec book upload — CSI extraction, coverage gap report
-Step 14b Drawing sheet index — discipline parsing, trade coverage
-Step 14c Drawing content review — deferred, revisit 2026
+### Module 2b — Subcontractor Intelligence Layer ✅ Complete
+    ✅ Schema: tier, projectTypes, region, internalNotes, doNotUse, PreferredSub,
+               BidInviteSelection RFQ fields
+    ✅ Sub directory: tier badges, tier filter
+    ✅ Sub detail: SubIntelligencePanel, preferred star toggle per trade
+    ✅ Subs tab: RFQ tracker grouped by trade, inline status updates
+    ✅ Auto-populate: service + wired into bid and trade creation + UI sync button
+
+### Module 6 — Bid Leveling Engine ⬜ NEXT
+    6a  Estimate Intake — upload PDF/Excel/DOCX, parse all formats, separate
+        scope from pricing, store both; never send pricing to AI
+    6b  Scope Leveling Engine — normalize scope across subs, build scope matrix,
+        flag gaps and divergences against peer bids and project baseline
+        (spec book or drawing index from Tier 4 plugs in here as baseline input)
+    6c  Leveling Questions + Export — generate per-sub clarification questions,
+        export to email, optional push to Questions tab
+
+### Tier 4 — Document Intelligence ⬜ Queued (after Module 6)
+    Note: spec book (14a) and drawing index (14b) parsed in Tier 4 plug directly
+    into the Module 6b project baseline input — build Module 6 first so the
+    integration point is ready when Tier 4 lands.
+
+Step 14a ⬜ Spec book upload — CSI extraction, coverage gap report
+Step 14b ⬜ Drawing sheet index — discipline parsing, trade coverage
+Step 5b  ⬜ Estimate sanitization — redaction engine (pairs with Module 6a)
+Step 14c 🔴 Drawing content review — deferred, revisit 2026

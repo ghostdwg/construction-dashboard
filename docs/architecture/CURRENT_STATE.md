@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: End of Session — Tiers 1-3 Complete, Module 2b Queued
+# Last Updated: End of Session — Tiers 1-3 + Module 2b Complete, Module 6 Queued
 
 ---
 
@@ -26,7 +26,8 @@
 | Step 7 | AI Gap Findings + Question Generation | ✅ Complete |
 | Step 8 | Outreach + Response Logging | ✅ Complete |
 | Step 9 | Reporting Dashboard | ✅ Complete |
-| **Module 2b** | **Subcontractor Intelligence Layer** | **⬜ NEXT** |
+| Module 2b | Subcontractor Intelligence Layer | ✅ Complete |
+| **Module 6** | **Bid Leveling Engine** | **⬜ NEXT** |
 | Step 14a | Spec Book — CSI Coverage Gap | ⬜ Queued — Tier 4 |
 | Step 14b | Drawing Sheet Index Parsing | ⬜ Queued — Tier 4 |
 | Step 14c | Drawing Content Review | 🔴 Deferred — 2026 |
@@ -40,7 +41,8 @@
 | Tier 1 — Foundation | Directory, bids, selection, export | ✅ Complete |
 | Tier 2 — Intelligence | Scope, AI export, gap review, questions | ✅ Complete |
 | Tier 3 — Workflow | Outreach logging, reporting dashboard | ✅ Complete |
-| Module 2b — Sub Intelligence | Preferred lists, RFQ tracker, CRM layer | ⬜ Next |
+| Module 2b — Sub Intelligence | Preferred lists, RFQ tracker, CRM layer | ✅ Complete |
+| Module 6 — Leveling Engine | Estimate intake, scope matrix, leveling questions | ⬜ Next |
 | Tier 4 — Document Intelligence | Spec book, drawings, estimate sanitization | ⬜ Queued |
 
 ---
@@ -79,6 +81,7 @@ GET        /api/bids/[id]/suggestions
 POST       /api/bids/[id]/export/recipients
 POST       /api/bids/[id]/export/ai-safe
 GET        /api/bids/[id]/outreach
+POST       /api/bids/[id]/sync-preferred-subs
 GET/POST   /api/subcontractors
 GET/PATCH  /api/subcontractors/[id]
 POST       /api/subcontractors/[id]/contacts
@@ -92,6 +95,9 @@ GET        /api/reports/bids-by-status
 GET        /api/reports/trade-coverage
 GET        /api/reports/response-rates
 GET        /api/reports/follow-up-aging
+GET/POST   /api/preferred-subs
+DELETE     /api/preferred-subs/[id]
+PATCH      /api/bid-invite-selections/[id]
 ```
 
 ### Schema — Models In DB
@@ -124,62 +130,24 @@ prisma/seed.ts                  — 46 trades, 5 subs, 2 bids
 ---
 
 ## Module 2b — Subcontractor Intelligence Layer
-### Status: NEXT TO BUILD
+### Status: COMPLETE
 
-### What It Adds
-Turns the sub directory from a simple list into a relationship
-management and RFQ tracking tool.
-
-### Schema Changes Needed
-```prisma
-// Add to Subcontractor model:
-tier            String?    // "preferred" | "approved" | "new" | "inactive"
-projectTypes    String?    // comma-separated: "office,industrial,multifamily"
-region          String?
-lastBidDate     DateTime?
-internalNotes   String?
-doNotUse        Boolean    @default(false)
-doNotUseReason  String?
-
-// New model:
-model PreferredSub {
-  id              Int    @id @default(autoincrement())
-  tradeId         Int
-  subcontractorId Int
-  projectType     String?
-  addedBy         String?
-  notes           String?
-  createdAt       DateTime @default(now())
-
-  trade         Trade         @relation(fields: [tradeId], references: [id])
-  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
-
-  @@unique([tradeId, subcontractorId, projectType])
-}
-
-// Add to BidInviteSelection:
-rfqStatus           String    @default("invited")
-invitedAt           DateTime?
-estimateReceivedAt  DateTime?
-estimateFileName    String?
-followUpCount       Int       @default(0)
-selectionNotes      String?
-```
-
-### RFQ Status Values
-```
-invited → received → reviewing → accepted → declined → no_response
-```
-
-### What Gets Built
-1. Sub directory enrichment — tier, region, project types, internal notes
-2. Preferred sub management — mark subs as preferred per trade
-3. Auto-populate bid list from preferred subs on bid creation
-4. RFQ status tracker on Subs tab — live status per sub per bid
-5. Bid list view — grouped by trade, status dropdown per row
-
-### Migration Name
-add_sub_intelligence_layer
+### What Was Built
+- **Schema:** `Subcontractor.tier`, `Subcontractor.projectTypes`, `Subcontractor.region`,
+  `Subcontractor.internalNotes`, `Subcontractor.doNotUse`, `Subcontractor.doNotUseReason`,
+  `BidInviteSelection.rfqStatus` and related fields, `PreferredSub` join table
+- **Sub directory:** tier badges, tier filter dropdown on list page
+- **Sub detail:** `SubIntelligencePanel` — edit tier, project types, region, internal notes,
+  do-not-use flag; `TradesSection` — preferred star toggle per trade with optimistic UI
+- **Subs tab:** RFQ tracker grouped by trade, color-coded status pills (gray/blue/amber/
+  purple/green/red), inline status updates (optimistic), trade summary counts header
+- **Auto-populate:** `lib/services/autoPopulateBidSubs.ts` service; wired into
+  `POST /api/bids` and `POST /api/bids/[id]/trades`; idempotent (skips existing combos)
+- **Sync button:** `POST /api/bids/[id]/sync-preferred-subs` on-demand endpoint;
+  UI "Sync preferred subs" button updates client state inline from response
+- **API routes:** `PATCH /api/subcontractors/[id]`, `GET+POST /api/preferred-subs`,
+  `DELETE /api/preferred-subs/[id]`, `PATCH /api/bid-invite-selections/[id]`,
+  `POST /api/bids/[id]/sync-preferred-subs`
 
 ---
 
@@ -206,7 +174,25 @@ docs/claude-code-briefs/
 
 ---
 
+## Module 6 — Bid Leveling Engine
+### Status: NEXT TO BUILD
+
+### 6a — Estimate Intake
+Upload sub estimates (PDF/Excel/DOCX), parse all formats, separate scope from
+pricing, store both. Pricing data is never sent to AI.
+
+### 6b — Scope Leveling Engine
+Normalize scope across subs. Build a scope matrix comparing what each sub
+included and excluded. Flag gaps and divergences against peer bids and the
+project baseline (spec book or drawing index when available from Tier 4).
+
+### 6c — Leveling Questions + Export
+Generate per-sub clarification questions from leveling gaps. Export to email.
+Optional push to the Questions tab for full tracking.
+
+---
+
 ## Next Action
-Build Module 2b — Subcontractor Intelligence Layer
-Start new Claude chat with the RECALL BLOCK below
-Start new Claude Code session with the SESSION STARTER below
+Build Module 6 — Bid Leveling Engine
+Start with 6a (Estimate Intake) — establish upload pipeline and parsing
+before building the leveling matrix in 6b.
