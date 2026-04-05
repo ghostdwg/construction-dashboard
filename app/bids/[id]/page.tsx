@@ -121,7 +121,11 @@ export default async function BidDetailPage({
       )}
 
       {tab === "subs" && (
-        <SubsTab bidId={bid.id} initialSelections={bid.selections} />
+        <SubsTab
+          bidId={bid.id}
+          initialSelections={bid.selections}
+          bidTrades={bid.bidTrades}
+        />
       )}
 
       {tab === "scope" && (
