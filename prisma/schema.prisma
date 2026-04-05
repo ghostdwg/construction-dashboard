@@ -30,8 +30,9 @@ model Bid {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  bidTrades  BidTrade[]
-  selections BidInviteSelection[]
+  bidTrades   BidTrade[]
+  selections  BidInviteSelection[]
+  exportBatches ExportBatch[]
 }
 
 model BidTrade {
@@ -96,4 +97,14 @@ model BidInviteSelection {
 
   bid           Bid           @relation(fields: [bidId], references: [id])
   subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+}
+
+model ExportBatch {
+  id          Int      @id @default(autoincrement())
+  bidId       Int
+  exportedAt  DateTime @default(now())
+  rowCount    Int
+  fileName    String
+
+  bid Bid @relation(fields: [bidId], references: [id])
 }

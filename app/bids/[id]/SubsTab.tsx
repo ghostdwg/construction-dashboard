@@ -36,6 +36,7 @@ export default function SubsTab({
   const [loadingSuggestions, setLoadingSuggestions] = useState(true);
   const [adding, setAdding] = useState<number | null>(null); // subId being added
   const [removing, setRemoving] = useState<number | null>(null); // selectionId being removed
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     setLoadingSuggestions(true);
@@ -61,6 +62,26 @@ export default function SubsTab({
     router.refresh();
   }
 
+  async function exportRecipients() {
+    setExporting(true);
+    const res = await fetch(`/api/bids/${bidId}/export/recipients`, {
+      method: "POST",
+    });
+    if (res.ok) {
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename="([^"]+)"/);
+      const fileName = match ? match[1] : "recipients.xlsx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    setExporting(false);
+  }
+
   async function removeSub(selectionId: number) {
     setRemoving(selectionId);
     await fetch(`/api/bids/${bidId}/selections/${selectionId}`, {
@@ -75,9 +96,20 @@ export default function SubsTab({
     <div className="flex flex-col gap-8">
       {/* Selected subs */}
       <section>
-        <h2 className="text-sm font-semibold text-zinc-700 mb-3">
-          Selected ({selections.length})
-        </h2>
+          <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-zinc-700">
+            Selected ({selections.length})
+          </h2>
+          {selections.length > 0 && (
+            <button
+              onClick={exportRecipients}
+              disabled={exporting}
+              className="rounded-md bg-black px-3 py-1.5 text-xs text-white hover:bg-zinc-700 disabled:opacity-50"
+            >
+              {exporting ? "Exporting…" : "Export to Excel"}
+            </button>
+          )}
+        </div>
         {selections.length === 0 ? (
           <p className="text-sm text-zinc-400">No subs selected yet. Add from suggestions below.</p>
         ) : (
