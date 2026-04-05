@@ -56,7 +56,10 @@ export default function ScopeTab({ bidId }: { bidId: number }) {
       fetch(`/api/bids/${bidId}/scope`).then((r) => r.json()),
       fetch(`/api/bids/${bidId}`).then((r) => r.json()),
     ]).then(([scopeData, bidData]: [ScopeResponse, { bidTrades: { trade: Trade }[] }]) => {
-      setData(scopeData);
+      setData({
+        byTrade: scopeData?.byTrade ?? {},
+        unassigned: scopeData?.unassigned ?? [],
+      });
       setBidTrades(bidData.bidTrades?.map((bt) => bt.trade) ?? []);
       setLoading(false);
     });
@@ -139,10 +142,12 @@ export default function ScopeTab({ bidId }: { bidId: number }) {
     setRemoving(null);
   }
 
+  if (!data || !data.byTrade) return <div>Loading...</div>;
+
   // Derived counts
   const allItems = [
-    ...Object.values(data.byTrade).flatMap((g) => g.items),
-    ...data.unassigned,
+    ...Object.values(data.byTrade ?? {}).flatMap((g) => g.items),
+    ...(data.unassigned ?? []),
   ];
   const totalCount = allItems.length;
   const assignedCount = allItems.filter((i) => i.tradeId).length;
