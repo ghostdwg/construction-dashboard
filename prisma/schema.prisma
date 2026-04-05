@@ -6,46 +6,94 @@ datasource db {
   provider = "sqlite"
 }
 
-
-model Bid {
+model Trade {
   id          Int      @id @default(autoincrement())
-  projectName String
-  location    String?
-  dueDate     DateTime?
+  name        String   @unique
+  costCode    String?
+  csiCode     String?
   description String?
+  isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  trades      Trade[]
+  bidTrades  BidTrade[]
+  subTrades  SubcontractorTrade[]
 }
 
-model Trade {
-  id        Int     @id @default(autoincrement())
-  name      String
-  costCode  String?
+model Bid {
+  id          Int       @id @default(autoincrement())
+  projectName String
+  location    String?
+  description String?
+  scope       String    @default("")
+  status      String    @default("draft")
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  bidId     Int
-  bid       Bid @relation(fields: [bidId], references: [id])
+  bidTrades  BidTrade[]
+  selections BidInviteSelection[]
+}
 
-  subcontractors Subcontractor[]
+model BidTrade {
+  id         Int     @id @default(autoincrement())
+  bidId      Int
+  tradeId    Int
+  scopeNotes String?
+
+  bid   Bid   @relation(fields: [bidId], references: [id])
+  trade Trade @relation(fields: [tradeId], references: [id])
+
+  @@unique([bidId, tradeId])
 }
 
 model Subcontractor {
-  id      Int    @id @default(autoincrement())
-  name    String
-  company String?
-  email   String?
+  id        Int      @id @default(autoincrement())
+  company   String
+  office    String?
+  status    String   @default("active")
+  notes     String?
+  isUnion   Boolean  @default(false)
+  isMWBE    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tradeId Int
-  trade   Trade @relation(fields: [tradeId], references: [id])
+  contacts   Contact[]
+  subTrades  SubcontractorTrade[]
+  selections BidInviteSelection[]
+}
 
-  contacts Contact[]
+model SubcontractorTrade {
+  id              Int @id @default(autoincrement())
+  subcontractorId Int
+  tradeId         Int
+
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+  trade         Trade         @relation(fields: [tradeId], references: [id])
+
+  @@unique([subcontractorId, tradeId])
 }
 
 model Contact {
-  id      Int    @id @default(autoincrement())
-  name    String
-  email   String
-
+  id              Int      @id @default(autoincrement())
   subcontractorId Int
-  subcontractor   Subcontractor @relation(fields: [subcontractorId], references: [id])
+  name            String
+  email           String?
+  phone           String?
+  title           String?
+  isPrimary       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+}
+
+model BidInviteSelection {
+  id              Int      @id @default(autoincrement())
+  bidId           Int
+  subcontractorId Int
+  tradeId         Int?
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  bid           Bid           @relation(fields: [bidId], references: [id])
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
 }

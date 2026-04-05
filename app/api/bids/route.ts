@@ -9,7 +9,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { projectName, location, dueDate, description } = body;
+  const { projectName, location, description, dueDate } = body;
 
   if (!projectName) {
     return Response.json({ error: "projectName is required" }, { status: 400 });
@@ -18,9 +18,9 @@ export async function POST(request: Request) {
   const bid = await prisma.bid.create({
     data: {
       projectName,
-      location: location ?? null,
+      location: location || null,
+      description: description || null,
       dueDate: dueDate ? new Date(dueDate) : null,
-      description: description ?? null,
     },
   });
 
