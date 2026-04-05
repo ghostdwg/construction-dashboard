@@ -6,6 +6,7 @@ import TabBar from "./TabBar";
 import StatusButton from "./StatusButton";
 import TradesTab from "./TradesTab";
 import SubsTab from "./SubsTab";
+import ScopeTab from "./ScopeTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -118,6 +119,10 @@ export default async function BidDetailPage({
 
       {tab === "subs" && (
         <SubsTab bidId={bid.id} initialSelections={bid.selections} />
+      )}
+
+      {tab === "scope" && (
+        <ScopeTab bidId={bid.id} />
       )}
 
       {tab === "documents" && (

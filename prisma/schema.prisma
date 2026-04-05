@@ -15,8 +15,9 @@ model Trade {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  bidTrades  BidTrade[]
-  subTrades  SubcontractorTrade[]
+  bidTrades        BidTrade[]
+  subTrades        SubcontractorTrade[]
+  scopeAssignments ScopeTradeAssignment[]
 }
 
 model Bid {
@@ -30,9 +31,10 @@ model Bid {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  bidTrades   BidTrade[]
-  selections  BidInviteSelection[]
+  bidTrades     BidTrade[]
+  selections    BidInviteSelection[]
   exportBatches ExportBatch[]
+  scopeItems    ScopeItem[]
 }
 
 model BidTrade {
@@ -97,6 +99,30 @@ model BidInviteSelection {
 
   bid           Bid           @relation(fields: [bidId], references: [id])
   subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+}
+
+model ScopeItem {
+  id           Int      @id @default(autoincrement())
+  bidId        Int
+  description  String
+  notes        String?
+  isRestricted Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  bid              Bid                    @relation(fields: [bidId], references: [id])
+  tradeAssignments ScopeTradeAssignment[]
+}
+
+model ScopeTradeAssignment {
+  id          Int @id @default(autoincrement())
+  scopeItemId Int
+  tradeId     Int
+
+  scopeItem ScopeItem @relation(fields: [scopeItemId], references: [id], onDelete: Cascade)
+  trade     Trade     @relation(fields: [tradeId], references: [id])
+
+  @@unique([scopeItemId, tradeId])
 }
 
 model ExportBatch {

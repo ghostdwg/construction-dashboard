@@ -6,6 +6,7 @@ const TABS = [
   { key: "overview", label: "Overview" },
   { key: "trades", label: "Trades" },
   { key: "subs", label: "Subs" },
+  { key: "scope", label: "Scope" },
   { key: "documents", label: "Documents" },
 ] as const;
 
