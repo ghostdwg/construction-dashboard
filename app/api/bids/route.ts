@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { autoPopulateBidSubs } from "@/lib/services/autoPopulateBidSubs";
 
 export async function GET() {
   const bids = await prisma.bid.findMany({
@@ -23,6 +24,8 @@ export async function POST(request: Request) {
       dueDate: dueDate ? new Date(dueDate) : null,
     },
   });
+
+  await autoPopulateBidSubs(bid.id);
 
   return Response.json(bid, { status: 201 });
 }

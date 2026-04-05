@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { autoPopulateBidSubs } from "@/lib/services/autoPopulateBidSubs";
 
 export async function POST(
   request: Request,
@@ -22,6 +23,8 @@ export async function POST(
     data: { bidId, tradeId },
     include: { trade: true },
   });
+
+  await autoPopulateBidSubs(bidId);
 
   return Response.json(bidTrade, { status: 201 });
 }

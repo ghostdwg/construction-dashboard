@@ -131,6 +131,8 @@ export default function SubsTab({
   const [removing, setRemoving] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const [updatingRfq, setUpdatingRfq] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncAdded, setLastSyncAdded] = useState<number | null>(null);
 
   const tradeMap = new Map(bidTrades.map((bt) => [bt.tradeId, bt.trade.name]));
 
@@ -188,6 +190,21 @@ export default function SubsTab({
     setExporting(false);
   }
 
+  async function syncPreferredSubs() {
+    setSyncing(true);
+    setLastSyncAdded(null);
+    const res = await fetch(`/api/bids/${bidId}/sync-preferred-subs`, {
+      method: "POST",
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setSelections(data.selections);
+      setLastSyncAdded(data.added);
+      router.refresh();
+    }
+    setSyncing(false);
+  }
+
   async function updateRfqStatus(selectionId: number, rfqStatus: string) {
     // Optimistic update first
     setSelections((prev) =>
@@ -209,18 +226,36 @@ export default function SubsTab({
       {/* ── Selected subs, grouped by trade ── */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-zinc-700">
-            Selected ({selections.length})
-          </h2>
-          {selections.length > 0 && (
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-zinc-700">
+              Selected ({selections.length})
+            </h2>
+            {lastSyncAdded !== null && (
+              <span className="text-xs text-zinc-400">
+                {lastSyncAdded === 0
+                  ? "Already up to date"
+                  : `${lastSyncAdded} preferred sub${lastSyncAdded === 1 ? "" : "s"} added`}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
             <button
-              onClick={exportRecipients}
-              disabled={exporting}
-              className="rounded-md bg-black px-3 py-1.5 text-xs text-white hover:bg-zinc-700 disabled:opacity-50"
+              onClick={syncPreferredSubs}
+              disabled={syncing}
+              className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
             >
-              {exporting ? "Exporting…" : "Export to Excel"}
+              {syncing ? "Syncing…" : "Sync preferred subs"}
             </button>
-          )}
+            {selections.length > 0 && (
+              <button
+                onClick={exportRecipients}
+                disabled={exporting}
+                className="rounded-md bg-black px-3 py-1.5 text-xs text-white hover:bg-zinc-700 disabled:opacity-50"
+              >
+                {exporting ? "Exporting…" : "Export to Excel"}
+              </button>
+            )}
+          </div>
         </div>
 
         {selections.length === 0 ? (
