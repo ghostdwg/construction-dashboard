@@ -20,6 +20,7 @@ type Selection = {
   id: number;
   subcontractorId: number;
   tradeId: number | null;
+  rfqStatus: string;
   subcontractor: Subcontractor;
 };
 
@@ -37,6 +38,7 @@ export default function SubsTab({
   const [adding, setAdding] = useState<number | null>(null); // subId being added
   const [removing, setRemoving] = useState<number | null>(null); // selectionId being removed
   const [exporting, setExporting] = useState(false);
+  const [updatingRfq, setUpdatingRfq] = useState<number | null>(null);
 
   useEffect(() => {
     setLoadingSuggestions(true);
@@ -82,6 +84,22 @@ export default function SubsTab({
     setExporting(false);
   }
 
+  async function updateRfqStatus(selectionId: number, rfqStatus: string) {
+    setUpdatingRfq(selectionId);
+    const res = await fetch(`/api/bids/${bidId}/selections/${selectionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rfqStatus }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setSelections((prev) =>
+        prev.map((s) => (s.id === selectionId ? { ...s, rfqStatus: updated.rfqStatus } : s))
+      );
+    }
+    setUpdatingRfq(null);
+  }
+
   async function removeSub(selectionId: number) {
     setRemoving(selectionId);
     await fetch(`/api/bids/${bidId}/selections/${selectionId}`, {
@@ -120,6 +138,7 @@ export default function SubsTab({
                   <th className="px-4 py-3 border-b border-zinc-200">Company</th>
                   <th className="px-4 py-3 border-b border-zinc-200">Trade</th>
                   <th className="px-4 py-3 border-b border-zinc-200">Primary Contact</th>
+                  <th className="px-4 py-3 border-b border-zinc-200">RFQ Status</th>
                   <th className="px-4 py-3 border-b border-zinc-200 w-16"></th>
                 </tr>
               </thead>
@@ -176,6 +195,18 @@ export default function SubsTab({
                         ) : (
                           <span className="text-zinc-400">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={sel.rfqStatus}
+                          disabled={updatingRfq === sel.id}
+                          onChange={(e) => updateRfqStatus(sel.id, e.target.value)}
+                          className="text-xs border border-zinc-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-black disabled:opacity-50"
+                        >
+                          {["no_response","invited","received","reviewing","accepted","declined"].map((s) => (
+                            <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button

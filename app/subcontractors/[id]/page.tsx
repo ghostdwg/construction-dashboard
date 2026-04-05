@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import AddContactForm from "./AddContactForm";
+import SubIntelligencePanel from "./SubIntelligencePanel";
 
 export default async function SubcontractorDetailPage({
   params,
@@ -66,6 +67,17 @@ export default async function SubcontractorDetailPage({
           </p>
         )}
       </div>
+
+      {/* Intelligence */}
+      <SubIntelligencePanel
+        subId={sub.id}
+        initialTier={sub.tier}
+        initialProjectTypes={sub.projectTypes}
+        initialRegion={sub.region ?? null}
+        initialInternalNotes={sub.internalNotes ?? null}
+        initialDoNotUse={sub.doNotUse}
+        initialDoNotUseReason={sub.doNotUseReason ?? null}
+      />
 
       {/* Trades */}
       <section className="mb-8">

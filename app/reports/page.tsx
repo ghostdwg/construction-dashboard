@@ -132,10 +132,10 @@ export default function ReportsPage() {
           fetch("/api/reports/follow-up-aging").then((r) => r.json()),
         ]);
         setSummary(s);
-        setBidsByStatus(b);
-        setCoverage(c);
-        setRates(r);
-        setAging(a);
+        setBidsByStatus(Array.isArray(b) ? b : []);
+        setCoverage(Array.isArray(c) ? c : []);
+        setRates(Array.isArray(r) ? r : []);
+        setAging(Array.isArray(a) ? a : []);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -160,7 +160,8 @@ export default function ReportsPage() {
     );
 
   // ---- Section 4: Response rate max for bar scaling ----
-  const maxExported = Math.max(...rates.map((r) => r.exported), 1);
+  const ratesArray = Array.isArray(rates) ? rates : [];
+  const maxExported = Math.max(...ratesArray.map((r) => r.exported), 1);
 
   // ---- Section 5: aging row color ----
   function agingRowClass(days: number) {
@@ -291,7 +292,7 @@ export default function ReportsPage() {
 
       {/* SECTION 4 — Response Rate By Trade */}
       <Section title="Response Rate by Trade">
-        {rates.length === 0 ? (
+        {ratesArray.length === 0 ? (
           <p className="text-sm text-zinc-400">No outreach data yet.</p>
         ) : (
           <div className="rounded-md border border-zinc-200 overflow-hidden">
@@ -306,7 +307,7 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {rates.map((row) => (
+                {ratesArray.map((row) => (
                   <tr key={row.tradeName}>
                     <td className="px-4 py-2.5">{row.tradeName}</td>
                     <td className="px-4 py-2.5 text-right text-zinc-500">

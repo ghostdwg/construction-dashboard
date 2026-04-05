@@ -55,7 +55,18 @@ export default function SubcontractorFilters({ trades }: { trades: Trade[] }) {
         >
           <option value="">All Statuses</option>
           <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+
+        <select
+          defaultValue={searchParams.get("tier") ?? ""}
+          onChange={(e) => update("tier", e.target.value)}
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+        >
+          <option value="">All Tiers</option>
           <option value="preferred">Preferred</option>
+          <option value="approved">Approved</option>
+          <option value="new">New</option>
           <option value="inactive">Inactive</option>
         </select>
 

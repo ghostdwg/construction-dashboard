@@ -2,21 +2,23 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import SubcontractorFilters from "./SubcontractorFilters";
+import { TierBadge } from "./[id]/SubIntelligencePanel";
 
-type SearchParams = Promise<{ search?: string; tradeId?: string; status?: string }>;
+type SearchParams = Promise<{ search?: string; tradeId?: string; status?: string; tier?: string }>;
 
 export default async function SubcontractorsPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
-  const { search = "", tradeId, status } = await searchParams;
+  const { search = "", tradeId, status, tier } = await searchParams;
 
   const [subs, trades] = await Promise.all([
     prisma.subcontractor.findMany({
       where: {
         ...(search ? { company: { contains: search } } : {}),
         ...(status ? { status } : {}),
+        ...(tier ? { tier } : {}),
         ...(tradeId
           ? { subTrades: { some: { tradeId: parseInt(tradeId, 10) } } }
           : {}),
@@ -53,6 +55,7 @@ export default async function SubcontractorsPage({
                 <th className="px-4 py-3 border-b border-zinc-200">Trades</th>
                 <th className="px-4 py-3 border-b border-zinc-200">Primary Contact</th>
                 <th className="px-4 py-3 border-b border-zinc-200">Tags</th>
+                <th className="px-4 py-3 border-b border-zinc-200">Tier</th>
                 <th className="px-4 py-3 border-b border-zinc-200">Status</th>
               </tr>
             </thead>
@@ -112,10 +115,18 @@ export default async function SubcontractorsPage({
                             MWBE
                           </span>
                         )}
-                        {!sub.isUnion && !sub.isMWBE && (
+                        {sub.doNotUse && (
+                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">
+                            DNU
+                          </span>
+                        )}
+                        {!sub.isUnion && !sub.isMWBE && !sub.doNotUse && (
                           <span className="text-zinc-400">—</span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <TierBadge tier={sub.tier} />
                     </td>
                     <td className="px-4 py-3">
                       <span
