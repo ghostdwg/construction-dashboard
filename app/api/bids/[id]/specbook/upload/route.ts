@@ -4,10 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { parseSpecSections, matchSectionToTrade } from "@/lib/documents/specParser";
 import { Prisma } from "@prisma/client";
 
-// Use the internal entry point to avoid pdf-parse v2's canvas polyfill
-// which references DOMMatrix — a browser API unavailable in Node.js
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse/lib/pdf-parse.js");
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export async function POST(
   request: Request,
@@ -58,8 +55,18 @@ export async function POST(
 
   // Extract text and parse sections
   try {
-    const result = await pdfParse(buffer);
-    const rawText: string = result.text ?? "";
+    const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+    const pdfDoc = await loadingTask.promise;
+    let rawText = "";
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const page = await pdfDoc.getPage(i);
+      const content = await page.getTextContent();
+      rawText +=
+        content.items
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((item: any) => ("str" in item ? item.str : ""))
+          .join(" ") + "\n";
+    }
 
     const sections = parseSpecSections(rawText);
 
