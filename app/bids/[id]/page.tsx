@@ -11,6 +11,7 @@ import AiReviewTab from "./AiReviewTab";
 import QuestionsTab from "./QuestionsTab";
 import ActivityTab from "./ActivityTab";
 import LevelingTab from "./LevelingTab";
+import DocumentsTab from "./DocumentsTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -187,9 +188,7 @@ export default async function BidDetailPage({
       )}
 
       {tab === "documents" && (
-        <div className="rounded-md border border-zinc-200 p-6 text-center text-sm text-zinc-400">
-          Documents coming in a future step.
-        </div>
+        <DocumentsTab bidId={bid.id} bidTrades={bid.bidTrades} />
       )}
     </div>
   );
