@@ -30,9 +30,19 @@ type Finding = {
   tradeName: string | null;
   findingText: string;
   confidence: string | null;
+  severity: string | null;
+  sourceDocument: string | null;
   status: string;
   reviewNotes: string | null;
   createdAt: string;
+};
+
+type Coverage = {
+  hasSpecBook: boolean;
+  specSectionCount: number;
+  hasDrawings: boolean;
+  drawingSheetCount: number;
+  approvedEstimateCount: number;
 };
 
 // ----- Parser (pure function, no side effects) -----
@@ -78,7 +88,7 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
   // Section 1 — Export
   const [stats, setStats] = useState<ScopeStats | null>(null);
   const [checks, setChecks] = useState([false, false, false]);
-  const [generating, setGenerating] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<ExportResult | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -98,6 +108,11 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
   // Sanitization warning
   const [pendingSanitizationCount, setPendingSanitizationCount] = useState(0);
 
+  // AI generation
+  const [coverage, setCoverage] = useState<Coverage | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
   const loadFindings = useCallback(() => {
     fetch(`/api/bids/${bidId}/findings`)
       .then((r) => r.json())
@@ -115,6 +130,14 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
         ).length;
         setPendingSanitizationCount(pending);
       })
+      .catch(() => {});
+  }, [bidId]);
+
+  useEffect(() => {
+    // Load coverage summary
+    fetch(`/api/bids/${bidId}/intelligence/generate`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: Coverage | null) => { if (data) setCoverage(data); })
       .catch(() => {});
   }, [bidId]);
 
@@ -147,6 +170,30 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
     loadFindings();
   }, [bidId, loadFindings]);
 
+  // ----- AI generation handler -----
+
+  async function runAiAnalysis() {
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/intelligence/generate`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        setGenerateError((err as { error?: string }).error ?? "Generation failed");
+        return;
+      }
+      const data = await res.json() as { findingCount: number; coverage: Coverage };
+      if (data.coverage) setCoverage(data.coverage);
+      loadFindings();
+    } catch (e) {
+      setGenerateError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   // ----- Section 1 handlers -----
 
   function toggleCheck(i: number) {
@@ -154,7 +201,7 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
   }
 
   async function generate() {
-    setGenerating(true);
+    setExporting(true);
     setExportError(null);
     setExportResult(null);
     try {
@@ -183,7 +230,7 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
     } catch (e) {
       setExportError(e instanceof Error ? e.message : "Unknown error");
     } finally {
-      setGenerating(false);
+      setExporting(false);
     }
   }
 
@@ -297,6 +344,39 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
 
   return (
     <div className="flex flex-col gap-10">
+      {/* ── AI Analysis ── */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-zinc-800">AI Scope Gap Analysis</h2>
+
+        {/* Coverage summary */}
+        <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 text-sm text-zinc-600">
+          {coverage ? (
+            <CoverageSummary coverage={coverage} />
+          ) : (
+            <span className="text-zinc-400 italic">Loading document context…</span>
+          )}
+        </div>
+
+        {generateError && (
+          <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {generateError}
+          </p>
+        )}
+
+        <div>
+          <button
+            onClick={runAiAnalysis}
+            disabled={generating}
+            className="rounded bg-black px-5 py-2 text-sm text-white hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {generating ? "Analyzing…" : "Run AI Analysis"}
+          </button>
+          <span className="ml-3 text-xs text-zinc-400">
+            Replaces existing findings with a fresh analysis
+          </span>
+        </div>
+      </section>
+
       {/* ── Sanitization warning ── */}
       {pendingSanitizationCount > 0 && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
@@ -350,10 +430,10 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
         <div>
           <button
             onClick={generate}
-            disabled={!allChecked || generating}
+            disabled={!allChecked || exporting}
             className="rounded bg-black px-5 py-2 text-sm text-white hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {generating ? "Generating…" : "Generate AI Export"}
+            {exporting ? "Generating…" : "Generate AI Export"}
           </button>
         </div>
 
@@ -575,6 +655,41 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
 
 // ----- Internal components -----
 
+function CoverageSummary({ coverage }: { coverage: Coverage }) {
+  const parts: string[] = [];
+
+  if (coverage.hasSpecBook) {
+    parts.push(`Spec Book (${coverage.specSectionCount} sections)`);
+  }
+  if (coverage.hasDrawings) {
+    parts.push(`Drawing Index (${coverage.drawingSheetCount} sheets)`);
+  }
+  if (coverage.approvedEstimateCount > 0) {
+    parts.push(`${coverage.approvedEstimateCount} approved sub submission${coverage.approvedEstimateCount !== 1 ? "s" : ""}`);
+  }
+
+  if (parts.length === 0) {
+    return (
+      <span className="text-amber-700">
+        No project documents uploaded and no approved estimates — analysis will be based on scope items only.
+      </span>
+    );
+  }
+
+  const hasDocuments = coverage.hasSpecBook || coverage.hasDrawings;
+  const hasEstimates = coverage.approvedEstimateCount > 0;
+
+  return (
+    <span>
+      <span className="font-medium text-zinc-700">Review based on: </span>
+      {parts.join(" + ")}
+      {!hasDocuments && hasEstimates && (
+        <span className="ml-2 text-amber-600">— no project documents uploaded</span>
+      )}
+    </span>
+  );
+}
+
 function FindingColumn({
   title,
   findings,
@@ -618,6 +733,19 @@ function FindingColumn({
   );
 }
 
+const SEVERITY_STYLES: Record<string, string> = {
+  critical: "bg-red-100 text-red-700",
+  moderate: "bg-amber-100 text-amber-700",
+  low: "bg-zinc-100 text-zinc-500",
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  specbook: "Spec Book",
+  drawings: "Drawings",
+  both: "Both",
+  none: "Scope Only",
+};
+
 function FindingCard({
   finding,
   updating,
@@ -635,13 +763,28 @@ function FindingCard({
 }) {
   return (
     <div className="rounded-md border border-zinc-200 bg-white p-3 flex flex-col gap-2">
-      {finding.tradeName && (
-        <span className="self-start rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
-          {finding.tradeName}
-        </span>
-      )}
+      <div className="flex flex-wrap gap-1.5">
+        {finding.tradeName && (
+          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
+            {finding.tradeName}
+          </span>
+        )}
+        {finding.severity && (
+          <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${SEVERITY_STYLES[finding.severity] ?? "bg-zinc-100 text-zinc-500"}`}>
+            {finding.severity}
+          </span>
+        )}
+        {finding.sourceDocument && SOURCE_LABELS[finding.sourceDocument] && (
+          <span className="rounded-full bg-blue-50 text-blue-600 px-2 py-0.5 text-xs">
+            {SOURCE_LABELS[finding.sourceDocument]}
+          </span>
+        )}
+      </div>
       <p className="text-xs text-zinc-700 leading-snug">{finding.findingText}</p>
-      {finding.confidence && (
+      {finding.reviewNotes && (
+        <p className="text-xs text-zinc-400 italic leading-snug">Q: {finding.reviewNotes}</p>
+      )}
+      {finding.confidence && !finding.severity && (
         <p className="text-xs text-zinc-400 capitalize">Confidence: {finding.confidence}</p>
       )}
       <div className="flex flex-wrap gap-1.5 mt-1">

@@ -78,7 +78,32 @@ export async function generateBidIntelligence(bidId: number): Promise<{
   return { findingCount: created.length, coverage };
 }
 
-// ----- Route handler -----
+// ----- GET — coverage summary only (no AI call) -----
+
+// GET /api/bids/[id]/intelligence/generate
+// Returns document coverage counts so the UI can show the summary banner
+// without triggering a generation.
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const bidId = parseInt(id, 10);
+  if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const bid = await prisma.bid.findUnique({ where: { id: bidId }, select: { id: true } });
+  if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
+
+  try {
+    const { coverage } = await assembleReviewPrompt(bidId);
+    return Response.json(coverage);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
+
+// ----- POST — Route handler -----
 
 // POST /api/bids/[id]/intelligence/generate
 // Assembles full prompt context, calls Claude, stores AiGapFinding records.
