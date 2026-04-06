@@ -3,6 +3,7 @@ import path from "path";
 import { prisma } from "@/lib/prisma";
 import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
 import { Prisma } from "@prisma/client";
+import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -106,6 +107,11 @@ export async function POST(
     const coveredCount = await prisma.specSection.count({
       where: { specBookId: specBook.id, covered: true },
     });
+
+    // Fire-and-forget intelligence regeneration — does not block upload response
+    generateBidIntelligence(bidId).catch((err) =>
+      console.error("[specbook/upload] background intelligence generation failed:", err)
+    );
 
     return Response.json(
       { ...updated, coveredCount, gapCount: updated._count.sections - coveredCount },

@@ -211,6 +211,8 @@ model AiGapFinding {
   tradeName       String?
   findingText     String
   confidence      String?
+  severity        String?
+  sourceDocument  String?
   status          String   @default("pending_review")
   reviewNotes     String?
   createdAt       DateTime @default(now())

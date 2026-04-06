@@ -6,6 +6,7 @@ import {
   firstSheetByDiscipline,
   DISCIPLINE_TRADE_NAMES,
 } from "@/lib/documents/drawingParser";
+import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -138,6 +139,11 @@ export async function POST(
 
     const coveredCount = rows.filter((r) => r.tradeId !== null).length;
     const missingCount = rows.filter((r) => r.matchedTradeId !== null).length;
+
+    // Fire-and-forget intelligence regeneration — does not block upload response
+    generateBidIntelligence(bidId).catch((err) =>
+      console.error("[drawings/upload] background intelligence generation failed:", err)
+    );
 
     return Response.json(
       {
