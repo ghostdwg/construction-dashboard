@@ -41,14 +41,18 @@ export default function DocumentsTab({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [assigningId, setAssigningId] = useState<number | null>(null);
+  const [rematching, setRematching] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const trades = bidTrades.map((bt) => bt.trade);
 
   useEffect(() => {
     fetch(`/api/bids/${bidId}/specbook/gaps`)
-      .then((r) => r.json())
-      .then((d: GapsData | null) => {
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Server error ${r.status}`);
+        return r.json() as Promise<GapsData | null>;
+      })
+      .then((d) => {
         setData(d ?? null);
         setLoading(false);
       })
@@ -74,7 +78,7 @@ export default function DocumentsTab({
       } else {
         // Reload gaps after successful upload
         const gaps: GapsData | null = await fetch(`/api/bids/${bidId}/specbook/gaps`)
-          .then((r) => r.json())
+          .then((r) => (r.ok ? r.json() : null))
           .catch(() => null);
         setData(gaps);
       }
@@ -123,6 +127,21 @@ export default function DocumentsTab({
       });
     } finally {
       setAssigningId(null);
+    }
+  }
+
+  async function rematch() {
+    setRematching(true);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/specbook/rematch`, { method: "POST" });
+      if (res.ok) {
+        const gaps: GapsData | null = await fetch(`/api/bids/${bidId}/specbook/gaps`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        setData(gaps);
+      }
+    } finally {
+      setRematching(false);
     }
   }
 
@@ -190,7 +209,8 @@ export default function DocumentsTab({
           {data.specBook.status === "ready" && (
             <>
               {/* Summary bar */}
-              <div className="flex flex-wrap gap-6 rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 text-sm">
+              <div className="flex flex-wrap gap-6">
                 <span className="text-zinc-700">
                   <span className="font-semibold">{data.total}</span>{" "}
                   <span className="text-zinc-500">sections found</span>
@@ -213,6 +233,14 @@ export default function DocumentsTab({
                     </span>
                   )
                 )}
+              </div>
+                <button
+                  onClick={rematch}
+                  disabled={rematching}
+                  className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+                >
+                  {rematching ? "Re-matching…" : "Re-match trades"}
+                </button>
               </div>
 
               {/* Gap table */}

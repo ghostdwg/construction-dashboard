@@ -16,6 +16,13 @@ function normalizeCsi(raw: string): string {
   return raw.replace(/\s+/g, " ").trim();
 }
 
+// Strip all non-digit characters for comparison — handles space, dash,
+// and period separators regardless of source format.
+// "03 30 00", "03-30-00", "033000" all become "033000".
+function csiDigitsOnly(raw: string): string {
+  return raw.replace(/\D/g, "");
+}
+
 export function parseSpecSections(text: string): SpecSectionEntry[] {
   // Normalize line endings so multi-line patterns are consistent
   const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -48,15 +55,18 @@ export function parseSpecSections(text: string): SpecSectionEntry[] {
 }
 
 // Exact CSI code match against a list of trades.
+// Compares digit-only representations so spacing and separator
+// characters don't prevent a match.
 // Returns the matching tradeId or null.
 export function matchSectionToTrade(
   csiNumber: string,
   trades: Array<{ id: number; csiCode: string | null }>
 ): number | null {
-  const normalized = normalizeCsi(csiNumber);
+  const digits = csiDigitsOnly(csiNumber);
+  if (digits.length === 0) return null;
   for (const trade of trades) {
     if (!trade.csiCode) continue;
-    if (normalizeCsi(trade.csiCode) === normalized) return trade.id;
+    if (csiDigitsOnly(trade.csiCode) === digits) return trade.id;
   }
   return null;
 }

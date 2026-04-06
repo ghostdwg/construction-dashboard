@@ -73,6 +73,10 @@ export async function POST(
     // Build trade lookup from bid's assigned trades
     const trades = bid.bidTrades.map((bt) => bt.trade);
 
+    // Diagnostic — log sample csiNumbers and trade csiCodes to confirm format alignment
+    console.log("[specbook] parsed csiNumbers (first 5):", sections.slice(0, 5).map((s) => JSON.stringify(s.csiNumber)));
+    console.log("[specbook] trade csiCodes for this bid:", trades.map((t) => JSON.stringify(t.csiCode)));
+
     // Create all sections in one batch
     if (sections.length > 0) {
       await prisma.specSection.createMany({
