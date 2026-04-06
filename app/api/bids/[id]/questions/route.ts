@@ -10,7 +10,12 @@ export async function GET(
 
   try {
     const questions = await prisma.generatedQuestion.findMany({
-      where: { gapFinding: { bidId } },
+      where: {
+        OR: [
+          { gapFinding: { bidId } },
+          { bidId },
+        ],
+      },
       orderBy: { createdAt: "asc" },
     });
     return Response.json(questions);

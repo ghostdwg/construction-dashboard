@@ -20,6 +20,7 @@ model Trade {
   scopeItems       ScopeItem[]
   tradeAssignments ScopeTradeAssignment[]
   preferredSubs    PreferredSub[]
+  levelingRows     LevelingRow[]
 }
 
 model Bid {
@@ -40,7 +41,9 @@ model Bid {
   aiExportBatches  AiExportBatch[]
   gapFindings      AiGapFinding[]
   outreachLogs     OutreachLog[]
-  estimateUploads  EstimateUpload[]
+  estimateUploads     EstimateUpload[]
+  levelingSession     LevelingSession?
+  generatedQuestions  GeneratedQuestion[]
 }
 
 model BidTrade {
@@ -212,18 +215,22 @@ model AiGapFinding {
 }
 
 model GeneratedQuestion {
-  id           Int       @id @default(autoincrement())
-  gapFindingId Int?
-  tradeName    String?
-  questionText String
-  isInternal   Boolean   @default(true)
-  status       String    @default("draft")
-  approvedAt   DateTime?
-  sentAt       DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             Int       @id @default(autoincrement())
+  gapFindingId   Int?
+  bidId          Int?
+  levelingRowId  Int?
+  tradeName      String?
+  questionText   String
+  isInternal     Boolean   @default(true)
+  status         String    @default("draft")
+  approvedAt     DateTime?
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   gapFinding   AiGapFinding? @relation(fields: [gapFindingId], references: [id])
+  bid          Bid?          @relation(fields: [bidId], references: [id])
+  levelingRow  LevelingRow?  @relation(fields: [levelingRowId], references: [id])
   outreachLogs OutreachLog[]
 }
 
@@ -272,6 +279,39 @@ model EstimateUpload {
 
   bid           Bid           @relation(fields: [bidId], references: [id])
   subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+  levelingRows  LevelingRow[]
 
   @@unique([bidId, subcontractorId])
+}
+
+model LevelingSession {
+  id        Int      @id @default(autoincrement())
+  bidId     Int      @unique
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bid  Bid           @relation(fields: [bidId], references: [id])
+  rows LevelingRow[]
+}
+
+model LevelingRow {
+  id               Int      @id @default(autoincrement())
+  sessionId        Int
+  estimateUploadId Int
+  tradeId          Int?
+  division         String   @default("")
+  scopeText        String
+  scopeHash        String
+  status           String   @default("unreviewed")
+  note             String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  session        LevelingSession     @relation(fields: [sessionId], references: [id])
+  estimateUpload EstimateUpload      @relation(fields: [estimateUploadId], references: [id])
+  trade          Trade?              @relation(fields: [tradeId], references: [id])
+  questions      GeneratedQuestion[]
+
+  @@unique([estimateUploadId, scopeHash])
 }
