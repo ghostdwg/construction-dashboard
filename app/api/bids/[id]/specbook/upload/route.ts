@@ -4,9 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { parseSpecSections, matchSectionToTrade } from "@/lib/documents/specParser";
 import { Prisma } from "@prisma/client";
 
-// pdf-parse is CommonJS
+// Use the internal entry point to avoid pdf-parse v2's canvas polyfill
+// which references DOMMatrix — a browser API unavailable in Node.js
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
 export async function POST(
   request: Request,
