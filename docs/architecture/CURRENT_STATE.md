@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: End of Session — Tiers 1-3 + Module 2b Complete, Module 6 Queued
+# Last Updated: End of Session — Module 6b Complete, Module 6c Queued
 
 ---
 
@@ -27,7 +27,9 @@
 | Step 8 | Outreach + Response Logging | ✅ Complete |
 | Step 9 | Reporting Dashboard | ✅ Complete |
 | Module 2b | Subcontractor Intelligence Layer | ✅ Complete |
-| **Module 6** | **Bid Leveling Engine** | **⬜ NEXT** |
+| Module 6a | Estimate Intake | ✅ Complete |
+| Module 6b | Scope Leveling Engine | ✅ Complete |
+| **Module 6c** | **Leveling Questions + Export** | **⬜ NEXT** |
 | Step 14a | Spec Book — CSI Coverage Gap | ⬜ Queued — Tier 4 |
 | Step 14b | Drawing Sheet Index Parsing | ⬜ Queued — Tier 4 |
 | Step 14c | Drawing Content Review | 🔴 Deferred — 2026 |
@@ -42,7 +44,9 @@
 | Tier 2 — Intelligence | Scope, AI export, gap review, questions | ✅ Complete |
 | Tier 3 — Workflow | Outreach logging, reporting dashboard | ✅ Complete |
 | Module 2b — Sub Intelligence | Preferred lists, RFQ tracker, CRM layer | ✅ Complete |
-| Module 6 — Leveling Engine | Estimate intake, scope matrix, leveling questions | ⬜ Next |
+| Module 6a — Estimate Intake | Upload, parse, scope/pricing separation | ✅ Complete |
+| Module 6b — Scope Leveling Engine | Session/row models, leveling API, matrix UI | ✅ Complete |
+| Module 6c — Leveling Questions + Export | Per-sub clarifications, export to email/Questions tab | ⬜ Next |
 | Tier 4 — Document Intelligence | Spec book, drawings, estimate sanitization | ⬜ Queued |
 
 ---
@@ -174,25 +178,40 @@ docs/claude-code-briefs/
 
 ---
 
-## Module 6 — Bid Leveling Engine
+## Module 6a — Estimate Intake
+### Status: COMPLETE
+
+- Upload sub estimates (PDF, Excel, DOCX) from the Leveling tab
+- Parse all formats: pdf-parse, ExcelJS, mammoth
+- Separate scope from pricing — `scopePricingSeparator.ts` strips all dollar amounts, unit costs, and pricing keywords before anything goes to AI
+- `EstimateUpload` model with `parseStatus` enum (pending → processing → complete/failed)
+- `pricingData` stored but NEVER returned to client and NEVER sent to AI — enforced at query layer and via destructuring in every API response
+- Upsert on re-upload (`@@unique([bidId, subcontractorId])`)
+- Per-sub upload UI with inline status (uploading / processing / ready / failed + re-upload)
+
+---
+
+## Module 6b — Scope Leveling Engine
+### Status: COMPLETE
+
+- `LevelingSession` model — one per bid, created on first leveling tab load
+- `LevelingRow` model — one row per scope line per sub; `@@unique([estimateUploadId, scopeHash])` where `scopeHash = sha256(scopeText).slice(0,12)`
+- Re-upload safe: same hash → update structural fields, preserve `status` and `note`
+- `GET /api/bids/[id]/leveling` — find-or-create session, upsert rows from complete uploads, return rows grouped by trade; `pricingData` excluded at query layer
+- `PATCH /api/bids/[id]/leveling/[rowId]` — updates `status` and/or `note`; verifies row belongs to bid's session
+- `POST /api/bids/[id]/leveling/[rowId]/question` — creates `GeneratedQuestion` scoped to bid via direct `bidId`; idempotent
+- `GeneratedQuestion` extended with `bidId Int?` + `levelingRowId Int?`; questions GET updated to `OR: [gapFinding.bidId, bidId]`
+- Leveling tab UI: trade selector pills, side-by-side sub columns (horizontally scrollable), per-row status `<select>` (patches immediately), note field (saves on blur), "Send to Questions →" on clarification_needed rows
+
+---
+
+## Module 6c — Leveling Questions + Export
 ### Status: NEXT TO BUILD
 
-### 6a — Estimate Intake
-Upload sub estimates (PDF/Excel/DOCX), parse all formats, separate scope from
-pricing, store both. Pricing data is never sent to AI.
-
-### 6b — Scope Leveling Engine
-Normalize scope across subs. Build a scope matrix comparing what each sub
-included and excluded. Flag gaps and divergences against peer bids and the
-project baseline (spec book or drawing index when available from Tier 4).
-
-### 6c — Leveling Questions + Export
 Generate per-sub clarification questions from leveling gaps. Export to email.
 Optional push to the Questions tab for full tracking.
 
 ---
 
 ## Next Action
-Build Module 6 — Bid Leveling Engine
-Start with 6a (Estimate Intake) — establish upload pipeline and parsing
-before building the leveling matrix in 6b.
+Build Module 6c — Leveling Questions + Export
