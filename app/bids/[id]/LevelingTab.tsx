@@ -406,8 +406,9 @@ function LevelingMatrix({ bidId }: { bidId: number }) {
 
   return (
     <div>
-      {/* Trade selector */}
-      <div className="flex gap-1.5 flex-wrap mb-5">
+      {/* Header row: trade selector + export button */}
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div className="flex gap-1.5 flex-wrap">
         {data.trades.map((t) => {
           const key = tradeKey(t);
           const isActive = activeTrade === key;
@@ -426,6 +427,14 @@ function LevelingMatrix({ bidId }: { bidId: number }) {
             </button>
           );
         })}
+        </div>
+        <a
+          href={`/api/bids/${bidId}/leveling/export`}
+          download
+          className="shrink-0 rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 whitespace-nowrap"
+        >
+          Export XLSX
+        </a>
       </div>
 
       {/* Side-by-side columns */}
@@ -532,7 +541,7 @@ export default function LevelingTab({
         </h2>
         <div className="rounded-md border border-zinc-200 p-6 text-center">
           <p className="text-sm text-zinc-400">
-            Spec book or drawing index — coming in Module 6c
+            Spec book or drawing index — coming in Tier 4
           </p>
         </div>
       </section>
