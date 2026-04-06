@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: End of Session — Module 6b Complete, Module 6c Queued
+# Last Updated: End of Session — Module 6 Complete (6a + 6b + 6c), Tier 4 Queued
 
 ---
 
@@ -29,7 +29,7 @@
 | Module 2b | Subcontractor Intelligence Layer | ✅ Complete |
 | Module 6a | Estimate Intake | ✅ Complete |
 | Module 6b | Scope Leveling Engine | ✅ Complete |
-| **Module 6c** | **Leveling Questions + Export** | **⬜ NEXT** |
+| Module 6c | Leveling Questions + Export | ✅ Complete |
 | Step 14a | Spec Book — CSI Coverage Gap | ⬜ Queued — Tier 4 |
 | Step 14b | Drawing Sheet Index Parsing | ⬜ Queued — Tier 4 |
 | Step 14c | Drawing Content Review | 🔴 Deferred — 2026 |
@@ -46,7 +46,7 @@
 | Module 2b — Sub Intelligence | Preferred lists, RFQ tracker, CRM layer | ✅ Complete |
 | Module 6a — Estimate Intake | Upload, parse, scope/pricing separation | ✅ Complete |
 | Module 6b — Scope Leveling Engine | Session/row models, leveling API, matrix UI | ✅ Complete |
-| Module 6c — Leveling Questions + Export | Per-sub clarifications, export to email/Questions tab | ⬜ Next |
+| Module 6c — Leveling Questions + Export | Per-sub clarifications, export to email/Questions tab | ✅ Complete |
 | Tier 4 — Document Intelligence | Spec book, drawings, estimate sanitization | ⬜ Queued |
 
 ---
@@ -206,12 +206,20 @@ docs/claude-code-briefs/
 ---
 
 ## Module 6c — Leveling Questions + Export
-### Status: NEXT TO BUILD
+### Status: COMPLETE
 
-Generate per-sub clarification questions from leveling gaps. Export to email.
-Optional push to the Questions tab for full tracking.
+- `POST /api/bids/[id]/leveling/[rowId]/question` — full rewrite to call Claude (`claude-sonnet-4-6`, max 200 tokens)
+- Prompt contains only: `scopeText`, `division`, `tradeName`, `projectName` — no sub identity, no pricing
+- Graceful template fallback if `ANTHROPIC_API_KEY` is absent or API errors
+- Idempotent: `findFirst({ where: { levelingRowId } })` before create — re-clicks return existing question
+- `GET /api/bids/[id]/leveling/export` — new ExcelJS route, one sheet per trade
+- Columns: Scope Item | Division | Sub 1…N | Status | Notes — all sub references anonymous
+- `clarification_needed` rows: yellow fill (`FFFFF9C4`); `excluded`: light red (`FFFFCDD2`)
+- Header: bold, gray fill, frozen row, autoFilter across all columns
+- "Export XLSX" `<a download>` button added to LevelingMatrix header in `LevelingTab.tsx`
+- File name: `leveling-bid-{id}-{YYYY-MM-DD}.xlsx`
 
 ---
 
 ## Next Action
-Build Module 6c — Leveling Questions + Export
+Tier 4 — Document Intelligence (Spec Book, Drawing Intelligence, Estimate Sanitization) — all queued
