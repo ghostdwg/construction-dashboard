@@ -1,9 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { matchSectionToTrade } from "@/lib/documents/specParser";
+import { matchSectionThreeState } from "@/lib/documents/specParser";
 
 // POST /api/bids/[id]/specbook/rematch
-// Re-runs CSI-to-trade matching on all existing sections without re-uploading.
-// Useful after trades are added/changed or the matching logic is updated.
+// Re-runs three-state CSI matching on all existing sections without re-uploading.
+// Call this after trades are added/removed from the bid.
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -19,30 +19,37 @@ export async function POST(
   });
   if (!specBook) return Response.json({ error: "No spec book found for this bid" }, { status: 404 });
 
-  const bid = await prisma.bid.findUnique({
-    where: { id: bidId },
-    include: { bidTrades: { include: { trade: { select: { id: true, csiCode: true } } } } },
-  });
-  if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
-
-  const trades = bid.bidTrades.map((bt) => bt.trade);
+  const [allTrades, bidTrades] = await Promise.all([
+    prisma.trade.findMany({ select: { id: true, csiCode: true } }),
+    prisma.bidTrade.findMany({ where: { bidId }, select: { tradeId: true } }),
+  ]);
+  const bidTradeIds = new Set(bidTrades.map((bt) => bt.tradeId));
 
   // Update each section individually (SQLite has no bulk conditional update)
-  let matched = 0;
+  let covered = 0;
+  let missingFromBid = 0;
   for (const section of specBook.sections) {
-    const tradeId = matchSectionToTrade(section.csiNumber, trades);
-    if (tradeId !== section.tradeId) {
+    const { tradeId, matchedTradeId } = matchSectionThreeState(
+      section.csiNumber,
+      allTrades,
+      bidTradeIds
+    );
+    const changed =
+      tradeId !== section.tradeId || matchedTradeId !== section.matchedTradeId;
+    if (changed) {
       await prisma.specSection.update({
         where: { id: section.id },
-        data: { tradeId, covered: tradeId !== null },
+        data: { tradeId, matchedTradeId, covered: tradeId !== null },
       });
     }
-    if (tradeId !== null) matched++;
+    if (tradeId !== null) covered++;
+    else if (matchedTradeId !== null) missingFromBid++;
   }
 
   return Response.json({
     total: specBook.sections.length,
-    matched,
-    gaps: specBook.sections.length - matched,
+    covered,
+    missingFromBid,
+    unknown: specBook.sections.length - covered - missingFromBid,
   });
 }

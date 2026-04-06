@@ -188,7 +188,7 @@ export default async function BidDetailPage({
       )}
 
       {tab === "documents" && (
-        <DocumentsTab bidId={bid.id} bidTrades={bid.bidTrades} />
+        <DocumentsTab bidId={bid.id} />
       )}
     </div>
   );

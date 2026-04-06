@@ -70,3 +70,28 @@ export function matchSectionToTrade(
   }
   return null;
 }
+
+// Three-state match:
+//   tradeId set, matchedTradeId null  → COVERED (trade is on bid)
+//   tradeId null, matchedTradeId set  → MISSING FROM BID (trade exists in dictionary, not on bid)
+//   both null                         → UNKNOWN
+// allTrades = full trade dictionary; bidTradeIds = Set of trade ids assigned to this bid.
+export function matchSectionThreeState(
+  csiNumber: string,
+  allTrades: Array<{ id: number; csiCode: string | null }>,
+  bidTradeIds: Set<number>
+): { tradeId: number | null; matchedTradeId: number | null } {
+  const digits = csiDigitsOnly(csiNumber);
+  if (digits.length === 0) return { tradeId: null, matchedTradeId: null };
+  for (const trade of allTrades) {
+    if (!trade.csiCode) continue;
+    if (csiDigitsOnly(trade.csiCode) === digits) {
+      if (bidTradeIds.has(trade.id)) {
+        return { tradeId: trade.id, matchedTradeId: null };
+      } else {
+        return { tradeId: null, matchedTradeId: trade.id };
+      }
+    }
+  }
+  return { tradeId: null, matchedTradeId: null };
+}

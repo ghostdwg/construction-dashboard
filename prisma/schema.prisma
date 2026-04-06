@@ -21,7 +21,10 @@ model Trade {
   tradeAssignments ScopeTradeAssignment[]
   preferredSubs    PreferredSub[]
   levelingRows     LevelingRow[]
-  specSections     SpecSection[]
+  specSections         SpecSection[]  @relation("SpecSectionTrade")
+  matchedSpecSections  SpecSection[]  @relation("MatchedSpecSection")
+  drawingSheets        DrawingSheet[] @relation("DrawingSheetTrade")
+  matchedDrawingSheets DrawingSheet[] @relation("MatchedDrawingSheet")
 }
 
 model Bid {
@@ -46,6 +49,7 @@ model Bid {
   levelingSession     LevelingSession?
   generatedQuestions  GeneratedQuestion[]
   specBooks           SpecBook[]
+  drawingUploads      DrawingUpload[]
 }
 
 model BidTrade {
@@ -331,15 +335,45 @@ model SpecBook {
 }
 
 model SpecSection {
-  id         Int      @id @default(autoincrement())
-  specBookId Int
-  csiNumber  String
-  csiTitle   String
-  rawText    String   @default("")
-  tradeId    Int?
-  covered    Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  specBookId     Int
+  csiNumber      String
+  csiTitle       String
+  rawText        String   @default("")
+  tradeId        Int?
+  matchedTradeId Int?
+  source         String?
+  covered        Boolean  @default(false)
+  createdAt      DateTime @default(now())
 
-  specBook SpecBook @relation(fields: [specBookId], references: [id], onDelete: Cascade)
-  trade    Trade?   @relation(fields: [tradeId], references: [id])
+  specBook     SpecBook @relation(fields: [specBookId], references: [id], onDelete: Cascade)
+  trade        Trade?   @relation("SpecSectionTrade", fields: [tradeId], references: [id])
+  matchedTrade Trade?   @relation("MatchedSpecSection", fields: [matchedTradeId], references: [id])
+}
+
+model DrawingUpload {
+  id         Int      @id @default(autoincrement())
+  bidId      Int
+  fileName   String
+  filePath   String
+  uploadedAt DateTime @default(now())
+  status     String   @default("processing")
+
+  bid    Bid            @relation(fields: [bidId], references: [id])
+  sheets DrawingSheet[]
+}
+
+model DrawingSheet {
+  id              Int      @id @default(autoincrement())
+  drawingUploadId Int
+  sheetNumber     String
+  sheetTitle      String?
+  discipline      String?
+  matchedTradeId  Int?
+  tradeId         Int?
+  createdAt       DateTime @default(now())
+
+  drawingUpload DrawingUpload @relation(fields: [drawingUploadId], references: [id], onDelete: Cascade)
+  trade         Trade?        @relation("DrawingSheetTrade", fields: [tradeId], references: [id])
+  matchedTrade  Trade?        @relation("MatchedDrawingSheet", fields: [matchedTradeId], references: [id])
 }

@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
 // GET /api/bids/[id]/specbook/gaps
-// Returns the most recent SpecBook for this bid and its coverage summary.
+// Returns the most recent SpecBook and sections split into three states:
+//   covered       — tradeId set (trade is on bid)
+//   missingFromBid — matchedTradeId set, tradeId null (known trade, not on bid)
+//   unknown       — both null (no trade in dictionary matches)
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -16,7 +19,10 @@ export async function GET(
     include: {
       sections: {
         orderBy: { csiNumber: "asc" },
-        include: { trade: { select: { id: true, name: true } } },
+        include: {
+          trade: { select: { id: true, name: true } },
+          matchedTrade: { select: { id: true, name: true } },
+        },
       },
     },
   });
@@ -24,16 +30,24 @@ export async function GET(
   if (!specBook) return Response.json(null);
 
   const total = specBook.sections.length;
-  const covered = specBook.sections.filter((s) => s.covered).length;
-  const gaps = specBook.sections
-    .filter((s) => !s.covered)
-    .map((s) => ({
-      id: s.id,
-      csiNumber: s.csiNumber,
-      csiTitle: s.csiTitle,
-      tradeId: s.tradeId,
-      trade: s.trade,
-    }));
+  const coveredSections = specBook.sections.filter((s) => s.tradeId !== null);
+  const missingSections = specBook.sections.filter(
+    (s) => s.tradeId === null && s.matchedTradeId !== null
+  );
+  const unknownSections = specBook.sections.filter(
+    (s) => s.tradeId === null && s.matchedTradeId === null
+  );
+
+  const toRow = (s: (typeof specBook.sections)[number]) => ({
+    id: s.id,
+    csiNumber: s.csiNumber,
+    csiTitle: s.csiTitle,
+    tradeId: s.tradeId,
+    trade: s.trade,
+    matchedTradeId: s.matchedTradeId,
+    matchedTrade: s.matchedTrade,
+    source: s.source,
+  });
 
   return Response.json({
     specBook: {
@@ -43,8 +57,11 @@ export async function GET(
       uploadedAt: specBook.uploadedAt,
     },
     total,
-    covered,
-    gapCount: total - covered,
-    gaps,
+    coveredCount: coveredSections.length,
+    missingCount: missingSections.length,
+    unknownCount: unknownSections.length,
+    covered: coveredSections.map(toRow),
+    missing: missingSections.map(toRow),
+    unknown: unknownSections.map(toRow),
   });
 }

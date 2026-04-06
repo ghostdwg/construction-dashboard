@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 const TABS = [
   { key: "overview", label: "Overview" },
+  { key: "documents", label: "Documents" },
   { key: "trades", label: "Trades" },
   { key: "scope", label: "Scope" },
   { key: "subs", label: "Subs" },
@@ -11,7 +12,6 @@ const TABS = [
   { key: "questions", label: "Questions" },
   { key: "leveling", label: "Leveling" },
   { key: "activity", label: "Activity" },
-  { key: "documents", label: "Documents" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];

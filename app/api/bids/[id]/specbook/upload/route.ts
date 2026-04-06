@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
-import { parseSpecSections, matchSectionToTrade } from "@/lib/documents/specParser";
+import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
 import { Prisma } from "@prisma/client";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -14,12 +14,16 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
-  // Verify bid exists and load its trades for matching
-  const bid = await prisma.bid.findUnique({
-    where: { id: bidId },
-    include: { bidTrades: { include: { trade: { select: { id: true, csiCode: true } } } } },
-  });
+  // Verify bid exists
+  const bid = await prisma.bid.findUnique({ where: { id: bidId } });
   if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
+
+  // Load all trades in dictionary + bid's assigned trade ids
+  const [allTrades, bidTrades] = await Promise.all([
+    prisma.trade.findMany({ select: { id: true, csiCode: true } }),
+    prisma.bidTrade.findMany({ where: { bidId }, select: { tradeId: true } }),
+  ]);
+  const bidTradeIds = new Set(bidTrades.map((bt) => bt.tradeId));
 
   let formData: FormData;
   try {
@@ -70,24 +74,23 @@ export async function POST(
 
     const sections = parseSpecSections(rawText);
 
-    // Build trade lookup from bid's assigned trades
-    const trades = bid.bidTrades.map((bt) => bt.trade);
-
-    // Diagnostic — log sample csiNumbers and trade csiCodes to confirm format alignment
-    console.log("[specbook] parsed csiNumbers (first 5):", sections.slice(0, 5).map((s) => JSON.stringify(s.csiNumber)));
-    console.log("[specbook] trade csiCodes for this bid:", trades.map((t) => JSON.stringify(t.csiCode)));
-
-    // Create all sections in one batch
+    // Create all sections in one batch using three-state matching
     if (sections.length > 0) {
       await prisma.specSection.createMany({
         data: sections.map((s) => {
-          const tradeId = matchSectionToTrade(s.csiNumber, trades);
+          const { tradeId, matchedTradeId } = matchSectionThreeState(
+            s.csiNumber,
+            allTrades,
+            bidTradeIds
+          );
           return {
             specBookId: specBook.id,
             csiNumber: s.csiNumber,
             csiTitle: s.csiTitle,
             rawText: s.rawText,
+            source: "specbook",
             tradeId,
+            matchedTradeId,
             covered: tradeId !== null,
           };
         }),
