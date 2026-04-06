@@ -143,6 +143,10 @@ export default function SubsTab({
       .then((data) => {
         setSuggestions(Array.isArray(data) ? data : []);
         setLoadingSuggestions(false);
+      })
+      .catch(() => {
+        setSuggestions([]);
+        setLoadingSuggestions(false);
       });
   }, [bidId, selections]);
 
@@ -154,10 +158,12 @@ export default function SubsTab({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ subcontractorId: sub.id, tradeId }),
     });
-    const newSel: Selection = await res.json();
-    setSelections((prev) => [...prev, newSel]);
+    if (res.ok) {
+      const newSel: Selection = await res.json();
+      setSelections((prev) => [...prev, newSel]);
+      router.refresh();
+    }
     setAdding(null);
-    router.refresh();
   }
 
   async function removeSub(selectionId: number) {

@@ -56,11 +56,17 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
   const [statusFilter, setStatusFilter] = useState<Status | "">("");
   const [updatingId, setUpdatingId] = useState<number | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     fetch(`/api/bids/${bidId}/questions`)
       .then((r) => r.json())
       .then((data: Question[]) => {
         setQuestions(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch((e: Error) => {
+        setError(e.message);
         setLoading(false);
       });
   }, [bidId]);
@@ -100,6 +106,7 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
   );
 
   if (loading) return <p className="text-sm text-zinc-400">Loading…</p>;
+  if (error) return <p className="text-sm text-red-500">Error: {error}</p>;
 
   return (
     <div className="flex flex-col gap-6">

@@ -51,18 +51,25 @@ export default function ScopeTab({ bidId }: { bidId: number }) {
   const [submitting, setSubmitting] = useState(false);
   const [removing, setRemoving] = useState<number | null>(null);
 
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   useEffect(() => {
     Promise.all([
       fetch(`/api/bids/${bidId}/scope`).then((r) => r.json()),
       fetch(`/api/bids/${bidId}`).then((r) => r.json()),
-    ]).then(([scopeData, bidData]: [ScopeResponse, { bidTrades: { trade: Trade }[] }]) => {
-      setData({
-        byTrade: scopeData?.byTrade ?? {},
-        unassigned: scopeData?.unassigned ?? [],
+    ])
+      .then(([scopeData, bidData]: [ScopeResponse, { bidTrades: { trade: Trade }[] }]) => {
+        setData({
+          byTrade: scopeData?.byTrade ?? {},
+          unassigned: scopeData?.unassigned ?? [],
+        });
+        setBidTrades(bidData.bidTrades?.map((bt) => bt.trade) ?? []);
+        setLoading(false);
+      })
+      .catch((e: Error) => {
+        setFetchError(e.message);
+        setLoading(false);
       });
-      setBidTrades(bidData.bidTrades?.map((bt) => bt.trade) ?? []);
-      setLoading(false);
-    });
   }, [bidId]);
 
   function openAddForm(tradeId: number | null) {
@@ -155,6 +162,7 @@ export default function ScopeTab({ bidId }: { bidId: number }) {
   const riskCount = allItems.filter((i) => i.riskFlag).length;
 
   if (loading) return <p className="text-sm text-zinc-400">Loading…</p>;
+  if (fetchError) return <p className="text-sm text-red-500">Error: {fetchError}</p>;
 
   return (
     <div className="flex flex-col gap-8">

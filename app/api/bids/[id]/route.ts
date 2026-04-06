@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export async function GET(
   _request: Request,
@@ -40,16 +41,23 @@ export async function PATCH(
   const body = await request.json();
   const { projectName, location, description, status, dueDate } = body;
 
-  const bid = await prisma.bid.update({
-    where: { id: bidId },
-    data: {
-      ...(projectName !== undefined ? { projectName } : {}),
-      ...(location !== undefined ? { location: location || null } : {}),
-      ...(description !== undefined ? { description: description || null } : {}),
-      ...(status !== undefined ? { status } : {}),
-      ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
-    },
-  });
-
-  return Response.json(bid);
+  try {
+    const bid = await prisma.bid.update({
+      where: { id: bidId },
+      data: {
+        ...(projectName !== undefined ? { projectName } : {}),
+        ...(location !== undefined ? { location: location || null } : {}),
+        ...(description !== undefined ? { description: description || null } : {}),
+        ...(status !== undefined ? { status } : {}),
+        ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
+      },
+    });
+    return Response.json(bid);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+      return Response.json({ error: "Bid not found" }, { status: 404 });
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    return Response.json({ error: message }, { status: 500 });
+  }
 }

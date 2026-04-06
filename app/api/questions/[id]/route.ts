@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { logOutreachEvent } from "@/lib/logging/outreachLogger";
+import { Prisma } from "@prisma/client";
 
 const VALID_STATUSES = ["draft", "approved", "queued", "sent", "answered", "unanswered"];
 
@@ -31,24 +32,37 @@ export async function PATCH(
     return Response.json({ error: "Nothing to update" }, { status: 400 });
   }
 
-  const question = await prisma.generatedQuestion.update({
-    where: { id: questionId },
-    data,
-    include: {
-      gapFinding: { select: { bidId: true } },
-    },
-  });
+  let question;
+  try {
+    question = await prisma.generatedQuestion.update({
+      where: { id: questionId },
+      data,
+      include: {
+        gapFinding: { select: { bidId: true } },
+      },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+      return Response.json({ error: "Question not found" }, { status: 404 });
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    return Response.json({ error: message }, { status: 500 });
+  }
 
-  if (status === "queued" && question.gapFinding?.bidId !== undefined) {
-    try {
-      await logOutreachEvent({
-        bidId: question.gapFinding.bidId,
-        questionId: question.id,
-        channel: "question",
-        status: "queued",
-      });
-    } catch (err) {
-      console.error("[outreachLogger] question queued log failed:", err);
+  // Log outreach event for both gapFinding questions and direct leveling questions
+  if (status === "queued") {
+    const effectiveBidId = question.gapFinding?.bidId ?? question.bidId ?? undefined;
+    if (effectiveBidId !== undefined) {
+      try {
+        await logOutreachEvent({
+          bidId: effectiveBidId,
+          questionId: question.id,
+          channel: "question",
+          status: "queued",
+        });
+      } catch (err) {
+        console.error("[outreachLogger] question queued log failed:", err);
+      }
     }
   }
 
