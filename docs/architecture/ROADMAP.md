@@ -87,30 +87,17 @@ This is the intended sequence for every bid:
   Full workflow debug — type errors, route hardening,
   fetch error states, outreach logging fix
 
-### Module 14 🔄 In Progress
+### Module 14 ✅ Complete
   Document Intelligence — combined 14a + 14b
 
-  Mission:
-  Enable spec-driven bid setup by allowing estimators to upload
-  available project documents — spec book, drawing sheet index,
-  or both — and automatically propose trades based on extracted
-  CSI sections and drawing disciplines. All three job types are
-  supported. Document uploads are always optional. All sources
-  feed the same trade proposal and confirmation UI, which writes
-  directly to BidTrade. The gap report shows three states:
-  covered, missing from bid, and unknown.
+  Spec book upload (pdfjs-dist), CSI section extraction,
+  drawing sheet index upload, discipline parsing.
+  Three-state matching against full trade dictionary:
+  covered / missing from bid / unknown.
+  Trade proposal UI with Add to Bid, manual assign, rematch.
+  Documents tab at position 2.
 
-  Remaining work:
-  - Schema: add matchedTradeId to SpecSection, add DrawingUpload
-    and DrawingSheet models
-  - Drawing sheet index upload + discipline parsing
-  - Three-state matching engine (all trades, not just bid trades)
-  - Trade proposal UI: covered / missing / unknown sections
-  - Add to Bid action from Documents tab
-  - Rematch trigger when new trade added to bid
-  - Tab reorder: Documents moves to position 2
-
-### Module 5b ⬜ Queued
+### Module 5b 🔄 In Progress
   Estimate Sanitization — redaction engine
   Strip sub identity and pricing from any estimate format
   before AI comparison. Anonymized tokens only.

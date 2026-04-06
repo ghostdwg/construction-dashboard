@@ -269,19 +269,25 @@ enum ParseStatus {
 }
 
 model EstimateUpload {
-  id              Int         @id @default(autoincrement())
-  bidId           Int
-  subcontractorId Int
-  fileName        String
-  fileType        String
-  fileSize        Int
-  rawFilePath     String
-  scopeLines      String      @default("")
-  pricingData     String      @default("")
-  parseStatus     ParseStatus @default(pending)
-  parseError      String?
-  uploadedAt      DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                  Int         @id @default(autoincrement())
+  bidId               Int
+  subcontractorId     Int
+  fileName            String
+  fileType            String
+  fileSize            Int
+  rawFilePath         String
+  scopeLines          String      @default("")
+  pricingData         String      @default("")
+  parseStatus         ParseStatus @default(pending)
+  parseError          String?
+  sanitizedText       String?
+  sanitizationStatus  String?
+  redactionCount      Int?
+  flaggedLines        String?
+  subToken            String?
+  approvedForAi       Boolean     @default(false)
+  uploadedAt          DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
   bid           Bid           @relation(fields: [bidId], references: [id])
   subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])

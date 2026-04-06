@@ -95,10 +95,27 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
 
+  // Sanitization warning
+  const [pendingSanitizationCount, setPendingSanitizationCount] = useState(0);
+
   const loadFindings = useCallback(() => {
     fetch(`/api/bids/${bidId}/findings`)
       .then((r) => r.json())
       .then((data: Finding[]) => setFindings(Array.isArray(data) ? data : []));
+  }, [bidId]);
+
+  useEffect(() => {
+    // Check for unapproved estimates
+    fetch(`/api/bids/${bidId}/estimates`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((uploads: { parseStatus: string; approvedForAi: boolean }[]) => {
+        if (!Array.isArray(uploads)) return;
+        const pending = uploads.filter(
+          (u) => u.parseStatus === "complete" && !u.approvedForAi
+        ).length;
+        setPendingSanitizationCount(pending);
+      })
+      .catch(() => {});
   }, [bidId]);
 
   useEffect(() => {
@@ -280,6 +297,15 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
 
   return (
     <div className="flex flex-col gap-10">
+      {/* ── Sanitization warning ── */}
+      {pendingSanitizationCount > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+          <span className="font-semibold">{pendingSanitizationCount} estimate{pendingSanitizationCount !== 1 ? "s" : ""} pending sanitization review.</span>{" "}
+          Go to the Leveling tab to review flagged lines and approve estimates before AI export.
+          Unapproved estimates will not be included in the export.
+        </div>
+      )}
+
       {/* ── Section 1 — Export ── */}
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold text-zinc-800">AI Safe Export</h2>

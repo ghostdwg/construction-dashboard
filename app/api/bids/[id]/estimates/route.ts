@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { saveEstimateFile, resolveFileType } from "@/lib/services/estimateStorage";
 import { parseEstimateFile } from "@/lib/services/estimateParsers";
 import { separateScopeAndPricing } from "@/lib/services/scopePricingSeparator";
+import { redactEstimate, TOKEN_LABELS } from "@/lib/services/redaction/redactEstimate";
 
 // GET /api/bids/[id]/estimates
 // Returns all EstimateUploads for the bid — never returns pricingData
@@ -113,12 +114,32 @@ export async function POST(
       parsed.rows
     );
 
+    // Assign subToken — count existing tokens for this bid
+    const existingTokens = await prisma.estimateUpload.findMany({
+      where: { bidId, subToken: { not: null }, id: { not: upload.id } },
+      select: { subToken: true },
+      orderBy: { uploadedAt: "asc" },
+    });
+    const usedTokens = new Set(existingTokens.map((e) => e.subToken));
+    const subToken = TOKEN_LABELS.find((t) => !usedTokens.has(t)) ?? `SUB-${upload.id}`;
+
+    // Run redaction inline (fast — operates on already-parsed scopeLines)
+    const scopeLinesJson = JSON.stringify(scopeLines);
+    const { sanitizedText, flaggedLines, redactionCount } = redactEstimate(scopeLinesJson);
+    const sanitizationStatus = flaggedLines.length > 0 ? "needs_review" : "complete";
+
     const updated = await prisma.estimateUpload.update({
       where: { id: upload.id },
       data: {
-        scopeLines: JSON.stringify(scopeLines),
+        scopeLines: scopeLinesJson,
         pricingData: JSON.stringify(pricingData),
         parseStatus: "complete",
+        subToken,
+        sanitizedText,
+        sanitizationStatus,
+        redactionCount,
+        flaggedLines: JSON.stringify(flaggedLines),
+        approvedForAi: false,
       },
       include: { subcontractor: { select: { id: true, company: true } } },
     });

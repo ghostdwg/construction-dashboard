@@ -16,8 +16,8 @@
 | Module 6b | Scope Leveling Engine | ✅ Complete |
 | Module 6c | Leveling Questions + Export | ✅ Complete |
 | Audit Session | Full workflow debug + error handling | ✅ Complete |
-| Module 14 | Document Intelligence (14a + 14b combined) | 🔄 In Progress |
-| Module 5b | Estimate Sanitization — redaction engine | ⬜ Queued |
+| Module 14 | Document Intelligence (14a + 14b combined) | ✅ Complete |
+| Module 5b | Estimate Sanitization — redaction engine | 🔄 In Progress |
 | Module 15 | AI Review prompt enhancement | ⬜ Queued |
 
 ## What Is Built
@@ -36,15 +36,16 @@
 - Scope leveling — side by side, inline status and notes
 - Leveling questions with AI draft + anonymized Excel export
 - Spec book upload — CSI extraction via pdfjs-dist (working)
-- Three-state CSI matching — covered / missing / unknown (in progress)
+- Drawing sheet index upload — discipline parsing, trade mapping
+- Three-state matching — covered / missing from bid / unknown
+- Trade proposal UI — Add to Bid, manual assign, rematch trigger
+- Documents tab at position 2 in tab order
 
 ## Current Known State
 - pdfjs-dist installed and working — pdf-parse removed
-- SpecBook and SpecSection models in schema
-- Three-state matching (tradeId / matchedTradeId) — schema
-  change pending as part of Module 14 active session
-- DrawingUpload and DrawingSheet models — pending Module 14
-- Tab reorder pending — Documents moves to position 2
+- SpecBook, SpecSection, DrawingUpload, DrawingSheet models in schema
+- Three-state matching live: tradeId (covered) / matchedTradeId (missing) / both null (unknown)
+- Module 5b in progress — redaction engine for estimate sanitization
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

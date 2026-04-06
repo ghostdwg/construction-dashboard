@@ -12,6 +12,8 @@ export type AiSafePayload = {
     tradeCount: number;
     scopeItemCount: number;
     restrictedItemsStripped: number;
+    estimatesIncluded: number;
+    estimatesPendingSanitization: number;
   };
   trades: {
     tradeName: string;
@@ -25,6 +27,11 @@ export type AiSafePayload = {
       notes: string | null;
       riskFlag: boolean;
     }[];
+  }[];
+  // Approved sanitized estimate scope — anonymous tokens only, no sub identity
+  estimateContext: {
+    token: string;
+    sanitizedText: string;
   }[];
 };
 
@@ -92,6 +99,27 @@ export async function buildAiSafePayload(bidId: number): Promise<{
 
   if (!bid) throw new Error(`Bid ${bidId} not found`);
 
+  // Load estimates — only approved, sanitized ones enter the payload
+  // pricingData is never selected
+  const allEstimates = await prisma.estimateUpload.findMany({
+    where: { bidId },
+    select: {
+      subToken: true,
+      sanitizedText: true,
+      sanitizationStatus: true,
+      approvedForAi: true,
+      parseStatus: true,
+    },
+    orderBy: { uploadedAt: "asc" },
+  });
+
+  const approvedEstimates = allEstimates.filter(
+    (e) => e.approvedForAi && e.sanitizedText && e.parseStatus === "complete"
+  );
+  const pendingSanitization = allEstimates.filter(
+    (e) => e.parseStatus === "complete" && !e.approvedForAi
+  ).length;
+
   // Separate restricted items and count them
   const allItems = bid.scopeItems;
   const publicItems = allItems.filter((i) => !i.restricted);
@@ -155,6 +183,11 @@ export async function buildAiSafePayload(bidId: number): Promise<{
 
   const scopeItemCount = trades.reduce((n, t) => n + t.scopeItems.length, 0);
 
+  const estimateContext = approvedEstimates.map((e) => ({
+    token: e.subToken ?? "SUB-UNKNOWN",
+    sanitizedText: e.sanitizedText!,
+  }));
+
   const payload: AiSafePayload = {
     exportMetadata: {
       exportId: randomUUID(),
@@ -164,8 +197,11 @@ export async function buildAiSafePayload(bidId: number): Promise<{
       tradeCount: trades.filter((t) => t.tradeName !== "Unassigned").length,
       scopeItemCount,
       restrictedItemsStripped: restrictedCount,
+      estimatesIncluded: estimateContext.length,
+      estimatesPendingSanitization: pendingSanitization,
     },
     trades,
+    estimateContext,
   };
 
   // Second-pass safety check — throws on violation
