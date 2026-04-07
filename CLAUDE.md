@@ -13,3 +13,7 @@
 - Module 5b — Estimate Sanitization: COMPLETE
 - Module 15 — AI Review + Gap Analysis: COMPLETE
 - Module 15a — Bid Intelligence Brief: COMPLETE
+- Module 15b — Per-Trade Scope Gap Analysis: COMPLETE
+
+## Next
+- Module GNG1 — Go/No-Go Gate Widget: NEXT

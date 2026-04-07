@@ -212,7 +212,9 @@ model AiGapFinding {
   bidId           Int
   aiExportBatchId Int?
   tradeName       String?
+  title           String?
   findingText     String
+  sourceRef       String?
   confidence      String?
   severity        String?
   sourceDocument  String?
