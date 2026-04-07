@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +60,15 @@ type DrawingData = {
   missingCount: number;
   covered: DrawingSheetRow[];
   missing: DrawingSheetRow[];
+};
+
+type AddendumRow = {
+  id: number;
+  addendumNumber: number;
+  addendumDate: string | null;
+  fileName: string;
+  uploadedAt: string;
+  status: string;
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -321,7 +330,22 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
   const [addingIds, setAddingIds] = useState<Set<number>>(new Set());
   const [assigningId, setAssigningId] = useState<number | null>(null);
 
+  // Addendums
+  const [addendums, setAddendums] = useState<AddendumRow[]>([]);
+  const [addendumNumber, setAddendumNumber] = useState("");
+  const [addendumDate, setAddendumDate] = useState("");
+  const [addendumUploading, setAddendumUploading] = useState(false);
+  const [addendumUploadError, setAddendumUploadError] = useState<string | null>(null);
+  const [deletingAddendumId, setDeletingAddendumId] = useState<number | null>(null);
+  const [briefIsStale, setBriefIsStale] = useState(false);
+  const addendumFileRef = useRef<HTMLInputElement>(null);
+
   // ── Load on mount ──────────────────────────────────────────────────────────
+
+  const loadAddendums = useCallback(async () => {
+    const res = await fetch(`/api/bids/${bidId}/addendums`);
+    if (res.ok) setAddendums((await res.json()) as AddendumRow[]);
+  }, [bidId]);
 
   async function loadAll() {
     try {
@@ -340,7 +364,19 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
     }
   }
 
-  useEffect(() => { loadAll(); }, [bidId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    loadAll();
+    loadAddendums();
+    // Check if brief is stale
+    fetch(`/api/bids/${bidId}/intelligence`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { brief: { isStale?: boolean; status?: string } | null } | null) => {
+        if (data?.brief?.isStale || data?.brief?.status === "generating") {
+          setBriefIsStale(true);
+        }
+      })
+      .catch(() => {});
+  }, [bidId, loadAddendums]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Spec book upload ───────────────────────────────────────────────────────
 
@@ -430,6 +466,51 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
         next.delete(tradeId);
         return next;
       });
+    }
+  }
+
+  // ── Addendum upload ────────────────────────────────────────────────────────
+
+  async function handleAddendumUpload(file: File) {
+    const num = parseInt(addendumNumber, 10);
+    if (isNaN(num) || num < 1) {
+      setAddendumUploadError("Enter a valid addendum number first.");
+      return;
+    }
+    setAddendumUploading(true);
+    setAddendumUploadError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("addendumNumber", String(num));
+      if (addendumDate) form.append("addendumDate", addendumDate);
+      const res = await fetch(`/api/bids/${bidId}/addendums/upload`, { method: "POST", body: form });
+      const result = await res.json();
+      if (!res.ok) {
+        setAddendumUploadError(result.error ?? "Upload failed");
+      } else {
+        setAddendumNumber("");
+        setAddendumDate("");
+        setBriefIsStale(true);
+        await loadAddendums();
+      }
+    } catch (e) {
+      setAddendumUploadError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setAddendumUploading(false);
+    }
+  }
+
+  async function deleteAddendum(id: number) {
+    setDeletingAddendumId(id);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/addendums/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setBriefIsStale(true);
+        await loadAddendums();
+      }
+    } finally {
+      setDeletingAddendumId(null);
     }
   }
 
@@ -597,6 +678,123 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
           Upload a spec book or drawing sheet index to get started. Both are optional.
         </p>
       )}
+
+      {/* ── Addendums ── */}
+      <div className="flex flex-col gap-3 pt-2 border-t border-zinc-200">
+        <h2 className="text-sm font-semibold text-zinc-700">Addendums</h2>
+
+        {briefIsStale && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+            Brief is regenerating with latest addendum…
+          </div>
+        )}
+
+        {/* Upload form */}
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-500">Addendum #</label>
+            <input
+              type="number"
+              min={1}
+              value={addendumNumber}
+              onChange={(e) => setAddendumNumber(e.target.value)}
+              placeholder="1"
+              className="w-24 rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-black"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-500">Date (optional)</label>
+            <input
+              type="date"
+              value={addendumDate}
+              onChange={(e) => setAddendumDate(e.target.value)}
+              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-black"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-500">PDF File</label>
+            <input
+              ref={addendumFileRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleAddendumUpload(f);
+                e.target.value = "";
+              }}
+            />
+            <button
+              onClick={() => addendumFileRef.current?.click()}
+              disabled={addendumUploading}
+              className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:border-zinc-400 hover:text-zinc-900 disabled:opacity-50"
+            >
+              {addendumUploading ? "Uploading…" : "Choose PDF"}
+            </button>
+          </div>
+        </div>
+        {addendumUploadError && (
+          <p className="text-sm text-red-500">{addendumUploadError}</p>
+        )}
+
+        {/* Addendum list */}
+        {addendums.length > 0 && (
+          <div className="rounded-md border border-zinc-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 border-b border-zinc-200 text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-2.5 text-left w-20">#</th>
+                  <th className="px-4 py-2.5 text-left w-32">Date</th>
+                  <th className="px-4 py-2.5 text-left">File</th>
+                  <th className="px-4 py-2.5 text-left w-24">Status</th>
+                  <th className="px-4 py-2.5 w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {addendums.map((a) => (
+                  <tr key={a.id} className="border-b border-zinc-100 last:border-0">
+                    <td className="px-4 py-2.5 font-medium text-zinc-700">{a.addendumNumber}</td>
+                    <td className="px-4 py-2.5 text-zinc-500">
+                      {a.addendumDate
+                        ? new Date(a.addendumDate).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-zinc-600 truncate max-w-xs">{a.fileName}</td>
+                    <td className="px-4 py-2.5">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          a.status === "ready"
+                            ? "bg-green-100 text-green-700"
+                            : a.status === "error"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-zinc-100 text-zinc-500"
+                        }`}
+                      >
+                        {a.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button
+                        onClick={() => deleteAddendum(a.id)}
+                        disabled={deletingAddendumId === a.id}
+                        className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                      >
+                        {deletingAddendumId === a.id ? "…" : "Delete"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {addendums.length === 0 && (
+          <p className="text-sm text-zinc-400 italic">
+            No addendums uploaded. Add addendums as they are issued.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

@@ -11,9 +11,7 @@
 - Audit Session: COMPLETE
 - Module 14 — Document Intelligence: COMPLETE
 - Module 5b — Estimate Sanitization: COMPLETE
+- Module 15 — AI Review + Gap Analysis: COMPLETE
 
 ## Next
-- Module 15 — AI Review Prompt Enhancement: NEXT
-  Feed spec sections and drawing disciplines into gap analysis as project document context.
-  Gaps become grounded in actual contract documents rather than AI inference alone.
-  No schema changes required — additive.
+- Module 15a — Bid Intelligence Brief: NEXT

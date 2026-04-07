@@ -50,6 +50,8 @@ model Bid {
   generatedQuestions  GeneratedQuestion[]
   specBooks           SpecBook[]
   drawingUploads      DrawingUpload[]
+  addendums           AddendumUpload[]
+  intelligenceBrief   BidIntelligenceBrief?
 }
 
 model BidTrade {
@@ -369,6 +371,37 @@ model DrawingUpload {
 
   bid    Bid            @relation(fields: [bidId], references: [id])
   sheets DrawingSheet[]
+}
+
+model AddendumUpload {
+  id             Int       @id @default(autoincrement())
+  bidId          Int
+  addendumNumber Int
+  addendumDate   DateTime?
+  fileName       String
+  uploadedAt     DateTime  @default(now())
+  status         String    @default("processing")
+  extractedText  String?
+
+  bid Bid @relation(fields: [bidId], references: [id])
+}
+
+model BidIntelligenceBrief {
+  id                   Int      @id @default(autoincrement())
+  bidId                Int      @unique
+  generatedAt          DateTime @default(now())
+  status               String   @default("generating")
+  whatIsThisJob        String?
+  howItGetsBuilt       String?
+  riskFlags            String?
+  assumptionsToResolve String?
+  addendumSummary      String?
+  addendumCount        Int      @default(0)
+  isStale              Boolean  @default(false)
+  sourceContext        String?
+  triggeredBy          String?
+
+  bid Bid @relation(fields: [bidId], references: [id])
 }
 
 model DrawingSheet {

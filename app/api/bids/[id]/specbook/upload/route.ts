@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
 import { Prisma } from "@prisma/client";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
+import { generateBidIntelligenceBrief } from "@/lib/services/ai/generateBidIntelligenceBrief";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -111,6 +112,9 @@ export async function POST(
     // Fire-and-forget intelligence regeneration — does not block upload response
     generateBidIntelligence(bidId).catch((err) =>
       console.error("[specbook/upload] background intelligence generation failed:", err)
+    );
+    generateBidIntelligenceBrief(bidId, "specbook_upload").catch((err) =>
+      console.error("[specbook/upload] background brief generation failed:", err)
     );
 
     return Response.json(

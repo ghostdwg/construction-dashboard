@@ -12,6 +12,7 @@ import QuestionsTab from "./QuestionsTab";
 import ActivityTab from "./ActivityTab";
 import LevelingTab from "./LevelingTab";
 import DocumentsTab from "./DocumentsTab";
+import IntelligenceBrief from "./IntelligenceBrief";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -153,6 +154,11 @@ export default async function BidDetailPage({
                 </p>
               </div>
             )}
+          </section>
+
+          <section>
+            <h2 className="text-sm font-semibold text-zinc-800 mb-3">Project Intelligence Brief</h2>
+            <IntelligenceBrief bidId={bid.id} />
           </section>
         </div>
       )}
