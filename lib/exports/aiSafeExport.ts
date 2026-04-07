@@ -39,8 +39,9 @@ export type AiSafePayload = {
 
 // Fields that must never appear in the output — matched by key name.
 const BANNED_FIELD_PATTERNS = [
-  "budget", "estimate", "cost", "price", "amount",
+  "budget", "cost", "price", "amount",
   "target", "buyout", "contingency", "margin", "fee",
+  "pricingdata",
 ];
 
 function containsBannedField(obj: unknown): boolean {

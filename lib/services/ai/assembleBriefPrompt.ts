@@ -22,6 +22,7 @@ export async function assembleBriefPrompt(bidId: number): Promise<BriefPromptCon
       include: {
         bidTrades: { include: { trade: { select: { name: true } } } },
       },
+      // projectType is a scalar — auto-selected
     }),
     prisma.specBook.findFirst({
       where: { bidId },
@@ -152,7 +153,8 @@ No preamble, no markdown fences, no explanation.
     "severity": "critical" | "moderate" | "low",
     "foundIn": "string",
     "potentialImpact": "string",
-    "confirmBefore": "string"
+    "confirmBefore": "string",
+    "recommendedAction": "string"
   }],
   "assumptionsToResolve": [{
     "assumption": "string",
@@ -170,6 +172,7 @@ No preamble, no markdown fences, no explanation.
 Be specific. Reference actual section numbers, sheet prefixes, and addendum numbers.
 Do not produce generic construction advice.
 riskFlags must be sorted critical first.
+recommendedAction must be a concrete, actionable step — not a restatement of the risk.
 If no addendums were provided, return addendumSummary as an empty array.`;
 
   // ----- Assemble -----
@@ -182,6 +185,25 @@ If no addendums were provided, return addendumSummary as an empty array.`;
 
   const userPrompt = promptSections.join("\n\n---\n\n");
 
+  // ----- projectType-specific framing -----
+  const projectType = bid.projectType ?? "PRIVATE";
+  let projectTypeFrame = "";
+  if (projectType === "PUBLIC") {
+    projectTypeFrame =
+      "This is a public bid. Flag compliance risks including liquidated damages clauses, " +
+      "prevailing wage requirements, DBE/MBE requirements, bonding requirements, and firm deadline risks. " +
+      "Use compliance-first framing.";
+  } else if (projectType === "PRIVATE") {
+    projectTypeFrame =
+      "This is a private bid. Flag relationship and scope risks. Identify value engineering " +
+      "opportunities and assumptions that need owner confirmation before the invite goes out. " +
+      "Use value-first framing.";
+  } else if (projectType === "NEGOTIATED") {
+    projectTypeFrame =
+      "This is a negotiated bid. Focus on scope completeness, phasing flexibility, and assumptions " +
+      "that could affect the GMP. Flag anything that needs owner alignment before the GMP is locked.";
+  }
+
   const systemPrompt =
     "You are a senior preconstruction estimator reviewing a new bid package for a commercial " +
     "general contractor. Your job is to read the project documents and produce a structured " +
@@ -189,7 +211,8 @@ If no addendums were provided, return addendumSummary as an empty array.`;
     "and sequencing constraints, owner requirements, risk factors, addendum changes, and " +
     "assumptions that must be resolved before the bid goes out. Be specific — reference actual " +
     "spec sections, sheet numbers, and addendum numbers. Do not be generic. Think like someone " +
-    "who has built 200 commercial projects and knows exactly where jobs go wrong.";
+    "who has built 200 commercial projects and knows exactly where jobs go wrong." +
+    (projectTypeFrame ? " " + projectTypeFrame : "");
 
   return {
     systemPrompt,

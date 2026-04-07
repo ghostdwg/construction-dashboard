@@ -12,6 +12,4 @@
 - Module 14 — Document Intelligence: COMPLETE
 - Module 5b — Estimate Sanitization: COMPLETE
 - Module 15 — AI Review + Gap Analysis: COMPLETE
-
-## Next
-- Module 15a — Bid Intelligence Brief: NEXT
+- Module 15a — Bid Intelligence Brief: COMPLETE

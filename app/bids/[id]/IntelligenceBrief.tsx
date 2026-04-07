@@ -11,6 +11,7 @@ type RiskFlag = {
   foundIn: string;
   potentialImpact: string;
   confirmBefore: string;
+  recommendedAction: string;
 };
 
 type Assumption = {
@@ -32,6 +33,7 @@ type SourceContext = {
   specSectionCount: number;
   drawingDisciplines: string[];
   addendumCount: number;
+  generatedFrom?: string;
 };
 
 type Brief = {
@@ -107,6 +109,8 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
   const [brief, setBrief] = useState<Brief | null | undefined>(undefined); // undefined = loading
   const [regenerating, setRegenerating] = useState(false);
   const [regenError, setRegenError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const loadBrief = useCallback(() => {
     fetch(`/api/bids/${bidId}/intelligence`)
@@ -144,10 +148,30 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
     }
   }
 
-  // ----- States -----
+  // ----- STATE 1 — Loading -----
 
   if (brief === undefined) {
     return <p className="text-sm text-zinc-400">Loading…</p>;
+  }
+
+  // ----- STATE 1 — No brief yet -----
+
+  async function generate() {
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/intelligence`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        setGenerateError((err as { error?: string }).error ?? "Generation failed");
+        return;
+      }
+      loadBrief();
+    } catch (e) {
+      setGenerateError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   if (brief === null) {
@@ -157,15 +181,29 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
           Upload a spec book, drawing index, or addendum in the Documents tab to generate your
           project intelligence brief.
         </p>
-        <button
-          onClick={() => router.push(`?tab=documents`)}
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:border-zinc-500 hover:text-zinc-900"
-        >
-          Go to Documents tab
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => router.push(`?tab=documents`)}
+            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:border-zinc-500 hover:text-zinc-900"
+          >
+            Go to Documents tab
+          </button>
+          <button
+            onClick={generate}
+            disabled={generating}
+            className="rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white hover:bg-zinc-700 disabled:opacity-50"
+          >
+            {generating ? "Generating…" : "Generate brief"}
+          </button>
+        </div>
+        {generateError && (
+          <p className="text-sm text-red-500">{generateError}</p>
+        )}
       </div>
     );
   }
+
+  // ----- STATE 2 — Generating -----
 
   if (brief.status === "generating") {
     return (
@@ -178,13 +216,21 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
     );
   }
 
+  // ----- STATE 3 + 4 — Ready (with optional stale banner) -----
+
   // Parse JSON fields
   const riskFlags = parseJson<RiskFlag[]>(brief.riskFlags) ?? [];
   const assumptions = parseJson<Assumption[]>(brief.assumptionsToResolve) ?? [];
   const addendumSummary = parseJson<AddendumSummaryItem[]>(brief.addendumSummary) ?? [];
   const sourceContext = parseJson<SourceContext>(brief.sourceContext);
 
-  // Sort: before_invite first
+  // Sort risk flags: critical first
+  const severityOrder: Record<string, number> = { critical: 0, moderate: 1, low: 2 };
+  const sortedRiskFlags = [...riskFlags].sort(
+    (a, b) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3)
+  );
+
+  // Sort assumptions: before_invite first
   const urgencyOrder = { before_invite: 0, before_bid_day: 1, post_award: 2 };
   const sortedAssumptions = [...assumptions].sort(
     (a, b) =>
@@ -204,12 +250,34 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
     sourceParts.push(`${sourceContext.addendumCount} addendum${sourceContext.addendumCount !== 1 ? "s" : ""}`);
   }
 
+  const isStubMode = sourceContext?.generatedFrom?.includes("Stub mode") ?? false;
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Stale banner */}
+
+      {/* STATE 5 — Stub mode dev badge */}
+      {isStubMode && (
+        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+          <span className="rounded bg-blue-200 px-1.5 py-0.5 text-xs font-semibold text-blue-800 uppercase tracking-wide">
+            Dev
+          </span>
+          <span className="text-xs text-blue-700">Stub data — live generation disabled</span>
+        </div>
+      )}
+
+      {/* STATE 4 — Stale banner */}
       {brief.isStale && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-          New document uploaded — updating brief…
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between gap-4">
+          <p className="text-sm text-amber-800">
+            An addendum was uploaded after this brief was generated. Regenerate to include it.
+          </p>
+          <button
+            onClick={regenerate}
+            disabled={regenerating}
+            className="shrink-0 rounded border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-50"
+          >
+            {regenerating ? "Regenerating…" : "Regenerate"}
+          </button>
         </div>
       )}
 
@@ -238,10 +306,10 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       )}
 
       {/* 3 — Risk flags */}
-      {riskFlags.length > 0 && (
-        <BriefSection title={`Risk Flags (${riskFlags.length})`} defaultOpen>
+      {sortedRiskFlags.length > 0 && (
+        <BriefSection title={`Risk Flags (${sortedRiskFlags.length})`} defaultOpen>
           <div className="flex flex-col gap-3">
-            {riskFlags.map((f, i) => (
+            {sortedRiskFlags.map((f, i) => (
               <div key={i} className="rounded-md border border-zinc-100 bg-zinc-50 p-3 flex flex-col gap-1.5">
                 <div className="flex items-center gap-2">
                   <span
@@ -254,6 +322,11 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
                 <p className="text-sm font-medium text-zinc-800">{f.flag}</p>
                 <p className="text-xs text-zinc-500">Impact: {f.potentialImpact}</p>
                 <p className="text-xs text-zinc-500">Confirm before: {f.confirmBefore}</p>
+                {f.recommendedAction && (
+                  <p className="text-xs text-zinc-700 border-t border-zinc-200 pt-1.5 mt-0.5">
+                    <span className="font-medium">Recommended action:</span> {f.recommendedAction}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -315,15 +388,20 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       <div className="flex items-center justify-between pt-1 text-xs text-zinc-400">
         <div className="flex flex-col gap-0.5">
           <span>Generated {new Date(brief.generatedAt).toLocaleString()}</span>
+          {sourceContext?.generatedFrom && (
+            <span>Generated from: {sourceContext.generatedFrom}</span>
+          )}
           {sourceParts.length > 0 && <span>{sourceParts.join(" · ")}</span>}
         </div>
-        <button
-          onClick={regenerate}
-          disabled={regenerating || brief.status === "generating"}
-          className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-50"
-        >
-          {regenerating ? "Regenerating…" : "Regenerate"}
-        </button>
+        {!brief.isStale && (
+          <button
+            onClick={regenerate}
+            disabled={regenerating || brief.status === "generating"}
+            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-50"
+          >
+            {regenerating ? "Regenerating…" : "Regenerate"}
+          </button>
+        )}
       </div>
     </div>
   );
