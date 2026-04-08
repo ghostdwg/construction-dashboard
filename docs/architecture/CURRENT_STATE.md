@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: Module 16a complete — Addendum Delta Processing / Tier A complete
+# Last Updated: Module P1 complete — Procurement Timeline Engine
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -22,7 +22,8 @@
 | Module GNG1 | Go/No-Go Gate Widget | ✅ Complete |
 | Module 16a | Addendum Delta Processing | ✅ Complete |
 | **Tier A** | **All modules complete** | **✅ Complete** |
-| Tier B — Module P1 | — | ⬜ Next |
+| Module P1 | Procurement Timeline Engine | ✅ Complete |
+| Tier B — Module P2 | — | ⬜ Next |
 
 ## What Is Built
 - Subcontractor directory with trade filtering and tier system
@@ -57,6 +58,12 @@
 - Go/No-Go widget on Overview tab — four gates scored from existing bid data, no AI call
 - Addendum delta processing — incremental delta prompt, scope changes, new risks, actions required checklist
 - Stale banner on Overview links to Documents tab (not regenerate) — delta processing clears stale flag
+- BidTrade: tier (TIER1/TIER2/TIER3 string, default TIER2), leadTimeDays, rfqSentAt, quotesReceivedAt, rfqNotes
+- calculateTimeline.ts — pure date logic, realistic 2-week offsets (T1=14d, T2=10d, T3=7d), leadTimeDays override
+- GET /api/bids/[id]/procurement/timeline — per-trade timeline, urgency sort, summary block, daysUntilBid
+- PATCH /api/bids/[id]/trades/[tradeId] — updates tier, leadTimeDays, rfqSentAt, rfqNotes
+- Trades tab: tier selector, lead days input, status badge (On Track/At Risk/Overdue/Complete), RFQ date per row
+- Subs tab: procurement timeline section — urgency banner, trade timeline table, Mark RFQ Sent, DBE compliance (PUBLIC)
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

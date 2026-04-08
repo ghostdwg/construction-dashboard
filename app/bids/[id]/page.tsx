@@ -177,6 +177,7 @@ export default async function BidDetailPage({
           bidId={bid.id}
           initialSelections={bid.selections}
           bidTrades={bid.bidTrades}
+          projectType={bid.projectType}
         />
       )}
 

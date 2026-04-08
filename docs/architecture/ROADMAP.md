@@ -139,7 +139,21 @@ This is the intended sequence for every bid:
 
 ## TIER B
 
-### Module P1 ⬜ Next
+### Module P1 ✅ Complete
+  Procurement Timeline Engine
+  Pure date-math, no AI calls. calculateTimeline.ts works backward
+  from bid.dueDate using 2-week-max offsets per tier:
+  T1=14d RFQ, T2=10d, T3=7d. leadTimeDays per trade overrides default.
+  PUBLIC bids add 3 days to all offsets.
+  Status: ON_TRACK / AT_RISK (≤3d) / OVERDUE (past, unsent) / COMPLETE.
+  Urgency: IMMEDIATE / THIS_WEEK / UPCOMING / OK.
+  GET /api/bids/[id]/procurement/timeline — sorted by urgency → tier → date.
+  PATCH /api/bids/[id]/trades/[tradeId] — tier, leadTimeDays, rfqSentAt, rfqNotes.
+  Trades tab: tier selector, lead days input, status badge + RFQ date per row.
+  Subs tab: urgency summary banner, trade timeline table, Mark RFQ Sent,
+  DBE outreach compliance column (PUBLIC bids only).
+
+### Module P2 ⬜ Next
   TBD
 
 ---
