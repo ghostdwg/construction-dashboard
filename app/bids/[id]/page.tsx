@@ -13,6 +13,7 @@ import ActivityTab from "./ActivityTab";
 import LevelingTab from "./LevelingTab";
 import DocumentsTab from "./DocumentsTab";
 import IntelligenceBrief from "./IntelligenceBrief";
+import GoNoGoWidget from "./GoNoGoWidget";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -154,6 +155,10 @@ export default async function BidDetailPage({
                 </p>
               </div>
             )}
+          </section>
+
+          <section>
+            <GoNoGoWidget bidId={bid.id} />
           </section>
 
           <section>

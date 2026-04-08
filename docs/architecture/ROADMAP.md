@@ -97,17 +97,29 @@ This is the intended sequence for every bid:
   Trade proposal UI with Add to Bid, manual assign, rematch.
   Documents tab at position 2.
 
-### Module 5b 🔄 In Progress
+### Module 5b ✅ Complete
   Estimate Sanitization — redaction engine
   Strip sub identity and pricing from any estimate format
   before AI comparison. Anonymized tokens only.
 
-### Module 15 ⬜ Queued
-  AI Review Prompt Enhancement
-  Feed spec sections and drawing disciplines into gap analysis
-  as project document context. Gaps become grounded in actual
-  contract documents rather than AI inference alone.
-  This is additive — no schema changes required.
+### Module 15 ✅ Complete
+  AI Review + Gap Analysis (15a + 15b combined)
+  15a — Bid Intelligence Brief: AI-generated project brief with
+  risk flags, assumptions, addendum summary. BRIEF_STUB_MODE for dev.
+  15b — Per-trade scope gap analysis grounded in spec/drawing docs.
+  Trade-aware stub generator. GAP_STUB_MODE for dev.
+  Add to Questions flow from gap finding cards.
+
+### Module GNG1 ✅ Complete
+  Go/No-Go Gate Widget
+  Four gates auto-scored from existing bid data — no AI call.
+  Project Readiness / Procurement Health / Scope Confidence / Bid Deadline.
+  Overall GO / CAUTION / NO-GO banner. Expandable gate cards with
+  check-level detail and actionable tab links. Sits above Intelligence Brief
+  on Overview tab. Refresh button. Skeleton loading state.
+
+### Module 16a ⬜ Next
+  TBD
 
 ---
 

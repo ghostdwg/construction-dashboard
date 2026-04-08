@@ -1,0 +1,356 @@
+import { prisma } from "@/lib/prisma";
+
+// ----- Types -----
+
+type CheckStatus = "pass" | "caution" | "fail";
+type Score = "GO" | "CAUTION" | "NO-GO";
+
+type Check = {
+  label: string;
+  status: CheckStatus;
+  detail: string;
+};
+
+type Gate = {
+  id: "readiness" | "procurement" | "scope" | "deadline";
+  label: string;
+  score: Score;
+  checks: Check[];
+};
+
+// ----- Scoring helpers -----
+
+function gateScore(checks: Check[]): Score {
+  if (checks.some((c) => c.status === "fail")) return "NO-GO";
+  if (checks.some((c) => c.status === "caution")) return "CAUTION";
+  return "GO";
+}
+
+function overallScore(gates: Gate[]): Score {
+  if (gates.some((g) => g.score === "NO-GO")) return "NO-GO";
+  if (gates.some((g) => g.score === "CAUTION")) return "CAUTION";
+  return "GO";
+}
+
+// ----- GET /api/bids/[id]/go-no-go -----
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const bidId = parseInt(id, 10);
+  if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const bid = await prisma.bid.findUnique({
+    where: { id: bidId },
+    select: { id: true, dueDate: true, projectType: true },
+  });
+  if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
+
+  // ----- Parallel data load -----
+  const [
+    brief,
+    bidTrades,
+    specBookCount,
+    drawingUploadCount,
+    allSelections,
+    approvedEstimateCount,
+    totalGapFindings,
+    criticalUnresolvedCount,
+  ] = await Promise.all([
+    prisma.bidIntelligenceBrief.findUnique({
+      where: { bidId },
+      select: {
+        status: true,
+        riskFlags: true,
+        assumptionsToResolve: true,
+        isStale: true,
+        generatedAt: true,
+      },
+    }),
+    prisma.bidTrade.findMany({
+      where: { bidId },
+      select: { tradeId: true },
+    }),
+    prisma.specBook.count({ where: { bidId } }),
+    prisma.drawingUpload.count({ where: { bidId } }),
+    prisma.bidInviteSelection.findMany({
+      where: { bidId },
+      select: { tradeId: true },
+    }),
+    prisma.estimateUpload.count({
+      where: { bidId, approvedForAi: true, sanitizedText: { not: null } },
+    }),
+    prisma.aiGapFinding.count({ where: { bidId } }),
+    prisma.aiGapFinding.count({
+      where: {
+        bidId,
+        severity: "critical",
+        generatedQuestions: { none: {} },
+      },
+    }),
+  ]);
+
+  // ----- Parse JSON fields from brief -----
+  let criticalRiskFlagCount = 0;
+  let beforeInviteAssumptionCount = 0;
+
+  if (brief?.riskFlags) {
+    try {
+      const flags = JSON.parse(brief.riskFlags) as { severity: string }[];
+      criticalRiskFlagCount = flags.filter((f) => f.severity === "critical").length;
+    } catch { /* ignore */ }
+  }
+  if (brief?.assumptionsToResolve) {
+    try {
+      const assumptions = JSON.parse(brief.assumptionsToResolve) as { urgency: string }[];
+      beforeInviteAssumptionCount = assumptions.filter((a) => a.urgency === "before_invite").length;
+    } catch { /* ignore */ }
+  }
+
+  // ----- Days until due -----
+  const now = new Date();
+  const dueDate = bid.dueDate ? new Date(bid.dueDate) : null;
+  const daysUntilDue = dueDate
+    ? Math.floor((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  // ----- Invite coverage per trade -----
+  const tradeIds = bidTrades.map((bt) => bt.tradeId);
+  const invitedTradeIds = new Set(
+    allSelections.map((s) => s.tradeId).filter((tid): tid is number => tid !== null)
+  );
+  const totalInvites = allSelections.length;
+  const tradesWithInvites = tradeIds.filter((tid) => invitedTradeIds.has(tid)).length;
+
+  // ── GATE 1 — Project Readiness ──────────────────────────────────────────────
+
+  const docsUploaded = specBookCount > 0 || drawingUploadCount > 0;
+  const briefReady = !!brief && brief.status === "ready";
+  const docCount = specBookCount + drawingUploadCount;
+
+  const readinessChecks: Check[] = [
+    {
+      label: "Project documents uploaded",
+      status: docsUploaded ? "pass" : "fail",
+      detail: docsUploaded
+        ? `${docCount} document${docCount !== 1 ? "s" : ""} uploaded`
+        : "No spec book or drawing index uploaded",
+    },
+    {
+      label: "Intelligence brief generated",
+      status: briefReady ? "pass" : "fail",
+      detail: briefReady ? "Brief is ready" : "Brief has not been generated",
+    },
+    {
+      label: "Critical risk flags",
+      status:
+        criticalRiskFlagCount === 0
+          ? "pass"
+          : criticalRiskFlagCount <= 2
+          ? "caution"
+          : "fail",
+      detail:
+        criticalRiskFlagCount === 0
+          ? "No critical risk flags"
+          : `${criticalRiskFlagCount} critical risk flag${criticalRiskFlagCount !== 1 ? "s" : ""} in brief`,
+    },
+    {
+      label: "Before-invite assumptions",
+      status:
+        beforeInviteAssumptionCount === 0
+          ? "pass"
+          : beforeInviteAssumptionCount <= 2
+          ? "caution"
+          : "fail",
+      detail:
+        beforeInviteAssumptionCount === 0
+          ? "No unresolved before-invite assumptions"
+          : `${beforeInviteAssumptionCount} assumption${beforeInviteAssumptionCount !== 1 ? "s" : ""} need resolution before invite`,
+    },
+  ];
+
+  // ── GATE 2 — Procurement Health ─────────────────────────────────────────────
+
+  const hasTrades = tradeIds.length > 0;
+
+  let inviteStatus: CheckStatus;
+  let inviteDetail: string;
+  if (tradeIds.length === 0) {
+    inviteStatus = "fail";
+    inviteDetail = "No trades assigned — cannot check invite coverage";
+  } else if (totalInvites === 0) {
+    inviteStatus = "fail";
+    inviteDetail = "No subs invited on any trade";
+  } else if (tradesWithInvites < tradeIds.length) {
+    inviteStatus = "caution";
+    const missing = tradeIds.length - tradesWithInvites;
+    inviteDetail = `${missing} of ${tradeIds.length} trade${tradeIds.length !== 1 ? "s" : ""} have no invited subs`;
+  } else {
+    inviteStatus = "pass";
+    inviteDetail = `All ${tradeIds.length} trade${tradeIds.length !== 1 ? "s" : ""} have invited subs`;
+  }
+
+  let estimateStatus: CheckStatus;
+  let estimateDetail: string;
+  if (approvedEstimateCount > 0) {
+    estimateStatus = "pass";
+    estimateDetail = `${approvedEstimateCount} approved estimate${approvedEstimateCount !== 1 ? "s" : ""} received`;
+  } else if (totalInvites > 0) {
+    estimateStatus = "caution";
+    estimateDetail = "Invites sent but no approved estimates yet";
+  } else {
+    estimateStatus = "fail";
+    estimateDetail = "No invites sent — no estimates expected";
+  }
+
+  const procurementChecks: Check[] = [
+    {
+      label: "Trades confirmed on bid",
+      status: hasTrades ? "pass" : "fail",
+      detail: hasTrades
+        ? `${tradeIds.length} trade${tradeIds.length !== 1 ? "s" : ""} confirmed`
+        : "No trades assigned to this bid",
+    },
+    {
+      label: "Subs invited per trade",
+      status: inviteStatus,
+      detail: inviteDetail,
+    },
+    {
+      label: "Estimates received",
+      status: estimateStatus,
+      detail: estimateDetail,
+    },
+  ];
+
+  // ── GATE 3 — Scope Confidence ────────────────────────────────────────────────
+
+  const gapAnalysisRun = totalGapFindings > 0;
+
+  let criticalGapStatus: CheckStatus;
+  let criticalGapDetail: string;
+  if (!gapAnalysisRun) {
+    criticalGapStatus = "caution";
+    criticalGapDetail = "Gap analysis not run — critical gaps unknown";
+  } else if (criticalUnresolvedCount === 0) {
+    criticalGapStatus = "pass";
+    criticalGapDetail = "No unresolved critical gaps";
+  } else if (criticalUnresolvedCount <= 2) {
+    criticalGapStatus = "caution";
+    criticalGapDetail = `${criticalUnresolvedCount} critical gap${criticalUnresolvedCount !== 1 ? "s" : ""} without a linked question`;
+  } else {
+    criticalGapStatus = "fail";
+    criticalGapDetail = `${criticalUnresolvedCount} critical gaps unresolved — add to Questions tab`;
+  }
+
+  const scopeChecks: Check[] = [
+    {
+      label: "Gap analysis run",
+      status: gapAnalysisRun ? "pass" : "caution",
+      detail: gapAnalysisRun
+        ? `${totalGapFindings} finding${totalGapFindings !== 1 ? "s" : ""} identified`
+        : "Gap analysis not yet run",
+    },
+    {
+      label: "Critical gaps resolved",
+      status: criticalGapStatus,
+      detail: criticalGapDetail,
+    },
+    {
+      label: "Brief is current",
+      status: brief?.isStale ? "caution" : "pass",
+      detail: brief?.isStale
+        ? "Addendum uploaded after brief — regenerate to include it"
+        : "Brief reflects latest documents",
+    },
+  ];
+
+  // ── GATE 4 — Bid Deadline ────────────────────────────────────────────────────
+
+  let dueDateStatus: CheckStatus;
+  let dueDateDetail: string;
+  if (!dueDate) {
+    dueDateStatus = "fail";
+    dueDateDetail = "No bid due date set";
+  } else {
+    dueDateStatus = "pass";
+    dueDateDetail = `Due ${dueDate.toLocaleDateString()}`;
+  }
+
+  let daysStatus: CheckStatus = "pass";
+  let daysDetail = "Set a due date to check time remaining";
+  if (daysUntilDue !== null) {
+    if (daysUntilDue < 0) {
+      daysStatus = "fail";
+      daysDetail = `Bid due date passed ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) !== 1 ? "s" : ""} ago`;
+    } else if (daysUntilDue < 7) {
+      daysStatus = "fail";
+      daysDetail = `${daysUntilDue} day${daysUntilDue !== 1 ? "s" : ""} remaining — critical`;
+    } else if (daysUntilDue <= 14) {
+      daysStatus = "caution";
+      daysDetail = `${daysUntilDue} days remaining — limited time`;
+    } else {
+      daysStatus = "pass";
+      daysDetail = `${daysUntilDue} days remaining`;
+    }
+    // Public bids need extra lead time
+    if (bid.projectType === "PUBLIC" && daysUntilDue >= 0 && daysUntilDue < 14 && daysStatus === "pass") {
+      daysStatus = "caution";
+      daysDetail += " — public bids need extra lead time for compliance";
+    }
+  }
+
+  const deadlineChecks: Check[] = [
+    {
+      label: "Bid due date set",
+      status: dueDateStatus,
+      detail: dueDateDetail,
+    },
+    {
+      label: "Time remaining",
+      status: daysUntilDue !== null ? daysStatus : "fail",
+      detail: daysDetail,
+    },
+  ];
+
+  // ── Assemble ─────────────────────────────────────────────────────────────────
+
+  const gates: Gate[] = [
+    {
+      id: "readiness",
+      label: "Project Readiness",
+      score: gateScore(readinessChecks),
+      checks: readinessChecks,
+    },
+    {
+      id: "procurement",
+      label: "Procurement Health",
+      score: gateScore(procurementChecks),
+      checks: procurementChecks,
+    },
+    {
+      id: "scope",
+      label: "Scope Confidence",
+      score: gateScore(scopeChecks),
+      checks: scopeChecks,
+    },
+    {
+      id: "deadline",
+      label: "Bid Deadline",
+      score: gateScore(deadlineChecks),
+      checks: deadlineChecks,
+    },
+  ];
+
+  return Response.json({
+    overall: overallScore(gates),
+    gates,
+    meta: {
+      daysUntilDue,
+      projectType: bid.projectType,
+      isStubMode: false,
+    },
+  });
+}

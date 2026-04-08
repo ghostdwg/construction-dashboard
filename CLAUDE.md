@@ -14,6 +14,7 @@
 - Module 15 — AI Review + Gap Analysis: COMPLETE
 - Module 15a — Bid Intelligence Brief: COMPLETE
 - Module 15b — Per-Trade Scope Gap Analysis: COMPLETE
+- Module GNG1 — Go/No-Go Gate Widget: COMPLETE
 
 ## Next
-- Module GNG1 — Go/No-Go Gate Widget: NEXT
+- Module 16a: NEXT

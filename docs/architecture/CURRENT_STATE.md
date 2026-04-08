@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: Module 14 in progress — Document Intelligence
+# Last Updated: Module GNG1 complete — Go/No-Go Gate Widget
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -17,8 +17,10 @@
 | Module 6c | Leveling Questions + Export | ✅ Complete |
 | Audit Session | Full workflow debug + error handling | ✅ Complete |
 | Module 14 | Document Intelligence (14a + 14b combined) | ✅ Complete |
-| Module 5b | Estimate Sanitization — redaction engine | 🔄 In Progress |
-| Module 15 | AI Review prompt enhancement | ⬜ Queued |
+| Module 5b | Estimate Sanitization — redaction engine | ✅ Complete |
+| Module 15 | AI Review + Gap Analysis (15a + 15b) | ✅ Complete |
+| Module GNG1 | Go/No-Go Gate Widget | ✅ Complete |
+| Module 16a | — | ⬜ Next |
 
 ## What Is Built
 - Subcontractor directory with trade filtering and tier system
@@ -45,7 +47,11 @@
 - pdfjs-dist installed and working — pdf-parse removed
 - SpecBook, SpecSection, DrawingUpload, DrawingSheet models in schema
 - Three-state matching live: tradeId (covered) / matchedTradeId (missing) / both null (unknown)
-- Module 5b in progress — redaction engine for estimate sanitization
+- ProjectType enum on Bid (PUBLIC / PRIVATE / NEGOTIATED)
+- AiGapFinding with title, sourceRef, severity, sourceDocument, reviewNotes
+- BidIntelligenceBrief with riskFlags, assumptionsToResolve, isStale, sourceContext
+- GAP_STUB_MODE and BRIEF_STUB_MODE env flags bypass Anthropic API for dev
+- Go/No-Go widget on Overview tab — four gates scored from existing bid data, no AI call
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and
