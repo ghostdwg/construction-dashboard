@@ -56,10 +56,15 @@ model Bid {
 }
 
 model BidTrade {
-  id         Int     @id @default(autoincrement())
-  bidId      Int
-  tradeId    Int
-  scopeNotes String?
+  id               Int       @id @default(autoincrement())
+  bidId            Int
+  tradeId          Int
+  scopeNotes       String?
+  tier             String    @default("TIER2")
+  leadTimeDays     Int?
+  rfqSentAt        DateTime?
+  quotesReceivedAt DateTime?
+  rfqNotes         String?
 
   bid   Bid   @relation(fields: [bidId], references: [id])
   trade Trade @relation(fields: [tradeId], references: [id])
