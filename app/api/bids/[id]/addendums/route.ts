@@ -20,6 +20,9 @@ export async function GET(
       fileName: true,
       uploadedAt: true,
       status: true,
+      deltaJson: true,
+      deltaGeneratedAt: true,
+      summary: true,
     },
   });
 

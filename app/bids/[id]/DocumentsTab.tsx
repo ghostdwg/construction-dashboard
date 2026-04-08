@@ -62,6 +62,42 @@ type DrawingData = {
   missing: DrawingSheetRow[];
 };
 
+type ScopeChange = {
+  type: string;
+  description: string;
+  location: string;
+  costImpact: string;
+  scheduleImpact: string;
+  actionRequired: string;
+};
+
+type Clarification = {
+  description: string;
+  location: string;
+  actionRequired: string;
+};
+
+type NewRisk = {
+  severity: string;
+  description: string;
+  sourceRef: string;
+  recommendedAction: string;
+};
+
+type AddendumDelta = {
+  addendumNumber: number;
+  dateIssued: string | null;
+  summary: string;
+  changesIdentified: number;
+  scopeChanges: ScopeChange[];
+  clarifications: Clarification[];
+  newRisks: NewRisk[];
+  resolvedItems: string[];
+  netCostDirection: "INCREASE" | "DECREASE" | "NEUTRAL";
+  netScheduleDirection: "INCREASE" | "DECREASE" | "NEUTRAL";
+  actionsRequired: string[];
+};
+
 type AddendumRow = {
   id: number;
   addendumNumber: number;
@@ -69,6 +105,9 @@ type AddendumRow = {
   fileName: string;
   uploadedAt: string;
   status: string;
+  deltaJson: string | null;
+  deltaGeneratedAt: string | null;
+  summary: string | null;
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -338,6 +377,11 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
   const [addendumUploadError, setAddendumUploadError] = useState<string | null>(null);
   const [deletingAddendumId, setDeletingAddendumId] = useState<number | null>(null);
   const [briefIsStale, setBriefIsStale] = useState(false);
+  const [briefExists, setBriefExists] = useState(false);
+  const [processingDeltaId, setProcessingDeltaId] = useState<number | null>(null);
+  const [deltaError, setDeltaError] = useState<{ id: number; message: string } | null>(null);
+  const [expandedDeltaId, setExpandedDeltaId] = useState<number | null>(null);
+  const [checkedActions, setCheckedActions] = useState<Record<string, boolean>>({});
   const addendumFileRef = useRef<HTMLInputElement>(null);
 
   // ── Load on mount ──────────────────────────────────────────────────────────
@@ -367,13 +411,13 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
   useEffect(() => {
     loadAll();
     loadAddendums();
-    // Check if brief is stale
+    // Check brief state
     fetch(`/api/bids/${bidId}/intelligence`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { brief: { isStale?: boolean; status?: string } | null } | null) => {
-        if (data?.brief?.isStale || data?.brief?.status === "generating") {
-          setBriefIsStale(true);
-        }
+        const b = data?.brief;
+        if (b?.isStale) setBriefIsStale(true);
+        if (b?.status === "ready") setBriefExists(true);
       })
       .catch(() => {});
   }, [bidId, loadAddendums]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -511,6 +555,31 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       }
     } finally {
       setDeletingAddendumId(null);
+    }
+  }
+
+  // ── Process addendum delta ─────────────────────────────────────────────────
+
+  async function processDelta(addendumId: number) {
+    setProcessingDeltaId(addendumId);
+    setDeltaError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/addendums/${addendumId}/delta`, {
+        method: "POST",
+      });
+      const result = await res.json() as { error?: string; delta?: AddendumDelta };
+      if (!res.ok) {
+        setDeltaError({ id: addendumId, message: result.error ?? "Delta processing failed" });
+        return;
+      }
+      // Reload addendums to get updated deltaJson/summary
+      await loadAddendums();
+      setBriefIsStale(false);
+      setExpandedDeltaId(addendumId);
+    } catch (e) {
+      setDeltaError({ id: addendumId, message: e instanceof Error ? e.message : "Unknown error" });
+    } finally {
+      setProcessingDeltaId(null);
     }
   }
 
@@ -683,12 +752,6 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       <div className="flex flex-col gap-3 pt-2 border-t border-zinc-200">
         <h2 className="text-sm font-semibold text-zinc-700">Addendums</h2>
 
-        {briefIsStale && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-            Brief is regenerating with latest addendum…
-          </div>
-        )}
-
         {/* Upload form */}
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
@@ -739,41 +802,88 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
         {/* Addendum list */}
         {addendums.length > 0 && (
-          <div className="rounded-md border border-zinc-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-50 border-b border-zinc-200 text-xs font-semibold text-zinc-500 uppercase tracking-wide">
-                <tr>
-                  <th className="px-4 py-2.5 text-left w-20">#</th>
-                  <th className="px-4 py-2.5 text-left w-32">Date</th>
-                  <th className="px-4 py-2.5 text-left">File</th>
-                  <th className="px-4 py-2.5 text-left w-24">Status</th>
-                  <th className="px-4 py-2.5 w-16"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {addendums.map((a) => (
-                  <tr key={a.id} className="border-b border-zinc-100 last:border-0">
-                    <td className="px-4 py-2.5 font-medium text-zinc-700">{a.addendumNumber}</td>
-                    <td className="px-4 py-2.5 text-zinc-500">
-                      {a.addendumDate
-                        ? new Date(a.addendumDate).toLocaleDateString()
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-600 truncate max-w-xs">{a.fileName}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          a.status === "ready"
-                            ? "bg-green-100 text-green-700"
-                            : a.status === "error"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-zinc-100 text-zinc-500"
-                        }`}
-                      >
-                        {a.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
+          <div className="flex flex-col gap-2">
+            {addendums.map((a) => {
+              const delta: AddendumDelta | null = (() => {
+                try { return a.deltaJson ? JSON.parse(a.deltaJson) : null; } catch { return null; }
+              })();
+              const isProcessed = !!delta;
+              const isProcessing = processingDeltaId === a.id;
+              const isExpanded = expandedDeltaId === a.id;
+              const hasError = deltaError?.id === a.id;
+
+              // Delta status badge
+              let deltaStatusLabel = "Pending";
+              let deltaStatusClass = "bg-zinc-100 text-zinc-500";
+              if (isProcessing) {
+                deltaStatusLabel = "Processing";
+                deltaStatusClass = "bg-blue-100 text-blue-700";
+              } else if (isProcessed) {
+                deltaStatusLabel = "Processed";
+                deltaStatusClass = "bg-green-100 text-green-700";
+              }
+
+              return (
+                <div key={a.id} className="rounded-md border border-zinc-200 overflow-hidden">
+                  {/* Row */}
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    {/* Addendum # */}
+                    <span className="text-sm font-semibold text-zinc-700 w-6 shrink-0">
+                      {a.addendumNumber}
+                    </span>
+
+                    {/* File + date */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-zinc-700 truncate">{a.fileName}</p>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        {a.addendumDate
+                          ? new Date(a.addendumDate).toLocaleDateString()
+                          : "No date"}{" "}
+                        · Uploaded {new Date(a.uploadedAt).toLocaleDateString()}
+                      </p>
+                      {isProcessed && a.summary && (
+                        <p className="text-xs text-zinc-500 mt-1 italic">{a.summary}</p>
+                      )}
+                    </div>
+
+                    {/* Upload status badge */}
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        a.status === "ready"
+                          ? "bg-zinc-100 text-zinc-500"
+                          : a.status === "error"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-zinc-100 text-zinc-400"
+                      }`}
+                    >
+                      {a.status === "ready" ? "Extracted" : a.status}
+                    </span>
+
+                    {/* Delta status badge */}
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${deltaStatusClass}`}>
+                      {deltaStatusLabel}
+                    </span>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {!isProcessed && a.status === "ready" && (
+                        <button
+                          onClick={() => processDelta(a.id)}
+                          disabled={isProcessing || !briefExists}
+                          title={!briefExists ? "Generate the intelligence brief first" : undefined}
+                          className="rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
+                        >
+                          {isProcessing ? "Processing…" : "Process Addendum"}
+                        </button>
+                      )}
+                      {isProcessed && (
+                        <button
+                          onClick={() => setExpandedDeltaId(isExpanded ? null : a.id)}
+                          className="rounded border border-zinc-300 px-2.5 py-1 text-xs text-zinc-600 hover:border-zinc-500"
+                        >
+                          {isExpanded ? "Hide Delta" : "View Delta"}
+                        </button>
+                      )}
                       <button
                         onClick={() => deleteAddendum(a.id)}
                         disabled={deletingAddendumId === a.id}
@@ -781,11 +891,184 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                       >
                         {deletingAddendumId === a.id ? "…" : "Delete"}
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+
+                  {/* Delta error */}
+                  {hasError && (
+                    <div className="border-t border-red-100 bg-red-50 px-4 py-2.5">
+                      <p className="text-xs text-red-700">{deltaError!.message}</p>
+                    </div>
+                  )}
+
+                  {/* No-brief warning */}
+                  {!isProcessed && !briefExists && a.status === "ready" && (
+                    <div className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+                      Generate the project intelligence brief on the Overview tab before processing this addendum.
+                    </div>
+                  )}
+
+                  {/* Delta detail panel */}
+                  {isExpanded && delta && (
+                    <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-4 flex flex-col gap-4">
+
+                      {/* Net direction badges */}
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Net Impact:</span>
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          delta.netCostDirection === "INCREASE" ? "bg-red-100 text-red-700"
+                          : delta.netCostDirection === "DECREASE" ? "bg-green-100 text-green-700"
+                          : "bg-zinc-100 text-zinc-500"
+                        }`}>
+                          {delta.netCostDirection === "INCREASE" ? "↑" : delta.netCostDirection === "DECREASE" ? "↓" : "="} Cost {delta.netCostDirection}
+                        </span>
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          delta.netScheduleDirection === "INCREASE" ? "bg-red-100 text-red-700"
+                          : delta.netScheduleDirection === "DECREASE" ? "bg-green-100 text-green-700"
+                          : "bg-zinc-100 text-zinc-500"
+                        }`}>
+                          {delta.netScheduleDirection === "INCREASE" ? "↑" : delta.netScheduleDirection === "DECREASE" ? "↓" : "="} Schedule {delta.netScheduleDirection}
+                        </span>
+                      </div>
+
+                      {/* Scope changes */}
+                      {delta.scopeChanges?.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                            Scope Changes ({delta.scopeChanges.length})
+                          </h3>
+                          {delta.scopeChanges.map((sc, i) => (
+                            <div key={i} className="rounded border border-zinc-200 bg-white p-3 flex flex-col gap-1.5">
+                              <div className="flex flex-wrap gap-2 items-center">
+                                <span className="rounded bg-zinc-800 text-white px-1.5 py-0.5 text-xs font-semibold">
+                                  {sc.type}
+                                </span>
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  sc.costImpact === "INCREASE" ? "bg-red-100 text-red-700"
+                                  : sc.costImpact === "DECREASE" ? "bg-green-100 text-green-700"
+                                  : "bg-zinc-100 text-zinc-500"
+                                }`}>
+                                  Cost: {sc.costImpact}
+                                </span>
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  sc.scheduleImpact === "INCREASE" ? "bg-red-100 text-red-700"
+                                  : sc.scheduleImpact === "DECREASE" ? "bg-green-100 text-green-700"
+                                  : "bg-zinc-100 text-zinc-500"
+                                }`}>
+                                  Schedule: {sc.scheduleImpact}
+                                </span>
+                              </div>
+                              <p className="text-sm text-zinc-800">{sc.description}</p>
+                              <p className="text-xs text-zinc-400">{sc.location}</p>
+                              <p className="text-xs text-zinc-600 border-t border-zinc-100 pt-1.5 mt-0.5">
+                                <span className="font-medium">Action:</span> {sc.actionRequired}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* New risks */}
+                      {delta.newRisks?.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                            New Risks ({delta.newRisks.length})
+                          </h3>
+                          {delta.newRisks.map((r, i) => (
+                            <div key={i} className="rounded border border-zinc-200 bg-white p-3 flex flex-col gap-1.5">
+                              <div className="flex items-center gap-2">
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                  r.severity === "CRITICAL" ? "bg-red-100 text-red-700"
+                                  : r.severity === "MODERATE" ? "bg-amber-100 text-amber-700"
+                                  : "bg-zinc-100 text-zinc-500"
+                                }`}>
+                                  {r.severity}
+                                </span>
+                                <span className="text-xs text-zinc-400">{r.sourceRef}</span>
+                              </div>
+                              <p className="text-sm text-zinc-800">{r.description}</p>
+                              <p className="text-xs text-zinc-600 border-t border-zinc-100 pt-1.5 mt-0.5">
+                                <span className="font-medium">Recommended action:</span> {r.recommendedAction}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Clarifications */}
+                      {delta.clarifications?.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                            Clarifications ({delta.clarifications.length})
+                          </h3>
+                          {delta.clarifications.map((c, i) => (
+                            <div key={i} className="rounded border border-zinc-200 bg-white p-3 flex flex-col gap-1">
+                              <p className="text-sm text-zinc-800">{c.description}</p>
+                              <p className="text-xs text-zinc-400">{c.location}</p>
+                              <p className="text-xs text-zinc-600">
+                                <span className="font-medium">Action:</span> {c.actionRequired}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Resolved items */}
+                      {delta.resolvedItems?.length > 0 && (
+                        <div className="flex flex-col gap-1.5">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                            Resolved Items
+                          </h3>
+                          <ul className="flex flex-col gap-1">
+                            {delta.resolvedItems.map((item, i) => (
+                              <li key={i} className="flex gap-2 items-start text-xs text-zinc-600">
+                                <span className="text-green-600 font-bold shrink-0 mt-0.5">✓</span>
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Actions required — checklist */}
+                      {delta.actionsRequired?.length > 0 && (
+                        <div className="flex flex-col gap-1.5">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                            Actions Required
+                          </h3>
+                          <ul className="flex flex-col gap-1.5">
+                            {delta.actionsRequired.map((action, i) => {
+                              const key = `${a.id}-${i}`;
+                              const checked = !!checkedActions[key];
+                              return (
+                                <li
+                                  key={i}
+                                  className="flex gap-2 items-start cursor-pointer"
+                                  onClick={() =>
+                                    setCheckedActions((prev) => ({ ...prev, [key]: !prev[key] }))
+                                  }
+                                >
+                                  <span className={`shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center text-xs ${
+                                    checked
+                                      ? "border-green-500 bg-green-500 text-white"
+                                      : "border-zinc-300 bg-white text-transparent"
+                                  }`}>
+                                    ✓
+                                  </span>
+                                  <span className={`text-xs ${checked ? "line-through text-zinc-400" : "text-zinc-700"}`}>
+                                    {action}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

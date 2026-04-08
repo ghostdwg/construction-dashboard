@@ -118,7 +118,28 @@ This is the intended sequence for every bid:
   check-level detail and actionable tab links. Sits above Intelligence Brief
   on Overview tab. Refresh button. Skeleton loading state.
 
-### Module 16a ⬜ Next
+### Module 16a ✅ Complete
+  Addendum Delta Processing
+  Incremental delta analysis when addendum uploaded after brief exists.
+  Original brief stays intact — delta stored per-addendum as JSON on AddendumUpload.
+  Delta includes: scope changes (type/cost/schedule impact), new risks (severity),
+  clarifications, resolved items, net cost/schedule direction, actions required checklist.
+  POST /api/bids/[id]/addendums/[addendumId]/delta — validates brief ready, loads
+  previousDeltas for context, stub mode (ADDENDUM_STUB_MODE), live Anthropic call.
+  DocumentsTab: card layout per addendum, status badges, Process Addendum button,
+  expandable delta detail panel with interactive actions checklist.
+  Stale banner on Overview links to Documents tab. Delta processing clears isStale.
+
+---
+
+## TIER A ✅ Complete
+  All modules in Tier A are complete.
+
+---
+
+## TIER B
+
+### Module P1 ⬜ Next
   TBD
 
 ---

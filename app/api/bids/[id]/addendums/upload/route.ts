@@ -1,14 +1,14 @@
 import fs from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
-import { generateBidIntelligenceBrief } from "@/lib/services/ai/generateBidIntelligenceBrief";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 // POST /api/bids/[id]/addendums/upload
 // Fields: file (PDF), addendumNumber (Int), addendumDate (optional ISO date string)
 // Extracts text with pdfjs-dist, stores AddendumUpload record.
-// Marks existing BidIntelligenceBrief as stale, fires brief regeneration.
+// Marks existing BidIntelligenceBrief as stale.
+// Delta generation is a separate explicit action via POST /addendums/[id]/delta.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -87,16 +87,11 @@ export async function POST(
       data: { status: "ready", extractedText: extractedText.trim() },
     });
 
-    // Mark existing brief as stale
+    // Mark existing brief as stale — delta processing is the explicit next step
     await prisma.bidIntelligenceBrief.updateMany({
       where: { bidId },
       data: { isStale: true },
     });
-
-    // Fire-and-forget brief regeneration
-    generateBidIntelligenceBrief(bidId, "addendum_upload").catch((err) =>
-      console.error("[addendums/upload] background brief generation failed:", err)
-    );
 
     return Response.json(
       {

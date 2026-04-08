@@ -269,14 +269,13 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       {brief.isStale && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 flex items-center justify-between gap-4">
           <p className="text-sm text-amber-800">
-            An addendum was uploaded after this brief was generated. Regenerate to include it.
+            Addendum uploaded — process it in the Documents tab to update your analysis.
           </p>
           <button
-            onClick={regenerate}
-            disabled={regenerating}
-            className="shrink-0 rounded border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-50"
+            onClick={() => router.push(`?tab=documents`)}
+            className="shrink-0 rounded border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200"
           >
-            {regenerating ? "Regenerating…" : "Regenerate"}
+            Go to Documents →
           </button>
         </div>
       )}
@@ -393,15 +392,13 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
           )}
           {sourceParts.length > 0 && <span>{sourceParts.join(" · ")}</span>}
         </div>
-        {!brief.isStale && (
-          <button
-            onClick={regenerate}
-            disabled={regenerating || brief.status === "generating"}
-            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-50"
-          >
-            {regenerating ? "Regenerating…" : "Regenerate"}
-          </button>
-        )}
+        <button
+          onClick={regenerate}
+          disabled={regenerating || brief.status === "generating"}
+          className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-50"
+        >
+          {regenerating ? "Regenerating…" : "Regenerate brief"}
+        </button>
       </div>
     </div>
   );

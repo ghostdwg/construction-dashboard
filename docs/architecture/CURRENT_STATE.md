@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: Module GNG1 complete — Go/No-Go Gate Widget
+# Last Updated: Module 16a complete — Addendum Delta Processing / Tier A complete
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -20,7 +20,9 @@
 | Module 5b | Estimate Sanitization — redaction engine | ✅ Complete |
 | Module 15 | AI Review + Gap Analysis (15a + 15b) | ✅ Complete |
 | Module GNG1 | Go/No-Go Gate Widget | ✅ Complete |
-| Module 16a | — | ⬜ Next |
+| Module 16a | Addendum Delta Processing | ✅ Complete |
+| **Tier A** | **All modules complete** | **✅ Complete** |
+| Tier B — Module P1 | — | ⬜ Next |
 
 ## What Is Built
 - Subcontractor directory with trade filtering and tier system
@@ -49,9 +51,12 @@
 - Three-state matching live: tradeId (covered) / matchedTradeId (missing) / both null (unknown)
 - ProjectType enum on Bid (PUBLIC / PRIVATE / NEGOTIATED)
 - AiGapFinding with title, sourceRef, severity, sourceDocument, reviewNotes
-- BidIntelligenceBrief with riskFlags, assumptionsToResolve, isStale, sourceContext
-- GAP_STUB_MODE and BRIEF_STUB_MODE env flags bypass Anthropic API for dev
+- BidIntelligenceBrief with riskFlags, assumptionsToResolve, isStale, sourceContext, addendumDeltas
+- AddendumUpload with deltaJson, deltaGeneratedAt, summary — delta stored per-addendum, brief untouched
+- GAP_STUB_MODE, BRIEF_STUB_MODE, ADDENDUM_STUB_MODE env flags bypass Anthropic API for dev
 - Go/No-Go widget on Overview tab — four gates scored from existing bid data, no AI call
+- Addendum delta processing — incremental delta prompt, scope changes, new risks, actions required checklist
+- Stale banner on Overview links to Documents tab (not regenerate) — delta processing clears stale flag
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and
