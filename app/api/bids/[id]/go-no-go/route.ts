@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { calculateTimeline } from "@/lib/services/procurement/calculateTimeline";
 
 // ----- Types -----
 
@@ -71,7 +72,14 @@ export async function GET(
     }),
     prisma.bidTrade.findMany({
       where: { bidId },
-      select: { tradeId: true },
+      select: {
+        tradeId: true,
+        tier: true,
+        leadTimeDays: true,
+        rfqSentAt: true,
+        quotesReceivedAt: true,
+        trade: { select: { name: true } },
+      },
     }),
     prisma.specBook.count({ where: { bidId } }),
     prisma.drawingUpload.count({ where: { bidId } }),
@@ -205,6 +213,44 @@ export async function GET(
     estimateDetail = "No invites sent — no estimates expected";
   }
 
+  // ----- Tier 1 procurement status -----
+  const tier1Trades = bidTrades.filter((bt) => bt.tier === "TIER1");
+  let tier1OverdueCount = 0;
+  let tier1AtRiskCount = 0;
+
+  if (bid.dueDate && tier1Trades.length > 0) {
+    for (const bt of tier1Trades) {
+      const entry = calculateTimeline({
+        tradeId: bt.tradeId,
+        tradeName: bt.trade.name,
+        tier: bt.tier,
+        leadTimeDays: bt.leadTimeDays,
+        bidDueDate: new Date(bid.dueDate),
+        projectType: bid.projectType,
+        rfqSentAt: bt.rfqSentAt ?? null,
+        quotesReceivedAt: bt.quotesReceivedAt ?? null,
+      });
+      if (entry.status === "OVERDUE") tier1OverdueCount++;
+      else if (entry.status === "AT_RISK") tier1AtRiskCount++;
+    }
+  }
+
+  let tier1Status: CheckStatus;
+  let tier1Detail: string;
+  if (tier1Trades.length === 0) {
+    tier1Status = "pass";
+    tier1Detail = "No Tier 1 trades on this bid";
+  } else if (tier1OverdueCount > 0) {
+    tier1Status = "fail";
+    tier1Detail = `${tier1OverdueCount} Tier 1 RFQ${tier1OverdueCount !== 1 ? "s" : ""} overdue — critical path at risk`;
+  } else if (tier1AtRiskCount > 0) {
+    tier1Status = "caution";
+    tier1Detail = `${tier1AtRiskCount} Tier 1 RFQ${tier1AtRiskCount !== 1 ? "s" : ""} at risk — send soon`;
+  } else {
+    tier1Status = "pass";
+    tier1Detail = `${tier1Trades.length} Tier 1 trade${tier1Trades.length !== 1 ? "s" : ""} on track`;
+  }
+
   const procurementChecks: Check[] = [
     {
       label: "Trades confirmed on bid",
@@ -222,6 +268,11 @@ export async function GET(
       label: "Estimates received",
       status: estimateStatus,
       detail: estimateDetail,
+    },
+    {
+      label: "Tier 1 critical path procurement",
+      status: tier1Status,
+      detail: tier1Detail,
     },
   ];
 

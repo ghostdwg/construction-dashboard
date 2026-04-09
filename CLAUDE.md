@@ -17,13 +17,12 @@
 - Module GNG1 — Go/No-Go Gate Widget: COMPLETE
 - Module 16a — Addendum Delta Processing: COMPLETE
 - Tier A — AI Layer + Core Data Model: COMPLETE
+- Module P1 — Procurement Timeline Engine: COMPLETE
+- Module P2 — Trade Tier Classification UI: COMPLETE
 
 ## What Is Queued
-- Tier B — Procurement Intelligence Layer (NEXT)
-  - Module P1 — Procurement timeline engine
-  - Module P2 — Trade tier classification UI
-  - Module P3 — RFI register upgrade
-  - Module P4 — Public bid compliance checklist
+- Module P3 — RFI Register Upgrade (NEXT)
+- Module P4 — Public Bid Compliance Checklist
 - Tier C — Estimate intelligence layer
 - Tier D — Bid assembly + post-bid intelligence
 - Full roadmap: docs/architecture/ROADMAP.md

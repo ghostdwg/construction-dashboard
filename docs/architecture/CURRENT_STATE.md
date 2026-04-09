@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: Module P1 complete — Procurement Timeline Engine
+# Last Updated: Module P2 complete — Trade Tier Classification UI
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -23,7 +23,8 @@
 | Module 16a | Addendum Delta Processing | ✅ Complete |
 | **Tier A** | **All modules complete** | **✅ Complete** |
 | Module P1 | Procurement Timeline Engine | ✅ Complete |
-| Tier B — Module P2 | — | ⬜ Next |
+| Module P2 | Trade Tier Classification UI | ✅ Complete |
+| Tier B — Module P3 | — | ⬜ Next |
 
 ## What Is Built
 - Subcontractor directory with trade filtering and tier system
@@ -64,6 +65,11 @@
 - PATCH /api/bids/[id]/trades/[tradeId] — updates tier, leadTimeDays, rfqSentAt, rfqNotes
 - Trades tab: tier selector, lead days input, status badge (On Track/At Risk/Overdue/Complete), RFQ date per row
 - Subs tab: procurement timeline section — urgency banner, trade timeline table, Mark RFQ Sent, DBE compliance (PUBLIC)
+- classifyTradeTier.ts — keyword-based rule classifier, TIER1/TIER2/TIER3 suggestion, reason, typicalLeadDays, criticalPathRisk
+- Trades tab: auto-suggest hints when classifier disagrees with current tier, dismiss/apply buttons, lead time guidance below input
+- Trades tab: tier health summary panel — three-column grid, color-coded by worst timeline status per tier
+- Trades tab: untiered banner + bulk apply modal when suggestions exist, Critical Path badge on Tier 1 rows
+- GNG1 Gate 2: Tier 1 critical path procurement check — OVERDUE → FAIL, AT_RISK → CAUTION
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

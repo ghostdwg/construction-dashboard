@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: Workflow redesign — spec-driven bid setup
+# Last Updated: Module P2 complete — Trade Tier Classification UI
 
 ---
 
@@ -153,7 +153,19 @@ This is the intended sequence for every bid:
   Subs tab: urgency summary banner, trade timeline table, Mark RFQ Sent,
   DBE outreach compliance column (PUBLIC bids only).
 
-### Module P2 ⬜ Next
+### Module P2 ✅ Complete
+  Trade Tier Classification UI
+  Rule-based keyword classifier — no AI calls, no DB.
+  classifyTradeTier.ts: TIER1/TIER2/TIER3 suggestion, reason, typicalLeadDays, criticalPathRisk.
+  Auto-suggest hints in Trades tab when classifier disagrees with current tier.
+  Dismiss/Apply buttons per hint; dismisses on manual dropdown change too.
+  Lead time guidance below input: overdue warning, custom lead note, typical RFQ date.
+  Tier health summary panel: three-column grid, color by worst status (red/amber/green/gray).
+  Untiered warning banner + bulk apply modal for unreviewed suggestions.
+  Critical Path badge on Tier 1 trade rows.
+  GNG1 Gate 2 (Procurement Health): new Tier 1 check — OVERDUE → FAIL, AT_RISK → CAUTION.
+
+### Module P3 ⬜ Next
   TBD
 
 ---
