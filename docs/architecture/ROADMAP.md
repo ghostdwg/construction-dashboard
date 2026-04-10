@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-10 — Lifecycle architecture + post-award vision
+# Last Updated: 2026-04-10 — Module RFQ1 (Resend email distribution) complete
 
 ---
 
@@ -156,6 +156,7 @@ Every bid follows this sequence:
 | Procore Import | CSV import + isPreferred + DELETE | COMPLETE |
 | AI Token Config | Per-call token management + presets | COMPLETE |
 | Theme Toggle | Light/dark mode with full app dark coverage | COMPLETE |
+| Module RFQ1 | RFQ Email Distribution via Resend | COMPLETE |
 
 ---
 
@@ -190,26 +191,45 @@ Schema additions on Bid model:
   enum DeliveryMethod { HARD_BID  DESIGN_BUILD  CM_AT_RISK  NEGOTIATED }
   enum OwnerType { PUBLIC_ENTITY  PRIVATE_OWNER  DEVELOPER  INSTITUTIONAL }
 
-### Module RFQ1 — RFQ Email Distribution
-Priority: HIGH
-Dependencies: Resend account + domain verification
-Sessions: 2-3
+### Module RFQ1 — RFQ Email Distribution ✅ COMPLETE (2026-04-10)
+Priority: shipped
+Dependencies: Resend account + domain verification (operational, not code)
+Status: build complete; LIVE EMAIL SEND PENDING USER TEST
 
 Send RFQ emails from Subs tab via Resend API.
 React Email template with project details + scope summary.
-Delivery/open/bounce tracking via webhooks.
-OutreachLog status updates.
+Delivery/open/bounce tracking via webhooks (no-op on localhost).
+OutreachLog status updates with delivery lifecycle independent of higher-level outreach status.
 
-New dependencies: resend, @react-email/components
-New env: RESEND_API_KEY
+Dependencies installed: resend, @react-email/components
+New env (optional — code degrades gracefully if absent):
+  RESEND_API_KEY      — required to send mail; absent → 503 from /api/bids/[id]/rfq/send
+  RESEND_FROM_EMAIL   — required, must be a verified sender domain in Resend
+  ESTIMATOR_NAME      — default for the Send RFQ confirmation modal
+  ESTIMATOR_EMAIL     — default reply-to for the Send RFQ confirmation modal
 
-OutreachLog extensions:
-  emailMessageId    String?
-  deliveryStatus    EmailDeliveryStatus?
-  openedAt          DateTime?
-  bouncedAt         DateTime?
+OutreachLog extensions (added in migration 20260410222200_add_email_tracking):
+  emailMessageId String?  @indexed
+  deliveryStatus String?  // QUEUED, SENT, DELIVERED, OPENED, BOUNCED, FAILED
+  openedAt       DateTime?
+  bouncedAt      DateTime?
+  bounceReason   String?
 
-  enum EmailDeliveryStatus { QUEUED SENT DELIVERED OPENED BOUNCED FAILED }
+Files shipped:
+  lib/services/email/resendClient.ts — singleton client + sendRfqEmail()
+  lib/emails/RfqInvitation.tsx — React Email template, no pricing, sub identity OK
+  app/api/bids/[id]/rfq/send/route.ts — POST: sends batch, creates OutreachLog rows
+  app/api/bids/[id]/rfq/status/route.ts — GET: per-sub delivery status + emailConfigured flag
+  app/api/webhooks/resend/route.ts — POST: receives Resend events, updates OutreachLog
+  app/bids/[id]/RfqSendModal.tsx — confirmation modal with recipient list + estimator inputs
+  app/bids/[id]/SubsTab.tsx — checkboxes per row, Select All per trade group, Send RFQ button,
+                              delivery badge per row, banner showing batch result
+
+Boundary preserved: no pricing data anywhere in the email pipeline. Custom message
+renders into the email body but is NOT persisted to OutreachLog (option b — discard).
+
+LIVE TEST PENDING: verify with self-send once RESEND_API_KEY + RESEND_FROM_EMAIL are
+added to .env.local and a domain is verified in the Resend dashboard.
 
 ### Tier E — Post-Award Handoff Layer (H1-H8)
 Priority: MEDIUM

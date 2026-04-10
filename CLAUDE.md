@@ -70,10 +70,10 @@ with all pursuit data carrying forward. Procore export bridge (Tier F queued) fo
   - AI Token Config (per-call max_tokens UI with cost estimates): COMPLETE
   - Editable Due Date: COMPLETE
   - Light/Dark Theme Toggle (full app dark mode coverage): COMPLETE
+- Module RFQ1 — RFQ Email Distribution via Resend: COMPLETE (live send pending user test)
 
 ## What Is Queued
 - Module INT1 — Job Intake (Wing 1)
-- Module RFQ1 — RFQ Email Distribution via Resend
 - Tier E — Post-Award Handoff Layer (H1-H8)
 - Tier F — Procore Integration Bridge (F1-F3)
 - UI Nav Refactor — sidebar with phase groupings, post-award shift

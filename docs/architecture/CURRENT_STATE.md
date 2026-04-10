@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: 2026-04-10 — Theme toggle + lifecycle architecture v2
+# Last Updated: 2026-04-10 — Module RFQ1 (Resend email distribution) complete
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -49,9 +49,9 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | AI Token Config | Per-call max_tokens UI with cost estimates | ✅ Complete |
 | Editable Due Date | Click-to-edit on Overview, field on New Bid modal | ✅ Complete |
 | Theme Toggle | Light/dark mode with full app dark coverage | ✅ Complete |
+| Module RFQ1 | RFQ Email Distribution via Resend | ✅ Complete |
 | **Queued** | **Lifecycle expansion** | **🔜 Planned** |
 | Module INT1 | Job Intake — Wing 1 project context capture | 🔜 Queued |
-| Module RFQ1 | RFQ Email Distribution via Resend | 🔜 Queued |
 | Tier E (H1-H8) | Post-Award Handoff Layer | 🔜 Queued |
 | Tier F (F1-F3) | Procore Integration Bridge | 🔜 Queued |
 | UI Nav Refactor | Sidebar with phase groupings + post-award shift | 🔜 Queued |
@@ -84,6 +84,7 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - Addendum delta processing — incremental, per-addendum JSON
 - AI Token Config UI at /settings/ai-tokens — per-call max_tokens presets with live cost
 - Light/dark theme toggle in top nav — persists to localStorage, full dark variant coverage across all pages
+- RFQ Email Distribution (Module RFQ1) — Subs tab checkboxes + Send RFQ button → confirmation modal → Resend API → React Email template → OutreachLog tracking with delivery status badges
 
 ## Current Known State
 - pdfjs-dist installed and working — pdf-parse removed
@@ -115,6 +116,9 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - Legacy /bids/[id]/leveling route is a redirect to /bids/[id]?tab=leveling (do NOT recreate as a standalone page — landmine that confuses users into thinking tabs are missing)
 - ThemeProvider uses React 19 useSyncExternalStore pattern (no setState-in-effect rule violations). Pre-hydration script in layout.tsx applies theme class on first paint to prevent flash.
 - Tailwind v4 dark mode via @custom-variant in app/globals.css — explicit class on <html> is the only signal (no prefers-color-scheme media query)
+- OutreachLog model extended with email tracking fields (Module RFQ1): emailMessageId (indexed), deliveryStatus (QUEUED/SENT/DELIVERED/OPENED/BOUNCED/FAILED), openedAt, bouncedAt, bounceReason. Existing channel/status columns reused — channel="email", status="sent" on successful queue. Custom message renders into email body but is NOT persisted (option b — discard after send).
+- Resend integration is OPTIONAL — without RESEND_API_KEY + RESEND_FROM_EMAIL in .env.local, the send route returns 503 and the Subs tab "Send RFQ" button is disabled with a tooltip. Estimator name + email defaults from ESTIMATOR_NAME + ESTIMATOR_EMAIL env vars, fall back to localStorage, then to user input. Webhooks configured at /api/webhooks/resend — won't fire on localhost (need public URL).
+- LIVE EMAIL SEND IS UNTESTED at commit time. Code paths verified by lint/build/typecheck. First test should be a self-send to verify Resend account, domain verification, and webhook delivery.
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { TierBadge } from "@/app/subcontractors/[id]/SubIntelligencePanel";
+import RfqSendModal, { type RfqSendCandidate } from "./RfqSendModal";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,62 @@ type TimelineResponse = {
   summary: TimelineSummary | null;
   daysUntilBid: number | null;
 };
+
+// ── Email delivery status (Module RFQ1) ────────────────────────────────────
+
+type DeliveryStatusEntry = {
+  deliveryStatus: string | null;
+  sentAt: string | null;
+  openedAt: string | null;
+  bouncedAt: string | null;
+  bounceReason: string | null;
+};
+
+type RfqStatusResponse = {
+  emailConfigured: boolean;
+  bySubId: Record<number, DeliveryStatusEntry>;
+  estimatorDefaults: { name: string; email: string };
+};
+
+const DELIVERY_STATUS_STYLES: Record<string, string> = {
+  QUEUED:    "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  SENT:      "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  DELIVERED: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  OPENED:    "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  BOUNCED:   "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  FAILED:    "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+};
+
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  QUEUED:    "Queued",
+  SENT:      "Sent",
+  DELIVERED: "Delivered",
+  OPENED:    "Opened",
+  BOUNCED:   "Bounced",
+  FAILED:    "Failed",
+};
+
+function DeliveryBadge({ entry }: { entry: DeliveryStatusEntry | undefined }) {
+  if (!entry || !entry.deliveryStatus) return null;
+  const style = DELIVERY_STATUS_STYLES[entry.deliveryStatus] ?? DELIVERY_STATUS_STYLES.SENT;
+  const label = DELIVERY_STATUS_LABELS[entry.deliveryStatus] ?? entry.deliveryStatus;
+  const title =
+    entry.deliveryStatus === "BOUNCED" && entry.bounceReason
+      ? `Bounced: ${entry.bounceReason}`
+      : entry.openedAt
+      ? `Opened ${new Date(entry.openedAt).toLocaleString()}`
+      : entry.sentAt
+      ? `Sent ${new Date(entry.sentAt).toLocaleString()}`
+      : label;
+  return (
+    <span
+      title={title}
+      className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${style}`}
+    >
+      ✉ {label}
+    </span>
+  );
+}
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -366,8 +423,46 @@ export default function SubsTab({
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAdded, setLastSyncAdded] = useState<number | null>(null);
 
+  // RFQ1 — selection + email send state
+  const [selectedSubIds, setSelectedSubIds] = useState<Set<number>>(new Set());
+  const [rfqStatus, setRfqStatus] = useState<RfqStatusResponse | null>(null);
+  const [rfqModalOpen, setRfqModalOpen] = useState(false);
+  const [sendResultBanner, setSendResultBanner] = useState<string | null>(null);
+
   const tradeMap = new Map(bidTrades.map((bt) => [bt.tradeId, bt.trade.name]));
   const isPublic = projectType === "PUBLIC";
+
+  // Standalone refresher used after sends — does not rely on the effect.
+  // Inline cancellable fetch is in the useEffect below to satisfy
+  // react-hooks/set-state-in-effect.
+  async function refreshRfqStatus() {
+    try {
+      const res = await fetch(`/api/bids/${bidId}/rfq/status`);
+      if (!res.ok) return;
+      const data = (await res.json()) as RfqStatusResponse;
+      setRfqStatus(data);
+    } catch {
+      // ignore
+    }
+  }
+
+  // Load delivery status + email-config flag for this bid on mount / bid change
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/bids/${bidId}/rfq/status`);
+        if (!res.ok) return;
+        const data = (await res.json()) as RfqStatusResponse;
+        if (!cancelled) setRfqStatus(data);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bidId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -457,6 +552,91 @@ export default function SubsTab({
     setUpdatingRfq(null);
   }
 
+  // ── Selection helpers (RFQ1) ─────────────────────────────────────────────
+
+  function toggleSubSelected(subId: number) {
+    setSelectedSubIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(subId)) next.delete(subId);
+      else next.add(subId);
+      return next;
+    });
+  }
+
+  function toggleGroupSelected(sels: Selection[], allSelected: boolean) {
+    const subIds = Array.from(new Set(sels.map((s) => s.subcontractorId).filter((id): id is number => id != null)));
+    setSelectedSubIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const id of subIds) next.delete(id);
+      } else {
+        for (const id of subIds) next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedSubIds(new Set());
+  }
+
+  // Build send candidates from current selection state
+  function buildSendCandidates(): RfqSendCandidate[] {
+    const map = new Map<number, RfqSendCandidate>();
+    for (const sel of selections) {
+      const subId = sel.subcontractorId;
+      if (subId == null || !selectedSubIds.has(subId)) continue;
+      let entry = map.get(subId);
+      if (!entry) {
+        const sub = sel.subcontractor;
+        const contact = sub.contacts[0] ?? null;
+        entry = {
+          subcontractorId: subId,
+          company: sub.company,
+          email: contact?.email ?? null,
+          trades: [],
+        };
+        map.set(subId, entry);
+      }
+      const tradeName = sel.tradeId != null ? tradeMap.get(sel.tradeId) : null;
+      if (tradeName && !entry.trades.includes(tradeName)) {
+        entry.trades.push(tradeName);
+      }
+    }
+    return Array.from(map.values());
+  }
+
+  function handleSendResults(result: {
+    sent: Array<{ subId: number; subName: string; email: string; messageId: string }>;
+    skipped: Array<{ subId: number; subName: string; reason: string }>;
+    failed: Array<{ subId: number; subName: string; error: string }>;
+  }) {
+    const parts: string[] = [];
+    if (result.sent.length > 0) parts.push(`${result.sent.length} sent`);
+    if (result.skipped.length > 0) parts.push(`${result.skipped.length} skipped`);
+    if (result.failed.length > 0) parts.push(`${result.failed.length} failed`);
+    setSendResultBanner(parts.join(" · ") || "No invitations sent");
+    setRfqModalOpen(false);
+    clearSelection();
+    // Refresh delivery status from API to pick up the new logs
+    refreshRfqStatus();
+    // Bump rfqStatus locally to "invited" for sent subs
+    if (result.sent.length > 0) {
+      const sentSubIds = new Set(result.sent.map((s) => s.subId));
+      setSelections((prev) =>
+        prev.map((s) =>
+          s.subcontractorId != null && sentSubIds.has(s.subcontractorId) && s.rfqStatus === "no_response"
+            ? { ...s, rfqStatus: "invited" }
+            : s
+        )
+      );
+    }
+    router.refresh();
+  }
+
+  const emailConfigured = rfqStatus?.emailConfigured ?? false;
+  const selectedCount = selectedSubIds.size;
+
   const groups = groupByTrade(selections, tradeMap);
 
   return (
@@ -497,17 +677,59 @@ export default function SubsTab({
                 {exporting ? "Exporting…" : "Export to Excel"}
               </button>
             )}
+            <button
+              onClick={() => setRfqModalOpen(true)}
+              disabled={selectedCount === 0 || !emailConfigured}
+              title={
+                !emailConfigured
+                  ? "No email service configured (set RESEND_API_KEY in .env.local)"
+                  : selectedCount === 0
+                  ? "Select one or more subs to send"
+                  : ""
+              }
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Send RFQ {selectedCount > 0 && `(${selectedCount})`}
+            </button>
           </div>
         </div>
+
+        {/* Send result banner */}
+        {sendResultBanner && (
+          <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-900/30 dark:text-blue-200 flex items-center justify-between">
+            <span>RFQ batch result: {sendResultBanner}</span>
+            <button
+              onClick={() => setSendResultBanner(null)}
+              className="text-xs text-blue-600 hover:underline dark:text-blue-300"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {selections.length === 0 ? (
           <p className="text-sm text-zinc-400 dark:text-zinc-500">No subs selected yet. Add from suggestions below.</p>
         ) : (
           <div className="flex flex-col gap-4">
-            {groups.map(({ tradeId, tradeName, sels }) => (
+            {groups.map(({ tradeId, tradeName, sels }) => {
+              const groupSubIds = Array.from(
+                new Set(sels.map((s) => s.subcontractorId).filter((id): id is number => id != null))
+              );
+              const groupAllSelected =
+                groupSubIds.length > 0 && groupSubIds.every((id) => selectedSubIds.has(id));
+              return (
               <div key={tradeId ?? "unassigned"} className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
                 <div className="flex items-center justify-between bg-zinc-50 border-b border-zinc-200 px-4 py-2 dark:bg-zinc-800 dark:border-zinc-700">
-                  <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">{tradeName}</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={groupAllSelected}
+                      onChange={() => toggleGroupSelected(sels, groupAllSelected)}
+                      className="rounded border-zinc-300 accent-blue-600 dark:border-zinc-600 cursor-pointer"
+                      title={groupAllSelected ? "Deselect all in this trade" : "Select all in this trade"}
+                    />
+                    <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">{tradeName}</span>
+                  </div>
                   <span className="text-xs text-zinc-400 dark:text-zinc-500">{tradeSummary(sels)}</span>
                 </div>
                 <table className="w-full text-sm">
@@ -515,10 +737,25 @@ export default function SubsTab({
                     {sels.map((sel) => {
                       const sub = sel.subcontractor;
                       const contact = sub.contacts[0] ?? null;
+                      const subId = sel.subcontractorId;
+                      const isSelected = subId != null && selectedSubIds.has(subId);
+                      const deliveryEntry = subId != null ? rfqStatus?.bySubId?.[subId] : undefined;
                       return (
                         <tr key={sel.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800">
+                          <td className="px-2 py-3 w-8 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => subId != null && toggleSubSelected(subId)}
+                              disabled={subId == null}
+                              className="rounded border-zinc-300 accent-blue-600 dark:border-zinc-600 cursor-pointer"
+                            />
+                          </td>
                           <td className="px-4 py-3 font-medium w-1/3">
-                            {sub.company}
+                            <div className="flex items-center gap-2">
+                              <span>{sub.company}</span>
+                              <DeliveryBadge entry={deliveryEntry} />
+                            </div>
                             {sub.office && (
                               <span className="block text-xs text-zinc-400 font-normal dark:text-zinc-500">{sub.office}</span>
                             )}
@@ -576,7 +813,8 @@ export default function SubsTab({
                   </tbody>
                 </table>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -656,6 +894,18 @@ export default function SubsTab({
           </div>
         )}
       </section>
+
+      {/* ── RFQ Send Modal (Module RFQ1) ── */}
+      {rfqModalOpen && (
+        <RfqSendModal
+          bidId={bidId}
+          candidates={buildSendCandidates()}
+          defaultEstimatorName={rfqStatus?.estimatorDefaults.name ?? ""}
+          defaultEstimatorEmail={rfqStatus?.estimatorDefaults.email ?? ""}
+          onClose={() => setRfqModalOpen(false)}
+          onSent={handleSendResults}
+        />
+      )}
     </div>
   );
 }

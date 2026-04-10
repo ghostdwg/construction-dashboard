@@ -313,10 +313,20 @@ model OutreachLog {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  // Email delivery tracking (Module RFQ1)
+  // deliveryStatus values (validated in API): QUEUED, SENT, DELIVERED, OPENED, BOUNCED, FAILED
+  emailMessageId String?
+  deliveryStatus String?
+  openedAt       DateTime?
+  bouncedAt      DateTime?
+  bounceReason   String?
+
   bid           Bid                @relation(fields: [bidId], references: [id])
   subcontractor Subcontractor?     @relation(fields: [subcontractorId], references: [id])
   contact       Contact?           @relation(fields: [contactId], references: [id])
   question      GeneratedQuestion? @relation(fields: [questionId], references: [id])
+
+  @@index([emailMessageId])
 }
 
 enum ProjectType {
