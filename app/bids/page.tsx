@@ -121,7 +121,7 @@ export default async function BidsPage() {
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <Link
-                        href={`/bids/${bid.id}/leveling`}
+                        href={`/bids/${bid.id}?tab=leveling`}
                         className="text-xs text-zinc-500 hover:underline"
                       >
                         Level →

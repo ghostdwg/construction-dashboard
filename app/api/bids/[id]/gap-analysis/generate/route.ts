@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { assembleGapPrompt } from "@/lib/services/ai/assembleGapPrompt";
+import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 
 // ----- Types -----
 
@@ -292,7 +293,7 @@ export async function runGapAnalysis(
 
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 2048,
+      max_tokens: await getMaxTokens("gap-analysis"),
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     });

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { assembleBriefPrompt } from "./assembleBriefPrompt";
+import { getMaxTokens } from "./aiTokenConfig";
 
 // ----- JSON repair for truncated responses -----
 
@@ -245,7 +246,7 @@ export async function generateBidIntelligenceBrief(
 
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 8192,
+      max_tokens: await getMaxTokens("brief"),
       system: prompt.systemPrompt,
       messages: [{ role: "user", content: prompt.userPrompt }],
     });

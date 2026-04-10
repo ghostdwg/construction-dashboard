@@ -499,3 +499,12 @@ model DrawingSheet {
   trade         Trade?        @relation("DrawingSheetTrade", fields: [tradeId], references: [id])
   matchedTrade  Trade?        @relation("MatchedDrawingSheet", fields: [matchedTradeId], references: [id])
 }
+
+// Per-AI-call max_tokens overrides. If a row exists for a callKey, that value
+// overrides the hardcoded default in lib/services/ai/aiTokenConfig.ts.
+model AiTokenConfig {
+  id        Int      @id @default(autoincrement())
+  callKey   String   @unique
+  maxTokens Int
+  updatedAt DateTime @updatedAt
+}

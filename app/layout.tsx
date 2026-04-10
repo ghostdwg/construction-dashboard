@@ -44,6 +44,9 @@ export default function RootLayout({
             <Link href="/reports" className="text-sm text-zinc-500 hover:text-zinc-900">
               Reports
             </Link>
+            <Link href="/settings/ai-tokens" className="ml-auto text-sm text-zinc-500 hover:text-zinc-900">
+              Settings
+            </Link>
           </div>
         </nav>
         {children}

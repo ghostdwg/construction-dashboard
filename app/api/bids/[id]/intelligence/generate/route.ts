@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { assembleReviewPrompt } from "@/lib/services/ai/assembleReviewPrompt";
+import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 
 // ----- Shared generation logic (importable from upload routes) -----
 
@@ -27,7 +28,7 @@ export async function generateBidIntelligence(bidId: number): Promise<{
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    max_tokens: await getMaxTokens("intelligence"),
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
   });

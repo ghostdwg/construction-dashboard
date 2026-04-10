@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { assembleAddendumDeltaPrompt } from "@/lib/services/ai/assembleAddendumDeltaPrompt";
+import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 
 // ----- Types -----
 
@@ -256,7 +257,7 @@ export async function POST(
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    max_tokens: await getMaxTokens("addendum-delta"),
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
   });

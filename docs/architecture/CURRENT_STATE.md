@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: Module P2 complete — Trade Tier Classification UI
+# Last Updated: AI Token Config + Procore Import + Tier D complete
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -34,19 +34,24 @@
 | Module D1 | Bid Submission Snapshot | ✅ Complete |
 | Module D2 | Award Outcome Tracking | ✅ Complete |
 | Module D3 | Post-Bid Analytics Dashboard | ✅ Complete |
+| **Operations** | **Cross-cutting infrastructure** | **✅ Complete** |
+| Procore CSV Import | Subcontractor import + isPreferred + dedup | ✅ Complete |
+| AI Token Config | Per-call max_tokens UI with cost estimates | ✅ Complete |
+| Editable Due Date | Click-to-edit on Overview, field on New Bid modal | ✅ Complete |
 
 ## What Is Built
-- Subcontractor directory with trade filtering and tier system
-- Bid management with tabbed detail view
+- Subcontractor directory with trade filtering, tier system, single-sub form with isPreferred
+- Procore CSV import — preview/conflict resolution/per-row Preferred/commit pipeline
+- Bid management with tabbed detail view + editable due date
 - Trade assignment from 46-trade dictionary with CSI codes
 - Sub selection filtered by bid trades
 - Excel export for Outlook distribution
 - Scope normalization with trade assignment
 - Safe AI export with redaction and approval flow
 - AI gap findings import, review, and approval
-- Question generation and status workflow
+- Question generation and status workflow (RFI register: numbering, priority, response, impact)
 - Outreach and response logging
-- Reporting dashboard with live KPIs
+- Reporting dashboard with live KPIs + post-bid analytics dashboard
 - Estimate intake with pricing boundary enforced
 - Scope leveling — side by side, inline status and notes
 - Leveling questions with AI draft + anonymized Excel export
@@ -55,6 +60,12 @@
 - Three-state matching — covered / missing from bid / unknown
 - Trade proposal UI — Add to Bid, manual assign, rematch trigger
 - Documents tab at position 2 in tab order
+- Bid submission snapshot + outcome tracking + cascading status updates
+- Bid spread analysis, scope-cost correlation, estimate intelligence recommendations
+- Public bid compliance checklist (PUBLIC bids only)
+- Procurement timeline engine + trade tier classification + tier health panel
+- Addendum delta processing — incremental, per-addendum JSON
+- AI Token Config UI at /settings/ai-tokens — per-call max_tokens presets with live cost
 
 ## Current Known State
 - pdfjs-dist installed and working — pdf-parse removed
@@ -79,6 +90,11 @@
 - Trades tab: tier health summary panel — three-column grid, color-coded by worst timeline status per tier
 - Trades tab: untiered banner + bulk apply modal when suggestions exist, Critical Path badge on Tier 1 rows
 - GNG1 Gate 2: Tier 1 critical path procurement check — OVERDUE → FAIL, AT_RISK → CAUTION
+- Subcontractor.isPreferred — INTERNAL ONLY field (never in AI prompts, never in sub-facing exports)
+- Subcontractor.procoreVendorId — unique external reference for re-import dedup
+- BidSubmission model — frozen 6-field JSON snapshots + outcome fields, cascades Bid.status
+- AiTokenConfig model — DB-backed per-call max_tokens overrides with in-process cache
+- Legacy /bids/[id]/leveling route is a redirect to /bids/[id]?tab=leveling (do NOT recreate as a standalone page — landmine that confuses users into thinking tabs are missing)
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

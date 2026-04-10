@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback } from "react";
 
 // ---- Types ----
 
@@ -289,9 +289,8 @@ export default function OutreachPage() {
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {filtered.map((log) => (
-                <>
+                <Fragment key={log.id}>
                   <tr
-                    key={log.id}
                     className="hover:bg-zinc-50 cursor-pointer"
                     onClick={() =>
                       setExpandedId(expandedId === log.id ? null : log.id)
@@ -324,9 +323,9 @@ export default function OutreachPage() {
                     </td>
                   </tr>
                   {expandedId === log.id && (
-                    <ExpandedRow key={`${log.id}-expanded`} log={log} onSave={handleSave} />
+                    <ExpandedRow log={log} onSave={handleSave} />
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Anthropic from "@anthropic-ai/sdk";
+import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 
 // POST /api/bids/[id]/leveling/[rowId]/question
 // Creates a GeneratedQuestion from a LevelingRow marked clarification_needed.
@@ -100,7 +101,7 @@ Return only the question text. No preamble, no explanation.`;
   try {
     const message = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 200,
+      max_tokens: await getMaxTokens("leveling-question"),
       messages: [{ role: "user", content: prompt }],
     });
 

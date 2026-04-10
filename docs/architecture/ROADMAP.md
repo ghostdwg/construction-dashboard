@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: Module P2 complete — Trade Tier Classification UI
+# Last Updated: AI Token Config + Procore Import + Tier D complete
 
 ---
 
@@ -260,8 +260,82 @@ This is the intended sequence for every bid:
 
 ---
 
+## OPERATIONS ✅ Complete
+  Cross-cutting infrastructure that doesn't belong to a numbered tier.
+
+### Procore CSV Import ✅ Complete
+  Subcontractor import + isPreferred field + dedup by procoreVendorId.
+  Schema: Subcontractor.isPreferred (INTERNAL ONLY — never in AI prompts or sub-facing
+  exports), Subcontractor.procoreVendorId (unique, used for re-import dedup).
+  parseProcoreCsv.ts: RFC-compliant CSV parser with header aliases, quoted multiline
+  fields, BOM, CRLF; auto-detects Procore format via Entity Type column. Catches all
+  diversity flags (MBE/WBE/DBE/HUB/etc.) via MWBE_FLAG_HEADERS array.
+  matchTradeName.ts: fuzzy matcher (exact normalized → substring → token Jaccard ≥0.5).
+  Strips stop words during tokenization.
+  POST /api/subcontractors/import: preview with conflict detection (by procoreVendorId
+  then by company name) and trade match indicators per row.
+  POST /api/subcontractors/import/commit: persists rows in single transaction per row,
+  handles create/update/skip actions.
+  GET /api/subcontractors/import/template: sample CSV download.
+  /subcontractors/import page: upload → preview (per-row Preferred toggle, conflict
+  resolution dropdown, trade match green/amber/red indicators) → success.
+  AddSubcontractorPanel: isPreferred checkbox on single-sub form.
+  DELETE /api/subcontractors/[id]: referential integrity check, refuses if selections/
+  estimates/outreachLogs exist (returns 409 with counts), cascades contacts/trades/joins.
+  recipients export route hardened with explicit select clause (defensive boundary
+  against accidental isPreferred leakage).
+
+### AI Token Config ✅ Complete
+  Per-call max_tokens UI with live cost estimates.
+  Schema: AiTokenConfig model (callKey unique, maxTokens, updatedAt).
+  lib/services/ai/aiTokenConfig.ts: single source of truth for AI call definitions
+  (label, model, typical input tokens, default/min/max ceilings, presets, recommended
+  preset) and pricing constants (Sonnet/Opus/Haiku). In-process cache with explicit
+  invalidation on PATCH. Cost math accounts for both input and output, realistic
+  (50% utilization) vs max (100% utilization).
+  GET /api/settings/ai-tokens: returns all 5 call configs with current effective values
+  + cost estimates per preset.
+  PATCH /api/settings/ai-tokens: upserts override (or deletes to revert to default).
+  /settings/ai-tokens page: per-call cards with header (label, model, description,
+  typical input), current state line (cost realistic + max), 4 preset buttons
+  (Minimal/Standard/Extended/Maximum) with token count + cost-per-call labels, REC
+  badge on recommended preset, active preset highlighted, reset link if overridden,
+  italic blurb describing trade-off. Top banner shows live monthly cost estimate
+  (assumes 20 bids/mo, 25 trades each, 2 addendums, 50 leveling questions).
+  Settings link added to top nav.
+  All 5 AI call sites rewired to await getMaxTokens(callKey):
+  - brief → generateBidIntelligenceBrief.ts
+  - gap-analysis → app/api/bids/[id]/gap-analysis/generate/route.ts
+  - addendum-delta → app/api/bids/[id]/addendums/[addendumId]/delta/route.ts
+  - intelligence → app/api/bids/[id]/intelligence/generate/route.ts (legacy route)
+  - leveling-question → app/api/bids/[id]/leveling/[rowId]/question/route.ts
+
+### Editable Due Date ✅ Complete
+  Click-to-edit on Overview tab via EditableDueDate component.
+  Due date field added to NewBidButton modal.
+  Drives the procurement timeline engine (no due date → no timeline).
+
+### Legacy /leveling Redirect ✅ Complete
+  app/bids/[id]/leveling/page.tsx is a SERVER-SIDE REDIRECT to /bids/[id]?tab=leveling.
+  Originally a standalone v0.2 page predating the tabbed bid detail page. Stale links
+  on the bid list ("Level →" button) and old bookmarks would land users on a tab-less
+  page that looked like the bid detail had been gutted. Do NOT recreate this as a
+  standalone page — keep it as a redirect.
+  app/bids/page.tsx Level button now points directly at /bids/[id]?tab=leveling.
+
+### Test Infrastructure ✅ Complete
+  scripts/tests/ — node:test based, run with --experimental-strip-types.
+  Unit tests: parsePricingTotal (14), parseProcoreCsv (19), matchTradeName (16).
+  E2E API tests: import flow (50), bid submission (48). 147/147 passing.
+  Fixtures: scripts/tests/fixtures/procore-sample.csv with edge cases (empty company,
+  multiple diversity flags, embedded commas).
+
+---
+
 ## NEVER DO
 - Return pricingData to client
 - Include sub name or company in any AI prompt
+- Include Subcontractor.isPreferred in any AI prompt or sub-facing export
 - Mix planning and build execution in same Claude Code session
 - Commit .claude/settings.local.json
+- Recreate /bids/[id]/leveling as a standalone page — it's a redirect (see Operations)
