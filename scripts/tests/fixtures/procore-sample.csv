@@ -1,0 +1,6 @@
+Name,DBA Name,Address,City,State,Zip,Business Phone,Company Email Address,Primary Contact Email Address,Mobile Phone,Trades,Union Member,Minority Business Enterprise,Woman's Business,Disadvantaged Business,License Number,Id,Entity Type,Entity Id
+"Acme Electrical","Acme Power","1234 Industrial Blvd","Des Moines","IA","50309","(515) 555-0100","info@acmeelectrical.com","[email protected]","(515) 555-0101","Electrical, Low Voltage","Yes","No","No","No","EC12345","V001","Company","E001"
+"Beta Mechanical","","5678 Service Rd","Iowa City","IA","52240","(319) 555-0200","contact@betamech.com","[email protected]","(319) 555-0201","Mechanical / HVAC","No","Yes","No","Yes","ME67890","V002","Company","E002"
+"Charlie Plumbing & Drain","Charlie's","999 Main St","Cedar Rapids","IA","52401","(319) 555-0300","info@charlieplumbing.com","","","Plumbing","No","No","Yes","No","PL11111","V003","Company","E003"
+"Delta Concrete Co","","2200 Industrial Park","Omaha","NE","68102","(402) 555-0400","ops@deltaconcrete.com","[email protected]","(402) 555-0401","Concrete; Site Excavation","Yes","No","No","No","CC99999","V004","Company","E004"
+"","Empty Company","","","","","","","","","","No","No","No","No","","V005","Company","E005"

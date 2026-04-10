@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { TierBadge } from "@/app/subcontractors/[id]/SubIntelligencePanel";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -173,14 +173,14 @@ function ProcurementTimeline({
   const [marking, setMarking] = useState<number | null>(null);
   const [compliance, setCompliance] = useState<Record<number, boolean>>({});
 
-  function loadTimeline() {
+  const loadTimeline = useCallback(() => {
     fetch(`/api/bids/${bidId}/procurement/timeline`)
       .then((r) => r.json())
       .then((d: TimelineResponse) => setData(d))
       .catch(() => {});
-  }
+  }, [bidId]);
 
-  useEffect(() => { loadTimeline(); }, [bidId]);
+  useEffect(() => { loadTimeline(); }, [loadTimeline]);
 
   if (!data) return <div className="text-sm text-zinc-400">Loading procurement timeline…</div>;
   if (data.noDueDate) return (
@@ -370,17 +370,23 @@ export default function SubsTab({
   const isPublic = projectType === "PUBLIC";
 
   useEffect(() => {
+    let cancelled = false;
+    // Intentional: show spinner while refetching when bidId/selections change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingSuggestions(true);
     fetch(`/api/bids/${bidId}/suggestions`)
       .then((r) => r.json())
       .then((data) => {
+        if (cancelled) return;
         setSuggestions(Array.isArray(data) ? data : []);
         setLoadingSuggestions(false);
       })
       .catch(() => {
+        if (cancelled) return;
         setSuggestions([]);
         setLoadingSuggestions(false);
       });
+    return () => { cancelled = true; };
   }, [bidId, selections]);
 
   async function addSub(sub: Subcontractor) {

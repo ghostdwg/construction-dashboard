@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const empty = { projectName: "", location: "", description: "" };
+const empty = { projectName: "", location: "", dueDate: "", description: "" };
 
 export default function NewBidButton() {
   const router = useRouter();
@@ -65,14 +65,25 @@ export default function NewBidButton() {
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-700">Location</label>
-          <input
-            type="text"
-            value={fields.location}
-            onChange={set("location")}
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-zinc-700">Location</label>
+            <input
+              type="text"
+              value={fields.location}
+              onChange={set("location")}
+              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-zinc-700">Due Date</label>
+            <input
+              type="date"
+              value={fields.dueDate}
+              onChange={set("dueDate")}
+              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
         </div>
 
         <div className="flex flex-col gap-1">

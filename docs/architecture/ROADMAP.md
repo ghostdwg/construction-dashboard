@@ -43,7 +43,12 @@ This is the intended sequence for every bid:
      Side-by-side comparison
      Gap-informed clarification questions sent to subs
 
-  8. AWARD
+  8. SUBMIT (StatusButton → SubmitBidModal)
+     Bid amount captured, snapshot frozen, status → submitted
+
+  9. AWARD (OutcomeModal)
+     Outcome recorded (won/lost/withdrawn) with reason, lessons learned
+     Post-bid analytics dashboard tracks win rate, accuracy, gap to winner
 
 ---
 
@@ -218,6 +223,40 @@ This is the intended sequence for every bid:
   missing_estimate (no estimates for trade), single_bid (no competition).
   EstimateIntelligenceCard on Leveling tab: severity-grouped findings, expandable detail.
   No AI — pure math, server-side only.
+
+---
+
+## TIER D ✅ Complete
+
+### Module D1 ✅ Complete
+  Bid Submission Snapshot
+  New BidSubmission model: bidId (unique), submittedAt, submittedBy, ourBidAmount, notes,
+  plus 6 frozen JSON snapshot fields (brief, questions, compliance, spread, gates, intelligence).
+  captureBidSnapshot.ts: aggregates bid state into compact snapshot for archival.
+  POST /api/bids/[id]/submit: validates not-already-submitted, captures snapshot,
+  creates BidSubmission record, updates Bid.status to "submitted".
+  GET /api/bids/[id]/submission: returns submission record or null.
+  StatusButton: "submitted" status triggers SubmitBidModal (amount, by, notes).
+  SubmissionPanel on Overview tab: timestamp, by, amount, snapshot summary (collapsed).
+  Status flow: draft → active → leveling → submitted → awarded/lost/cancelled.
+
+### Module D2 ✅ Complete
+  Award Outcome Tracking
+  Outcome fields on BidSubmission: outcome (won/lost/withdrawn/no_decision), outcomeAt,
+  winningBidAmount, ourRank, totalBidders, lostReason, lostReasonNote, lessonsLearned.
+  PATCH /api/bids/[id]/submission/outcome: updates outcome, cascades Bid.status
+  (won → awarded, lost → lost, withdrawn → cancelled). Returns derived bidAccuracyPercent.
+  OutcomeModal: outcome dropdown with conditional fields (winning amount, rank, lost reason).
+  SubmissionPanel: outcome badge, lost detail (winning bid, gap, rank), lessons learned.
+
+### Module D3 ✅ Complete
+  Post-Bid Analytics Dashboard
+  GET /api/reports/post-bid: aggregates all submissions into win rate / project type /
+  lost reasons / recent submissions. Pure SQL, no AI.
+  /reports/post-bid page: summary cards, by-project-type table, lost reasons bar chart,
+  recent submissions table with outcome badges.
+  Bid list page: status badges, our bid amount, submitted date columns.
+  Summary banner on bid list: active / submitted / won / lost counts + win rate.
 
 ---
 

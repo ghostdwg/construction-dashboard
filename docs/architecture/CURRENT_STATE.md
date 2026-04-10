@@ -30,6 +30,10 @@
 | Module C1 | Bid Spread Analysis | ✅ Complete |
 | Module C2 | Scope-Cost Correlation | ✅ Complete |
 | Module C3 | Estimate Intelligence Summary | ✅ Complete |
+| **Tier D** | **Bid Assembly + Post-Bid Intelligence** | **✅ Complete** |
+| Module D1 | Bid Submission Snapshot | ✅ Complete |
+| Module D2 | Award Outcome Tracking | ✅ Complete |
+| Module D3 | Post-Bid Analytics Dashboard | ✅ Complete |
 
 ## What Is Built
 - Subcontractor directory with trade filtering and tier system

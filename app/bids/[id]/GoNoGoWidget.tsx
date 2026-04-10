@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 // ----- Types -----
@@ -181,26 +181,36 @@ export default function GoNoGoWidget({ bidId }: { bidId: number }) {
   const [data, setData] = useState<GnoGData | null | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
+  // Initial load
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/bids/${bidId}/go-no-go`);
+        if (cancelled) return;
+        if (!res.ok) { setData(null); return; }
+        setData((await res.json()) as GnoGData);
+      } catch {
+        if (!cancelled) setData(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [bidId]);
+
+  // Manual refresh handler
+  async function reload() {
     try {
       const res = await fetch(`/api/bids/${bidId}/go-no-go`);
-      if (!res.ok) {
-        setData(null);
-        return;
-      }
+      if (!res.ok) { setData(null); return; }
       setData((await res.json()) as GnoGData);
     } catch {
       setData(null);
     }
-  }, [bidId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  }
 
   async function refresh() {
     setRefreshing(true);
-    await load();
+    await reload();
     setRefreshing(false);
   }
 

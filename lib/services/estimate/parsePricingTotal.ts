@@ -63,13 +63,17 @@ export function parsePricingTotal(pricingDataJson: string): PricingParseResult {
     isUnitPrice: boolean;
     raw: string;
   }> = [];
+  let unitPriceOnlyCount = 0;
 
   for (const entry of entries) {
     const raw = entry.rawPriceText ?? "";
     if (!raw) continue;
 
-    // Skip pure unit prices ($/SF etc)
-    if (isUnitPrice(raw) && !DOLLAR_RE.test(raw)) continue;
+    // Track but skip pure unit prices ($/SF etc) — they can't roll up to a total
+    if (isUnitPrice(raw) && !DOLLAR_RE.test(raw)) {
+      unitPriceOnlyCount++;
+      continue;
+    }
 
     const amount = parseDollarAmount(raw);
     if (amount <= 0) continue;
@@ -84,6 +88,13 @@ export function parsePricingTotal(pricingDataJson: string): PricingParseResult {
   }
 
   if (parsed.length === 0) {
+    if (unitPriceOnlyCount > 0) {
+      return {
+        total: 0,
+        lineCount: unitPriceOnlyCount,
+        warnings: ["Only unit prices found — cannot compute total"],
+      };
+    }
     return { total: 0, lineCount: entries.length, warnings: ["No dollar amounts found in pricing data"] };
   }
 
@@ -131,7 +142,7 @@ export function parsePricingTotal(pricingDataJson: string): PricingParseResult {
     return { total, lineCount: parsed.length, warnings };
   }
 
-  // Strategy 4: Only unit prices — can't compute a meaningful total
-  warnings.push("Only unit prices found — cannot compute total");
+  // Fallback: should be unreachable since parsed.length > 0 implies line items or subtotals
+  warnings.push("Could not determine total from pricing data");
   return { total: 0, lineCount: parsed.length, warnings };
 }

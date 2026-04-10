@@ -15,6 +15,8 @@ import DocumentsTab from "./DocumentsTab";
 import IntelligenceBrief from "./IntelligenceBrief";
 import GoNoGoWidget from "./GoNoGoWidget";
 import ComplianceWidget from "./ComplianceWidget";
+import SubmissionPanel from "./SubmissionPanel";
+import EditableDueDate from "./EditableDueDate";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -140,11 +142,10 @@ export default async function BidDetailPage({
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
                 Due Date
               </p>
-              <p className="text-sm">
-                {bid.dueDate
-                  ? new Date(bid.dueDate).toLocaleDateString()
-                  : "—"}
-              </p>
+              <EditableDueDate
+                bidId={bid.id}
+                initialDueDate={bid.dueDate ? bid.dueDate.toISOString() : null}
+              />
             </div>
             {bid.description && (
               <div className="col-span-2">
@@ -156,6 +157,10 @@ export default async function BidDetailPage({
                 </p>
               </div>
             )}
+          </section>
+
+          <section>
+            <SubmissionPanel bidId={bid.id} />
           </section>
 
           <section>

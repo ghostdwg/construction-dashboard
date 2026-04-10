@@ -189,20 +189,6 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
   // Add question modal
   const [showAddModal, setShowAddModal] = useState(false);
 
-  async function load() {
-    try {
-      const qRes = await fetch(`/api/bids/${bidId}/questions`);
-      const qData = await qRes.json();
-      if (qRes.ok) {
-        setQuestions(Array.isArray(qData.questions) ? qData.questions : []);
-        setSummary(qData.summary ?? null);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-    setLoading(false);
-  }
-
   // Fetch bid trades for the Add Question modal
   useEffect(() => {
     fetch(`/api/bids/${bidId}/trades`)
@@ -213,7 +199,25 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
       .catch(() => {});
   }, [bidId]);
 
-  useEffect(() => { load(); }, [bidId]);
+  // Initial questions load
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const qRes = await fetch(`/api/bids/${bidId}/questions`);
+        const qData = await qRes.json();
+        if (cancelled) return;
+        if (qRes.ok) {
+          setQuestions(Array.isArray(qData.questions) ? qData.questions : []);
+          setSummary(qData.summary ?? null);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [bidId]);
 
   async function patchQuestion(id: number, patch: Record<string, unknown>) {
     const res = await fetch(`/api/bids/${bidId}/questions/${id}`, {

@@ -17,6 +17,7 @@ const empty = {
   notes: "",
   isUnion: false,
   isMWBE: false,
+  isPreferred: false,
 };
 
 export default function AddSubcontractorPanel({ open, onClose }: Props) {
@@ -145,7 +146,7 @@ export default function AddSubcontractorPanel({ open, onClose }: Props) {
 
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-zinc-700">Tags</label>
-            <div className="flex gap-4">
+            <div className="flex gap-4 flex-wrap">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
                   type="checkbox"
@@ -167,6 +168,20 @@ export default function AddSubcontractorPanel({ open, onClose }: Props) {
                   className="rounded"
                 />
                 MWBE
+              </label>
+              <label
+                className="flex items-center gap-2 text-sm cursor-pointer"
+                title="Internal only — never shown to subs or in exports"
+              >
+                <input
+                  type="checkbox"
+                  checked={fields.isPreferred as unknown as boolean}
+                  onChange={(e) =>
+                    setFields((f) => ({ ...f, isPreferred: e.target.checked }))
+                  }
+                  className="rounded"
+                />
+                <span className="font-medium text-amber-700">★ Preferred</span>
               </label>
             </div>
           </div>

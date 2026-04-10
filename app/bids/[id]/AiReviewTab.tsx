@@ -166,7 +166,7 @@ function TradePanel({
   findings: GapFinding[];
   bidId: number;
 }) {
-  const [addedIds, setAddedIds] = useState<Set<number>>(new Set());
+  const [, setAddedIds] = useState<Set<number>>(new Set());
 
   const sorted = [...findings].sort(
     (a, b) =>

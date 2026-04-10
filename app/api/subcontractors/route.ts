@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { company, office, status, notes, isUnion, isMWBE, tradeIds } = body;
+  const { company, office, status, notes, isUnion, isMWBE, isPreferred, tradeIds } = body;
 
   if (!company?.trim()) {
     return Response.json({ error: "company is required" }, { status: 400 });
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       notes: notes?.trim() || null,
       isUnion: !!isUnion,
       isMWBE: !!isMWBE,
+      isPreferred: !!isPreferred,
       ...(tradeIds?.length
         ? {
             subTrades: {

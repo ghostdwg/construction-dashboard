@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -31,18 +32,18 @@ export default function RootLayout({
         <nav className="border-b border-zinc-200 bg-white">
           <div className="max-w-5xl mx-auto px-4 flex items-center gap-6 h-12">
             <span className="font-semibold text-sm tracking-tight">Bid Dashboard</span>
-            <a href="/bids" className="text-sm text-zinc-500 hover:text-zinc-900">
+            <Link href="/bids" className="text-sm text-zinc-500 hover:text-zinc-900">
               Bids
-            </a>
-            <a href="/subcontractors" className="text-sm text-zinc-500 hover:text-zinc-900">
+            </Link>
+            <Link href="/subcontractors" className="text-sm text-zinc-500 hover:text-zinc-900">
               Subcontractors
-            </a>
-            <a href="/outreach" className="text-sm text-zinc-500 hover:text-zinc-900">
+            </Link>
+            <Link href="/outreach" className="text-sm text-zinc-500 hover:text-zinc-900">
               Outreach
-            </a>
-            <a href="/reports" className="text-sm text-zinc-500 hover:text-zinc-900">
+            </Link>
+            <Link href="/reports" className="text-sm text-zinc-500 hover:text-zinc-900">
               Reports
-            </a>
+            </Link>
           </div>
         </nav>
         {children}

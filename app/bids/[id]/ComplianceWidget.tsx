@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -47,17 +47,20 @@ export default function ComplianceWidget({ bidId }: { bidId: number }) {
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/bids/${bidId}/compliance`);
-      if (!res.ok) { setData(null); return; }
-      setData(await res.json() as ComplianceData);
-    } catch {
-      setData(null);
-    }
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/bids/${bidId}/compliance`);
+        if (cancelled) return;
+        if (!res.ok) { setData(null); return; }
+        setData(await res.json() as ComplianceData);
+      } catch {
+        if (!cancelled) setData(null);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [bidId]);
-
-  useEffect(() => { load(); }, [load]);
 
   async function toggle(key: string, checked: boolean) {
     const res = await fetch(`/api/bids/${bidId}/compliance`, {

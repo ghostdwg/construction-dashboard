@@ -2,7 +2,6 @@ import fs from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
-import { Prisma } from "@prisma/client";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 import { generateBidIntelligenceBrief } from "@/lib/services/ai/generateBidIntelligenceBrief";
 

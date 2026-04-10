@@ -25,7 +25,11 @@
   - Module C1 — Bid Spread Analysis: COMPLETE
   - Module C2 — Scope-Cost Correlation: COMPLETE
   - Module C3 — Estimate Intelligence Summary: COMPLETE
+- Tier D — Bid Assembly + Post-Bid Intelligence: COMPLETE
+  - Module D1 — Bid Submission Snapshot: COMPLETE
+  - Module D2 — Award Outcome Tracking: COMPLETE
+  - Module D3 — Post-Bid Analytics Dashboard: COMPLETE
 
 ## What Is Queued
-- Tier D — Bid assembly + post-bid intelligence
+- All tiers complete
 - Full roadmap: docs/architecture/ROADMAP.md

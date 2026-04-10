@@ -376,7 +376,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
   const [addendumUploading, setAddendumUploading] = useState(false);
   const [addendumUploadError, setAddendumUploadError] = useState<string | null>(null);
   const [deletingAddendumId, setDeletingAddendumId] = useState<number | null>(null);
-  const [briefIsStale, setBriefIsStale] = useState(false);
+  const [, setBriefIsStale] = useState(false);
   const [briefExists, setBriefExists] = useState(false);
   const [processingDeltaId, setProcessingDeltaId] = useState<number | null>(null);
   const [deltaError, setDeltaError] = useState<{ id: number; message: string } | null>(null);

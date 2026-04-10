@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import SubmitBidModal from "./SubmitBidModal";
 
-const STATUSES = ["draft", "active", "leveling", "awarded", "lost", "cancelled"];
+const STATUSES = ["draft", "active", "leveling", "submitted", "awarded", "lost", "cancelled"];
 
 export default function StatusButton({
   bidId,
@@ -15,16 +16,24 @@ export default function StatusButton({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
 
   async function setStatus(status: string) {
     if (status === current) { setOpen(false); return; }
+    setOpen(false);
+
+    // Special case: "submitted" triggers the submission modal flow
+    if (status === "submitted") {
+      setShowSubmitModal(true);
+      return;
+    }
+
     setLoading(true);
     await fetch(`/api/bids/${bidId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    setOpen(false);
     setLoading(false);
     router.refresh();
   }
@@ -55,6 +64,17 @@ export default function StatusButton({
             ))}
           </div>
         </>
+      )}
+
+      {showSubmitModal && (
+        <SubmitBidModal
+          bidId={bidId}
+          onClose={() => setShowSubmitModal(false)}
+          onSubmitted={() => {
+            setShowSubmitModal(false);
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

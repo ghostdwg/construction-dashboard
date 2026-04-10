@@ -13,15 +13,30 @@ export async function POST(
     return Response.json({ error: "Invalid id" }, { status: 400 });
   }
 
+  // SECURITY: Use explicit select to avoid leaking internal fields like isPreferred
+  // This route exports to a file that may be sent to subs themselves.
   const bid = await prisma.bid.findUnique({
     where: { id: bidId },
-    include: {
+    select: {
+      id: true,
+      projectName: true,
       selections: {
-        include: {
+        select: {
+          id: true,
+          tradeId: true,
+          subcontractorId: true,
           subcontractor: {
-            include: {
-              contacts: { where: { isPrimary: true }, take: 1 },
-              subTrades: { include: { trade: true } },
+            select: {
+              id: true,
+              company: true,
+              contacts: {
+                where: { isPrimary: true },
+                take: 1,
+                select: { name: true, email: true, phone: true },
+              },
+              subTrades: {
+                select: { tradeId: true, trade: { select: { name: true } } },
+              },
             },
           },
         },

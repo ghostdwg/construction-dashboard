@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -41,15 +41,17 @@ export default function EstimateIntelligenceCard({ bidId }: { bidId: number }) {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/bids/${bidId}/estimates/intelligence`);
-      if (res.ok) setData(await res.json());
-    } catch { /* ignore */ }
-    setLoading(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/bids/${bidId}/estimates/intelligence`);
+        if (!cancelled && res.ok) setData(await res.json());
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [bidId]);
-
-  useEffect(() => { load(); }, [load]);
 
   if (loading) return <div className="h-10 rounded-md bg-zinc-100 animate-pulse" />;
   if (!data || !data.generated || data.summary.totalEstimates === 0) return null;

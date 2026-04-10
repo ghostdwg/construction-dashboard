@@ -54,6 +54,37 @@ model Bid {
   drawingUploads      DrawingUpload[]
   addendums           AddendumUpload[]
   intelligenceBrief   BidIntelligenceBrief?
+  submission          BidSubmission?
+}
+
+model BidSubmission {
+  id                   Int       @id @default(autoincrement())
+  bidId                Int       @unique
+  submittedAt          DateTime  @default(now())
+  submittedBy          String?
+  ourBidAmount         Float?
+  notes                String?
+
+  // Frozen snapshots (JSON)
+  briefSnapshot        String?
+  questionSnapshot     String?
+  complianceSnapshot   String?
+  spreadSnapshot       String?
+  gateSnapshot         String?
+  intelligenceSnapshot String?
+
+  // Outcome fields (D2)
+  outcome              String?
+  outcomeAt            DateTime?
+  winningBidAmount     Float?
+  ourRank              Int?
+  totalBidders         Int?
+  lostReason           String?
+  lostReasonNote       String?
+  lessonsLearned       String?
+  outcomeNotes         String?
+
+  bid Bid @relation(fields: [bidId], references: [id])
 }
 
 model BidTrade {
@@ -91,6 +122,11 @@ model Subcontractor {
   internalNotes   String?
   doNotUse        Boolean  @default(false)
   doNotUseReason  String?
+
+  // INTERNAL ONLY — never expose in AI prompts, recipient exports, or sub-facing artifacts
+  isPreferred     Boolean @default(false)
+  // External system reference (Procore vendor id) — used for re-import dedup
+  procoreVendorId String? @unique
 
   contacts           Contact[]
   subTrades          SubcontractorTrade[]

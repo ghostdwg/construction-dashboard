@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   BarChart,
@@ -172,7 +173,15 @@ export default function ReportsPage() {
 
   return (
     <div className="max-w-6xl mx-auto py-10 px-4">
-      <h1 className="text-2xl font-semibold mb-8">Reports</h1>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-2xl font-semibold">Reports</h1>
+        <Link
+          href="/reports/post-bid"
+          className="text-sm text-blue-600 hover:underline"
+        >
+          Post-Bid Analytics →
+        </Link>
+      </div>
 
       {/* SECTION 1 — Summary Cards */}
       <Section title="Summary">

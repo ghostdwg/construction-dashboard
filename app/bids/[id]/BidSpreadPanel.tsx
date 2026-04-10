@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -80,22 +80,25 @@ export default function BidSpreadPanel({ bidId }: { bidId: number }) {
   const [loading, setLoading] = useState(true);
   const [expandedTrade, setExpandedTrade] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const [spreadRes, valueRes] = await Promise.all([
-        fetch(`/api/bids/${bidId}/estimates/spread`),
-        fetch(`/api/bids/${bidId}/estimates/value-matrix`),
-      ]);
-      if (spreadRes.ok) setSpread(await spreadRes.json());
-      if (valueRes.ok) {
-        const vd = await valueRes.json();
-        setValueData(vd.trades ?? null);
-      }
-    } catch { /* ignore */ }
-    setLoading(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [spreadRes, valueRes] = await Promise.all([
+          fetch(`/api/bids/${bidId}/estimates/spread`),
+          fetch(`/api/bids/${bidId}/estimates/value-matrix`),
+        ]);
+        if (cancelled) return;
+        if (spreadRes.ok) setSpread(await spreadRes.json());
+        if (valueRes.ok) {
+          const vd = await valueRes.json();
+          if (!cancelled) setValueData(vd.trades ?? null);
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [bidId]);
-
-  useEffect(() => { load(); }, [load]);
 
   if (loading) return <div className="h-12 rounded-md bg-zinc-100 animate-pulse" />;
   if (!spread || spread.trades.length === 0) return null;

@@ -36,6 +36,12 @@ export default async function SubcontractorsPage({
     <div className="max-w-5xl mx-auto py-10 px-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Subcontractors</h1>
+        <Link
+          href="/subcontractors/import"
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:border-zinc-500 hover:bg-zinc-50"
+        >
+          Import CSV
+        </Link>
       </div>
 
       <div className="mb-5">
@@ -65,12 +71,17 @@ export default async function SubcontractorsPage({
                 return (
                   <tr key={sub.id} className="hover:bg-zinc-50 border-b border-zinc-100 last:border-0">
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/subcontractors/${sub.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {sub.company}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        {sub.isPreferred && (
+                          <span title="Preferred (internal only)" className="text-amber-600 text-sm leading-none">★</span>
+                        )}
+                        <Link
+                          href={`/subcontractors/${sub.id}`}
+                          className="font-medium hover:underline"
+                        >
+                          {sub.company}
+                        </Link>
+                      </div>
                       {sub.office && (
                         <span className="block text-xs text-zinc-400">{sub.office}</span>
                       )}
