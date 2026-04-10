@@ -100,7 +100,7 @@ export default function BidSpreadPanel({ bidId }: { bidId: number }) {
     return () => { cancelled = true; };
   }, [bidId]);
 
-  if (loading) return <div className="h-12 rounded-md bg-zinc-100 animate-pulse" />;
+  if (loading) return <div className="h-12 rounded-md bg-zinc-100 animate-pulse dark:bg-zinc-800" />;
   if (!spread || spread.trades.length === 0) return null;
 
   // Merge value data into spread data
@@ -116,8 +116,8 @@ export default function BidSpreadPanel({ bidId }: { bidId: number }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-800">Bid Spread</h3>
-        <span className="text-xs text-zinc-400">
+        <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Bid Spread</h3>
+        <span className="text-xs text-zinc-400 dark:text-zinc-500">
           {spread.overall.tradesWithPricing} trade{spread.overall.tradesWithPricing !== 1 ? "s" : ""} with pricing
         </span>
       </div>
@@ -135,19 +135,19 @@ export default function BidSpreadPanel({ bidId }: { bidId: number }) {
               {/* Trade header + spread bar */}
               <button
                 onClick={() => setExpandedTrade(isExpanded ? null : trade.tradeId)}
-                className="w-full px-4 py-3 flex items-center gap-4 hover:bg-zinc-50 text-left"
+                className="w-full px-4 py-3 flex items-center gap-4 hover:bg-zinc-50 text-left dark:hover:bg-zinc-800"
               >
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium text-zinc-800">{trade.tradeName}</span>
-                  <span className="ml-2 text-xs text-zinc-400">
+                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{trade.tradeName}</span>
+                  <span className="ml-2 text-xs text-zinc-400 dark:text-zinc-500">
                     {trade.estimates.length} estimate{trade.estimates.length !== 1 ? "s" : ""}
                   </span>
                 </div>
 
                 {/* Inline spread summary */}
                 <div className="flex items-center gap-3 text-xs shrink-0">
-                  <span className="text-zinc-500">{fmtDollar(trade.spread.min)}</span>
-                  <div className="w-24 h-2 bg-zinc-100 rounded-full relative">
+                  <span className="text-zinc-500 dark:text-zinc-400">{fmtDollar(trade.spread.min)}</span>
+                  <div className="w-24 h-2 bg-zinc-100 rounded-full relative dark:bg-zinc-800">
                     {trade.estimates.map((est, i) => {
                       const pct = trade.spread.range > 0
                         ? ((est.total - trade.spread.min) / trade.spread.range) * 100
@@ -162,23 +162,23 @@ export default function BidSpreadPanel({ bidId }: { bidId: number }) {
                       );
                     })}
                   </div>
-                  <span className="text-zinc-500">{fmtDollar(trade.spread.max)}</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">{fmtDollar(trade.spread.max)}</span>
                   {isOutlier && (
-                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700">
+                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                       {trade.spread.rangePercent}% spread
                     </span>
                   )}
                 </div>
 
-                <span className="text-zinc-400 text-xs">{isExpanded ? "▲" : "▼"}</span>
+                <span className="text-zinc-400 text-xs dark:text-zinc-500">{isExpanded ? "▲" : "▼"}</span>
               </button>
 
               {/* Expanded detail */}
               {isExpanded && (
-                <div className="border-t border-zinc-100 px-4 py-3">
+                <div className="border-t border-zinc-100 px-4 py-3 dark:border-zinc-800">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="text-zinc-400 text-left">
+                      <tr className="text-zinc-400 text-left dark:text-zinc-500">
                         <th className="pb-2 font-medium">Sub</th>
                         <th className="pb-2 font-medium text-right">Total</th>
                         <th className="pb-2 font-medium text-right">vs Median</th>
@@ -199,7 +199,7 @@ export default function BidSpreadPanel({ bidId }: { bidId: number }) {
 
                           return (
                             <tr key={est.subToken} className="border-t border-zinc-50">
-                              <td className="py-2 font-mono text-zinc-700">{est.subToken}</td>
+                              <td className="py-2 font-mono text-zinc-700 dark:text-zinc-200">{est.subToken}</td>
                               <td className={`py-2 text-right font-medium ${posStyle}`}>
                                 {fmtDollar(est.total)}
                               </td>
@@ -207,7 +207,7 @@ export default function BidSpreadPanel({ bidId }: { bidId: number }) {
                                 {deviation >= 0 ? "+" : ""}{Math.round(deviation)}%
                               </td>
                               {valueData && (
-                                <td className="py-2 text-right text-zinc-600">
+                                <td className="py-2 text-right text-zinc-600 dark:text-zinc-300">
                                   {ve ? `${Math.round(ve.scopeCoverage * 100)}%` : "—"}
                                 </td>
                               )}
@@ -225,7 +225,7 @@ export default function BidSpreadPanel({ bidId }: { bidId: number }) {
                         })}
                     </tbody>
                   </table>
-                  <div className="mt-2 pt-2 border-t border-zinc-100 text-xs text-zinc-400 flex gap-4">
+                  <div className="mt-2 pt-2 border-t border-zinc-100 text-xs text-zinc-400 flex gap-4 dark:border-zinc-800 dark:text-zinc-500">
                     <span>Median: {fmtDollar(trade.spread.median)}</span>
                     <span>Range: {fmtDollar(trade.spread.range)}</span>
                   </div>

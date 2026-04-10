@@ -161,25 +161,25 @@ export default function ScopeTab({ bidId }: { bidId: number }) {
   const unassignedCount = data.unassigned.length;
   const riskCount = allItems.filter((i) => i.riskFlag).length;
 
-  if (loading) return <p className="text-sm text-zinc-400">Loading…</p>;
+  if (loading) return <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>;
   if (fetchError) return <p className="text-sm text-red-500">Error: {fetchError}</p>;
 
   return (
     <div className="flex flex-col gap-8">
       {/* Summary bar */}
-      <div className="flex gap-6 rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 text-sm">
-        <span className="text-zinc-700">
+      <div className="flex gap-6 rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+        <span className="text-zinc-700 dark:text-zinc-200">
           <span className="font-semibold">{totalCount}</span>{" "}
-          <span className="text-zinc-500">total</span>
+          <span className="text-zinc-500 dark:text-zinc-400">total</span>
         </span>
-        <span className="text-zinc-700">
+        <span className="text-zinc-700 dark:text-zinc-200">
           <span className="font-semibold">{assignedCount}</span>{" "}
-          <span className="text-zinc-500">assigned</span>
+          <span className="text-zinc-500 dark:text-zinc-400">assigned</span>
         </span>
         {unassignedCount > 0 && (
-          <span className="text-zinc-700">
+          <span className="text-zinc-700 dark:text-zinc-200">
             <span className="font-semibold">{unassignedCount}</span>{" "}
-            <span className="text-zinc-500">unassigned</span>
+            <span className="text-zinc-500 dark:text-zinc-400">unassigned</span>
           </span>
         )}
         {riskCount > 0 && (
@@ -260,14 +260,14 @@ function TradeSection({
   return (
     <section>
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+        <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:text-zinc-400">
           {label}
-          <span className="ml-2 font-normal text-zinc-400">({items.length})</span>
+          <span className="ml-2 font-normal text-zinc-400 dark:text-zinc-500">({items.length})</span>
         </h3>
         {!isAddOpen && (
           <button
             onClick={onOpenAdd}
-            className="text-xs text-zinc-500 hover:text-zinc-900 border border-zinc-300 rounded px-2 py-0.5 hover:border-zinc-400"
+            className="text-xs text-zinc-500 hover:text-zinc-900 border border-zinc-300 rounded px-2 py-0.5 hover:border-zinc-400 dark:text-zinc-400 dark:hover:text-zinc-100 dark:border-zinc-600"
           >
             + Add item
           </button>
@@ -275,13 +275,13 @@ function TradeSection({
       </div>
 
       {items.length > 0 && (
-        <div className="border border-zinc-200 rounded-md overflow-hidden mb-3">
+        <div className="border border-zinc-200 rounded-md overflow-hidden mb-3 dark:border-zinc-700">
           <table className="w-full text-sm">
             <tbody>
               {items.map((item) => (
                 <tr
                   key={item.id}
-                  className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50"
+                  className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800"
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-start gap-2">
@@ -298,7 +298,7 @@ function TradeSection({
                       {item.restricted && (
                         <span
                           title="Restricted"
-                          className="shrink-0 mt-0.5 text-zinc-400"
+                          className="shrink-0 mt-0.5 text-zinc-400 dark:text-zinc-500"
                           aria-label="Restricted"
                         >
                           🔒
@@ -306,14 +306,14 @@ function TradeSection({
                       )}
                     </div>
                     {(item.specSection || item.drawingRef) && (
-                      <p className="text-xs text-zinc-400 mt-0.5">
+                      <p className="text-xs text-zinc-400 mt-0.5 dark:text-zinc-500">
                         {item.specSection && <span>Spec {item.specSection}</span>}
                         {item.specSection && item.drawingRef && <span className="mx-1">·</span>}
                         {item.drawingRef && <span>Dwg {item.drawingRef}</span>}
                       </p>
                     )}
                     {item.notes && (
-                      <p className="text-xs text-zinc-400 mt-0.5 italic">{item.notes}</p>
+                      <p className="text-xs text-zinc-400 mt-0.5 italic dark:text-zinc-500">{item.notes}</p>
                     )}
                   </td>
                   <td className="px-4 py-3 w-32 text-right align-top">
@@ -321,8 +321,8 @@ function TradeSection({
                       <span
                         className={`rounded px-1.5 py-0.5 text-xs ${
                           item.inclusion
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-600"
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                            : "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400"
                         }`}
                       >
                         {item.inclusion ? "Included" : "Excluded"}
@@ -330,7 +330,7 @@ function TradeSection({
                       <button
                         onClick={() => onRemove(item)}
                         disabled={removing === item.id}
-                        className="text-xs text-zinc-400 hover:text-red-600 disabled:opacity-50"
+                        className="text-xs text-zinc-400 hover:text-red-600 disabled:opacity-50 dark:text-zinc-500"
                       >
                         {removing === item.id ? "…" : "Remove"}
                       </button>
@@ -346,7 +346,7 @@ function TradeSection({
       {isAddOpen && (
         <form
           onSubmit={onSubmitAdd}
-          className="border border-zinc-200 rounded-md p-4 bg-zinc-50 flex flex-col gap-3"
+          className="border border-zinc-200 rounded-md p-4 bg-zinc-50 flex flex-col gap-3 dark:border-zinc-700 dark:bg-zinc-800"
         >
           <textarea
             value={form.description}
@@ -354,7 +354,7 @@ function TradeSection({
             placeholder="Scope item description (required)"
             rows={2}
             required
-            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none dark:border-zinc-600 dark:bg-zinc-900"
           />
           <div className="grid grid-cols-2 gap-3">
             <select
@@ -365,7 +365,7 @@ function TradeSection({
                   tradeId: e.target.value === "" ? "" : parseInt(e.target.value, 10),
                 }))
               }
-              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-zinc-600 dark:bg-zinc-900"
             >
               <option value="">No trade (unassigned)</option>
               {bidTrades.map((t) => (
@@ -376,14 +376,14 @@ function TradeSection({
             </select>
 
             {/* Inclusion toggle */}
-            <div className="flex rounded border border-zinc-300 overflow-hidden text-sm">
+            <div className="flex rounded border border-zinc-300 overflow-hidden text-sm dark:border-zinc-600">
               <button
                 type="button"
                 onClick={() => setForm((f) => ({ ...f, inclusion: true }))}
                 className={`flex-1 py-2 text-center ${
                   form.inclusion
                     ? "bg-green-600 text-white"
-                    : "bg-white text-zinc-500 hover:bg-zinc-50"
+                    : "bg-white text-zinc-500 hover:bg-zinc-50 dark:text-zinc-400"
                 }`}
               >
                 Included
@@ -394,7 +394,7 @@ function TradeSection({
                 className={`flex-1 py-2 text-center border-l border-zinc-300 ${
                   !form.inclusion
                     ? "bg-red-500 text-white"
-                    : "bg-white text-zinc-500 hover:bg-zinc-50"
+                    : "bg-white text-zinc-500 hover:bg-zinc-50 dark:text-zinc-400"
                 }`}
               >
                 Excluded
@@ -405,13 +405,13 @@ function TradeSection({
               value={form.specSection}
               onChange={(e) => setForm((f) => ({ ...f, specSection: e.target.value }))}
               placeholder="Spec section (e.g. 26 00 00)"
-              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-zinc-600 dark:bg-zinc-900"
             />
             <input
               value={form.drawingRef}
               onChange={(e) => setForm((f) => ({ ...f, drawingRef: e.target.value }))}
               placeholder="Drawing ref (e.g. E-101)"
-              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-zinc-600 dark:bg-zinc-900"
             />
           </div>
 
@@ -419,11 +419,11 @@ function TradeSection({
             value={form.notes}
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             placeholder="Notes (optional)"
-            className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-zinc-600 dark:bg-zinc-900"
           />
 
           <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm text-zinc-600 cursor-pointer">
+            <label className="flex items-center gap-2 text-sm text-zinc-600 cursor-pointer dark:text-zinc-300">
               <input
                 type="checkbox"
                 checked={form.riskFlag}
@@ -436,7 +436,7 @@ function TradeSection({
               <button
                 type="button"
                 onClick={onCloseAdd}
-                className="rounded px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-800 border border-zinc-300 hover:border-zinc-400"
+                className="rounded px-3 py-1.5 text-sm text-zinc-500 hover:text-zinc-800 border border-zinc-300 hover:border-zinc-400 dark:text-zinc-400 dark:hover:text-zinc-100 dark:border-zinc-600"
               >
                 Cancel
               </button>
@@ -453,7 +453,7 @@ function TradeSection({
       )}
 
       {items.length === 0 && !isAddOpen && (
-        <p className="text-xs text-zinc-400 italic">No items.</p>
+        <p className="text-xs text-zinc-400 italic dark:text-zinc-500">No items.</p>
       )}
     </section>
   );

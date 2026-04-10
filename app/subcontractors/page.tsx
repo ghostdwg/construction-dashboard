@@ -38,7 +38,7 @@ export default async function SubcontractorsPage({
         <h1 className="text-2xl font-semibold">Subcontractors</h1>
         <Link
           href="/subcontractors/import"
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:border-zinc-500 hover:bg-zinc-50"
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:border-zinc-500 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
         >
           Import CSV
         </Link>
@@ -51,25 +51,25 @@ export default async function SubcontractorsPage({
       </div>
 
       {subs.length === 0 ? (
-        <p className="text-sm text-zinc-500">No subcontractors found.</p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">No subcontractors found.</p>
       ) : (
-        <div className="border border-zinc-200 rounded-md overflow-hidden">
+        <div className="border border-zinc-200 rounded-md overflow-hidden dark:border-zinc-700">
           <table className="w-full text-sm">
-            <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+            <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:text-zinc-400">
               <tr>
-                <th className="px-4 py-3 border-b border-zinc-200">Company</th>
-                <th className="px-4 py-3 border-b border-zinc-200">Trades</th>
-                <th className="px-4 py-3 border-b border-zinc-200">Primary Contact</th>
-                <th className="px-4 py-3 border-b border-zinc-200">Tags</th>
-                <th className="px-4 py-3 border-b border-zinc-200">Tier</th>
-                <th className="px-4 py-3 border-b border-zinc-200">Status</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Company</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Trades</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Primary Contact</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Tags</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Tier</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Status</th>
               </tr>
             </thead>
             <tbody>
               {subs.map((sub) => {
                 const contact = sub.contacts[0] ?? null;
                 return (
-                  <tr key={sub.id} className="hover:bg-zinc-50 border-b border-zinc-100 last:border-0">
+                  <tr key={sub.id} className="hover:bg-zinc-50 border-b border-zinc-100 last:border-0 dark:hover:bg-zinc-800 dark:border-zinc-800">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {sub.isPreferred && (
@@ -83,18 +83,18 @@ export default async function SubcontractorsPage({
                         </Link>
                       </div>
                       {sub.office && (
-                        <span className="block text-xs text-zinc-400">{sub.office}</span>
+                        <span className="block text-xs text-zinc-400 dark:text-zinc-500">{sub.office}</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {sub.subTrades.length === 0 ? (
-                          <span className="text-zinc-400">—</span>
+                          <span className="text-zinc-400 dark:text-zinc-500">—</span>
                         ) : (
                           sub.subTrades.map((st) => (
                             <span
                               key={st.id}
-                              className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
+                              className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
                             >
                               {st.trade.name}
                             </span>
@@ -102,37 +102,37 @@ export default async function SubcontractorsPage({
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-zinc-600">
+                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">
                       {contact ? (
                         <>
                           <span>{contact.name}</span>
                           {contact.email && (
-                            <span className="block text-xs text-zinc-400">{contact.email}</span>
+                            <span className="block text-xs text-zinc-400 dark:text-zinc-500">{contact.email}</span>
                           )}
                         </>
                       ) : (
-                        <span className="text-zinc-400">—</span>
+                        <span className="text-zinc-400 dark:text-zinc-500">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
                         {sub.isUnion && (
-                          <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">
+                          <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
                             Union
                           </span>
                         )}
                         {sub.isMWBE && (
-                          <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">
+                          <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
                             MWBE
                           </span>
                         )}
                         {sub.doNotUse && (
-                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700">
+                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-700 dark:bg-red-900/40 dark:text-red-300">
                             DNU
                           </span>
                         )}
                         {!sub.isUnion && !sub.isMWBE && !sub.doNotUse && (
-                          <span className="text-zinc-400">—</span>
+                          <span className="text-zinc-400 dark:text-zinc-500">—</span>
                         )}
                       </div>
                     </td>

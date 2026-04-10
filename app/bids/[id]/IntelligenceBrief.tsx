@@ -59,15 +59,15 @@ function parseJson<T>(raw: string | null): T | null {
 }
 
 const SEVERITY_STYLES: Record<string, string> = {
-  critical: "bg-red-100 text-red-700",
-  moderate: "bg-amber-100 text-amber-700",
-  low: "bg-zinc-100 text-zinc-500",
+  critical: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  moderate: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  low: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
 const URGENCY_STYLES: Record<string, string> = {
-  before_invite: "bg-red-100 text-red-700",
-  before_bid_day: "bg-amber-100 text-amber-700",
-  post_award: "bg-zinc-100 text-zinc-500",
+  before_invite: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  before_bid_day: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  post_award: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
 const URGENCY_LABELS: Record<string, string> = {
@@ -89,15 +89,15 @@ function BriefSection({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-md border border-zinc-200 overflow-hidden">
+    <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 transition-colors text-left dark:text-zinc-100 dark:hover:bg-zinc-800"
       >
         <span>{title}</span>
-        <span className="text-zinc-400 text-xs font-normal">{open ? "▲ hide" : "▼ show"}</span>
+        <span className="text-zinc-400 text-xs font-normal dark:text-zinc-500">{open ? "▲ hide" : "▼ show"}</span>
       </button>
-      {open && <div className="border-t border-zinc-200 px-4 py-4">{children}</div>}
+      {open && <div className="border-t border-zinc-200 px-4 py-4 dark:border-zinc-700">{children}</div>}
     </div>
   );
 }
@@ -164,7 +164,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
   // ----- STATE 1 — Loading -----
 
   if (brief === undefined) {
-    return <p className="text-sm text-zinc-400">Loading…</p>;
+    return <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>;
   }
 
   // ----- STATE 1 — No brief yet -----
@@ -189,15 +189,15 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
 
   if (brief === null) {
     return (
-      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-6 flex flex-col gap-3 items-start">
-        <p className="text-sm text-zinc-500">
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-6 flex flex-col gap-3 items-start dark:border-zinc-700 dark:bg-zinc-800">
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
           Upload a spec book, drawing index, or addendum in the Documents tab to generate your
           project intelligence brief.
         </p>
         <div className="flex gap-2">
           <button
             onClick={() => router.push(`?tab=documents`)}
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:border-zinc-500 hover:text-zinc-900"
+            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
           >
             Go to Documents tab
           </button>
@@ -220,10 +220,10 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
 
   if (brief.status === "generating") {
     return (
-      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-6">
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-6 dark:border-zinc-700 dark:bg-zinc-800">
         <div className="flex items-center gap-3">
           <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent" />
-          <p className="text-sm text-zinc-500">Analyzing project documents…</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Analyzing project documents…</p>
         </div>
       </div>
     );
@@ -291,7 +291,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       {/* STATE 5 — Stub mode dev badge */}
       {isStubMode && (
         <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
-          <span className="rounded bg-blue-200 px-1.5 py-0.5 text-xs font-semibold text-blue-800 uppercase tracking-wide">
+          <span className="rounded bg-blue-200 px-1.5 py-0.5 text-xs font-semibold text-blue-800 uppercase tracking-wide dark:bg-blue-900/60 dark:text-blue-300">
             Dev
           </span>
           <span className="text-xs text-blue-700">Stub data — live generation disabled</span>
@@ -306,7 +306,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
           </p>
           <button
             onClick={() => router.push(`?tab=documents`)}
-            className="shrink-0 rounded border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200"
+            className="shrink-0 rounded border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300"
           >
             Go to Documents →
           </button>
@@ -314,7 +314,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       )}
 
       {regenError && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
           {regenError}
         </p>
       )}
@@ -322,7 +322,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       {/* 1 — What is this job */}
       {brief.whatIsThisJob && (
         <BriefSection title="What Is This Job" defaultOpen>
-          <p className="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap">
+          <p className="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap dark:text-zinc-200">
             {brief.whatIsThisJob}
           </p>
         </BriefSection>
@@ -331,7 +331,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       {/* 2 — How it gets built */}
       {brief.howItGetsBuilt && (
         <BriefSection title="How It Gets Built" defaultOpen>
-          <p className="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap">
+          <p className="text-sm text-zinc-700 leading-relaxed whitespace-pre-wrap dark:text-zinc-200">
             {brief.howItGetsBuilt}
           </p>
         </BriefSection>
@@ -342,20 +342,20 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
         <BriefSection title={`Risk Flags (${sortedRiskFlags.length})`} defaultOpen>
           <div className="flex flex-col gap-3">
             {sortedRiskFlags.map((f, i) => (
-              <div key={i} className="rounded-md border border-zinc-100 bg-zinc-50 p-3 flex flex-col gap-1.5">
+              <div key={i} className="rounded-md border border-zinc-100 bg-zinc-50 p-3 flex flex-col gap-1.5 dark:border-zinc-800 dark:bg-zinc-800">
                 <div className="flex items-center gap-2">
                   <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${SEVERITY_STYLES[f.severity] ?? "bg-zinc-100 text-zinc-500"}`}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${SEVERITY_STYLES[f.severity] ?? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}
                   >
                     {f.severity}
                   </span>
-                  <span className="text-xs text-zinc-500">Found in: {f.foundIn}</span>
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">Found in: {f.foundIn}</span>
                 </div>
-                <p className="text-sm font-medium text-zinc-800">{f.flag}</p>
-                <p className="text-xs text-zinc-500">Impact: {f.potentialImpact}</p>
-                <p className="text-xs text-zinc-500">Confirm before: {f.confirmBefore}</p>
+                <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{f.flag}</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Impact: {f.potentialImpact}</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Confirm before: {f.confirmBefore}</p>
                 {f.recommendedAction && (
-                  <p className="text-xs text-zinc-700 border-t border-zinc-200 pt-1.5 mt-0.5">
+                  <p className="text-xs text-zinc-700 border-t border-zinc-200 pt-1.5 mt-0.5 dark:text-zinc-200 dark:border-zinc-700">
                     <span className="font-medium">Recommended action:</span> {f.recommendedAction}
                   </p>
                 )}
@@ -370,15 +370,15 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
         <BriefSection title={`Assumptions to Resolve (${sortedAssumptions.length})`}>
           <div className="flex flex-col gap-2">
             {sortedAssumptions.map((a, i) => (
-              <div key={i} className="flex gap-3 items-start py-2 border-b border-zinc-100 last:border-0">
+              <div key={i} className="flex gap-3 items-start py-2 border-b border-zinc-100 last:border-0 dark:border-zinc-800">
                 <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium mt-0.5 ${URGENCY_STYLES[a.urgency] ?? "bg-zinc-100 text-zinc-500"}`}
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium mt-0.5 ${URGENCY_STYLES[a.urgency] ?? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}
                 >
                   {URGENCY_LABELS[a.urgency] ?? a.urgency}
                 </span>
                 <div className="flex flex-col gap-0.5">
-                  <p className="text-sm text-zinc-700">{a.assumption}</p>
-                  <p className="text-xs text-zinc-400">Ref: {a.sourceRef}</p>
+                  <p className="text-sm text-zinc-700 dark:text-zinc-200">{a.assumption}</p>
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500">Ref: {a.sourceRef}</p>
                 </div>
               </div>
             ))}
@@ -391,14 +391,14 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
         <BriefSection title={`Addendum Summary (${addendumSummary.length})`}>
           <div className="flex flex-col gap-3">
             {addendumSummary.map((a, i) => (
-              <div key={i} className="rounded-md border border-zinc-100 bg-zinc-50 p-3 flex flex-col gap-1.5">
-                <p className="text-sm font-semibold text-zinc-800">
+              <div key={i} className="rounded-md border border-zinc-100 bg-zinc-50 p-3 flex flex-col gap-1.5 dark:border-zinc-800 dark:bg-zinc-800">
+                <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
                   Addendum {a.addendumNumber}
                   {a.addendumDate ? ` — ${a.addendumDate}` : ""}
                 </p>
-                <p className="text-sm text-zinc-700">{a.changes}</p>
+                <p className="text-sm text-zinc-700 dark:text-zinc-200">{a.changes}</p>
                 {a.supersedes && (
-                  <p className="text-xs text-zinc-500">Supersedes: {a.supersedes}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Supersedes: {a.supersedes}</p>
                 )}
                 {a.riskFlags?.length > 0 && (
                   <ul className="mt-1 flex flex-col gap-0.5">
@@ -417,7 +417,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between pt-1 text-xs text-zinc-400">
+      <div className="flex items-center justify-between pt-1 text-xs text-zinc-400 dark:text-zinc-500">
         <div className="flex flex-col gap-0.5">
           <span>Generated {new Date(brief.generatedAt).toLocaleString()}</span>
           {sourceContext?.generatedFrom && (
@@ -428,7 +428,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
         <button
           onClick={regenerate}
           disabled={regenerating || brief.status === "generating"}
-          className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-50"
+          className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200"
         >
           {regenerating ? "Regenerating…" : "Regenerate brief"}
         </button>

@@ -38,7 +38,7 @@ export default function AddContactForm({ subId }: { subId: number }) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="text-sm text-zinc-500 border border-zinc-300 rounded-md px-3 py-1.5 hover:bg-zinc-50"
+        className="text-sm text-zinc-500 border border-zinc-300 rounded-md px-3 py-1.5 hover:bg-zinc-50 dark:text-zinc-400 dark:border-zinc-600 dark:hover:bg-zinc-800"
       >
         + Add Contact
       </button>
@@ -48,47 +48,47 @@ export default function AddContactForm({ subId }: { subId: number }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="border border-zinc-200 rounded-md p-4 flex flex-col gap-3 bg-zinc-50"
+      className="border border-zinc-200 rounded-md p-4 flex flex-col gap-3 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800"
     >
       <h3 className="text-sm font-semibold">New Contact</h3>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-600">Name *</label>
+          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Name *</label>
           <input
             autoFocus
             type="text"
             value={fields.name}
             onChange={set("name")}
             required
-            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-600">Title</label>
+          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Title</label>
           <input
             type="text"
             value={fields.title}
             onChange={set("title")}
-            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-600">Email</label>
+          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Email</label>
           <input
             type="email"
             value={fields.email}
             onChange={set("email")}
-            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-600">Phone</label>
+          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Phone</label>
           <input
             type="tel"
             value={fields.phone}
             onChange={set("phone")}
-            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
       </div>
@@ -107,7 +107,7 @@ export default function AddContactForm({ subId }: { subId: number }) {
         <button
           type="button"
           onClick={close}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-white"
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-white dark:border-zinc-600"
         >
           Cancel
         </button>

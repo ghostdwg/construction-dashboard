@@ -95,7 +95,7 @@ export default function SubmissionPanel({ bidId }: { bidId: number }) {
     return () => { cancelled = true; };
   }, [bidId]);
 
-  if (submission === undefined) return <div className="h-12 rounded-md bg-zinc-100 animate-pulse" />;
+  if (submission === undefined) return <div className="h-12 rounded-md bg-zinc-100 animate-pulse dark:bg-zinc-800" />;
   if (!submission) return null;
 
   const brief = parseSnap<SnapshotData["brief"]>(submission.briefSnapshot);
@@ -111,14 +111,14 @@ export default function SubmissionPanel({ bidId }: { bidId: number }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-zinc-800">Bid Submission</h2>
+      <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Bid Submission</h2>
 
-      <div className="rounded-md border border-zinc-200 bg-white p-4 flex flex-col gap-3">
+      <div className="rounded-md border border-zinc-200 bg-white p-4 flex flex-col gap-3 dark:border-zinc-700 dark:bg-zinc-900">
         {/* Header row */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-zinc-800">
+              <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
                 Submitted {new Date(submission.submittedAt).toLocaleDateString()}
               </span>
               {outcomeStyle && (
@@ -128,13 +128,13 @@ export default function SubmissionPanel({ bidId }: { bidId: number }) {
               )}
             </div>
             {submission.submittedBy && (
-              <span className="text-xs text-zinc-500">By {submission.submittedBy}</span>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">By {submission.submittedBy}</span>
             )}
           </div>
 
           <div className="flex flex-col items-end gap-1">
             {submission.ourBidAmount != null && (
-              <span className="text-base font-semibold text-zinc-800">
+              <span className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
                 {fmtDollar(submission.ourBidAmount)}
               </span>
             )}
@@ -149,7 +149,7 @@ export default function SubmissionPanel({ bidId }: { bidId: number }) {
 
         {/* Outcome detail */}
         {submission.outcome === "lost" && submission.winningBidAmount && (
-          <div className="rounded-md bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-700">
+          <div className="rounded-md bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">
             Winning bid: <span className="font-semibold">{fmtDollar(submission.winningBidAmount)}</span>
             {bidGap != null && bidGap > 0 && (
               <> — we were <span className="font-semibold">{fmtDollar(bidGap)}</span> higher</>
@@ -164,61 +164,61 @@ export default function SubmissionPanel({ bidId }: { bidId: number }) {
         )}
 
         {submission.lessonsLearned && (
-          <div className="rounded-md bg-zinc-50 border border-zinc-100 px-3 py-2">
-            <p className="text-xs font-medium text-zinc-600 mb-0.5">Lessons learned</p>
-            <p className="text-xs text-zinc-700 whitespace-pre-wrap">{submission.lessonsLearned}</p>
+          <div className="rounded-md bg-zinc-50 border border-zinc-100 px-3 py-2 dark:bg-zinc-800 dark:border-zinc-800">
+            <p className="text-xs font-medium text-zinc-600 mb-0.5 dark:text-zinc-300">Lessons learned</p>
+            <p className="text-xs text-zinc-700 whitespace-pre-wrap dark:text-zinc-200">{submission.lessonsLearned}</p>
           </div>
         )}
 
         {submission.notes && (
-          <p className="text-xs text-zinc-500 italic">{submission.notes}</p>
+          <p className="text-xs text-zinc-500 italic dark:text-zinc-400">{submission.notes}</p>
         )}
 
         {/* Snapshot toggle */}
         <button
           onClick={() => setSnapshotOpen(!snapshotOpen)}
-          className="text-xs text-zinc-500 hover:text-zinc-700 self-start"
+          className="text-xs text-zinc-500 hover:text-zinc-700 self-start dark:text-zinc-400 dark:hover:text-zinc-200"
         >
           {snapshotOpen ? "▲ Hide snapshot" : "▼ Show submission snapshot"}
         </button>
 
         {snapshotOpen && (
-          <div className="border-t border-zinc-100 pt-3 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+          <div className="border-t border-zinc-100 pt-3 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs dark:border-zinc-800">
             {brief && (
               <div>
-                <p className="font-medium text-zinc-600 mb-1">Brief</p>
-                <p className="text-zinc-500">{brief.riskFlagCount} risk flags ({brief.criticalRiskCount} critical)</p>
-                <p className="text-zinc-500">{brief.assumptionCount} assumptions</p>
+                <p className="font-medium text-zinc-600 mb-1 dark:text-zinc-300">Brief</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{brief.riskFlagCount} risk flags ({brief.criticalRiskCount} critical)</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{brief.assumptionCount} assumptions</p>
               </div>
             )}
             {questions && (
               <div>
-                <p className="font-medium text-zinc-600 mb-1">Questions</p>
-                <p className="text-zinc-500">{questions.total} total</p>
-                <p className="text-zinc-500">{questions.criticalOpen} critical open</p>
+                <p className="font-medium text-zinc-600 mb-1 dark:text-zinc-300">Questions</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{questions.total} total</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{questions.criticalOpen} critical open</p>
                 {questions.impactFlagged > 0 && (
-                  <p className="text-zinc-500">{questions.impactFlagged} impact flagged</p>
+                  <p className="text-zinc-500 dark:text-zinc-400">{questions.impactFlagged} impact flagged</p>
                 )}
               </div>
             )}
             {compliance && (
               <div>
-                <p className="font-medium text-zinc-600 mb-1">Compliance</p>
-                <p className="text-zinc-500">{compliance.checked}/{compliance.total} ({compliance.percentage}%)</p>
+                <p className="font-medium text-zinc-600 mb-1 dark:text-zinc-300">Compliance</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{compliance.checked}/{compliance.total} ({compliance.percentage}%)</p>
               </div>
             )}
             {spread && spread.tradesWithPricing > 0 && (
               <div>
-                <p className="font-medium text-zinc-600 mb-1">Spread</p>
-                <p className="text-zinc-500">{spread.tradesWithPricing} trades priced</p>
-                <p className="text-zinc-500">{fmtDollar(spread.overallLow)} – {fmtDollar(spread.overallHigh)}</p>
+                <p className="font-medium text-zinc-600 mb-1 dark:text-zinc-300">Spread</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{spread.tradesWithPricing} trades priced</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{fmtDollar(spread.overallLow)} – {fmtDollar(spread.overallHigh)}</p>
               </div>
             )}
             {intelligence && (
               <div>
-                <p className="font-medium text-zinc-600 mb-1">Intelligence</p>
-                <p className="text-zinc-500">{intelligence.warningCount} warnings</p>
-                <p className="text-zinc-500">{intelligence.cautionCount} cautions</p>
+                <p className="font-medium text-zinc-600 mb-1 dark:text-zinc-300">Intelligence</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{intelligence.warningCount} warnings</p>
+                <p className="text-zinc-500 dark:text-zinc-400">{intelligence.cautionCount} cautions</p>
               </div>
             )}
           </div>

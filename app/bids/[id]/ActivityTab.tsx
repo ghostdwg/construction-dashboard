@@ -62,11 +62,11 @@ export default function ActivityTab({ bidId }: { bidId: number }) {
     })();
   }, [bidId]);
 
-  if (loading) return <p className="text-sm text-zinc-400">Loading…</p>;
+  if (loading) return <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>;
   if (error) return <p className="text-sm text-red-500">{error}</p>;
   if (logs.length === 0)
     return (
-      <p className="text-sm text-zinc-400">
+      <p className="text-sm text-zinc-400 dark:text-zinc-500">
         No outreach activity recorded for this bid yet.
       </p>
     );
@@ -74,7 +74,7 @@ export default function ActivityTab({ bidId }: { bidId: number }) {
   return (
     <div className="relative">
       {/* Vertical line */}
-      <div className="absolute left-[7px] top-2 bottom-2 w-px bg-zinc-200" />
+      <div className="absolute left-[7px] top-2 bottom-2 w-px bg-zinc-200 dark:bg-zinc-700" />
 
       <ol className="space-y-6 pl-6">
         {logs.map((log) => (
@@ -83,16 +83,16 @@ export default function ActivityTab({ bidId }: { bidId: number }) {
             <span className="absolute -left-6 top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-zinc-400 ring-1 ring-zinc-200" />
 
             <div>
-              <p className="text-xs text-zinc-400 mb-0.5">{activityDate(log)}</p>
+              <p className="text-xs text-zinc-400 mb-0.5 dark:text-zinc-500">{activityDate(log)}</p>
               <p className="text-sm font-medium">{activityDescription(log)}</p>
               {log.subcontractor && (
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
                   {log.subcontractor.company}
                   {log.contact ? ` · ${log.contact.name}` : ""}
                 </p>
               )}
               {log.question && (
-                <p className="text-xs text-zinc-400 mt-0.5 italic line-clamp-1">
+                <p className="text-xs text-zinc-400 mt-0.5 italic line-clamp-1 dark:text-zinc-500">
                   {log.question.tradeName ? `[${log.question.tradeName}] ` : ""}
                   {log.question.questionText}
                 </p>

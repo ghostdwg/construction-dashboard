@@ -29,10 +29,10 @@ type TimelineResponse = {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<string, string> = {
-  ON_TRACK: "bg-green-100 text-green-700",
-  AT_RISK:  "bg-amber-100 text-amber-700",
-  OVERDUE:  "bg-red-100 text-red-700",
-  COMPLETE: "bg-zinc-100 text-zinc-500",
+  ON_TRACK: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  AT_RISK:  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  OVERDUE:  "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  COMPLETE: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -258,10 +258,10 @@ export default function TradesTab({
   }
 
   const PANEL_HEADER_STYLES: Record<string, string> = {
-    red:   "bg-red-50 border-red-200 text-red-700",
-    amber: "bg-amber-50 border-amber-200 text-amber-700",
-    green: "bg-green-50 border-green-200 text-green-700",
-    gray:  "bg-zinc-50 border-zinc-200 text-zinc-400",
+    red:   "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+    amber: "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+    green: "bg-green-50 border-green-200 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+    gray:  "bg-zinc-50 border-zinc-200 text-zinc-400 dark:bg-zinc-900/40 dark:text-zinc-400",
   };
 
   return (
@@ -269,7 +269,7 @@ export default function TradesTab({
 
       {/* No due date warning */}
       {timelineLoaded && noDueDate && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
           Set a bid due date to enable procurement timeline.
         </div>
       )}
@@ -280,7 +280,7 @@ export default function TradesTab({
 
           {/* Untiered warning */}
           {unreviewedTrades.length > 0 && (
-            <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+            <div className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
               <span>
                 {unreviewedTrades.length} trade{unreviewedTrades.length !== 1 ? "s" : ""} pending tier review
               </span>
@@ -308,11 +308,11 @@ export default function TradesTab({
               }, 0);
 
               return (
-                <div key={tierVal} className="rounded-md border border-zinc-200 overflow-hidden text-sm">
+                <div key={tierVal} className="rounded-md border border-zinc-200 overflow-hidden text-sm dark:border-zinc-700">
                   <div className={`px-3 py-2 border-b font-semibold text-xs uppercase tracking-wide ${headerStyle}`}>
                     {TIER_LABELS[tierVal]}
                   </div>
-                  <div className="px-3 py-2 flex flex-col gap-1 text-xs text-zinc-600">
+                  <div className="px-3 py-2 flex flex-col gap-1 text-xs text-zinc-600 dark:text-zinc-300">
                     <div>{tierTrades.length} trade{tierTrades.length !== 1 ? "s" : ""}</div>
                     {tierVal === "TIER1" ? (
                       <>
@@ -323,7 +323,7 @@ export default function TradesTab({
                           {overdueCount} RFQ{overdueCount !== 1 ? "s" : ""} overdue
                         </div>
                         {tierTrades.length > 0 && !noDueDate && (
-                          <div className="text-zinc-400">Longest lead: {longestLead}d</div>
+                          <div className="text-zinc-400 dark:text-zinc-500">Longest lead: {longestLead}d</div>
                         )}
                       </>
                     ) : (
@@ -345,9 +345,9 @@ export default function TradesTab({
       {/* Bulk apply modal */}
       {showBulkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="bg-white rounded-lg border border-zinc-200 shadow-xl p-6 max-w-sm w-full mx-4">
+          <div className="bg-white rounded-lg border border-zinc-200 shadow-xl p-6 max-w-sm w-full mx-4 dark:bg-zinc-900 dark:border-zinc-700">
             <p className="text-sm font-semibold mb-1">Apply suggested tiers?</p>
-            <p className="text-sm text-zinc-500 mb-4">
+            <p className="text-sm text-zinc-500 mb-4 dark:text-zinc-400">
               Apply suggested tiers to {unreviewedTrades.length} trade{unreviewedTrades.length !== 1 ? "s" : ""}?
               You can adjust individually after.
             </p>
@@ -355,7 +355,7 @@ export default function TradesTab({
               <button
                 onClick={() => setShowBulkModal(false)}
                 disabled={bulkApplying}
-                className="text-sm text-zinc-500 hover:text-zinc-700 disabled:opacity-50"
+                className="text-sm text-zinc-500 hover:text-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
               >
                 Cancel
               </button>
@@ -372,21 +372,21 @@ export default function TradesTab({
       )}
 
       {bidTrades.length === 0 ? (
-        <p className="text-sm text-zinc-400">No trades assigned to this bid.</p>
+        <p className="text-sm text-zinc-400 dark:text-zinc-500">No trades assigned to this bid.</p>
       ) : (
-        <div className="border border-zinc-200 rounded-md overflow-hidden">
+        <div className="border border-zinc-200 rounded-md overflow-hidden dark:border-zinc-700">
           <table className="w-full text-sm">
-            <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+            <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:text-zinc-400">
               <tr>
-                <th className="px-4 py-3 border-b border-zinc-200">Trade</th>
-                <th className="px-4 py-3 border-b border-zinc-200">Cost Code</th>
-                <th className="px-4 py-3 border-b border-zinc-200">CSI</th>
-                <th className="px-4 py-3 border-b border-zinc-200">Tier</th>
-                <th className="px-4 py-3 border-b border-zinc-200">Lead Days</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Trade</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Cost Code</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">CSI</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Tier</th>
+                <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Lead Days</th>
                 {!noDueDate && (
-                  <th className="px-4 py-3 border-b border-zinc-200">Timeline</th>
+                  <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Timeline</th>
                 )}
-                <th className="px-4 py-3 border-b border-zinc-200 w-16"></th>
+                <th className="px-4 py-3 border-b border-zinc-200 w-16 dark:border-zinc-700"></th>
               </tr>
             </thead>
             <tbody>
@@ -410,7 +410,7 @@ export default function TradesTab({
                 const rfqOverdue = entry?.status === "OVERDUE" && !entry?.rfqSentAt;
 
                 return (
-                  <tr key={bt.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
+                  <tr key={bt.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800">
                     {/* Trade name + critical path badge */}
                     <td className="px-4 py-3 font-medium">
                       <div className="flex items-center gap-2">
@@ -418,7 +418,7 @@ export default function TradesTab({
                         {tier === "TIER1" && (
                           <span
                             title="This trade is on the critical path. Late quotes or scope gaps here delay the entire bid."
-                            className="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 cursor-help leading-none"
+                            className="inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold bg-violet-100 text-violet-700 cursor-help leading-none dark:bg-violet-900/40 dark:text-violet-300"
                           >
                             Critical Path
                           </span>
@@ -427,10 +427,10 @@ export default function TradesTab({
                     </td>
 
                     {/* Cost code */}
-                    <td className="px-4 py-3 text-zinc-500">{bt.trade.costCode ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">{bt.trade.costCode ?? "—"}</td>
 
                     {/* CSI */}
-                    <td className="px-4 py-3 text-zinc-500">{bt.trade.csiCode ?? "—"}</td>
+                    <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">{bt.trade.csiCode ?? "—"}</td>
 
                     {/* Tier selector + auto-suggest hint */}
                     <td className="px-4 py-3">
@@ -438,7 +438,7 @@ export default function TradesTab({
                         value={tier}
                         disabled={isPatching}
                         onChange={(e) => handleTierChange(bt.tradeId, e.target.value)}
-                        className="text-xs bg-white border border-zinc-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 bg-white"
+                        className="text-xs bg-white border border-zinc-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 bg-white dark:bg-zinc-900 dark:border-zinc-600"
                       >
                         {TIER_OPTIONS.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
@@ -446,8 +446,8 @@ export default function TradesTab({
                       </select>
 
                       {showSuggestion && (
-                        <div className="mt-1.5 text-[11px] text-zinc-500 leading-tight">
-                          <span className="text-zinc-600">
+                        <div className="mt-1.5 text-[11px] text-zinc-500 leading-tight dark:text-zinc-400">
+                          <span className="text-zinc-600 dark:text-zinc-300">
                             Suggested: {TIER_LABELS[suggestion.suggestedTier]} —{" "}
                             {suggestion.reason}
                           </span>
@@ -461,7 +461,7 @@ export default function TradesTab({
                             </button>
                             <button
                               onClick={() => handleDismissSuggestion(bt.tradeId)}
-                              className="text-zinc-400 hover:text-zinc-600"
+                              className="text-zinc-400 hover:text-zinc-600 dark:text-zinc-500"
                             >
                               Dismiss
                             </button>
@@ -483,7 +483,7 @@ export default function TradesTab({
                           setLeadTimes((prev) => ({ ...prev, [bt.tradeId]: e.target.value }))
                         }
                         onBlur={() => handleLeadTimeBlur(bt.tradeId)}
-                        className="w-16 text-xs bg-white border border-zinc-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                        className="w-16 text-xs bg-white border border-zinc-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 dark:bg-zinc-900 dark:border-zinc-600"
                       />
 
                       {/* Lead time guidance — only when due date is set */}
@@ -495,11 +495,11 @@ export default function TradesTab({
                               {TIER_LABELS[tier]} typically needs {typicalLead}d. RFQ is overdue.
                             </span>
                           ) : hasCustomLead ? (
-                            <span className="text-zinc-400">
+                            <span className="text-zinc-400 dark:text-zinc-500">
                               Custom lead time set — timeline adjusted
                             </span>
                           ) : (
-                            <span className="text-zinc-400">
+                            <span className="text-zinc-400 dark:text-zinc-500">
                               Typical for {TIER_LABELS[tier]}: {typicalLead}d
                               {entry.rfqSendDate && (
                                 <> · RFQ by {fmt(entry.rfqSendDate)}</>
@@ -514,22 +514,22 @@ export default function TradesTab({
                     {!noDueDate && (
                       <td className="px-4 py-3">
                         {!timelineLoaded ? (
-                          <span className="text-xs text-zinc-400">…</span>
+                          <span className="text-xs text-zinc-400 dark:text-zinc-500">…</span>
                         ) : entry ? (
                           <div className="flex flex-col gap-1">
                             <span
-                              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium w-fit ${STATUS_STYLES[entry.status] ?? "bg-zinc-100 text-zinc-500"}`}
+                              className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium w-fit ${STATUS_STYLES[entry.status] ?? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}
                             >
                               {STATUS_LABELS[entry.status] ?? entry.status}
                             </span>
-                            <span className="text-xs text-zinc-400">
+                            <span className="text-xs text-zinc-400 dark:text-zinc-500">
                               {entry.rfqSentAt
                                 ? `RFQ sent ${fmt(entry.rfqSentAt)}`
                                 : `RFQ due ${fmt(entry.rfqSendDate)}`}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-xs text-zinc-400">—</span>
+                          <span className="text-xs text-zinc-400 dark:text-zinc-500">—</span>
                         )}
                       </td>
                     )}
@@ -539,7 +539,7 @@ export default function TradesTab({
                       <button
                         onClick={() => removeTrade(bt.tradeId)}
                         disabled={removing === bt.tradeId}
-                        className="text-xs text-zinc-400 hover:text-red-600 disabled:opacity-50"
+                        className="text-xs text-zinc-400 hover:text-red-600 disabled:opacity-50 dark:text-zinc-500"
                       >
                         {removing === bt.tradeId ? "…" : "Remove"}
                       </button>
@@ -553,10 +553,10 @@ export default function TradesTab({
       )}
 
       {adding ? (
-        <div className="border border-zinc-200 rounded-md p-4 bg-zinc-50">
+        <div className="border border-zinc-200 rounded-md p-4 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800">
           <p className="text-sm font-medium mb-3">Add a trade</p>
           {available.length === 0 ? (
-            <p className="text-sm text-zinc-400">All trades already assigned.</p>
+            <p className="text-sm text-zinc-400 dark:text-zinc-500">All trades already assigned.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {available.map((t) => (
@@ -564,7 +564,7 @@ export default function TradesTab({
                   key={t.id}
                   onClick={() => addTrade(t.id)}
                   disabled={saving}
-                  className="rounded-full border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-600 hover:border-black hover:text-black disabled:opacity-50"
+                  className="rounded-full border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-600 hover:border-black hover:text-black disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300"
                 >
                   {t.name}
                 </button>
@@ -573,7 +573,7 @@ export default function TradesTab({
           )}
           <button
             onClick={() => setAdding(false)}
-            className="mt-3 text-xs text-zinc-400 hover:text-zinc-600"
+            className="mt-3 text-xs text-zinc-400 hover:text-zinc-600 dark:text-zinc-500"
           >
             Cancel
           </button>
@@ -582,7 +582,7 @@ export default function TradesTab({
         <div>
           <button
             onClick={() => setAdding(true)}
-            className="text-sm text-zinc-500 border border-zinc-300 rounded-md px-3 py-1.5 hover:bg-zinc-50"
+            className="text-sm text-zinc-500 border border-zinc-300 rounded-md px-3 py-1.5 hover:bg-zinc-50 dark:text-zinc-400 dark:border-zinc-600 dark:hover:bg-zinc-800"
           >
             + Add Trade
           </button>

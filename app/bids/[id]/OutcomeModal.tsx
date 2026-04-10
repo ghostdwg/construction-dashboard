@@ -92,17 +92,17 @@ export default function OutcomeModal({ bidId, submission, onClose, onSaved }: Pr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-base font-semibold text-zinc-900">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto dark:bg-zinc-900">
+        <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
           {submission.outcome ? "Edit Outcome" : "Record Outcome"}
         </h3>
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-700">Outcome</label>
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Outcome</label>
           <select
             value={outcome}
             onChange={(e) => setOutcome(e.target.value)}
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           >
             <option value="">— Select —</option>
             {OUTCOMES.map((o) => (
@@ -114,47 +114,47 @@ export default function OutcomeModal({ bidId, submission, onClose, onSaved }: Pr
         {outcome === "lost" && (
           <>
             <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-zinc-700">Winning Bid Amount</label>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Winning Bid Amount</label>
               <input
                 type="text"
                 value={winningBidAmount}
                 onChange={(e) => setWinningBidAmount(e.target.value)}
                 placeholder="e.g. 1,180,000"
-                className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-zinc-700">Our Rank</label>
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Our Rank</label>
                 <input
                   type="number"
                   value={ourRank}
                   onChange={(e) => setOurRank(e.target.value)}
                   placeholder="2"
                   min={1}
-                  className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-zinc-700">Total Bidders</label>
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Total Bidders</label>
                 <input
                   type="number"
                   value={totalBidders}
                   onChange={(e) => setTotalBidders(e.target.value)}
                   placeholder="5"
                   min={1}
-                  className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
                 />
               </div>
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-zinc-700">Lost Reason</label>
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Lost Reason</label>
               <select
                 value={lostReason}
                 onChange={(e) => setLostReason(e.target.value)}
-                className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
               >
                 <option value="">— Select —</option>
                 {LOST_REASONS.map((r) => (
@@ -165,13 +165,13 @@ export default function OutcomeModal({ bidId, submission, onClose, onSaved }: Pr
 
             {lostReason && (
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-zinc-700">Reason Detail</label>
+                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Reason Detail</label>
                 <input
                   type="text"
                   value={lostReasonNote}
                   onChange={(e) => setLostReasonNote(e.target.value)}
                   placeholder="Additional context"
-                  className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
                 />
               </div>
             )}
@@ -179,13 +179,13 @@ export default function OutcomeModal({ bidId, submission, onClose, onSaved }: Pr
         )}
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-700">Lessons Learned</label>
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Lessons Learned</label>
           <textarea
             value={lessonsLearned}
             onChange={(e) => setLessonsLearned(e.target.value)}
             rows={3}
             placeholder="What we learned from this bid"
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
 
@@ -195,14 +195,14 @@ export default function OutcomeModal({ bidId, submission, onClose, onSaved }: Pr
           <button
             onClick={onClose}
             disabled={saving}
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-600 hover:border-zinc-500 disabled:opacity-50"
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-600 hover:border-zinc-500 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300"
           >
             Cancel
           </button>
           <button
             onClick={save}
             disabled={saving}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700 disabled:opacity-50"
+            className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-50"
           >
             {saving ? "Saving…" : "Save Outcome"}
           </button>

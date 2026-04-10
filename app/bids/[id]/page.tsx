@@ -97,14 +97,14 @@ export default async function BidDetailPage({
     <div className="max-w-4xl mx-auto py-10 px-4">
       {/* Header */}
       <div className="mb-6">
-        <Link href="/bids" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/bids" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">
           ← Bids
         </Link>
         <div className="flex items-start justify-between mt-2">
           <div>
             <h1 className="text-2xl font-semibold">{bid.projectName}</h1>
             {bid.location && (
-              <p className="text-sm text-zinc-500 mt-0.5">{bid.location}</p>
+              <p className="text-sm text-zinc-500 mt-0.5 dark:text-zinc-400">{bid.location}</p>
             )}
           </div>
           <StatusButton bidId={bid.id} current={bid.status} />
@@ -112,7 +112,7 @@ export default async function BidDetailPage({
       </div>
 
       {/* Tabs */}
-      <Suspense fallback={<div className="h-10 border-b border-zinc-200 mb-6" />}>
+      <Suspense fallback={<div className="h-10 border-b border-zinc-200 mb-6 dark:border-zinc-700" />}>
         <TabBar bidId={bid.id} />
       </Suspense>
 
@@ -121,25 +121,25 @@ export default async function BidDetailPage({
         <div className="flex flex-col gap-6">
           <section className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1 dark:text-zinc-500">
                 Project Name
               </p>
               <p className="text-sm">{bid.projectName}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1 dark:text-zinc-500">
                 Location
               </p>
               <p className="text-sm">{bid.location || "—"}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1 dark:text-zinc-500">
                 Status
               </p>
               <p className="text-sm capitalize">{bid.status}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1 dark:text-zinc-500">
                 Due Date
               </p>
               <EditableDueDate
@@ -149,10 +149,10 @@ export default async function BidDetailPage({
             </div>
             {bid.description && (
               <div className="col-span-2">
-                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1">
+                <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1 dark:text-zinc-500">
                   Description
                 </p>
-                <p className="text-sm text-zinc-600 whitespace-pre-wrap">
+                <p className="text-sm text-zinc-600 whitespace-pre-wrap dark:text-zinc-300">
                   {bid.description}
                 </p>
               </div>
@@ -172,7 +172,7 @@ export default async function BidDetailPage({
           </section>
 
           <section>
-            <h2 className="text-sm font-semibold text-zinc-800 mb-3">Project Intelligence Brief</h2>
+            <h2 className="text-sm font-semibold text-zinc-800 mb-3 dark:text-zinc-100">Project Intelligence Brief</h2>
             <IntelligenceBrief bidId={bid.id} />
           </section>
         </div>

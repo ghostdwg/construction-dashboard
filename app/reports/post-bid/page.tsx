@@ -81,7 +81,7 @@ export default function PostBidReportsPage() {
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto py-10 px-4">
-        <p className="text-sm text-zinc-400">Loading…</p>
+        <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>
       </div>
     );
   }
@@ -90,10 +90,10 @@ export default function PostBidReportsPage() {
     return (
       <div className="max-w-6xl mx-auto py-10 px-4">
         <div className="flex items-center gap-3 mb-6">
-          <Link href="/reports" className="text-sm text-zinc-500 hover:underline">← Reports</Link>
+          <Link href="/reports" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">← Reports</Link>
         </div>
         <h1 className="text-2xl font-semibold mb-2">Post-Bid Analytics</h1>
-        <p className="text-sm text-zinc-500">No submitted bids yet. Submit a bid to start tracking outcomes.</p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">No submitted bids yet. Submit a bid to start tracking outcomes.</p>
       </div>
     );
   }
@@ -104,7 +104,7 @@ export default function PostBidReportsPage() {
   return (
     <div className="max-w-6xl mx-auto py-10 px-4">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/reports" className="text-sm text-zinc-500 hover:underline">← Reports</Link>
+        <Link href="/reports" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">← Reports</Link>
       </div>
       <h1 className="text-2xl font-semibold mb-8">Post-Bid Analytics</h1>
 
@@ -123,10 +123,10 @@ export default function PostBidReportsPage() {
       {/* By project type */}
       <section className="mb-10">
         <h2 className="text-base font-semibold mb-4">By Project Type</h2>
-        <div className="rounded-md border border-zinc-200 overflow-hidden">
+        <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
                 <th className="px-4 py-2.5">Type</th>
                 <th className="px-4 py-2.5 text-right">Submitted</th>
                 <th className="px-4 py-2.5 text-right">Won</th>
@@ -134,7 +134,7 @@ export default function PostBidReportsPage() {
                 <th className="px-4 py-2.5 text-right">Win Rate</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {Object.entries(byProjectType).map(([type, stats]) => (
                 <tr key={type}>
                   <td className="px-4 py-2.5 font-medium">{type}</td>
@@ -153,17 +153,17 @@ export default function PostBidReportsPage() {
       {lostReasons.length > 0 && (
         <section className="mb-10">
           <h2 className="text-base font-semibold mb-4">Lost Reasons</h2>
-          <div className="rounded-md border border-zinc-200 p-4 bg-white flex flex-col gap-3">
+          <div className="rounded-md border border-zinc-200 p-4 bg-white flex flex-col gap-3 dark:border-zinc-700 dark:bg-zinc-900">
             {lostReasons.map((r) => (
               <div key={r.reason} className="flex items-center gap-3">
-                <span className="text-sm text-zinc-700 w-28">{REASON_LABELS[r.reason] ?? r.reason}</span>
-                <div className="flex-1 bg-zinc-100 rounded-full h-3 relative">
+                <span className="text-sm text-zinc-700 w-28 dark:text-zinc-200">{REASON_LABELS[r.reason] ?? r.reason}</span>
+                <div className="flex-1 bg-zinc-100 rounded-full h-3 relative dark:bg-zinc-800">
                   <div
                     className="bg-red-400 h-3 rounded-full"
                     style={{ width: `${(r.count / maxReasonCount) * 100}%` }}
                   />
                 </div>
-                <span className="text-sm font-medium text-zinc-700 w-8 text-right">{r.count}</span>
+                <span className="text-sm font-medium text-zinc-700 w-8 text-right dark:text-zinc-200">{r.count}</span>
               </div>
             ))}
           </div>
@@ -173,10 +173,10 @@ export default function PostBidReportsPage() {
       {/* Recent submissions */}
       <section>
         <h2 className="text-base font-semibold mb-4">Recent Submissions</h2>
-        <div className="rounded-md border border-zinc-200 overflow-hidden">
+        <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
                 <th className="px-4 py-2.5">Project</th>
                 <th className="px-4 py-2.5">Type</th>
                 <th className="px-4 py-2.5">Submitted</th>
@@ -185,29 +185,29 @@ export default function PostBidReportsPage() {
                 <th className="px-4 py-2.5">Outcome</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {recentBids.map((b) => {
                 const style = b.outcome ? OUTCOME_STYLES[b.outcome] : null;
                 return (
                   <tr key={b.id}>
                     <td className="px-4 py-2.5 font-medium">
-                      <Link href={`/bids/${b.id}`} className="text-zinc-700 hover:underline">
+                      <Link href={`/bids/${b.id}`} className="text-zinc-700 hover:underline dark:text-zinc-200">
                         {b.projectName}
                       </Link>
                     </td>
-                    <td className="px-4 py-2.5 text-zinc-500 text-xs">{b.projectType}</td>
-                    <td className="px-4 py-2.5 text-zinc-500 text-xs">
+                    <td className="px-4 py-2.5 text-zinc-500 text-xs dark:text-zinc-400">{b.projectType}</td>
+                    <td className="px-4 py-2.5 text-zinc-500 text-xs dark:text-zinc-400">
                       {new Date(b.submittedAt).toLocaleDateString()}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-zinc-700">{fmtDollar(b.ourBidAmount)}</td>
-                    <td className="px-4 py-2.5 text-right text-zinc-500">{fmtDollar(b.winningBidAmount)}</td>
+                    <td className="px-4 py-2.5 text-right text-zinc-700 dark:text-zinc-200">{fmtDollar(b.ourBidAmount)}</td>
+                    <td className="px-4 py-2.5 text-right text-zinc-500 dark:text-zinc-400">{fmtDollar(b.winningBidAmount)}</td>
                     <td className="px-4 py-2.5">
                       {style ? (
                         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${style.bg} ${style.text}`}>
                           {style.label}
                         </span>
                       ) : (
-                        <span className="text-xs text-zinc-400">—</span>
+                        <span className="text-xs text-zinc-400 dark:text-zinc-500">—</span>
                       )}
                     </td>
                   </tr>
@@ -244,9 +244,9 @@ function SummaryCard({
 
   return (
     <div className={`rounded-md border px-5 py-4 ${accentClass}`}>
-      <p className="text-2xl font-semibold text-zinc-800">{value}</p>
-      <p className="text-xs text-zinc-500 mt-1">{label}</p>
-      {hint && <p className="text-[10px] text-zinc-400 mt-0.5">{hint}</p>}
+      <p className="text-2xl font-semibold text-zinc-800 dark:text-zinc-100">{value}</p>
+      <p className="text-xs text-zinc-500 mt-1 dark:text-zinc-400">{label}</p>
+      {hint && <p className="text-[10px] text-zinc-400 mt-0.5 dark:text-zinc-500">{hint}</p>}
     </div>
   );
 }

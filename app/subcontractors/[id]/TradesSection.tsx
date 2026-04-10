@@ -48,7 +48,7 @@ export default function TradesSection({
   }
 
   if (subTrades.length === 0) {
-    return <p className="text-sm text-zinc-400">No trades assigned.</p>;
+    return <p className="text-sm text-zinc-400 dark:text-zinc-500">No trades assigned.</p>;
   }
 
   return (
@@ -57,16 +57,16 @@ export default function TradesSection({
         const isPreferred = preferred[st.tradeId] != null;
         const isBusy = toggling === st.tradeId;
         return (
-          <div key={st.id} className="flex items-center justify-between rounded-md border border-zinc-100 px-3 py-2">
-            <span className="text-sm text-zinc-700">{st.trade.name}</span>
+          <div key={st.id} className="flex items-center justify-between rounded-md border border-zinc-100 px-3 py-2 dark:border-zinc-800">
+            <span className="text-sm text-zinc-700 dark:text-zinc-200">{st.trade.name}</span>
             <button
               onClick={() => toggle(st.tradeId)}
               disabled={isBusy}
               title={isPreferred ? "Remove preferred" : "Mark as preferred for this trade"}
               className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
                 isPreferred
-                  ? "bg-green-100 text-green-700 hover:bg-red-50 hover:text-red-600"
-                  : "bg-zinc-100 text-zinc-500 hover:bg-green-50 hover:text-green-600"
+                  ? "bg-green-100 text-green-700 hover:bg-red-50 hover:text-red-600 dark:bg-green-900/40 dark:text-green-300"
+                  : "bg-zinc-100 text-zinc-500 hover:bg-green-50 hover:text-green-600 dark:bg-zinc-800 dark:text-zinc-400"
               }`}
             >
               <span>{isPreferred ? "★" : "☆"}</span>

@@ -86,10 +86,10 @@ function formatFileSize(bytes: number): string {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
-  unreviewed: { label: "Unreviewed", badge: "bg-zinc-100 text-zinc-500" },
-  included: { label: "Included", badge: "bg-green-100 text-green-700" },
-  excluded: { label: "Excluded", badge: "bg-red-100 text-red-600" },
-  clarification_needed: { label: "Clarify", badge: "bg-amber-100 text-amber-700" },
+  unreviewed: { label: "Unreviewed", badge: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400" },
+  included: { label: "Included", badge: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" },
+  excluded: { label: "Excluded", badge: "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400" },
+  clarification_needed: { label: "Clarify", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
 };
 
 function tradeKey(t: TradeGroup): string {
@@ -140,11 +140,11 @@ function SubUploadRow({
   const current = upload;
 
   return (
-    <div className="flex items-start justify-between py-3 border-b border-zinc-100 last:border-0">
+    <div className="flex items-start justify-between py-3 border-b border-zinc-100 last:border-0 dark:border-zinc-800">
       {/* Sub info */}
       <div className="flex items-center gap-3 w-1/3">
         <div>
-          <p className="text-sm font-medium text-zinc-800">{sub.company}</p>
+          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{sub.company}</p>
         </div>
         <TierBadge tier={sub.tier} />
       </div>
@@ -160,12 +160,12 @@ function SubUploadRow({
                   <span className="font-normal">{current.parseError}</span>
                 </p>
               ) : (
-                <p className="text-xs text-zinc-400">No estimate uploaded</p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500">No estimate uploaded</p>
               )}
             </div>
             <div className="flex items-center gap-2">
               {state.status === "uploading" && (
-                <span className="text-xs text-zinc-400">Uploading…</span>
+                <span className="text-xs text-zinc-400 dark:text-zinc-500">Uploading…</span>
               )}
               {state.status === "error" && (
                 <span className="text-xs text-red-500">{state.message}</span>
@@ -173,7 +173,7 @@ function SubUploadRow({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={state.status === "uploading"}
-                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
               >
                 {current?.parseStatus === "failed" ? "Re-upload" : "Upload estimate"}
               </button>
@@ -198,7 +198,7 @@ function SubUploadRow({
               <p className="text-xs text-green-700 font-medium">
                 Ready — {scopeLineCount(current.scopeLines)} scope lines
               </p>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p className="text-xs text-zinc-400 mt-0.5 dark:text-zinc-500">
                 {current.fileName} &middot;{" "}
                 {formatFileSize(current.fileSize)} &middot;{" "}
                 {new Date(String(current.uploadedAt)).toLocaleDateString()}
@@ -207,7 +207,7 @@ function SubUploadRow({
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={state.status === "uploading"}
-              className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
             >
               {state.status === "uploading" ? "Uploading…" : "Replace"}
             </button>
@@ -288,11 +288,11 @@ function ScopeRowCard({
       }`}
     >
       {row.division && (
-        <p className="text-[10px] font-mono text-zinc-400 uppercase tracking-wide mb-0.5">
+        <p className="text-[10px] font-mono text-zinc-400 uppercase tracking-wide mb-0.5 dark:text-zinc-500">
           {row.division}
         </p>
       )}
-      <p className="text-xs text-zinc-800 leading-relaxed">{row.scopeText}</p>
+      <p className="text-xs text-zinc-800 leading-relaxed dark:text-zinc-100">{row.scopeText}</p>
 
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {/* Status selector */}
@@ -313,7 +313,7 @@ function ScopeRowCard({
         {!editingNote && (
           <button
             onClick={() => setEditingNote(true)}
-            className="text-xs text-zinc-400 hover:text-zinc-600"
+            className="text-xs text-zinc-400 hover:text-zinc-600 dark:text-zinc-500"
           >
             {row.note ? "Edit note" : "+ Note"}
           </button>
@@ -342,11 +342,11 @@ function ScopeRowCard({
           onBlur={handleNoteSave}
           rows={2}
           placeholder="Add a note…"
-          className="mt-2 w-full text-xs bg-white border border-zinc-300 rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="mt-2 w-full text-xs bg-white border border-zinc-300 rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600"
         />
       )}
       {row.note && !editingNote && (
-        <p className="mt-1.5 text-xs text-zinc-500 italic">{row.note}</p>
+        <p className="mt-1.5 text-xs text-zinc-500 italic dark:text-zinc-400">{row.note}</p>
       )}
     </div>
   );
@@ -355,10 +355,10 @@ function ScopeRowCard({
 // ---- SanitizationReviewSection ----
 
 const SANIT_STATUS: Record<string, { label: string; badge: string }> = {
-  complete:     { label: "Clean",        badge: "bg-green-100 text-green-700" },
-  needs_review: { label: "Needs Review", badge: "bg-amber-100 text-amber-700" },
-  error:        { label: "Error",        badge: "bg-red-100 text-red-600" },
-  pending:      { label: "Pending",      badge: "bg-zinc-100 text-zinc-500" },
+  complete:     { label: "Clean",        badge: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" },
+  needs_review: { label: "Needs Review", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  error:        { label: "Error",        badge: "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400" },
+  pending:      { label: "Pending",      badge: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400" },
 };
 
 type ScopeLine = { division?: string; description: string; quantity?: string; unit?: string; notes?: string };
@@ -498,13 +498,13 @@ function SanitizationReviewCard({
   }
 
   return (
-    <div className="rounded-md border border-zinc-200 overflow-hidden">
+    <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
       {/* ── Card header ── */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap bg-white">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap bg-white dark:bg-zinc-900">
         <div className="flex items-center gap-3 flex-wrap">
-          <p className="text-sm font-medium text-zinc-800">{upload.fileName}</p>
+          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{upload.fileName}</p>
           {upload.subToken && (
-            <span className="font-mono text-xs bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded">
+            <span className="font-mono text-xs bg-zinc-100 text-zinc-600 px-2 py-0.5 rounded dark:bg-zinc-800 dark:text-zinc-300">
               {upload.subToken}
             </span>
           )}
@@ -512,7 +512,7 @@ function SanitizationReviewCard({
             {cfg.label}
           </span>
           {local.redactionCount != null && local.redactionCount > 0 && (
-            <span className="text-xs text-zinc-400">
+            <span className="text-xs text-zinc-400 dark:text-zinc-500">
               {local.redactionCount} item{local.redactionCount !== 1 ? "s" : ""} redacted
             </span>
           )}
@@ -527,7 +527,7 @@ function SanitizationReviewCard({
         </div>
         <button
           onClick={() => setExpanded((o) => !o)}
-          className="text-xs text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded px-3 py-1.5 hover:border-zinc-400 transition-colors"
+          className="text-xs text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded px-3 py-1.5 hover:border-zinc-400 transition-colors dark:text-zinc-400 dark:hover:text-zinc-100 dark:border-zinc-700"
         >
           {expanded ? "▲ Close review" : "Review & Approve →"}
         </button>
@@ -535,30 +535,30 @@ function SanitizationReviewCard({
 
       {/* ── Expanded diff panel ── */}
       {expanded && (
-        <div className="border-t border-zinc-200">
+        <div className="border-t border-zinc-200 dark:border-zinc-700">
           {/* Column headers */}
-          <div className="grid grid-cols-2 border-b border-zinc-200 bg-zinc-50 text-xs font-semibold text-zinc-500 uppercase tracking-wide">
-            <div className="px-4 py-2.5 border-r border-zinc-200">
+          <div className="grid grid-cols-2 border-b border-zinc-200 bg-zinc-50 text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
+            <div className="px-4 py-2.5 border-r border-zinc-200 dark:border-zinc-700">
               Original scope
-              <span className="ml-2 font-normal normal-case text-zinc-400">(price-stripped, identity intact)</span>
+              <span className="ml-2 font-normal normal-case text-zinc-400 dark:text-zinc-500">(price-stripped, identity intact)</span>
             </div>
             <div className="px-4 py-2.5">
               Sanitized
-              <span className="ml-2 font-normal normal-case text-zinc-400">(identity + residual pricing redacted)</span>
+              <span className="ml-2 font-normal normal-case text-zinc-400 dark:text-zinc-500">(identity + residual pricing redacted)</span>
             </div>
           </div>
 
           {/* Diff rows */}
           <div className="max-h-[480px] overflow-y-auto">
             {grouped.length === 0 && (
-              <p className="px-4 py-6 text-xs text-zinc-400 italic text-center">
+              <p className="px-4 py-6 text-xs text-zinc-400 italic text-center dark:text-zinc-500">
                 No scope lines to compare.
               </p>
             )}
             {grouped.map((group, gi) => (
               <div key={gi}>
                 {group.division && (
-                  <div className="grid grid-cols-2 bg-zinc-100 border-b border-zinc-200 px-4 py-1.5 text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
+                  <div className="grid grid-cols-2 bg-zinc-100 border-b border-zinc-200 px-4 py-1.5 text-[10px] font-mono text-zinc-500 uppercase tracking-wider dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
                     <div>{group.division}</div>
                     <div>{group.division}</div>
                   </div>
@@ -599,12 +599,12 @@ function SanitizationReviewCard({
           </div>
 
           {/* ── Action bar ── */}
-          <div className="flex items-center justify-between gap-4 border-t border-zinc-200 px-4 py-3 bg-zinc-50">
+          <div className="flex items-center justify-between gap-4 border-t border-zinc-200 px-4 py-3 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800">
             <div className="flex items-center gap-3">
               <button
                 onClick={resanitize}
                 disabled={resanitizing || approving}
-                className="text-xs rounded border border-zinc-300 px-3 py-1.5 text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 transition-colors"
+                className="text-xs rounded border border-zinc-300 px-3 py-1.5 text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 transition-colors dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
               >
                 {resanitizing ? "Re-sanitizing…" : "Re-sanitize"}
               </button>
@@ -620,7 +620,7 @@ function SanitizationReviewCard({
               title={hasFlagged ? "Resolve all flagged lines first" : undefined}
               className={`text-xs px-4 py-1.5 rounded border font-medium transition-colors disabled:opacity-50 ${
                 local.approvedForAi
-                  ? "border-green-400 bg-green-50 text-green-800"
+                  ? "border-green-400 bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300"
                   : "border-black bg-black text-white hover:bg-zinc-800"
               }`}
             >
@@ -648,14 +648,14 @@ function SanitizationReviewSection({
   return (
     <section>
       <div className="flex items-baseline justify-between mb-1">
-        <h2 className="text-sm font-semibold text-zinc-700">Sanitization Review</h2>
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Sanitization Review</h2>
         {unapprovedCount > 0 && (
           <span className="text-xs text-amber-700 font-medium">
             {unapprovedCount} estimate{unapprovedCount !== 1 ? "s" : ""} pending approval
           </span>
         )}
       </div>
-      <p className="text-xs text-zinc-400 mb-4">
+      <p className="text-xs text-zinc-400 mb-4 dark:text-zinc-500">
         Compare original scope against the sanitized version. Flagged lines need
         review. Approve each estimate before it feeds into AI Review.
       </p>
@@ -705,14 +705,14 @@ function LevelingMatrix({ bidId }: { bidId: number }) {
   }
 
   if (loading) {
-    return <p className="text-xs text-zinc-400">Loading scope matrix…</p>;
+    return <p className="text-xs text-zinc-400 dark:text-zinc-500">Loading scope matrix…</p>;
   }
   if (error) {
     return <p className="text-xs text-red-500">Error: {error}</p>;
   }
   if (!data || data.subs.length === 0) {
     return (
-      <p className="text-sm text-zinc-400">
+      <p className="text-sm text-zinc-400 dark:text-zinc-500">
         No complete estimates yet. Upload and parse estimates in the section above, then
         return here to level.
       </p>
@@ -720,7 +720,7 @@ function LevelingMatrix({ bidId }: { bidId: number }) {
   }
   if (data.trades.length === 0) {
     return (
-      <p className="text-sm text-zinc-400">
+      <p className="text-sm text-zinc-400 dark:text-zinc-500">
         Estimates parsed but no scope lines found. Try re-uploading.
       </p>
     );
@@ -755,7 +755,7 @@ function LevelingMatrix({ bidId }: { bidId: number }) {
         <a
           href={`/api/bids/${bidId}/leveling/export`}
           download
-          className="shrink-0 rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 whitespace-nowrap"
+          className="shrink-0 rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 whitespace-nowrap dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
         >
           Export XLSX
         </a>
@@ -776,15 +776,15 @@ function LevelingMatrix({ bidId }: { bidId: number }) {
               return (
                 <div key={sub.estimateUploadId} className="flex-1 min-w-[260px]">
                   {/* Column header */}
-                  <div className="flex items-baseline gap-2 mb-3 pb-2 border-b border-zinc-200">
-                    <span className="text-xs font-semibold text-zinc-700">{sub.label}</span>
+                  <div className="flex items-baseline gap-2 mb-3 pb-2 border-b border-zinc-200 dark:border-zinc-700">
+                    <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{sub.label}</span>
                     <span
-                      className="text-xs text-zinc-400 truncate flex-1"
+                      className="text-xs text-zinc-400 truncate flex-1 dark:text-zinc-500"
                       title={sub.fileName}
                     >
                       {sub.fileName}
                     </span>
-                    <span className="text-xs text-zinc-400 shrink-0">
+                    <span className="text-xs text-zinc-400 shrink-0 dark:text-zinc-500">
                       {subRows.length} lines
                     </span>
                   </div>
@@ -831,21 +831,21 @@ export default function LevelingTab({
     <div className="flex flex-col gap-8">
       {/* ── Section 1: Estimate Uploads ── */}
       <section>
-        <h2 className="text-sm font-semibold text-zinc-700 mb-1">
+        <h2 className="text-sm font-semibold text-zinc-700 mb-1 dark:text-zinc-200">
           Estimate Uploads
         </h2>
-        <p className="text-xs text-zinc-400 mb-4">
+        <p className="text-xs text-zinc-400 mb-4 dark:text-zinc-500">
           Upload estimates for subs with received, reviewing, or accepted
           status. Pricing is stripped before any AI use.
         </p>
 
         {subs.length === 0 ? (
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">
             No subs with estimates received yet. Update RFQ status on the Subs
             tab.
           </p>
         ) : (
-          <div className="rounded-md border border-zinc-200 px-4">
+          <div className="rounded-md border border-zinc-200 px-4 dark:border-zinc-700">
             {subs.map((sub) => (
               <SubUploadRow
                 key={sub.id}
@@ -876,10 +876,10 @@ export default function LevelingTab({
 
       {/* ── Section 5: Scope Matrix ── */}
       <section>
-        <h2 className="text-sm font-semibold text-zinc-700 mb-1">
+        <h2 className="text-sm font-semibold text-zinc-700 mb-1 dark:text-zinc-200">
           Scope Matrix
         </h2>
-        <p className="text-xs text-zinc-400 mb-4">
+        <p className="text-xs text-zinc-400 mb-4 dark:text-zinc-500">
           Review each sub&apos;s scope lines side by side. Mark items included,
           excluded, or flagged for clarification. Flagged items can be sent
           directly to the Questions tab.

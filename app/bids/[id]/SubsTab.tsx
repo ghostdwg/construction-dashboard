@@ -78,19 +78,19 @@ const RFQ_STATUSES = [
 ] as const;
 
 const STATUS_PILL: Record<string, string> = {
-  no_response: "bg-zinc-100 text-zinc-500",
-  invited:     "bg-blue-100 text-blue-700",
-  received:    "bg-amber-100 text-amber-700",
-  reviewing:   "bg-purple-100 text-purple-700",
-  accepted:    "bg-green-100 text-green-700",
-  declined:    "bg-red-100 text-red-700",
+  no_response: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+  invited:     "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  received:    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  reviewing:   "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+  accepted:    "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  declined:    "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
 };
 
 const TIMELINE_STATUS_STYLES: Record<string, string> = {
-  ON_TRACK: "bg-green-100 text-green-700",
-  AT_RISK:  "bg-amber-100 text-amber-700",
-  OVERDUE:  "bg-red-100 text-red-700",
-  COMPLETE: "bg-zinc-100 text-zinc-500",
+  ON_TRACK: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  AT_RISK:  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  OVERDUE:  "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  COMPLETE: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
 const TIMELINE_STATUS_LABELS: Record<string, string> = {
@@ -107,16 +107,16 @@ const TIER_LABELS: Record<string, string> = {
 };
 
 const TIER_BADGE_STYLES: Record<string, string> = {
-  TIER1: "bg-violet-100 text-violet-700",
-  TIER2: "bg-blue-100 text-blue-700",
-  TIER3: "bg-zinc-100 text-zinc-600",
+  TIER1: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  TIER2: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  TIER3: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function RfqPill({ status }: { status: string }) {
   return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_PILL[status] ?? "bg-zinc-100 text-zinc-500"}`}>
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_PILL[status] ?? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}>
       {status.replace(/_/g, " ")}
     </span>
   );
@@ -182,9 +182,9 @@ function ProcurementTimeline({
 
   useEffect(() => { loadTimeline(); }, [loadTimeline]);
 
-  if (!data) return <div className="text-sm text-zinc-400">Loading procurement timeline…</div>;
+  if (!data) return <div className="text-sm text-zinc-400 dark:text-zinc-500">Loading procurement timeline…</div>;
   if (data.noDueDate) return (
-    <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
       Set a bid due date to enable the procurement timeline.
     </div>
   );
@@ -195,10 +195,10 @@ function ProcurementTimeline({
   // Summary banner urgency
   const bannerClass =
     daysUntilBid != null && daysUntilBid < 7
-      ? "bg-red-50 border-red-200 text-red-800"
+      ? "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/30 dark:text-red-300"
       : daysUntilBid != null && daysUntilBid <= 14
-      ? "bg-amber-50 border-amber-200 text-amber-800"
-      : "bg-zinc-50 border-zinc-200 text-zinc-700";
+      ? "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+      : "bg-zinc-50 border-zinc-200 text-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-200";
 
   async function markRfqSent(tradeId: number) {
     setMarking(tradeId);
@@ -213,7 +213,7 @@ function ProcurementTimeline({
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-sm font-semibold text-zinc-700">Procurement Timeline</h2>
+      <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Procurement Timeline</h2>
 
       {/* Summary header */}
       <div className={`rounded-md border px-4 py-3 text-sm flex flex-wrap gap-x-6 gap-y-1 items-center ${bannerClass}`}>
@@ -238,21 +238,21 @@ function ProcurementTimeline({
       </div>
 
       {/* Timeline table */}
-      <div className="border border-zinc-200 rounded-md overflow-x-auto">
+      <div className="border border-zinc-200 rounded-md overflow-x-auto dark:border-zinc-700">
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+          <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:text-zinc-400">
             <tr>
-              <th className="px-4 py-2.5 border-b border-zinc-200">Trade</th>
-              <th className="px-4 py-2.5 border-b border-zinc-200">Tier</th>
-              <th className="px-4 py-2.5 border-b border-zinc-200">RFQ Send</th>
-              <th className="px-4 py-2.5 border-b border-zinc-200">Quote Due</th>
-              <th className="px-4 py-2.5 border-b border-zinc-200">Invited</th>
-              <th className="px-4 py-2.5 border-b border-zinc-200">Estimates</th>
-              <th className="px-4 py-2.5 border-b border-zinc-200">Status</th>
+              <th className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-700">Trade</th>
+              <th className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-700">Tier</th>
+              <th className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-700">RFQ Send</th>
+              <th className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-700">Quote Due</th>
+              <th className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-700">Invited</th>
+              <th className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-700">Estimates</th>
+              <th className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-700">Status</th>
               {isPublic && (
-                <th className="px-4 py-2.5 border-b border-zinc-200">DBE Outreach</th>
+                <th className="px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-700">DBE Outreach</th>
               )}
-              <th className="px-4 py-2.5 border-b border-zinc-200 w-28"></th>
+              <th className="px-4 py-2.5 border-b border-zinc-200 w-28 dark:border-zinc-700"></th>
             </tr>
           </thead>
           <tbody>
@@ -266,13 +266,13 @@ function ProcurementTimeline({
                 : "text-zinc-600";
 
               return (
-                <tr key={entry.tradeId} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
+                <tr key={entry.tradeId} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800">
                   {/* Trade */}
                   <td className="px-4 py-3 font-medium">{entry.tradeName}</td>
 
                   {/* Tier badge */}
                   <td className="px-4 py-3">
-                    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${TIER_BADGE_STYLES[entry.tier] ?? "bg-zinc-100 text-zinc-600"}`}>
+                    <span className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${TIER_BADGE_STYLES[entry.tier] ?? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}>
                       {TIER_LABELS[entry.tier] ?? entry.tier}
                     </span>
                   </td>
@@ -286,17 +286,17 @@ function ProcurementTimeline({
                   </td>
 
                   {/* Quote due date */}
-                  <td className="px-4 py-3 text-xs text-zinc-600">{fmtDate(entry.quoteDueDate)}</td>
+                  <td className="px-4 py-3 text-xs text-zinc-600 dark:text-zinc-300">{fmtDate(entry.quoteDueDate)}</td>
 
                   {/* Subs invited */}
-                  <td className="px-4 py-3 text-xs text-zinc-600">{entry.inviteCount}</td>
+                  <td className="px-4 py-3 text-xs text-zinc-600 dark:text-zinc-300">{entry.inviteCount}</td>
 
                   {/* Estimates in */}
-                  <td className="px-4 py-3 text-xs text-zinc-600">{entry.estimateCount}</td>
+                  <td className="px-4 py-3 text-xs text-zinc-600 dark:text-zinc-300">{entry.estimateCount}</td>
 
                   {/* Status badge */}
                   <td className="px-4 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TIMELINE_STATUS_STYLES[entry.status] ?? "bg-zinc-100 text-zinc-500"}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TIMELINE_STATUS_STYLES[entry.status] ?? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"}`}>
                       {TIMELINE_STATUS_LABELS[entry.status] ?? entry.status}
                     </span>
                   </td>
@@ -311,9 +311,9 @@ function ProcurementTimeline({
                           onChange={(e) =>
                             setCompliance((prev) => ({ ...prev, [entry.tradeId]: e.target.checked }))
                           }
-                          className="rounded border-zinc-300 accent-black"
+                          className="rounded border-zinc-300 accent-black dark:border-zinc-600"
                         />
-                        <span className="text-xs text-zinc-500">Documented</span>
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">Documented</span>
                       </label>
                     </td>
                   )}
@@ -321,12 +321,12 @@ function ProcurementTimeline({
                   {/* Mark RFQ Sent */}
                   <td className="px-4 py-3 text-right">
                     {entry.rfqSentAt ? (
-                      <span className="text-xs text-zinc-400">Sent {fmtDate(entry.rfqSentAt)}</span>
+                      <span className="text-xs text-zinc-400 dark:text-zinc-500">Sent {fmtDate(entry.rfqSentAt)}</span>
                     ) : (
                       <button
                         onClick={() => markRfqSent(entry.tradeId)}
                         disabled={marking === entry.tradeId}
-                        className="rounded border border-zinc-300 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
+                        className="rounded border border-zinc-300 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
                       >
                         {marking === entry.tradeId ? "…" : "Mark RFQ Sent"}
                       </button>
@@ -469,11 +469,11 @@ export default function SubsTab({
       <section>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-zinc-700">
+            <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">
               Selected ({selections.length})
             </h2>
             {lastSyncAdded !== null && (
-              <span className="text-xs text-zinc-400">
+              <span className="text-xs text-zinc-400 dark:text-zinc-500">
                 {lastSyncAdded === 0
                   ? "Already up to date"
                   : `${lastSyncAdded} preferred sub${lastSyncAdded === 1 ? "" : "s"} added`}
@@ -484,7 +484,7 @@ export default function SubsTab({
             <button
               onClick={syncPreferredSubs}
               disabled={syncing}
-              className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               {syncing ? "Syncing…" : "Sync preferred subs"}
             </button>
@@ -501,14 +501,14 @@ export default function SubsTab({
         </div>
 
         {selections.length === 0 ? (
-          <p className="text-sm text-zinc-400">No subs selected yet. Add from suggestions below.</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">No subs selected yet. Add from suggestions below.</p>
         ) : (
           <div className="flex flex-col gap-4">
             {groups.map(({ tradeId, tradeName, sels }) => (
-              <div key={tradeId ?? "unassigned"} className="rounded-md border border-zinc-200 overflow-hidden">
-                <div className="flex items-center justify-between bg-zinc-50 border-b border-zinc-200 px-4 py-2">
-                  <span className="text-sm font-semibold text-zinc-700">{tradeName}</span>
-                  <span className="text-xs text-zinc-400">{tradeSummary(sels)}</span>
+              <div key={tradeId ?? "unassigned"} className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
+                <div className="flex items-center justify-between bg-zinc-50 border-b border-zinc-200 px-4 py-2 dark:bg-zinc-800 dark:border-zinc-700">
+                  <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">{tradeName}</span>
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500">{tradeSummary(sels)}</span>
                 </div>
                 <table className="w-full text-sm">
                   <tbody>
@@ -516,34 +516,34 @@ export default function SubsTab({
                       const sub = sel.subcontractor;
                       const contact = sub.contacts[0] ?? null;
                       return (
-                        <tr key={sel.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
+                        <tr key={sel.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800">
                           <td className="px-4 py-3 font-medium w-1/3">
                             {sub.company}
                             {sub.office && (
-                              <span className="block text-xs text-zinc-400 font-normal">{sub.office}</span>
+                              <span className="block text-xs text-zinc-400 font-normal dark:text-zinc-500">{sub.office}</span>
                             )}
                             <div className="flex gap-1 mt-0.5">
                               {sub.isUnion && (
-                                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">Union</span>
+                                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Union</span>
                               )}
                               {sub.isMWBE && (
-                                <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">MWBE</span>
+                                <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">MWBE</span>
                               )}
                             </div>
                           </td>
                           <td className="px-4 py-3">
                             <TierBadge tier={sub.tier} />
                           </td>
-                          <td className="px-4 py-3 text-zinc-600 text-xs">
+                          <td className="px-4 py-3 text-zinc-600 text-xs dark:text-zinc-300">
                             {contact ? (
                               <>
                                 <span>{contact.name}</span>
                                 {contact.email && (
-                                  <span className="block text-zinc-400">{contact.email}</span>
+                                  <span className="block text-zinc-400 dark:text-zinc-500">{contact.email}</span>
                                 )}
                               </>
                             ) : (
-                              <span className="text-zinc-400">—</span>
+                              <span className="text-zinc-400 dark:text-zinc-500">—</span>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -553,7 +553,7 @@ export default function SubsTab({
                                 value={sel.rfqStatus}
                                 disabled={updatingRfq === sel.id}
                                 onChange={(e) => updateRfqStatus(sel.id, e.target.value)}
-                                className="text-xs bg-white border border-zinc-300 rounded-md px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                                className="text-xs bg-white border border-zinc-300 rounded-md px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 dark:bg-zinc-900 dark:border-zinc-600"
                               >
                                 {RFQ_STATUSES.map((s) => (
                                   <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
@@ -565,7 +565,7 @@ export default function SubsTab({
                             <button
                               onClick={() => removeSub(sel.id)}
                               disabled={removing === sel.id}
-                              className="text-xs text-zinc-400 hover:text-red-600 disabled:opacity-50"
+                              className="text-xs text-zinc-400 hover:text-red-600 disabled:opacity-50 dark:text-zinc-500"
                             >
                               {removing === sel.id ? "…" : "Remove"}
                             </button>
@@ -583,60 +583,60 @@ export default function SubsTab({
 
       {/* ── Suggested subs ── */}
       <section>
-        <h2 className="text-sm font-semibold text-zinc-700 mb-3">Suggested by trade</h2>
+        <h2 className="text-sm font-semibold text-zinc-700 mb-3 dark:text-zinc-200">Suggested by trade</h2>
         {loadingSuggestions ? (
-          <p className="text-sm text-zinc-400">Loading…</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>
         ) : suggestions.length === 0 ? (
-          <p className="text-sm text-zinc-400">No additional subs found for this bid&apos;s trades.</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">No additional subs found for this bid&apos;s trades.</p>
         ) : (
-          <div className="border border-zinc-200 rounded-md overflow-hidden">
+          <div className="border border-zinc-200 rounded-md overflow-hidden dark:border-zinc-700">
             <table className="w-full text-sm">
-              <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+              <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:text-zinc-400">
                 <tr>
-                  <th className="px-4 py-3 border-b border-zinc-200">Company</th>
-                  <th className="px-4 py-3 border-b border-zinc-200">Matching Trades</th>
-                  <th className="px-4 py-3 border-b border-zinc-200">Primary Contact</th>
-                  <th className="px-4 py-3 border-b border-zinc-200 w-20"></th>
+                  <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Company</th>
+                  <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Matching Trades</th>
+                  <th className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">Primary Contact</th>
+                  <th className="px-4 py-3 border-b border-zinc-200 w-20 dark:border-zinc-700"></th>
                 </tr>
               </thead>
               <tbody>
                 {suggestions.map((sub) => {
                   const contact = sub.contacts[0] ?? null;
                   return (
-                    <tr key={sub.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
+                    <tr key={sub.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800">
                       <td className="px-4 py-3 font-medium">
                         {sub.company}
                         {sub.office && (
-                          <span className="block text-xs text-zinc-400 font-normal">{sub.office}</span>
+                          <span className="block text-xs text-zinc-400 font-normal dark:text-zinc-500">{sub.office}</span>
                         )}
                         <div className="flex gap-1 mt-0.5">
                           {sub.isUnion && (
-                            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">Union</span>
+                            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Union</span>
                           )}
                           {sub.isMWBE && (
-                            <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">MWBE</span>
+                            <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">MWBE</span>
                           )}
                         </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
                           {sub.subTrades.map((st) => (
-                            <span key={st.id} className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
+                            <span key={st.id} className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
                               {st.trade.name}
                             </span>
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-zinc-600">
+                      <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">
                         {contact ? (
                           <>
                             <span>{contact.name}</span>
                             {contact.email && (
-                              <span className="block text-xs text-zinc-400">{contact.email}</span>
+                              <span className="block text-xs text-zinc-400 dark:text-zinc-500">{contact.email}</span>
                             )}
                           </>
                         ) : (
-                          <span className="text-zinc-400">—</span>
+                          <span className="text-zinc-400 dark:text-zinc-500">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">

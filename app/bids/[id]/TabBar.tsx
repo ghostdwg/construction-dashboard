@@ -26,7 +26,7 @@ export default function TabBar({ bidId }: { bidId: number }) {
   }
 
   return (
-    <div className="flex border-b border-zinc-200 mb-6">
+    <div className="flex border-b border-zinc-200 mb-6 dark:border-zinc-700">
       {TABS.map((t) => (
         <button
           key={t.key}

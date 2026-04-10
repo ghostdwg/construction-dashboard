@@ -42,45 +42,45 @@ export default function SubmitBidModal({ bidId, onClose, onSubmitted }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 flex flex-col gap-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 flex flex-col gap-4 dark:bg-zinc-900">
         <div>
-          <h3 className="text-base font-semibold text-zinc-900">Submit Bid</h3>
-          <p className="text-xs text-zinc-500 mt-1">
+          <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Submit Bid</h3>
+          <p className="text-xs text-zinc-500 mt-1 dark:text-zinc-400">
             This locks the current bid state and creates a snapshot of the brief, questions, compliance, and spread analysis.
           </p>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-700">Our Bid Amount</label>
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Our Bid Amount</label>
           <input
             type="text"
             value={ourBidAmount}
             onChange={(e) => setOurBidAmount(e.target.value)}
             placeholder="e.g. 1,250,000"
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
             autoFocus
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-700">Submitted By</label>
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Submitted By</label>
           <input
             type="text"
             value={submittedBy}
             onChange={(e) => setSubmittedBy(e.target.value)}
             placeholder="Your name"
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-zinc-700">Notes</label>
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Notes</label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             placeholder="Submission notes (optional)"
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
 
@@ -90,14 +90,14 @@ export default function SubmitBidModal({ bidId, onClose, onSubmitted }: Props) {
           <button
             onClick={onClose}
             disabled={submitting}
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-600 hover:border-zinc-500 disabled:opacity-50"
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-600 hover:border-zinc-500 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300"
           >
             Cancel
           </button>
           <button
             onClick={submit}
             disabled={submitting}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700 disabled:opacity-50"
+            className="rounded-md bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-50"
           >
             {submitting ? "Submitting…" : "Submit Bid"}
           </button>

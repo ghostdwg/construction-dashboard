@@ -95,7 +95,7 @@ function SummaryCard({
       <p className={`text-3xl font-semibold ${warn && value > 0 ? "text-amber-700" : ""}`}>
         {value}
       </p>
-      <p className="text-xs text-zinc-500 mt-1">{label}</p>
+      <p className="text-xs text-zinc-500 mt-1 dark:text-zinc-400">{label}</p>
     </div>
   );
 }
@@ -149,7 +149,7 @@ export default function ReportsPage() {
   if (loading)
     return (
       <div className="max-w-6xl mx-auto py-10 px-4">
-        <p className="text-sm text-zinc-400">Loading…</p>
+        <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>
       </div>
     );
 
@@ -216,9 +216,9 @@ export default function ReportsPage() {
       {/* SECTION 2 — Bids By Status */}
       <Section title="Bids by Status">
         {bidsByStatus.length === 0 ? (
-          <p className="text-sm text-zinc-400">No bid data.</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">No bid data.</p>
         ) : (
-          <div className="rounded-md border border-zinc-200 p-4 bg-white">
+          <div className="rounded-md border border-zinc-200 p-4 bg-white dark:border-zinc-700 dark:bg-zinc-900">
             <ResponsiveContainer width="100%" height={220}>
               <BarChart
                 data={bidsByStatus}
@@ -253,12 +253,12 @@ export default function ReportsPage() {
       {/* SECTION 3 — Trade Coverage */}
       <Section title="Trade Coverage — Active Bids">
         {coverage.length === 0 ? (
-          <p className="text-sm text-zinc-400">No active bids with trades.</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">No active bids with trades.</p>
         ) : (
-          <div className="rounded-md border border-zinc-200 overflow-hidden">
+          <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+                <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
                   <th className="px-4 py-2.5">Bid</th>
                   <th className="px-4 py-2.5">Due Date</th>
                   <th className="px-4 py-2.5">Trade</th>
@@ -266,27 +266,27 @@ export default function ReportsPage() {
                   <th className="px-4 py-2.5">Coverage</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 {coverage.map((row) => (
                   <tr
                     key={`${row.bidId}-${row.tradeId}`}
                     className={row.subCount === 0 ? "bg-red-50" : ""}
                   >
                     <td className="px-4 py-2.5 font-medium">{row.bidName}</td>
-                    <td className="px-4 py-2.5 text-zinc-500">
+                    <td className="px-4 py-2.5 text-zinc-500 dark:text-zinc-400">
                       {row.dueDate
                         ? new Date(row.dueDate).toLocaleDateString()
                         : "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-zinc-600">{row.tradeName}</td>
+                    <td className="px-4 py-2.5 text-zinc-600 dark:text-zinc-300">{row.tradeName}</td>
                     <td className="px-4 py-2.5 text-right">{row.subCount}</td>
                     <td className="px-4 py-2.5">
                       {row.subCount > 0 ? (
-                        <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                        <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
                           Covered
                         </span>
                       ) : (
-                        <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                        <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
                           Uncovered
                         </span>
                       )}
@@ -302,12 +302,12 @@ export default function ReportsPage() {
       {/* SECTION 4 — Response Rate By Trade */}
       <Section title="Response Rate by Trade">
         {ratesArray.length === 0 ? (
-          <p className="text-sm text-zinc-400">No outreach data yet.</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">No outreach data yet.</p>
         ) : (
-          <div className="rounded-md border border-zinc-200 overflow-hidden">
+          <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+                <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
                   <th className="px-4 py-2.5">Trade</th>
                   <th className="px-4 py-2.5 text-right">Exported</th>
                   <th className="px-4 py-2.5 text-right">Responded</th>
@@ -315,21 +315,21 @@ export default function ReportsPage() {
                   <th className="px-4 py-2.5 w-40">Bar</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 {ratesArray.map((row) => (
                   <tr key={row.tradeName}>
                     <td className="px-4 py-2.5">{row.tradeName}</td>
-                    <td className="px-4 py-2.5 text-right text-zinc-500">
+                    <td className="px-4 py-2.5 text-right text-zinc-500 dark:text-zinc-400">
                       {row.exported}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-zinc-500">
+                    <td className="px-4 py-2.5 text-right text-zinc-500 dark:text-zinc-400">
                       {row.responded}
                     </td>
                     <td className="px-4 py-2.5 text-right font-medium">
                       {row.rate}%
                     </td>
                     <td className="px-4 py-2.5">
-                      <div className="w-full bg-zinc-100 rounded-full h-2">
+                      <div className="w-full bg-zinc-100 rounded-full h-2 dark:bg-zinc-800">
                         <div
                           className="bg-blue-500 h-2 rounded-full"
                           style={{
@@ -353,10 +353,10 @@ export default function ReportsPage() {
       {/* SECTION 5 — Follow-Up Aging */}
       <Section title="Follow-Up Aging">
         {aging.length === 0 ? (
-          <p className="text-sm text-zinc-400">No overdue outreach.</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">No overdue outreach.</p>
         ) : (
           <>
-            <div className="flex gap-4 text-xs text-zinc-500 mb-3">
+            <div className="flex gap-4 text-xs text-zinc-500 mb-3 dark:text-zinc-400">
               <span className="flex items-center gap-1.5">
                 <span className="inline-block w-3 h-3 rounded-sm bg-amber-100 border border-amber-200" />
                 14+ days
@@ -366,10 +366,10 @@ export default function ReportsPage() {
                 21+ days
               </span>
             </div>
-            <div className="rounded-md border border-zinc-200 overflow-hidden">
+            <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+                  <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
                     <th className="px-4 py-2.5">Company</th>
                     <th className="px-4 py-2.5">Trade</th>
                     <th className="px-4 py-2.5">Bid</th>
@@ -378,20 +378,20 @@ export default function ReportsPage() {
                     <th className="px-4 py-2.5">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                   {aging.map((row) => (
                     <tr key={row.id} className={agingRowClass(row.daysSince)}>
                       <td className="px-4 py-2.5 font-medium">{row.company}</td>
-                      <td className="px-4 py-2.5 text-zinc-500">{row.tradeName}</td>
-                      <td className="px-4 py-2.5 text-zinc-500">{row.bidName}</td>
-                      <td className="px-4 py-2.5 text-zinc-500">
+                      <td className="px-4 py-2.5 text-zinc-500 dark:text-zinc-400">{row.tradeName}</td>
+                      <td className="px-4 py-2.5 text-zinc-500 dark:text-zinc-400">{row.bidName}</td>
+                      <td className="px-4 py-2.5 text-zinc-500 dark:text-zinc-400">
                         {new Date(row.lastActivity).toLocaleDateString()}
                       </td>
                       <td className="px-4 py-2.5 text-right font-medium">
                         {row.daysSince}
                       </td>
                       <td className="px-4 py-2.5">
-                        <span className="text-xs capitalize text-zinc-600">
+                        <span className="text-xs capitalize text-zinc-600 dark:text-zinc-300">
                           {row.status.replace(/_/g, " ")}
                         </span>
                       </td>

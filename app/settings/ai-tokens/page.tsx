@@ -119,7 +119,7 @@ export default function AiTokensSettingsPage() {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto py-10 px-4">
-        <p className="text-sm text-zinc-500">Loading AI token settings…</p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading AI token settings…</p>
       </div>
     );
   }
@@ -127,7 +127,7 @@ export default function AiTokensSettingsPage() {
   if (error || !configs) {
     return (
       <div className="max-w-4xl mx-auto py-10 px-4">
-        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-900/30 dark:text-red-300">
           Error: {error ?? "Failed to load"}
         </div>
       </div>
@@ -156,11 +156,11 @@ export default function AiTokensSettingsPage() {
   return (
     <div className="max-w-4xl mx-auto py-10 px-4">
       <div className="mb-6">
-        <Link href="/" className="text-sm text-zinc-500 hover:underline">
+        <Link href="/" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">
           ← Home
         </Link>
-        <h1 className="text-2xl font-semibold mt-2 text-zinc-900">AI Token Settings</h1>
-        <p className="text-sm text-zinc-600 mt-1">
+        <h1 className="text-2xl font-semibold mt-2 text-zinc-900 dark:text-zinc-100">AI Token Settings</h1>
+        <p className="text-sm text-zinc-600 mt-1 dark:text-zinc-300">
           Adjust the maximum output tokens (max_tokens) for each AI call. Higher caps allow
           longer outputs but cost more if the model actually uses them. You only pay for
           tokens generated, not the cap itself.
@@ -168,13 +168,13 @@ export default function AiTokensSettingsPage() {
       </div>
 
       {/* Monthly estimate banner */}
-      <div className="mb-6 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
-        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+      <div className="mb-6 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800">
+        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:text-zinc-400">
           Estimated monthly cost (20 bids/mo, current settings)
         </p>
         <div className="mt-1 flex items-baseline gap-3">
-          <span className="text-2xl font-semibold text-zinc-900">{fmtUsd(monthlyTotal)}</span>
-          <span className="text-sm text-zinc-500">
+          <span className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">{fmtUsd(monthlyTotal)}</span>
+          <span className="text-sm text-zinc-500 dark:text-zinc-400">
             realistic · up to {fmtUsd(monthlyTotalMax)} if all calls max out
           </span>
         </div>
@@ -213,22 +213,22 @@ function CallConfigCard({
   const isCustom = !activePreset;
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-5">
+    <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
-          <h2 className="text-base font-semibold text-zinc-900">{config.label}</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{config.label}</h2>
+          <p className="text-xs text-zinc-500 mt-0.5 dark:text-zinc-400">
             <span className="font-mono">{config.model}</span>
             {" · "}~{fmtTokens(config.typicalInputTokens)} input tokens (typical)
           </p>
-          <p className="text-sm text-zinc-600 mt-2">{config.description}</p>
+          <p className="text-sm text-zinc-600 mt-2 dark:text-zinc-300">{config.description}</p>
         </div>
         {config.isOverridden && (
           <button
             onClick={() => onUpdate(null)}
             disabled={saving}
-            className="ml-3 text-xs text-zinc-500 hover:text-zinc-800 underline disabled:opacity-50"
+            className="ml-3 text-xs text-zinc-500 hover:text-zinc-800 underline disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-100"
             title="Revert to hardcoded default"
           >
             Reset
@@ -238,16 +238,16 @@ function CallConfigCard({
 
       {/* Current state row */}
       <div className="mb-3 flex items-center gap-2 text-sm">
-        <span className="text-zinc-500">Currently:</span>
-        <span className="font-mono font-semibold text-zinc-900">
+        <span className="text-zinc-500 dark:text-zinc-400">Currently:</span>
+        <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-100">
           {fmtTokens(config.currentMaxTokens)} max tokens
         </span>
-        <span className="text-zinc-400">·</span>
-        <span className="text-zinc-700">
+        <span className="text-zinc-400 dark:text-zinc-500">·</span>
+        <span className="text-zinc-700 dark:text-zinc-200">
           ~{fmtUsd(config.currentCost.realisticCostUsd)}/call realistic
         </span>
-        <span className="text-zinc-400">·</span>
-        <span className="text-zinc-500">
+        <span className="text-zinc-400 dark:text-zinc-500">·</span>
+        <span className="text-zinc-500 dark:text-zinc-400">
           up to {fmtUsd(config.currentCost.maxCostUsd)} if maxed
         </span>
       </div>
@@ -268,11 +268,11 @@ function CallConfigCard({
               className={`relative flex flex-col items-start gap-1 rounded-md border px-3 py-2.5 text-left transition-colors ${
                 isActive
                   ? "border-black bg-zinc-900 text-white"
-                  : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50"
+                  : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50 dark:text-zinc-200"
               } disabled:cursor-not-allowed`}
             >
               {isRecommended && !isActive && (
-                <span className="absolute top-1 right-1 text-[9px] font-semibold text-emerald-700 bg-emerald-100 rounded px-1 py-0.5 uppercase tracking-wide">
+                <span className="absolute top-1 right-1 text-[9px] font-semibold text-emerald-700 bg-emerald-100 rounded px-1 py-0.5 uppercase tracking-wide dark:text-emerald-300 dark:bg-emerald-900/40">
                   Rec
                 </span>
               )}
@@ -294,7 +294,7 @@ function CallConfigCard({
 
       {/* Active preset blurb */}
       {activePreset && (
-        <p className="mt-2 text-xs text-zinc-500 italic">
+        <p className="mt-2 text-xs text-zinc-500 italic dark:text-zinc-400">
           {PRESET_BLURBS[activePreset]}
         </p>
       )}

@@ -52,11 +52,11 @@ const STATUS_LABELS: Record<RfiStatus, string> = {
 };
 
 const STATUS_COLORS: Record<RfiStatus, string> = {
-  OPEN: "bg-blue-100 text-blue-700",
-  SENT: "bg-purple-100 text-purple-700",
-  ANSWERED: "bg-green-100 text-green-700",
-  CLOSED: "bg-zinc-100 text-zinc-500",
-  NO_RESPONSE: "bg-red-100 text-red-600",
+  OPEN: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  SENT: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+  ANSWERED: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  CLOSED: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+  NO_RESPONSE: "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400",
 };
 
 const PRIORITY_LABELS: Record<RfiPriority, string> = {
@@ -67,10 +67,10 @@ const PRIORITY_LABELS: Record<RfiPriority, string> = {
 };
 
 const PRIORITY_COLORS: Record<RfiPriority, string> = {
-  CRITICAL: "bg-red-100 text-red-700",
-  HIGH: "bg-orange-100 text-orange-700",
-  MEDIUM: "bg-zinc-100 text-zinc-600",
-  LOW: "bg-zinc-50 text-zinc-400",
+  CRITICAL: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  HIGH: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  MEDIUM: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  LOW: "bg-zinc-50 text-zinc-400 dark:bg-zinc-900/40 dark:text-zinc-400",
 };
 
 const PRIORITY_ORDER: RfiPriority[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
@@ -308,53 +308,53 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
     }
   };
 
-  if (loading) return <p className="text-sm text-zinc-400">Loading…</p>;
+  if (loading) return <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>;
   if (error) return <p className="text-sm text-red-500">Error: {error}</p>;
 
   return (
     <div className="flex flex-col gap-6">
       {/* Header summary bar */}
-      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3">
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 dark:border-zinc-700 dark:bg-zinc-800">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-          <span className="text-zinc-700">
+          <span className="text-zinc-700 dark:text-zinc-200">
             <span className="font-semibold">{summary?.total ?? questions.length}</span>{" "}
-            <span className="text-zinc-500">total</span>
+            <span className="text-zinc-500 dark:text-zinc-400">total</span>
           </span>
           {(summary?.open ?? 0) > 0 && (
-            <span className="text-zinc-700">
+            <span className="text-zinc-700 dark:text-zinc-200">
               <span className="font-semibold">{summary!.open}</span>{" "}
-              <span className="text-zinc-500">open</span>
+              <span className="text-zinc-500 dark:text-zinc-400">open</span>
             </span>
           )}
           {(summary?.sent ?? 0) > 0 && (
-            <span className="text-zinc-700">
+            <span className="text-zinc-700 dark:text-zinc-200">
               <span className="font-semibold">{summary!.sent}</span>{" "}
-              <span className="text-zinc-500">sent</span>
+              <span className="text-zinc-500 dark:text-zinc-400">sent</span>
             </span>
           )}
           {(summary?.answered ?? 0) > 0 && (
-            <span className="text-zinc-700">
+            <span className="text-zinc-700 dark:text-zinc-200">
               <span className="font-semibold">{summary!.answered}</span>{" "}
-              <span className="text-zinc-500">answered</span>
+              <span className="text-zinc-500 dark:text-zinc-400">answered</span>
             </span>
           )}
           {(summary?.criticalOpen ?? 0) > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">
               {summary!.criticalOpen} critical open
             </span>
           )}
           {(summary?.impactFlagged ?? 0) > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
               {summary!.impactFlagged} impact flagged
             </span>
           )}
           {overdueIds.size > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
               {overdueIds.size} overdue
             </span>
           )}
           {questions.length === 0 && (
-            <span className="text-zinc-400">No questions yet.</span>
+            <span className="text-zinc-400 dark:text-zinc-500">No questions yet.</span>
           )}
         </div>
       </div>
@@ -364,7 +364,7 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as RfiStatus | "")}
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none"
+          className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none dark:border-zinc-600 dark:bg-zinc-900"
         >
           {STATUS_FILTER_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -373,7 +373,7 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
         <select
           value={priorityFilter}
           onChange={(e) => setPriorityFilter(e.target.value as RfiPriority | "")}
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none"
+          className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none dark:border-zinc-600 dark:bg-zinc-900"
         >
           <option value="">All priorities</option>
           {PRIORITY_ORDER.map((p) => (
@@ -384,7 +384,7 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
           <select
             value={tradeFilter}
             onChange={(e) => setTradeFilter(e.target.value)}
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none"
+            className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none dark:border-zinc-600 dark:bg-zinc-900"
           >
             <option value="">All trades</option>
             {tradeNames.map((t) => (
@@ -397,12 +397,12 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
           placeholder="Search questions…"
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
-          className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none min-w-[180px]"
+          className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none min-w-[180px] dark:border-zinc-600 dark:bg-zinc-900"
         />
         {hasFilters && (
           <button
             onClick={() => { setStatusFilter(""); setPriorityFilter(""); setTradeFilter(""); setSearchText(""); }}
-            className="text-sm text-zinc-400 hover:text-zinc-700"
+            className="text-sm text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
           >
             Clear
           </button>
@@ -411,14 +411,14 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
           {filtered.length > 0 && (
             <button
               onClick={() => exportCsv(filtered)}
-              className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:border-zinc-500 hover:text-zinc-900"
+              className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
             >
               Export CSV
             </button>
           )}
           <button
             onClick={() => setShowAddModal(true)}
-            className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-700"
+            className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-700 dark:bg-zinc-50"
           >
             + Add Question
           </button>
@@ -427,34 +427,34 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
 
       {/* Bulk action bar */}
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 rounded-md border border-zinc-300 bg-zinc-50 px-4 py-2">
-          <span className="text-sm text-zinc-600">
+        <div className="flex items-center gap-3 rounded-md border border-zinc-300 bg-zinc-50 px-4 py-2 dark:border-zinc-600 dark:bg-zinc-800">
+          <span className="text-sm text-zinc-600 dark:text-zinc-300">
             <span className="font-semibold">{selected.size}</span> selected
           </span>
           <button
             onClick={() => bulkPatch({ status: "SENT", sentAt: new Date().toISOString() })}
             disabled={bulkBusy}
-            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
           >
             Mark Sent
           </button>
           <button
             onClick={() => bulkPatch({ status: "NO_RESPONSE" })}
             disabled={bulkBusy}
-            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
           >
             Mark No Response
           </button>
           <button
             onClick={() => bulkPatch({ status: "CLOSED" })}
             disabled={bulkBusy}
-            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
           >
             Close
           </button>
           <button
             onClick={() => setSelected(new Set())}
-            className="ml-auto text-xs text-zinc-400 hover:text-zinc-700"
+            className="ml-auto text-xs text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
           >
             Deselect all
           </button>
@@ -464,14 +464,14 @@ export default function QuestionsTab({ bidId }: { bidId: number }) {
       {/* Question cards */}
       <div className="flex flex-col gap-3">
         {filtered.length === 0 && (
-          <p className="text-sm text-zinc-400 italic">
+          <p className="text-sm text-zinc-400 italic dark:text-zinc-500">
             {questions.length === 0
               ? "No questions yet. Add one manually or generate from gap analysis findings."
               : "No questions match the current filter."}
           </p>
         )}
         {filtered.length > 0 && (
-          <label className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer select-none dark:text-zinc-400">
             <input
               type="checkbox"
               checked={selected.size === filtered.length && filtered.length > 0}
@@ -586,7 +586,7 @@ function QuestionCard({
 
         {/* RFI number */}
         {question.rfiNumber != null && (
-          <span className="rounded bg-zinc-200 px-2 py-0.5 text-[11px] font-mono font-semibold text-zinc-700">
+          <span className="rounded bg-zinc-200 px-2 py-0.5 text-[11px] font-mono font-semibold text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200">
             {rfiLabel(question.rfiNumber)}
           </span>
         )}
@@ -602,7 +602,7 @@ function QuestionCard({
                 setEditingPriority(false);
                 await act({ priority: e.target.value });
               }}
-              className="rounded px-1.5 py-0.5 text-[11px] font-semibold border border-zinc-300 bg-white focus:outline-none"
+              className="rounded px-1.5 py-0.5 text-[11px] font-semibold border border-zinc-300 bg-white focus:outline-none dark:border-zinc-600 dark:bg-zinc-900"
             >
               {PRIORITY_ORDER.map((p) => (
                 <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
@@ -626,25 +626,25 @@ function QuestionCard({
 
         {/* Overdue badge */}
         {isOverdue && (
-          <span className="rounded px-2 py-0.5 text-[11px] font-semibold bg-orange-100 text-orange-700">
+          <span className="rounded px-2 py-0.5 text-[11px] font-semibold bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
             Overdue
           </span>
         )}
 
         {/* Trade */}
         {question.tradeName && (
-          <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs text-zinc-600">
+          <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
             {question.tradeName}
           </span>
         )}
 
         {/* Source badge */}
         {question.gapFindingId ? (
-          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-violet-50 text-violet-600">
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
             Gap Analysis
           </span>
         ) : (
-          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-zinc-100 text-zinc-500">
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
             Manual
           </span>
         )}
@@ -658,26 +658,26 @@ function QuestionCard({
 
         {/* Impact flag indicator */}
         {question.impactFlag && (
-          <span className="rounded px-2 py-0.5 text-[11px] font-semibold bg-amber-100 text-amber-700">
+          <span className="rounded px-2 py-0.5 text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
             Impact
           </span>
         )}
       </div>
 
       {/* Question text */}
-      <p className="text-sm text-zinc-800 leading-relaxed">{question.questionText}</p>
+      <p className="text-sm text-zinc-800 leading-relaxed dark:text-zinc-100">{question.questionText}</p>
 
       {/* Source ref */}
       {question.sourceRef && (
-        <p className="text-xs italic text-zinc-400">{question.sourceRef}</p>
+        <p className="text-xs italic text-zinc-400 dark:text-zinc-500">{question.sourceRef}</p>
       )}
 
       {/* Response (when answered) */}
       {isAnswered && question.responseText && (
         <div className="rounded-md border border-green-100 bg-green-50 p-3 flex flex-col gap-1">
-          <p className="text-sm text-zinc-700">{question.responseText}</p>
+          <p className="text-sm text-zinc-700 dark:text-zinc-200">{question.responseText}</p>
           {(question.respondedBy || question.respondedAt) && (
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
               From: {question.respondedBy || "—"}{question.respondedAt ? ` on ${fmt(question.respondedAt)}` : ""}
             </p>
           )}
@@ -694,22 +694,22 @@ function QuestionCard({
 
       {/* Response form (inline expand) */}
       {showResponseForm && (
-        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 flex flex-col gap-3">
+        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 flex flex-col gap-3 dark:border-zinc-700 dark:bg-zinc-800">
           <textarea
             value={responseText}
             onChange={(e) => setResponseText(e.target.value)}
             placeholder="Response text…"
             rows={3}
-            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none resize-none"
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none resize-none dark:border-zinc-600 dark:bg-zinc-900"
           />
           <input
             type="text"
             value={respondedBy}
             onChange={(e) => setRespondedBy(e.target.value)}
             placeholder="Responded by (name)"
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none"
+            className="rounded border border-zinc-300 px-3 py-1.5 text-sm bg-white focus:outline-none dark:border-zinc-600 dark:bg-zinc-900"
           />
-          <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-zinc-700 cursor-pointer dark:text-zinc-200">
             <input
               type="checkbox"
               checked={impactFlag}
@@ -724,20 +724,20 @@ function QuestionCard({
               onChange={(e) => setImpactNote(e.target.value)}
               placeholder="Describe the impact…"
               rows={2}
-              className="w-full rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none resize-none"
+              className="w-full rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none resize-none dark:border-zinc-600 dark:bg-zinc-900"
             />
           )}
           <div className="flex gap-2">
             <button
               onClick={saveResponse}
               disabled={busy}
-              className="rounded bg-zinc-900 px-3 py-1.5 text-xs text-white hover:bg-zinc-700 disabled:opacity-50"
+              className="rounded bg-zinc-900 px-3 py-1.5 text-xs text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-50"
             >
               Save Response
             </button>
             <button
               onClick={() => setShowResponseForm(false)}
-              className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-500"
+              className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-500 dark:border-zinc-600 dark:text-zinc-300"
             >
               Cancel
             </button>
@@ -751,7 +751,7 @@ function QuestionCard({
           <button
             onClick={() => act({ status: "SENT", sentAt: new Date().toISOString() })}
             disabled={busy}
-            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
           >
             Mark Sent
           </button>
@@ -760,7 +760,7 @@ function QuestionCard({
           <button
             onClick={() => act({ status: "NO_RESPONSE" })}
             disabled={busy}
-            className="rounded border border-orange-300 bg-orange-50 px-3 py-1 text-xs text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+            className="rounded border border-orange-300 bg-orange-50 px-3 py-1 text-xs text-orange-700 hover:bg-orange-100 disabled:opacity-50 dark:bg-orange-900/30 dark:text-orange-300"
           >
             Mark No Response
           </button>
@@ -769,7 +769,7 @@ function QuestionCard({
           <button
             onClick={() => setShowResponseForm(true)}
             disabled={busy}
-            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
           >
             Record Response
           </button>
@@ -779,7 +779,7 @@ function QuestionCard({
           disabled={busy}
           className={`rounded border px-3 py-1 text-xs disabled:opacity-50 ${
             question.impactFlag
-              ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100"
+              ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300"
               : "border-zinc-300 text-zinc-600 hover:border-zinc-500 hover:text-zinc-900"
           }`}
         >
@@ -789,7 +789,7 @@ function QuestionCard({
           <button
             onClick={() => act({ status: "CLOSED" })}
             disabled={busy}
-            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
           >
             Close
           </button>
@@ -847,27 +847,27 @@ function AddQuestionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 flex flex-col gap-4">
-        <h3 className="text-base font-semibold text-zinc-900">Add Question</h3>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 p-6 flex flex-col gap-4 dark:bg-zinc-900">
+        <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Add Question</h3>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-600">Question text *</label>
+          <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Question text *</label>
           <textarea
             value={questionText}
             onChange={(e) => setQuestionText(e.target.value)}
             rows={3}
-            className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none dark:border-zinc-600 dark:bg-zinc-900"
             autoFocus
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-600">Trade</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Trade</label>
             <select
               value={tradeName}
               onChange={(e) => setTradeName(e.target.value)}
-              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none"
+              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none dark:border-zinc-600 dark:bg-zinc-900"
             >
               <option value="">— none —</option>
               {bidTrades.map((bt) => (
@@ -876,11 +876,11 @@ function AddQuestionModal({
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-600">Priority</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Priority</label>
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value as RfiPriority)}
-              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none"
+              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none dark:border-zinc-600 dark:bg-zinc-900"
             >
               {PRIORITY_ORDER.map((p) => (
                 <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
@@ -891,22 +891,22 @@ function AddQuestionModal({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-600">Source ref</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Source ref</label>
             <input
               type="text"
               value={sourceRef}
               onChange={(e) => setSourceRef(e.target.value)}
               placeholder="e.g. Spec 09 65 00"
-              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none"
+              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none dark:border-zinc-600 dark:bg-zinc-900"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-600">Due date</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Due date</label>
             <input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none"
+              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none dark:border-zinc-600 dark:bg-zinc-900"
             />
           </div>
         </div>
@@ -916,14 +916,14 @@ function AddQuestionModal({
         <div className="flex gap-2 justify-end">
           <button
             onClick={onClose}
-            className="rounded border border-zinc-300 px-4 py-1.5 text-sm text-zinc-600 hover:border-zinc-500"
+            className="rounded border border-zinc-300 px-4 py-1.5 text-sm text-zinc-600 hover:border-zinc-500 dark:border-zinc-600 dark:text-zinc-300"
           >
             Cancel
           </button>
           <button
             onClick={submit}
             disabled={saving}
-            className="rounded bg-zinc-900 px-4 py-1.5 text-sm text-white hover:bg-zinc-700 disabled:opacity-50"
+            className="rounded bg-zinc-900 px-4 py-1.5 text-sm text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-50"
           >
             {saving ? "Saving…" : "Add Question"}
           </button>

@@ -53,7 +53,7 @@ export default function EstimateIntelligenceCard({ bidId }: { bidId: number }) {
     return () => { cancelled = true; };
   }, [bidId]);
 
-  if (loading) return <div className="h-10 rounded-md bg-zinc-100 animate-pulse" />;
+  if (loading) return <div className="h-10 rounded-md bg-zinc-100 animate-pulse dark:bg-zinc-800" />;
   if (!data || !data.generated || data.summary.totalEstimates === 0) return null;
 
   const { summary } = data;
@@ -72,9 +72,9 @@ export default function EstimateIntelligenceCard({ bidId }: { bidId: number }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-zinc-800">Estimate Intelligence</h3>
+        <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Estimate Intelligence</h3>
         {summary.totalBidRange && (
-          <span className="text-xs text-zinc-400">
+          <span className="text-xs text-zinc-400 dark:text-zinc-500">
             Range: {fmtDollar(summary.totalBidRange.low)} – {fmtDollar(summary.totalBidRange.high)}
           </span>
         )}
@@ -93,23 +93,23 @@ export default function EstimateIntelligenceCard({ bidId }: { bidId: number }) {
           </span>
           <div className="flex gap-2">
             {warningCount > 0 && (
-              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700">
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
                 {warningCount} warning{warningCount !== 1 ? "s" : ""}
               </span>
             )}
             {cautionCount > 0 && (
-              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700">
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                 {cautionCount} caution{cautionCount !== 1 ? "s" : ""}
               </span>
             )}
             {infoCount > 0 && (
-              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700">
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
                 {infoCount} info
               </span>
             )}
           </div>
         </div>
-        <span className="text-xs text-zinc-400">{open ? "▲" : "▼"}</span>
+        <span className="text-xs text-zinc-400 dark:text-zinc-500">{open ? "▲" : "▼"}</span>
       </button>
 
       {/* Expanded recommendations */}
@@ -127,7 +127,7 @@ export default function EstimateIntelligenceCard({ bidId }: { bidId: number }) {
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-xs font-semibold text-zinc-700">{rec.trade}</span>
+                    <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{rec.trade}</span>
                     <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${style.text}`}>
                       {rec.type.replace(/_/g, " ")}
                     </span>

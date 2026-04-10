@@ -145,9 +145,9 @@ function UploadZone({
   const ref = useRef<HTMLInputElement>(null);
   return (
     <div className="flex-1">
-      <h2 className="text-sm font-semibold text-zinc-700 mb-2">{label}</h2>
+      <h2 className="text-sm font-semibold text-zinc-700 mb-2 dark:text-zinc-200">{label}</h2>
       <div
-        className="rounded-md border-2 border-dashed border-zinc-300 bg-zinc-50 p-6 text-center hover:border-zinc-400 transition-colors cursor-pointer"
+        className="rounded-md border-2 border-dashed border-zinc-300 bg-zinc-50 p-6 text-center hover:border-zinc-400 transition-colors cursor-pointer dark:border-zinc-600 dark:bg-zinc-800"
         onClick={() => ref.current?.click()}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -168,15 +168,15 @@ function UploadZone({
           }}
         />
         {uploading ? (
-          <p className="text-sm text-zinc-500">Uploading and parsing…</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Uploading and parsing…</p>
         ) : (
           <>
-            <p className="text-sm text-zinc-600 font-medium">
+            <p className="text-sm text-zinc-600 font-medium dark:text-zinc-300">
               {currentFileName ? "Replace" : "Upload"} PDF
             </p>
-            <p className="text-xs text-zinc-400 mt-1">Drop here or click to browse</p>
+            <p className="text-xs text-zinc-400 mt-1 dark:text-zinc-500">Drop here or click to browse</p>
             {currentFileName && (
-              <p className="text-xs text-zinc-400 mt-1">Current: {currentFileName}</p>
+              <p className="text-xs text-zinc-400 mt-1 dark:text-zinc-500">Current: {currentFileName}</p>
             )}
           </>
         )}
@@ -195,7 +195,7 @@ function CoveredSection({ rows }: { rows: (SectionRow | DrawingSheetRow)[] }) {
     <div className="rounded-md border border-green-200 bg-green-50 overflow-hidden">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-green-800 hover:bg-green-100 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-green-800 hover:bg-green-100 transition-colors dark:text-green-300"
       >
         <span>Covered — {rows.length} trade{rows.length !== 1 ? "s" : ""}</span>
         <span className="text-green-600 text-xs">{open ? "▲ hide" : "▼ show"}</span>
@@ -280,7 +280,7 @@ function MissingSection({
             <button
               disabled={adding}
               onClick={() => onAddToBid(tradeId, tradeName)}
-              className="shrink-0 rounded border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-50 transition-colors"
+              className="shrink-0 rounded border border-amber-400 bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-50 transition-colors dark:bg-amber-900/40 dark:text-amber-300"
             >
               {adding ? "Adding…" : "Add to Bid"}
             </button>
@@ -304,17 +304,17 @@ function UnknownSection({
 }) {
   if (rows.length === 0) return null;
   return (
-    <div className="rounded-md border border-zinc-200 overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-zinc-200 bg-zinc-50">
-        <span className="text-sm font-medium text-zinc-700">
+    <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
+      <div className="px-4 py-2.5 border-b border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800">
+        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
           Unknown — {rows.length} section{rows.length !== 1 ? "s" : ""}
         </span>
-        <p className="text-xs text-zinc-500 mt-0.5">
+        <p className="text-xs text-zinc-500 mt-0.5 dark:text-zinc-400">
           No trade in the dictionary matches these CSI sections. Assign manually.
         </p>
       </div>
       <table className="w-full text-sm">
-        <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide border-b border-zinc-200">
+        <thead className="bg-zinc-50 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide border-b border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700">
           <tr>
             <th className="px-4 py-2.5 w-24">CSI</th>
             <th className="px-4 py-2.5">Section</th>
@@ -323,9 +323,9 @@ function UnknownSection({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
-              <td className="px-4 py-2.5 font-mono text-xs text-zinc-500">{row.csiNumber}</td>
-              <td className="px-4 py-2.5 text-zinc-700">{row.csiTitle}</td>
+            <tr key={row.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800">
+              <td className="px-4 py-2.5 font-mono text-xs text-zinc-500 dark:text-zinc-400">{row.csiNumber}</td>
+              <td className="px-4 py-2.5 text-zinc-700 dark:text-zinc-200">{row.csiTitle}</td>
               <td className="px-4 py-2.5">
                 <select
                   defaultValue=""
@@ -335,7 +335,7 @@ function UnknownSection({
                     if (!isNaN(val)) onAssign(row.id, val);
                     e.target.value = "";
                   }}
-                  className="w-full rounded border border-zinc-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                  className="w-full rounded border border-zinc-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900"
                 >
                   <option value="">— Assign trade</option>
                   {allTrades.map((t) => (
@@ -608,7 +608,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (loading) return <p className="text-sm text-zinc-400">Loading…</p>;
+  if (loading) return <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>;
   if (fetchError) return <p className="text-sm text-red-500">Error: {fetchError}</p>;
 
   // Merge missing rows from both sources for the MissingSection component
@@ -645,30 +645,30 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
       {/* ── Error states ── */}
       {specData?.specBook?.status === "error" && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
           Spec book processing failed. Re-upload to try again.
         </div>
       )}
       {drawingData?.drawingUpload?.status === "error" && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
           Drawing sheet index processing failed. Re-upload to try again.
         </div>
       )}
 
       {/* ── Summary bar ── */}
       {hasResults && (
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
           <div className="flex flex-wrap gap-6">
             {specData?.specBook?.status === "ready" && (
-              <span className="text-zinc-600">
+              <span className="text-zinc-600 dark:text-zinc-300">
                 <span className="font-semibold">{specData.total}</span>{" "}
-                <span className="text-zinc-400">spec sections</span>
+                <span className="text-zinc-400 dark:text-zinc-500">spec sections</span>
               </span>
             )}
             {drawingData?.drawingUpload?.status === "ready" && (
-              <span className="text-zinc-600">
+              <span className="text-zinc-600 dark:text-zinc-300">
                 <span className="font-semibold">{drawingData.total}</span>{" "}
-                <span className="text-zinc-400">drawing trade entries</span>
+                <span className="text-zinc-400 dark:text-zinc-500">drawing trade entries</span>
               </span>
             )}
             {totalCovered > 0 && (
@@ -684,7 +684,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
               </span>
             )}
             {(specData?.unknownCount ?? 0) > 0 && (
-              <span className="text-zinc-500">
+              <span className="text-zinc-500 dark:text-zinc-400">
                 <span className="font-semibold">{specData!.unknownCount}</span>{" "}
                 <span>unknown</span>
               </span>
@@ -694,7 +694,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
             <button
               onClick={rematchSpec}
               disabled={specRematching}
-              className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50"
+              className="rounded border border-zinc-300 px-3 py-1.5 text-xs text-zinc-600 hover:border-zinc-500 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
             >
               {specRematching ? "Re-matching…" : "Re-match trades"}
             </button>
@@ -743,39 +743,39 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
       {/* ── Empty state ── */}
       {!hasResults && (
-        <p className="text-sm text-zinc-400 italic">
+        <p className="text-sm text-zinc-400 italic dark:text-zinc-500">
           Upload a spec book or drawing sheet index to get started. Both are optional.
         </p>
       )}
 
       {/* ── Addendums ── */}
-      <div className="flex flex-col gap-3 pt-2 border-t border-zinc-200">
-        <h2 className="text-sm font-semibold text-zinc-700">Addendums</h2>
+      <div className="flex flex-col gap-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Addendums</h2>
 
         {/* Upload form */}
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-600">Addendum #</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Addendum #</label>
             <input
               type="number"
               min={1}
               value={addendumNumber}
               onChange={(e) => setAddendumNumber(e.target.value)}
               placeholder="1"
-              className="w-24 rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-24 rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-zinc-600 dark:bg-zinc-900"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-600">Date (optional)</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Date (optional)</label>
             <input
               type="date"
               value={addendumDate}
               onChange={(e) => setAddendumDate(e.target.value)}
-              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-zinc-600 dark:bg-zinc-900"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-600">PDF File</label>
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">PDF File</label>
             <input
               ref={addendumFileRef}
               type="file"
@@ -790,7 +790,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
             <button
               onClick={() => addendumFileRef.current?.click()}
               disabled={addendumUploading}
-              className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:border-zinc-400 hover:text-zinc-900 disabled:opacity-50"
+              className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:border-zinc-400 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:text-zinc-100"
             >
               {addendumUploading ? "Uploading…" : "Choose PDF"}
             </button>
@@ -814,35 +814,35 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
               // Delta status badge
               let deltaStatusLabel = "Pending";
-              let deltaStatusClass = "bg-zinc-100 text-zinc-500";
+              let deltaStatusClass = "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400";
               if (isProcessing) {
                 deltaStatusLabel = "Processing";
-                deltaStatusClass = "bg-blue-100 text-blue-700";
+                deltaStatusClass = "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300";
               } else if (isProcessed) {
                 deltaStatusLabel = "Processed";
-                deltaStatusClass = "bg-green-100 text-green-700";
+                deltaStatusClass = "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300";
               }
 
               return (
-                <div key={a.id} className="rounded-md border border-zinc-200 overflow-hidden">
+                <div key={a.id} className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
                   {/* Row */}
                   <div className="flex items-center gap-3 px-4 py-3">
                     {/* Addendum # */}
-                    <span className="text-sm font-semibold text-zinc-700 w-6 shrink-0">
+                    <span className="text-sm font-semibold text-zinc-700 w-6 shrink-0 dark:text-zinc-200">
                       {a.addendumNumber}
                     </span>
 
                     {/* File + date */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-700 truncate">{a.fileName}</p>
-                      <p className="text-xs text-zinc-400 mt-0.5">
+                      <p className="text-sm text-zinc-700 truncate dark:text-zinc-200">{a.fileName}</p>
+                      <p className="text-xs text-zinc-400 mt-0.5 dark:text-zinc-500">
                         {a.addendumDate
                           ? new Date(a.addendumDate).toLocaleDateString()
                           : "No date"}{" "}
                         · Uploaded {new Date(a.uploadedAt).toLocaleDateString()}
                       </p>
                       {isProcessed && a.summary && (
-                        <p className="text-xs text-zinc-500 mt-1 italic">{a.summary}</p>
+                        <p className="text-xs text-zinc-500 mt-1 italic dark:text-zinc-400">{a.summary}</p>
                       )}
                     </div>
 
@@ -850,10 +850,10 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                     <span
                       className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
                         a.status === "ready"
-                          ? "bg-zinc-100 text-zinc-500"
+                          ? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                           : a.status === "error"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-zinc-100 text-zinc-400"
+                          ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                          : "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-400"
                       }`}
                     >
                       {a.status === "ready" ? "Extracted" : a.status}
@@ -879,7 +879,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                       {isProcessed && (
                         <button
                           onClick={() => setExpandedDeltaId(isExpanded ? null : a.id)}
-                          className="rounded border border-zinc-300 px-2.5 py-1 text-xs text-zinc-600 hover:border-zinc-500"
+                          className="rounded border border-zinc-300 px-2.5 py-1 text-xs text-zinc-600 hover:border-zinc-500 dark:border-zinc-600 dark:text-zinc-300"
                         >
                           {isExpanded ? "Hide Delta" : "View Delta"}
                         </button>
@@ -903,29 +903,29 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
                   {/* No-brief warning */}
                   {!isProcessed && !briefExists && a.status === "ready" && (
-                    <div className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+                    <div className="border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                       Generate the project intelligence brief on the Overview tab before processing this addendum.
                     </div>
                   )}
 
                   {/* Delta detail panel */}
                   {isExpanded && delta && (
-                    <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-4 flex flex-col gap-4">
+                    <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-4 flex flex-col gap-4 dark:border-zinc-700 dark:bg-zinc-800">
 
                       {/* Net direction badges */}
                       <div className="flex flex-wrap gap-2 items-center">
-                        <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Net Impact:</span>
+                        <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:text-zinc-400">Net Impact:</span>
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          delta.netCostDirection === "INCREASE" ? "bg-red-100 text-red-700"
-                          : delta.netCostDirection === "DECREASE" ? "bg-green-100 text-green-700"
-                          : "bg-zinc-100 text-zinc-500"
+                          delta.netCostDirection === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                          : delta.netCostDirection === "DECREASE" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                          : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                         }`}>
                           {delta.netCostDirection === "INCREASE" ? "↑" : delta.netCostDirection === "DECREASE" ? "↓" : "="} Cost {delta.netCostDirection}
                         </span>
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                          delta.netScheduleDirection === "INCREASE" ? "bg-red-100 text-red-700"
-                          : delta.netScheduleDirection === "DECREASE" ? "bg-green-100 text-green-700"
-                          : "bg-zinc-100 text-zinc-500"
+                          delta.netScheduleDirection === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                          : delta.netScheduleDirection === "DECREASE" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                          : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                         }`}>
                           {delta.netScheduleDirection === "INCREASE" ? "↑" : delta.netScheduleDirection === "DECREASE" ? "↓" : "="} Schedule {delta.netScheduleDirection}
                         </span>
@@ -934,33 +934,33 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                       {/* Scope changes */}
                       {delta.scopeChanges?.length > 0 && (
                         <div className="flex flex-col gap-2">
-                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide dark:text-zinc-300">
                             Scope Changes ({delta.scopeChanges.length})
                           </h3>
                           {delta.scopeChanges.map((sc, i) => (
-                            <div key={i} className="rounded border border-zinc-200 bg-white p-3 flex flex-col gap-1.5">
+                            <div key={i} className="rounded border border-zinc-200 bg-white p-3 flex flex-col gap-1.5 dark:border-zinc-700 dark:bg-zinc-900">
                               <div className="flex flex-wrap gap-2 items-center">
                                 <span className="rounded bg-zinc-800 text-white px-1.5 py-0.5 text-xs font-semibold">
                                   {sc.type}
                                 </span>
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  sc.costImpact === "INCREASE" ? "bg-red-100 text-red-700"
-                                  : sc.costImpact === "DECREASE" ? "bg-green-100 text-green-700"
-                                  : "bg-zinc-100 text-zinc-500"
+                                  sc.costImpact === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                                  : sc.costImpact === "DECREASE" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                                 }`}>
                                   Cost: {sc.costImpact}
                                 </span>
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  sc.scheduleImpact === "INCREASE" ? "bg-red-100 text-red-700"
-                                  : sc.scheduleImpact === "DECREASE" ? "bg-green-100 text-green-700"
-                                  : "bg-zinc-100 text-zinc-500"
+                                  sc.scheduleImpact === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                                  : sc.scheduleImpact === "DECREASE" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                                 }`}>
                                   Schedule: {sc.scheduleImpact}
                                 </span>
                               </div>
-                              <p className="text-sm text-zinc-800">{sc.description}</p>
-                              <p className="text-xs text-zinc-400">{sc.location}</p>
-                              <p className="text-xs text-zinc-600 border-t border-zinc-100 pt-1.5 mt-0.5">
+                              <p className="text-sm text-zinc-800 dark:text-zinc-100">{sc.description}</p>
+                              <p className="text-xs text-zinc-400 dark:text-zinc-500">{sc.location}</p>
+                              <p className="text-xs text-zinc-600 border-t border-zinc-100 pt-1.5 mt-0.5 dark:text-zinc-300 dark:border-zinc-800">
                                 <span className="font-medium">Action:</span> {sc.actionRequired}
                               </p>
                             </div>
@@ -971,23 +971,23 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                       {/* New risks */}
                       {delta.newRisks?.length > 0 && (
                         <div className="flex flex-col gap-2">
-                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide dark:text-zinc-300">
                             New Risks ({delta.newRisks.length})
                           </h3>
                           {delta.newRisks.map((r, i) => (
-                            <div key={i} className="rounded border border-zinc-200 bg-white p-3 flex flex-col gap-1.5">
+                            <div key={i} className="rounded border border-zinc-200 bg-white p-3 flex flex-col gap-1.5 dark:border-zinc-700 dark:bg-zinc-900">
                               <div className="flex items-center gap-2">
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                  r.severity === "CRITICAL" ? "bg-red-100 text-red-700"
-                                  : r.severity === "MODERATE" ? "bg-amber-100 text-amber-700"
-                                  : "bg-zinc-100 text-zinc-500"
+                                  r.severity === "CRITICAL" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                                  : r.severity === "MODERATE" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                                 }`}>
                                   {r.severity}
                                 </span>
-                                <span className="text-xs text-zinc-400">{r.sourceRef}</span>
+                                <span className="text-xs text-zinc-400 dark:text-zinc-500">{r.sourceRef}</span>
                               </div>
-                              <p className="text-sm text-zinc-800">{r.description}</p>
-                              <p className="text-xs text-zinc-600 border-t border-zinc-100 pt-1.5 mt-0.5">
+                              <p className="text-sm text-zinc-800 dark:text-zinc-100">{r.description}</p>
+                              <p className="text-xs text-zinc-600 border-t border-zinc-100 pt-1.5 mt-0.5 dark:text-zinc-300 dark:border-zinc-800">
                                 <span className="font-medium">Recommended action:</span> {r.recommendedAction}
                               </p>
                             </div>
@@ -998,14 +998,14 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                       {/* Clarifications */}
                       {delta.clarifications?.length > 0 && (
                         <div className="flex flex-col gap-2">
-                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide dark:text-zinc-300">
                             Clarifications ({delta.clarifications.length})
                           </h3>
                           {delta.clarifications.map((c, i) => (
-                            <div key={i} className="rounded border border-zinc-200 bg-white p-3 flex flex-col gap-1">
-                              <p className="text-sm text-zinc-800">{c.description}</p>
-                              <p className="text-xs text-zinc-400">{c.location}</p>
-                              <p className="text-xs text-zinc-600">
+                            <div key={i} className="rounded border border-zinc-200 bg-white p-3 flex flex-col gap-1 dark:border-zinc-700 dark:bg-zinc-900">
+                              <p className="text-sm text-zinc-800 dark:text-zinc-100">{c.description}</p>
+                              <p className="text-xs text-zinc-400 dark:text-zinc-500">{c.location}</p>
+                              <p className="text-xs text-zinc-600 dark:text-zinc-300">
                                 <span className="font-medium">Action:</span> {c.actionRequired}
                               </p>
                             </div>
@@ -1016,12 +1016,12 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                       {/* Resolved items */}
                       {delta.resolvedItems?.length > 0 && (
                         <div className="flex flex-col gap-1.5">
-                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide dark:text-zinc-300">
                             Resolved Items
                           </h3>
                           <ul className="flex flex-col gap-1">
                             {delta.resolvedItems.map((item, i) => (
-                              <li key={i} className="flex gap-2 items-start text-xs text-zinc-600">
+                              <li key={i} className="flex gap-2 items-start text-xs text-zinc-600 dark:text-zinc-300">
                                 <span className="text-green-600 font-bold shrink-0 mt-0.5">✓</span>
                                 <span>{item}</span>
                               </li>
@@ -1033,7 +1033,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                       {/* Actions required — checklist */}
                       {delta.actionsRequired?.length > 0 && (
                         <div className="flex flex-col gap-1.5">
-                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                          <h3 className="text-xs font-semibold text-zinc-600 uppercase tracking-wide dark:text-zinc-300">
                             Actions Required
                           </h3>
                           <ul className="flex flex-col gap-1.5">
@@ -1073,7 +1073,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
         )}
 
         {addendums.length === 0 && (
-          <p className="text-sm text-zinc-400 italic">
+          <p className="text-sm text-zinc-400 italic dark:text-zinc-500">
             No addendums uploaded. Add addendums as they are issued.
           </p>
         )}

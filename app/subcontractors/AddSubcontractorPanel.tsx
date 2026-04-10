@@ -73,12 +73,12 @@ export default function AddSubcontractorPanel({ open, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/40" onClick={close} />
-      <div className="relative z-10 w-full max-w-md bg-white shadow-xl flex flex-col h-full overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+      <div className="relative z-10 w-full max-w-md bg-white shadow-xl flex flex-col h-full overflow-y-auto dark:bg-zinc-900">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-700">
           <h2 className="text-lg font-semibold">Add Subcontractor</h2>
           <button
             onClick={close}
-            className="text-zinc-400 hover:text-zinc-600 text-xl leading-none"
+            className="text-zinc-400 hover:text-zinc-600 text-xl leading-none dark:text-zinc-500"
           >
             ✕
           </button>
@@ -86,33 +86,33 @@ export default function AddSubcontractorPanel({ open, onClose }: Props) {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5 px-6 py-5 flex-1">
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-zinc-700">Company Name *</label>
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Company Name *</label>
             <input
               autoFocus
               type="text"
               value={fields.company}
               onChange={set("company")}
               required
-              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-zinc-700">Office / Location</label>
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Office / Location</label>
             <input
               type="text"
               value={fields.office}
               onChange={set("office")}
-              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-zinc-700">Status</label>
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Status</label>
             <select
               value={fields.status}
               onChange={set("status")}
-              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
             >
               <option value="active">Active</option>
               <option value="preferred">Preferred</option>
@@ -121,9 +121,9 @@ export default function AddSubcontractorPanel({ open, onClose }: Props) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-zinc-700">Trades</label>
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Trades</label>
             {trades.length === 0 ? (
-              <p className="text-xs text-zinc-400">Loading…</p>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500">Loading…</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {trades.map((t) => (
@@ -145,7 +145,7 @@ export default function AddSubcontractorPanel({ open, onClose }: Props) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-zinc-700">Tags</label>
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Tags</label>
             <div className="flex gap-4 flex-wrap">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
@@ -187,12 +187,12 @@ export default function AddSubcontractorPanel({ open, onClose }: Props) {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-zinc-700">Notes</label>
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Notes</label>
             <textarea
               value={fields.notes}
               onChange={set("notes")}
               rows={3}
-              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
             />
           </div>
 
@@ -200,7 +200,7 @@ export default function AddSubcontractorPanel({ open, onClose }: Props) {
             <button
               type="button"
               onClick={close}
-              className="rounded-md border border-zinc-300 px-4 py-2 text-sm hover:bg-zinc-50"
+              className="rounded-md border border-zinc-300 px-4 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-600 dark:hover:bg-zinc-800"
             >
               Cancel
             </button>

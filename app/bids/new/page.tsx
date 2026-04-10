@@ -40,7 +40,7 @@ export default function NewBidPage() {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <label htmlFor="projectName" className="text-sm font-medium text-zinc-700">
+          <label htmlFor="projectName" className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
             Project Name <span className="text-red-500">*</span>
           </label>
           <input
@@ -48,43 +48,43 @@ export default function NewBidPage() {
             name="projectName"
             type="text"
             required
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label htmlFor="location" className="text-sm font-medium text-zinc-700">
+          <label htmlFor="location" className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
             Location
           </label>
           <input
             id="location"
             name="location"
             type="text"
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label htmlFor="dueDate" className="text-sm font-medium text-zinc-700">
+          <label htmlFor="dueDate" className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
             Due Date
           </label>
           <input
             id="dueDate"
             name="dueDate"
             type="date"
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label htmlFor="description" className="text-sm font-medium text-zinc-700">
+          <label htmlFor="description" className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
             Description
           </label>
           <textarea
             id="description"
             name="description"
             rows={4}
-            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600 dark:text-zinc-100"
           />
         </div>
 
@@ -100,7 +100,7 @@ export default function NewBidPage() {
           <button
             type="button"
             onClick={() => router.push("/bids")}
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm hover:bg-zinc-50"
+            className="rounded-md border border-zinc-300 px-4 py-2 text-sm hover:bg-zinc-50 dark:border-zinc-600 dark:hover:bg-zinc-800"
           >
             Cancel
           </button>

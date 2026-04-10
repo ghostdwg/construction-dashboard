@@ -37,11 +37,11 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  exported: "bg-zinc-100 text-zinc-600",
-  sent: "bg-blue-100 text-blue-700",
-  responded: "bg-green-100 text-green-700",
-  declined: "bg-red-100 text-red-700",
-  needs_follow_up: "bg-amber-100 text-amber-700",
+  exported: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  sent: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  responded: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  declined: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  needs_follow_up: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
 };
 
 // ---- Helpers ----
@@ -61,9 +61,9 @@ function tradeName(log: OutreachLog): string {
 
 function SummaryCard({ label, count }: { label: string; count: number }) {
   return (
-    <div className="rounded-md border border-zinc-200 px-4 py-3 text-center">
+    <div className="rounded-md border border-zinc-200 px-4 py-3 text-center dark:border-zinc-700">
       <p className="text-2xl font-semibold">{count}</p>
-      <p className="text-xs text-zinc-500 mt-0.5">{label}</p>
+      <p className="text-xs text-zinc-500 mt-0.5 dark:text-zinc-400">{label}</p>
     </div>
   );
 }
@@ -94,13 +94,13 @@ function ExpandedRow({
   }
 
   return (
-    <tr className="bg-zinc-50">
+    <tr className="bg-zinc-50 dark:bg-zinc-800">
       <td colSpan={7} className="px-4 py-4">
         <div className="flex flex-col gap-3 max-w-2xl">
           <div>
-            <label className="text-xs font-medium text-zinc-600 block mb-1">Notes</label>
+            <label className="text-xs font-medium text-zinc-600 block mb-1 dark:text-zinc-300">Notes</label>
             <textarea
-              className="w-full text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600"
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -108,12 +108,12 @@ function ExpandedRow({
           </div>
           <div className="flex items-center gap-4">
             <div>
-              <label className="text-xs font-medium text-zinc-600 block mb-1">
+              <label className="text-xs font-medium text-zinc-600 block mb-1 dark:text-zinc-300">
                 Follow-up Due
               </label>
               <input
                 type="date"
-                className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600"
                 value={followUp}
                 onChange={(e) => setFollowUp(e.target.value)}
               />
@@ -131,7 +131,7 @@ function ExpandedRow({
               <button
                 key={s}
                 onClick={() => save({ status: s })}
-                className="text-xs px-2.5 py-1 rounded border border-zinc-200 hover:bg-zinc-100"
+                className="text-xs px-2.5 py-1 rounded border border-zinc-200 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
               >
                 → {STATUS_LABELS[s]}
               </button>
@@ -211,9 +211,9 @@ export default function OutreachPage() {
       {/* Filter bar */}
       <div className="flex flex-wrap gap-3 mb-6 items-end">
         <div>
-          <label className="text-xs font-medium text-zinc-600 block mb-1">Bid</label>
+          <label className="text-xs font-medium text-zinc-600 block mb-1 dark:text-zinc-300">Bid</label>
           <select
-            className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600"
             value={filterBid}
             onChange={(e) => setFilterBid(e.target.value)}
           >
@@ -224,9 +224,9 @@ export default function OutreachPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-zinc-600 block mb-1">Status</label>
+          <label className="text-xs font-medium text-zinc-600 block mb-1 dark:text-zinc-300">Status</label>
           <select
-            className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-zinc-900 dark:border-zinc-600"
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
           >
@@ -237,11 +237,11 @@ export default function OutreachPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-zinc-600 block mb-1">Company</label>
+          <label className="text-xs font-medium text-zinc-600 block mb-1 dark:text-zinc-300">Company</label>
           <input
             type="text"
             placeholder="Search company…"
-            className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-44"
+            className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-44 dark:bg-zinc-900 dark:border-zinc-600"
             value={filterSearch}
             onChange={(e) => setFilterSearch(e.target.value)}
           />
@@ -249,7 +249,7 @@ export default function OutreachPage() {
         {(filterBid || filterStatus || filterSearch) && (
           <button
             onClick={() => { setFilterBid(""); setFilterStatus(""); setFilterSearch(""); }}
-            className="text-xs text-zinc-500 hover:text-zinc-800 mt-4"
+            className="text-xs text-zinc-500 hover:text-zinc-800 mt-4 dark:text-zinc-400 dark:hover:text-zinc-100"
           >
             Clear
           </button>
@@ -268,16 +268,16 @@ export default function OutreachPage() {
 
       {/* Table */}
       {loading ? (
-        <p className="text-sm text-zinc-400">Loading…</p>
+        <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>
       ) : error ? (
         <p className="text-sm text-red-500">{error}</p>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-zinc-400">No outreach logs found.</p>
+        <p className="text-sm text-zinc-400 dark:text-zinc-500">No outreach logs found.</p>
       ) : (
-        <div className="rounded-md border border-zinc-200 overflow-hidden">
+        <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
                 <th className="px-4 py-2.5">Project</th>
                 <th className="px-4 py-2.5">Trade</th>
                 <th className="px-4 py-2.5">Company</th>
@@ -287,11 +287,11 @@ export default function OutreachPage() {
                 <th className="px-4 py-2.5">Follow-up Due</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {filtered.map((log) => (
                 <Fragment key={log.id}>
                   <tr
-                    className="hover:bg-zinc-50 cursor-pointer"
+                    className="hover:bg-zinc-50 cursor-pointer dark:hover:bg-zinc-800"
                     onClick={() =>
                       setExpandedId(expandedId === log.id ? null : log.id)
                     }
@@ -299,24 +299,24 @@ export default function OutreachPage() {
                     <td className="px-4 py-3">
                       {log.bid?.projectName ?? `Bid ${log.bidId}`}
                     </td>
-                    <td className="px-4 py-3 text-zinc-500">{tradeName(log)}</td>
+                    <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">{tradeName(log)}</td>
                     <td className="px-4 py-3">
                       {log.subcontractor?.company ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-zinc-500">
+                    <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
                       {log.contact?.name ?? "—"}
                     </td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${
-                          STATUS_COLORS[log.status] ?? "bg-zinc-100 text-zinc-600"
+                          STATUS_COLORS[log.status] ?? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
                         }`}
                       >
                         {STATUS_LABELS[log.status] ?? log.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-zinc-500">{lastActivity(log)}</td>
-                    <td className="px-4 py-3 text-zinc-500">
+                    <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">{lastActivity(log)}</td>
+                    <td className="px-4 py-3 text-zinc-500 dark:text-zinc-400">
                       {log.followUpDue
                         ? new Date(log.followUpDue).toLocaleDateString()
                         : "—"}

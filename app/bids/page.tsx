@@ -3,13 +3,13 @@ import { prisma } from "@/lib/prisma";
 import NewBidButton from "./NewBidButton";
 
 const STATUS_BADGE: Record<string, { bg: string; text: string }> = {
-  draft: { bg: "bg-zinc-100", text: "text-zinc-600" },
-  active: { bg: "bg-blue-100", text: "text-blue-700" },
-  leveling: { bg: "bg-purple-100", text: "text-purple-700" },
-  submitted: { bg: "bg-amber-100", text: "text-amber-700" },
-  awarded: { bg: "bg-green-100", text: "text-green-700" },
-  lost: { bg: "bg-red-100", text: "text-red-600" },
-  cancelled: { bg: "bg-zinc-100", text: "text-zinc-400" },
+  draft: { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-600 dark:text-zinc-300" },
+  active: { bg: "bg-blue-100 dark:bg-blue-900/40", text: "text-blue-700 dark:text-blue-300" },
+  leveling: { bg: "bg-purple-100 dark:bg-purple-900/40", text: "text-purple-700 dark:text-purple-300" },
+  submitted: { bg: "bg-amber-100 dark:bg-amber-900/40", text: "text-amber-700 dark:text-amber-300" },
+  awarded: { bg: "bg-green-100 dark:bg-green-900/40", text: "text-green-700 dark:text-green-300" },
+  lost: { bg: "bg-red-100 dark:bg-red-900/40", text: "text-red-600 dark:text-red-300" },
+  cancelled: { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-400 dark:text-zinc-500" },
 };
 
 function fmtDollar(n: number | null): string {
@@ -51,37 +51,37 @@ export default async function BidsPage() {
       </div>
 
       {/* Summary banner */}
-      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-        <span className="text-zinc-700">
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+        <span className="text-zinc-700 dark:text-zinc-200">
           <span className="font-semibold">{counts.active}</span>{" "}
-          <span className="text-zinc-500">active</span>
+          <span className="text-zinc-500 dark:text-zinc-400">active</span>
         </span>
-        <span className="text-zinc-700">
+        <span className="text-zinc-700 dark:text-zinc-200">
           <span className="font-semibold">{counts.submitted}</span>{" "}
-          <span className="text-zinc-500">submitted</span>
+          <span className="text-zinc-500 dark:text-zinc-400">submitted</span>
         </span>
-        <span className="text-zinc-700">
+        <span className="text-zinc-700 dark:text-zinc-200">
           <span className="font-semibold text-green-700">{counts.awarded}</span>{" "}
-          <span className="text-zinc-500">won</span>
+          <span className="text-zinc-500 dark:text-zinc-400">won</span>
         </span>
-        <span className="text-zinc-700">
+        <span className="text-zinc-700 dark:text-zinc-200">
           <span className="font-semibold text-red-600">{counts.lost}</span>{" "}
-          <span className="text-zinc-500">lost</span>
+          <span className="text-zinc-500 dark:text-zinc-400">lost</span>
         </span>
         {winRate != null && (
-          <span className="ml-auto text-zinc-600">
+          <span className="ml-auto text-zinc-600 dark:text-zinc-300">
             Win rate: <span className="font-semibold">{winRate}%</span>
           </span>
         )}
       </div>
 
       {bids.length === 0 ? (
-        <p className="text-zinc-500 text-sm">No bids yet.</p>
+        <p className="text-zinc-500 text-sm dark:text-zinc-400">No bids yet.</p>
       ) : (
-        <div className="rounded-md border border-zinc-200 overflow-hidden">
+        <div className="rounded-md border border-zinc-200 overflow-hidden dark:border-zinc-700">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
                 <th className="px-4 py-2.5">Project</th>
                 <th className="px-4 py-2.5">Due Date</th>
                 <th className="px-4 py-2.5">Status</th>
@@ -90,20 +90,20 @@ export default async function BidsPage() {
                 <th className="px-4 py-2.5"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {bids.map((bid) => {
                 const badge = STATUS_BADGE[bid.status] ?? STATUS_BADGE.draft;
                 return (
                   <tr key={bid.id}>
                     <td className="px-4 py-2.5">
-                      <Link href={`/bids/${bid.id}`} className="font-medium text-zinc-800 hover:underline">
+                      <Link href={`/bids/${bid.id}`} className="font-medium text-zinc-800 hover:underline dark:text-zinc-100">
                         {bid.projectName}
                       </Link>
                       {bid.location && (
-                        <div className="text-xs text-zinc-400">{bid.location}</div>
+                        <div className="text-xs text-zinc-400 dark:text-zinc-500">{bid.location}</div>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-zinc-500">
+                    <td className="px-4 py-2.5 text-xs text-zinc-500 dark:text-zinc-400">
                       {bid.dueDate ? new Date(bid.dueDate).toLocaleDateString() : "—"}
                     </td>
                     <td className="px-4 py-2.5">
@@ -111,10 +111,10 @@ export default async function BidsPage() {
                         {bid.status}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-right text-zinc-700">
+                    <td className="px-4 py-2.5 text-right text-zinc-700 dark:text-zinc-200">
                       {fmtDollar(bid.submission?.ourBidAmount ?? null)}
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-zinc-500">
+                    <td className="px-4 py-2.5 text-xs text-zinc-500 dark:text-zinc-400">
                       {bid.submission?.submittedAt
                         ? new Date(bid.submission.submittedAt).toLocaleDateString()
                         : "—"}
@@ -122,7 +122,7 @@ export default async function BidsPage() {
                     <td className="px-4 py-2.5 text-right">
                       <Link
                         href={`/bids/${bid.id}?tab=leveling`}
-                        className="text-xs text-zinc-500 hover:underline"
+                        className="text-xs text-zinc-500 hover:underline dark:text-zinc-400"
                       >
                         Level →
                       </Link>

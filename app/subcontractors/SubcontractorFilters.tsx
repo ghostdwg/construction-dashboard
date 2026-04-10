@@ -32,13 +32,13 @@ export default function SubcontractorFilters({ trades }: { trades: Trade[] }) {
           placeholder="Search company…"
           defaultValue={searchParams.get("search") ?? ""}
           onChange={(e) => update("search", e.target.value)}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 dark:border-zinc-600"
         />
 
         <select
           defaultValue={searchParams.get("tradeId") ?? ""}
           onChange={(e) => update("tradeId", e.target.value)}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-zinc-600"
         >
           <option value="">All Trades</option>
           {trades.map((t) => (
@@ -51,7 +51,7 @@ export default function SubcontractorFilters({ trades }: { trades: Trade[] }) {
         <select
           defaultValue={searchParams.get("status") ?? ""}
           onChange={(e) => update("status", e.target.value)}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-zinc-600"
         >
           <option value="">All Statuses</option>
           <option value="active">Active</option>
@@ -61,7 +61,7 @@ export default function SubcontractorFilters({ trades }: { trades: Trade[] }) {
         <select
           defaultValue={searchParams.get("tier") ?? ""}
           onChange={(e) => update("tier", e.target.value)}
-          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:border-zinc-600"
         >
           <option value="">All Tiers</option>
           <option value="preferred">Preferred</option>

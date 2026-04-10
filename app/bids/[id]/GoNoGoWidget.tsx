@@ -55,9 +55,9 @@ const BANNER_STYLES: Record<Score, { border: string; bg: string; text: string; l
 };
 
 const BADGE_STYLES: Record<Score, string> = {
-  GO: "bg-green-100 text-green-700",
-  CAUTION: "bg-amber-100 text-amber-700",
-  "NO-GO": "bg-red-100 text-red-700",
+  GO: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  CAUTION: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  "NO-GO": "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
 };
 
 const CHECK_STYLES: Record<CheckStatus, { icon: string; color: string }> = {
@@ -108,13 +108,13 @@ function GateCard({
   const badge = BADGE_STYLES[gate.score];
 
   return (
-    <div className="flex-1 min-w-[180px] rounded-md border border-zinc-200 bg-white overflow-hidden">
+    <div className="flex-1 min-w-[180px] rounded-md border border-zinc-200 bg-white overflow-hidden dark:border-zinc-700 dark:bg-zinc-900">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-50 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-50 transition-colors dark:hover:bg-zinc-800"
       >
         <div className="flex flex-col gap-1.5 min-w-0">
-          <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wide leading-none">
+          <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wide leading-none dark:text-zinc-400">
             {gate.label}
           </span>
           <span
@@ -123,11 +123,11 @@ function GateCard({
             {gate.score}
           </span>
         </div>
-        <span className="text-zinc-400 text-xs ml-2 shrink-0">{open ? "▲" : "▼"}</span>
+        <span className="text-zinc-400 text-xs ml-2 shrink-0 dark:text-zinc-500">{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
-        <div className="border-t border-zinc-100 px-4 py-3 flex flex-col gap-2.5">
+        <div className="border-t border-zinc-100 px-4 py-3 flex flex-col gap-2.5 dark:border-zinc-800">
           {gate.checks.map((check, i) => {
             const { icon, color } = CHECK_STYLES[check.status];
             const tabKey = CHECK_TAB[check.label];
@@ -138,10 +138,10 @@ function GateCard({
                   {icon}
                 </span>
                 <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                  <span className="text-xs font-medium text-zinc-700 leading-snug">
+                  <span className="text-xs font-medium text-zinc-700 leading-snug dark:text-zinc-200">
                     {check.label}
                   </span>
-                  <span className="text-xs text-zinc-500 leading-relaxed">{check.detail}</span>
+                  <span className="text-xs text-zinc-500 leading-relaxed dark:text-zinc-400">{check.detail}</span>
                   {isActionable && (
                     <button
                       onClick={() => router.replace(`/bids/${bidId}?tab=${tabKey}`)}
@@ -165,10 +165,10 @@ function GateCard({
 function Skeleton() {
   return (
     <div className="flex flex-col gap-3">
-      <div className="h-11 rounded-md bg-zinc-100 animate-pulse" />
+      <div className="h-11 rounded-md bg-zinc-100 animate-pulse dark:bg-zinc-800" />
       <div className="flex gap-3 flex-wrap">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="flex-1 min-w-[180px] h-20 rounded-md bg-zinc-100 animate-pulse" />
+          <div key={i} className="flex-1 min-w-[180px] h-20 rounded-md bg-zinc-100 animate-pulse dark:bg-zinc-800" />
         ))}
       </div>
     </div>
@@ -218,8 +218,8 @@ export default function GoNoGoWidget({ bidId }: { bidId: number }) {
 
   if (data === null) {
     return (
-      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3">
-        <p className="text-sm text-zinc-500">Unable to load go/no-go data.</p>
+      <div className="rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800">
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">Unable to load go/no-go data.</p>
       </div>
     );
   }
@@ -230,11 +230,11 @@ export default function GoNoGoWidget({ bidId }: { bidId: number }) {
     <div className="flex flex-col gap-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-800">Go / No-Go</h2>
+        <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Go / No-Go</h2>
         <button
           onClick={refresh}
           disabled={refreshing}
-          className="text-xs text-zinc-500 hover:text-zinc-700 border border-zinc-200 rounded px-2.5 py-1 disabled:opacity-50 transition-colors"
+          className="text-xs text-zinc-500 hover:text-zinc-700 border border-zinc-200 rounded px-2.5 py-1 disabled:opacity-50 transition-colors dark:text-zinc-400 dark:hover:text-zinc-200 dark:border-zinc-700"
         >
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
