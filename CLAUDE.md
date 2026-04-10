@@ -21,8 +21,11 @@
 - Module P2 — Trade Tier Classification UI: COMPLETE
 - Module P3 — RFI Register Upgrade: COMPLETE
 - Module P4 — Public Bid Compliance Checklist: COMPLETE
+- Tier C — Estimate Intelligence Layer: COMPLETE
+  - Module C1 — Bid Spread Analysis: COMPLETE
+  - Module C2 — Scope-Cost Correlation: COMPLETE
+  - Module C3 — Estimate Intelligence Summary: COMPLETE
 
 ## What Is Queued
-- Tier C — Estimate intelligence layer
 - Tier D — Bid assembly + post-bid intelligence
 - Full roadmap: docs/architecture/ROADMAP.md

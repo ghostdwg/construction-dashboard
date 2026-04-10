@@ -194,6 +194,33 @@ This is the intended sequence for every bid:
 
 ---
 
+## TIER C ✅ Complete
+
+### Module C1 ✅ Complete
+  Bid Spread Analysis
+  parsePricingTotal.ts: extracts dollar amounts from pricingData JSON, heuristic total
+  (grand total line > subtotal sum > line item sum). Caches parsedTotal on EstimateUpload.
+  GET /api/bids/[id]/estimates/spread: per-trade min/median/max spread, outlier flagging.
+  BidSpreadPanel on Leveling tab: horizontal spread bars, expandable per-trade detail table.
+  pricingData raw JSON NEVER returned to client — only computed aggregates.
+
+### Module C2 ✅ Complete
+  Scope-Cost Correlation
+  GET /api/bids/[id]/estimates/value-matrix: per-trade, per-estimate scope coverage %
+  from LevelingRow status + cost position (low/median/high) + value flag
+  (best_value/low_coverage/high_cost/ok).
+  Integrated into BidSpreadPanel expanded view: coverage %, value badge per sub.
+
+### Module C3 ✅ Complete
+  Estimate Intelligence Summary
+  GET /api/bids/[id]/estimates/intelligence: rule-based recommendations from spread + coverage.
+  Types: outlier (>25% from median), coverage_gap (<70% on low bidder), best_value (>85% at median),
+  missing_estimate (no estimates for trade), single_bid (no competition).
+  EstimateIntelligenceCard on Leveling tab: severity-grouped findings, expandable detail.
+  No AI — pure math, server-side only.
+
+---
+
 ## NEVER DO
 - Return pricingData to client
 - Include sub name or company in any AI prompt

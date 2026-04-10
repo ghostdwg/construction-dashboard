@@ -329,6 +329,8 @@ model EstimateUpload {
   flaggedLines        String?
   subToken            String?
   approvedForAi       Boolean     @default(false)
+  parsedTotal         Float?
+  parsedLineCount     Int?
   uploadedAt          DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 

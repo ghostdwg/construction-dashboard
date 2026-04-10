@@ -26,6 +26,10 @@
 | Module P2 | Trade Tier Classification UI | ✅ Complete |
 | Module P3 | RFI Register Upgrade | ✅ Complete |
 | Module P4 | Public Bid Compliance Checklist | ✅ Complete |
+| **Tier C** | **Estimate Intelligence Layer** | **✅ Complete** |
+| Module C1 | Bid Spread Analysis | ✅ Complete |
+| Module C2 | Scope-Cost Correlation | ✅ Complete |
+| Module C3 | Estimate Intelligence Summary | ✅ Complete |
 
 ## What Is Built
 - Subcontractor directory with trade filtering and tier system

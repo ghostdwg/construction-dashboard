@@ -2,6 +2,8 @@
 
 import { useRef, useState, useEffect } from "react";
 import { TierBadge } from "@/app/subcontractors/[id]/SubIntelligencePanel";
+import EstimateIntelligenceCard from "./EstimateIntelligenceCard";
+import BidSpreadPanel from "./BidSpreadPanel";
 
 // ---- Types: Estimate Upload ----
 
@@ -862,7 +864,17 @@ export default function LevelingTab({
         uploads={initialUploads}
       />
 
-      {/* ── Section 3: Scope Matrix ── */}
+      {/* ── Section 3: Estimate Intelligence ── */}
+      <section>
+        <EstimateIntelligenceCard bidId={bidId} />
+      </section>
+
+      {/* ── Section 4: Bid Spread ── */}
+      <section>
+        <BidSpreadPanel bidId={bidId} />
+      </section>
+
+      {/* ── Section 5: Scope Matrix ── */}
       <section>
         <h2 className="text-sm font-semibold text-zinc-700 mb-1">
           Scope Matrix
