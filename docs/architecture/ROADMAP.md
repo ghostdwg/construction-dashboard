@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-10 — Module RFQ1 (Resend email distribution) complete
+# Last Updated: 2026-04-10 — Module INT1 (Job Intake / Wing 1) complete
 
 ---
 
@@ -157,39 +157,61 @@ Every bid follows this sequence:
 | AI Token Config | Per-call token management + presets | COMPLETE |
 | Theme Toggle | Light/dark mode with full app dark coverage | COMPLETE |
 | Module RFQ1 | RFQ Email Distribution via Resend | COMPLETE |
+| Module INT1 | Job Intake — Wing 1 project context capture | COMPLETE |
 
 ---
 
 ## QUEUED — BUILD SEQUENCE
 
-### Module INT1 — Job Intake (Wing 1)
-Priority: HIGH
-Dependencies: None
-Sessions: 1-2
+### Module INT1 — Job Intake (Wing 1) ✅ COMPLETE (2026-04-10)
+Priority: shipped
 
-Extended bid creation form with project context fields.
-Delivery method, owner type, building type, SF, constraints.
-Conditional field groups based on projectType.
-Feeds into 15a prompt and GNG1 gates.
+Captures project context after bid creation via an editable card on the Overview tab.
+14 fields across 5 sections branching downstream AI analysis, GNG1 gates, and post-award handoff.
 
-Schema additions on Bid model:
-  deliveryMethod    DeliveryMethod?
-  ownerType         OwnerType?
-  buildingType      String?
-  approxSqft        Int?
-  stories           Int?
-  ldAmountPerDay    Float?
-  ldCapAmount       Float?
-  occupiedSpace     Boolean   @default(false)
-  phasingRequired   Boolean   @default(false)
-  siteConstraints   String?
-  estimatorNotes    String?
+Schema additions (migration 20260410225347_int1_job_intake) on Bid model:
+  deliveryMethod     String?  // HARD_BID, DESIGN_BUILD, CM_AT_RISK, NEGOTIATED — validated in API
+  ownerType          String?  // PUBLIC_ENTITY, PRIVATE_OWNER, DEVELOPER, INSTITUTIONAL — validated in API
+  buildingType       String?
+  approxSqft         Int?
+  stories            Int?
+  ldAmountPerDay     Float?
+  ldCapAmount        Float?
+  occupiedSpace      Boolean   @default(false)
+  phasingRequired    Boolean   @default(false)
+  siteConstraints    String?
+  estimatorNotes     String?
   scopeBoundaryNotes String?
-  veInterest        Boolean   @default(false)
-  dbeGoalPercent    Float?
+  veInterest         Boolean   @default(false)
+  dbeGoalPercent     Float?
 
-  enum DeliveryMethod { HARD_BID  DESIGN_BUILD  CM_AT_RISK  NEGOTIATED }
-  enum OwnerType { PUBLIC_ENTITY  PRIVATE_OWNER  DEVELOPER  INSTITUTIONAL }
+String fields validated in API layer (POST /api/bids and PATCH /api/bids/[id])
+rather than as Prisma enums (SQLite-friendly).
+
+UI: app/bids/[id]/JobIntakePanel.tsx
+- Empty state: prominent dashed-border CTA "Complete Project Intake → Start Intake"
+- Edit state: 5 collapsible sections with text/number/select/checkbox/textarea fields
+  - Section 3 (Public Bid Terms — LD/DBE) only renders when projectType === PUBLIC
+- Summary state: 2-column grid showing populated fields, Edit link in header
+- Auto-collapses to summary after save
+
+Brief prompt integration: assembleBriefPrompt.ts adds Section A2 "PROJECT INTAKE"
+between project identity and Division 1. Only emits populated fields. Prompts the
+AI to factor intake constraints into risk flags and assumptions.
+
+GNG1 integration: go-no-go route adds "Project intake captured" check to
+Project Readiness gate. 0 fields → fail, <50% → caution, ≥50% → pass.
+PUBLIC bids count 14 total fields, others count 11 (LD/DBE not counted).
+
+Files shipped:
+  prisma/migrations/20260410225347_int1_job_intake/migration.sql
+  prisma/schema.prisma (Bid model extended)
+  app/api/bids/route.ts (POST validates intake fields)
+  app/api/bids/[id]/route.ts (PATCH validates + applies intake fields)
+  app/bids/[id]/JobIntakePanel.tsx (NEW — editable card with 5 sections)
+  app/bids/[id]/page.tsx (mounts JobIntakePanel above SubmissionPanel)
+  lib/services/ai/assembleBriefPrompt.ts (Section A2 PROJECT INTAKE)
+  app/api/bids/[id]/go-no-go/route.ts (Project intake captured check)
 
 ### Module RFQ1 — RFQ Email Distribution ✅ COMPLETE (2026-04-10)
 Priority: shipped

@@ -45,7 +45,27 @@ export async function GET(
 
   const bid = await prisma.bid.findUnique({
     where: { id: bidId },
-    select: { id: true, dueDate: true, projectType: true, complianceChecklist: true },
+    select: {
+      id: true,
+      dueDate: true,
+      projectType: true,
+      complianceChecklist: true,
+      // INT1 — intake fields used by the new Project Context check
+      deliveryMethod: true,
+      ownerType: true,
+      buildingType: true,
+      approxSqft: true,
+      stories: true,
+      ldAmountPerDay: true,
+      ldCapAmount: true,
+      dbeGoalPercent: true,
+      occupiedSpace: true,
+      phasingRequired: true,
+      siteConstraints: true,
+      estimatorNotes: true,
+      scopeBoundaryNotes: true,
+      veInterest: true,
+    },
   });
   if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
 
@@ -138,7 +158,57 @@ export async function GET(
   const briefReady = !!brief && brief.status === "ready";
   const docCount = specBookCount + drawingUploadCount;
 
+  // ----- INT1 — Project Context completeness -----
+  // Count populated intake fields. The total varies because PUBLIC bids carry
+  // 3 extra fields (LD per day, LD cap, DBE goal).
+  const intakeBaseFields: Array<unknown> = [
+    bid.deliveryMethod,
+    bid.ownerType,
+    bid.buildingType,
+    bid.approxSqft,
+    bid.stories,
+    bid.siteConstraints,
+    bid.estimatorNotes,
+    bid.scopeBoundaryNotes,
+    // Booleans only count when true (presence-based)
+    bid.occupiedSpace || null,
+    bid.phasingRequired || null,
+    bid.veInterest || null,
+  ];
+  const intakePublicExtras: Array<unknown> = [
+    bid.ldAmountPerDay,
+    bid.ldCapAmount,
+    bid.dbeGoalPercent,
+  ];
+  const intakeFields =
+    bid.projectType === "PUBLIC"
+      ? [...intakeBaseFields, ...intakePublicExtras]
+      : intakeBaseFields;
+  const intakePopulated = intakeFields.filter(
+    (v) => v !== null && v !== undefined && v !== ""
+  ).length;
+  const intakeTotal = intakeFields.length;
+  const intakePct = intakeTotal > 0 ? intakePopulated / intakeTotal : 0;
+
+  let intakeStatus: CheckStatus;
+  let intakeDetail: string;
+  if (intakePopulated === 0) {
+    intakeStatus = "fail";
+    intakeDetail = "Project intake not started — run the intake form on Overview";
+  } else if (intakePct < 0.5) {
+    intakeStatus = "caution";
+    intakeDetail = `${intakePopulated} of ${intakeTotal} intake fields populated`;
+  } else {
+    intakeStatus = "pass";
+    intakeDetail = `${intakePopulated} of ${intakeTotal} intake fields populated`;
+  }
+
   const readinessChecks: Check[] = [
+    {
+      label: "Project intake captured",
+      status: intakeStatus,
+      detail: intakeDetail,
+    },
     {
       label: "Project documents uploaded",
       status: docsUploaded ? "pass" : "fail",

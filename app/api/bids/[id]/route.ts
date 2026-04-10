@@ -1,6 +1,84 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
+// Module INT1 — valid enum-string values for intake fields
+const VALID_DELIVERY_METHODS = ["HARD_BID", "DESIGN_BUILD", "CM_AT_RISK", "NEGOTIATED"];
+const VALID_OWNER_TYPES = ["PUBLIC_ENTITY", "PRIVATE_OWNER", "DEVELOPER", "INSTITUTIONAL"];
+
+function validateIntakeFields(body: Record<string, unknown>): string | null {
+  if (body.deliveryMethod !== undefined && body.deliveryMethod !== null && body.deliveryMethod !== "") {
+    if (!VALID_DELIVERY_METHODS.includes(String(body.deliveryMethod))) {
+      return `deliveryMethod must be one of: ${VALID_DELIVERY_METHODS.join(", ")}`;
+    }
+  }
+  if (body.ownerType !== undefined && body.ownerType !== null && body.ownerType !== "") {
+    if (!VALID_OWNER_TYPES.includes(String(body.ownerType))) {
+      return `ownerType must be one of: ${VALID_OWNER_TYPES.join(", ")}`;
+    }
+  }
+  for (const f of ["approxSqft", "stories"] as const) {
+    if (body[f] !== undefined && body[f] !== null && body[f] !== "") {
+      const n = Number(body[f]);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+        return `${f} must be a non-negative integer`;
+      }
+    }
+  }
+  for (const f of ["ldAmountPerDay", "ldCapAmount", "dbeGoalPercent"] as const) {
+    if (body[f] !== undefined && body[f] !== null && body[f] !== "") {
+      const n = Number(body[f]);
+      if (!Number.isFinite(n) || n < 0) {
+        return `${f} must be a non-negative number`;
+      }
+    }
+  }
+  if (body.dbeGoalPercent !== undefined && body.dbeGoalPercent !== null && body.dbeGoalPercent !== "") {
+    const n = Number(body.dbeGoalPercent);
+    if (n > 100) return "dbeGoalPercent must be 0–100";
+  }
+  return null;
+}
+
+// Coerce empty strings → null and apply only the intake fields that were
+// present in the body (so PATCH semantics stay intact).
+function buildIntakeUpdateData(body: Record<string, unknown>): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  const setStr = (key: string) => {
+    if (body[key] === undefined) return;
+    const v = body[key];
+    data[key] = v === "" || v === null ? null : String(v);
+  };
+  const setInt = (key: string) => {
+    if (body[key] === undefined) return;
+    const v = body[key];
+    data[key] = v === "" || v === null ? null : Math.trunc(Number(v));
+  };
+  const setFloat = (key: string) => {
+    if (body[key] === undefined) return;
+    const v = body[key];
+    data[key] = v === "" || v === null ? null : Number(v);
+  };
+  const setBool = (key: string) => {
+    if (body[key] === undefined) return;
+    data[key] = Boolean(body[key]);
+  };
+  setStr("deliveryMethod");
+  setStr("ownerType");
+  setStr("buildingType");
+  setInt("approxSqft");
+  setInt("stories");
+  setFloat("ldAmountPerDay");
+  setFloat("ldCapAmount");
+  setFloat("dbeGoalPercent");
+  setBool("occupiedSpace");
+  setBool("phasingRequired");
+  setStr("siteConstraints");
+  setStr("estimatorNotes");
+  setStr("scopeBoundaryNotes");
+  setBool("veInterest");
+  return data;
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -39,7 +117,22 @@ export async function PATCH(
   }
 
   const body = await request.json();
-  const { projectName, location, description, status, dueDate } = body;
+  const { projectName, location, description, status, dueDate, projectType } = body;
+
+  // INT1 — validate intake fields if any present
+  const validationError = validateIntakeFields(body);
+  if (validationError) {
+    return Response.json({ error: validationError }, { status: 400 });
+  }
+
+  if (projectType !== undefined && !["PUBLIC", "PRIVATE", "NEGOTIATED"].includes(projectType)) {
+    return Response.json(
+      { error: "projectType must be PUBLIC, PRIVATE, or NEGOTIATED" },
+      { status: 400 }
+    );
+  }
+
+  const intakeData = buildIntakeUpdateData(body);
 
   try {
     const bid = await prisma.bid.update({
@@ -49,7 +142,9 @@ export async function PATCH(
         ...(location !== undefined ? { location: location || null } : {}),
         ...(description !== undefined ? { description: description || null } : {}),
         ...(status !== undefined ? { status } : {}),
+        ...(projectType !== undefined ? { projectType } : {}),
         ...(dueDate !== undefined ? { dueDate: dueDate ? new Date(dueDate) : null } : {}),
+        ...intakeData,
       },
     });
     return Response.json(bid);

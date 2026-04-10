@@ -84,6 +84,41 @@ export async function assembleBriefPrompt(bidId: number): Promise<BriefPromptCon
     `TRADES ASSIGNED SO FAR: ${tradeNames.length > 0 ? tradeNames.join(", ") : "none confirmed yet"}`,
   ].join("\n");
 
+  // ----- Section A2 — Project intake (Module INT1) -----
+  // Only emit fields the estimator has populated. Skip the section entirely
+  // if nothing is set, so empty intake doesn't pad the prompt with "—" rows.
+  const intakeLines: string[] = [];
+  const deliveryLabels: Record<string, string> = {
+    HARD_BID: "Hard Bid",
+    DESIGN_BUILD: "Design-Build",
+    CM_AT_RISK: "CM at Risk",
+    NEGOTIATED: "Negotiated",
+  };
+  const ownerLabels: Record<string, string> = {
+    PUBLIC_ENTITY: "Public Entity",
+    PRIVATE_OWNER: "Private Owner",
+    DEVELOPER: "Developer",
+    INSTITUTIONAL: "Institutional",
+  };
+  if (bid.deliveryMethod) intakeLines.push(`Delivery method: ${deliveryLabels[bid.deliveryMethod] ?? bid.deliveryMethod}`);
+  if (bid.ownerType) intakeLines.push(`Owner type: ${ownerLabels[bid.ownerType] ?? bid.ownerType}`);
+  if (bid.buildingType) intakeLines.push(`Building type: ${bid.buildingType}`);
+  if (bid.approxSqft != null) intakeLines.push(`Approx sqft: ${bid.approxSqft.toLocaleString()}`);
+  if (bid.stories != null) intakeLines.push(`Stories: ${bid.stories}`);
+  if (bid.ldAmountPerDay != null) intakeLines.push(`LD per day: $${bid.ldAmountPerDay.toLocaleString()}`);
+  if (bid.ldCapAmount != null) intakeLines.push(`LD cap: $${bid.ldCapAmount.toLocaleString()}`);
+  if (bid.dbeGoalPercent != null) intakeLines.push(`DBE goal: ${bid.dbeGoalPercent}%`);
+  if (bid.occupiedSpace) intakeLines.push("Occupied space: YES — phasing/temporary protections likely required");
+  if (bid.phasingRequired) intakeLines.push("Phasing required: YES");
+  if (bid.siteConstraints) intakeLines.push(`Site constraints: ${bid.siteConstraints}`);
+  if (bid.estimatorNotes) intakeLines.push(`Estimator notes: ${bid.estimatorNotes}`);
+  if (bid.scopeBoundaryNotes) intakeLines.push(`Scope boundary notes: ${bid.scopeBoundaryNotes}`);
+  if (bid.veInterest) intakeLines.push("Owner has expressed interest in value engineering");
+
+  const sectionA2 = intakeLines.length > 0
+    ? `PROJECT INTAKE (estimator-supplied context):\n  ${intakeLines.join("\n  ")}\n\nFactor these constraints and notes into your risk flags and assumptions.`
+    : "";
+
   // ----- Section B — Division 1 (full rawText) -----
   let sectionB = "";
   if (division1Detected) {
@@ -178,6 +213,7 @@ Keep your response concise. Limit each section to 3-5 sentences. Total response 
 
   // ----- Assemble -----
   const promptSections: string[] = [sectionA];
+  if (sectionA2) promptSections.push(sectionA2);
   if (sectionB) promptSections.push(sectionB);
   if (sectionC) promptSections.push(sectionC);
   if (sectionD) promptSections.push(sectionD);

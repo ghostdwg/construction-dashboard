@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: 2026-04-10 — Module RFQ1 (Resend email distribution) complete
+# Last Updated: 2026-04-10 — Module INT1 (Job Intake / Wing 1) complete
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -50,8 +50,8 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | Editable Due Date | Click-to-edit on Overview, field on New Bid modal | ✅ Complete |
 | Theme Toggle | Light/dark mode with full app dark coverage | ✅ Complete |
 | Module RFQ1 | RFQ Email Distribution via Resend | ✅ Complete |
+| Module INT1 | Job Intake — Wing 1 project context capture | ✅ Complete |
 | **Queued** | **Lifecycle expansion** | **🔜 Planned** |
-| Module INT1 | Job Intake — Wing 1 project context capture | 🔜 Queued |
 | Tier E (H1-H8) | Post-Award Handoff Layer | 🔜 Queued |
 | Tier F (F1-F3) | Procore Integration Bridge | 🔜 Queued |
 | UI Nav Refactor | Sidebar with phase groupings + post-award shift | 🔜 Queued |
@@ -85,6 +85,7 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - AI Token Config UI at /settings/ai-tokens — per-call max_tokens presets with live cost
 - Light/dark theme toggle in top nav — persists to localStorage, full dark variant coverage across all pages
 - RFQ Email Distribution (Module RFQ1) — Subs tab checkboxes + Send RFQ button → confirmation modal → Resend API → React Email template → OutreachLog tracking with delivery status badges
+- Job Intake (Module INT1) — JobIntakePanel on Overview tab with 14 fields across 5 sections (delivery & ownership, project profile, public bid terms, site & constraints, estimator notes). Empty bids show prominent "Complete Project Intake" CTA. Intake fields feed into the brief prompt as a new "PROJECT INTAKE" section, and into a new GNG1 Project Readiness check.
 
 ## Current Known State
 - pdfjs-dist installed and working — pdf-parse removed
@@ -119,6 +120,9 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - OutreachLog model extended with email tracking fields (Module RFQ1): emailMessageId (indexed), deliveryStatus (QUEUED/SENT/DELIVERED/OPENED/BOUNCED/FAILED), openedAt, bouncedAt, bounceReason. Existing channel/status columns reused — channel="email", status="sent" on successful queue. Custom message renders into email body but is NOT persisted (option b — discard after send).
 - Resend integration is OPTIONAL — without RESEND_API_KEY + RESEND_FROM_EMAIL in .env.local, the send route returns 503 and the Subs tab "Send RFQ" button is disabled with a tooltip. Estimator name + email defaults from ESTIMATOR_NAME + ESTIMATOR_EMAIL env vars, fall back to localStorage, then to user input. Webhooks configured at /api/webhooks/resend — won't fire on localhost (need public URL).
 - LIVE EMAIL SEND IS UNTESTED at commit time. Code paths verified by lint/build/typecheck. First test should be a self-send to verify Resend account, domain verification, and webhook delivery.
+- INT1 schema additions on Bid (migration 20260410225347_int1_job_intake): deliveryMethod, ownerType, buildingType, approxSqft, stories, ldAmountPerDay, ldCapAmount, occupiedSpace, phasingRequired, siteConstraints, estimatorNotes, scopeBoundaryNotes, veInterest, dbeGoalPercent. String fields validated in API layer (POST /api/bids and PATCH /api/bids/[id]) rather than as Prisma enums (SQLite-friendly). Valid deliveryMethod: HARD_BID, DESIGN_BUILD, CM_AT_RISK, NEGOTIATED. Valid ownerType: PUBLIC_ENTITY, PRIVATE_OWNER, DEVELOPER, INSTITUTIONAL.
+- INT1 brief prompt integration — assembleBriefPrompt.ts adds Section A2 "PROJECT INTAKE" between project identity and Division 1 sections. Only emits fields the estimator has populated (no padding "—" rows). Prompts the AI to factor intake constraints into risk flags and assumptions.
+- INT1 GNG1 integration — go-no-go route adds a "Project intake captured" check to Project Readiness gate. Counts populated fields (booleans count when true). 0 fields → fail, <50% → caution, ≥50% → pass. Total field count varies by projectType (PUBLIC bids count 14, others count 11 — LD/DBE fields not counted on private/negotiated).
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

@@ -17,6 +17,7 @@ import GoNoGoWidget from "./GoNoGoWidget";
 import ComplianceWidget from "./ComplianceWidget";
 import SubmissionPanel from "./SubmissionPanel";
 import EditableDueDate from "./EditableDueDate";
+import JobIntakePanel from "./JobIntakePanel";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -157,6 +158,29 @@ export default async function BidDetailPage({
                 </p>
               </div>
             )}
+          </section>
+
+          <section>
+            <JobIntakePanel
+              bidId={bid.id}
+              initial={{
+                projectType: bid.projectType,
+                deliveryMethod: bid.deliveryMethod,
+                ownerType: bid.ownerType,
+                buildingType: bid.buildingType,
+                approxSqft: bid.approxSqft,
+                stories: bid.stories,
+                ldAmountPerDay: bid.ldAmountPerDay,
+                ldCapAmount: bid.ldCapAmount,
+                occupiedSpace: bid.occupiedSpace,
+                phasingRequired: bid.phasingRequired,
+                siteConstraints: bid.siteConstraints,
+                estimatorNotes: bid.estimatorNotes,
+                scopeBoundaryNotes: bid.scopeBoundaryNotes,
+                veInterest: bid.veInterest,
+                dbeGoalPercent: bid.dbeGoalPercent,
+              }}
+            />
           </section>
 
           <section>

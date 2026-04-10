@@ -40,6 +40,25 @@ model Bid {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
+  // Module INT1 — Job Intake (Wing 1 project context capture)
+  // String fields validated in API layer rather than enum (SQLite-friendly).
+  // Valid deliveryMethod: HARD_BID, DESIGN_BUILD, CM_AT_RISK, NEGOTIATED
+  // Valid ownerType:      PUBLIC_ENTITY, PRIVATE_OWNER, DEVELOPER, INSTITUTIONAL
+  deliveryMethod     String?
+  ownerType          String?
+  buildingType       String?
+  approxSqft         Int?
+  stories            Int?
+  ldAmountPerDay     Float?
+  ldCapAmount        Float?
+  occupiedSpace      Boolean   @default(false)
+  phasingRequired    Boolean   @default(false)
+  siteConstraints    String?
+  estimatorNotes     String?
+  scopeBoundaryNotes String?
+  veInterest         Boolean   @default(false)
+  dbeGoalPercent     Float?
+
   bidTrades        BidTrade[]
   selections       BidInviteSelection[]
   exportBatches    ExportBatch[]
