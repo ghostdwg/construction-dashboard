@@ -1,10 +1,20 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: AI Token Config + Procore Import + Tier D complete
+# Last Updated: 2026-04-10 — Theme toggle + lifecycle architecture v2
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
 - Local: c:/Users/jjcou/bid-dashboard
-- Stack: Next.js 14, TypeScript, Tailwind, Prisma, SQLite
+- Stack: Next.js 14, TypeScript, Tailwind v4, Prisma, SQLite
+
+## Architecture — Three Wings + Lifecycle
+
+The system is structured as three pursuit wings plus a post-award handoff layer:
+
+- **Wing 1 — Job Intake (Module INT1, queued):** project context capture before AI runs
+- **Wing 2 — Scope Intelligence (Modules 14, 15, 15a, 15b):** what specs require vs what subs cover
+- **Wing 3 — Bid Leveling (Modules 6a-6c, Tier C, Tier D):** apples-to-apples comparison + post-bid analytics
+- **Tier E — Post-Award Handoff (queued):** carry data forward into project execution
+- **Tier F — Procore Bridge (queued):** CSV export then API integration
 
 ## Build Status
 
@@ -38,6 +48,13 @@
 | Procore CSV Import | Subcontractor import + isPreferred + dedup | ✅ Complete |
 | AI Token Config | Per-call max_tokens UI with cost estimates | ✅ Complete |
 | Editable Due Date | Click-to-edit on Overview, field on New Bid modal | ✅ Complete |
+| Theme Toggle | Light/dark mode with full app dark coverage | ✅ Complete |
+| **Queued** | **Lifecycle expansion** | **🔜 Planned** |
+| Module INT1 | Job Intake — Wing 1 project context capture | 🔜 Queued |
+| Module RFQ1 | RFQ Email Distribution via Resend | 🔜 Queued |
+| Tier E (H1-H8) | Post-Award Handoff Layer | 🔜 Queued |
+| Tier F (F1-F3) | Procore Integration Bridge | 🔜 Queued |
+| UI Nav Refactor | Sidebar with phase groupings + post-award shift | 🔜 Queued |
 
 ## What Is Built
 - Subcontractor directory with trade filtering, tier system, single-sub form with isPreferred
@@ -66,6 +83,7 @@
 - Procurement timeline engine + trade tier classification + tier health panel
 - Addendum delta processing — incremental, per-addendum JSON
 - AI Token Config UI at /settings/ai-tokens — per-call max_tokens presets with live cost
+- Light/dark theme toggle in top nav — persists to localStorage, full dark variant coverage across all pages
 
 ## Current Known State
 - pdfjs-dist installed and working — pdf-parse removed
@@ -95,6 +113,8 @@
 - BidSubmission model — frozen 6-field JSON snapshots + outcome fields, cascades Bid.status
 - AiTokenConfig model — DB-backed per-call max_tokens overrides with in-process cache
 - Legacy /bids/[id]/leveling route is a redirect to /bids/[id]?tab=leveling (do NOT recreate as a standalone page — landmine that confuses users into thinking tabs are missing)
+- ThemeProvider uses React 19 useSyncExternalStore pattern (no setState-in-effect rule violations). Pre-hydration script in layout.tsx applies theme class on first paint to prevent flash.
+- Tailwind v4 dark mode via @custom-variant in app/globals.css — explicit class on <html> is the only signal (no prefers-color-scheme media query)
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and
