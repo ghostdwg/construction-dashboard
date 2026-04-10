@@ -298,7 +298,7 @@ function ScopeRowCard({
           value={row.status}
           onChange={(e) => patchRow({ status: e.target.value })}
           disabled={saving}
-          className={`text-xs rounded px-1.5 py-0.5 font-medium border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-zinc-300 ${cfg.badge}`}
+          className={`text-xs rounded px-1.5 py-0.5 font-medium border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${cfg.badge}`}
         >
           {Object.entries(STATUS_CONFIG).map(([val, c]) => (
             <option key={val} value={val}>
@@ -340,7 +340,7 @@ function ScopeRowCard({
           onBlur={handleNoteSave}
           rows={2}
           placeholder="Add a note…"
-          className="mt-2 w-full text-xs border border-zinc-200 rounded px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-zinc-300"
+          className="mt-2 w-full text-xs bg-white border border-zinc-300 rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         />
       )}
       {row.note && !editingNote && (

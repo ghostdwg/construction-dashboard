@@ -438,7 +438,7 @@ export default function TradesTab({
                         value={tier}
                         disabled={isPatching}
                         onChange={(e) => handleTierChange(bt.tradeId, e.target.value)}
-                        className="text-xs border border-zinc-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-black disabled:opacity-50 bg-white"
+                        className="text-xs bg-white border border-zinc-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 bg-white"
                       >
                         {TIER_OPTIONS.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
@@ -483,7 +483,7 @@ export default function TradesTab({
                           setLeadTimes((prev) => ({ ...prev, [bt.tradeId]: e.target.value }))
                         }
                         onBlur={() => handleLeadTimeBlur(bt.tradeId)}
-                        className="w-16 text-xs border border-zinc-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-black disabled:opacity-50"
+                        className="w-16 text-xs bg-white border border-zinc-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
                       />
 
                       {/* Lead time guidance — only when due date is set */}

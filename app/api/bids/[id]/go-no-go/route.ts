@@ -13,7 +13,7 @@ type Check = {
 };
 
 type Gate = {
-  id: "readiness" | "procurement" | "scope" | "deadline";
+  id: "readiness" | "procurement" | "scope" | "deadline" | "compliance";
   label: string;
   score: Score;
   checks: Check[];
@@ -45,7 +45,7 @@ export async function GET(
 
   const bid = await prisma.bid.findUnique({
     where: { id: bidId },
-    select: { id: true, dueDate: true, projectType: true },
+    select: { id: true, dueDate: true, projectType: true, complianceChecklist: true },
   });
   if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
 
@@ -366,6 +366,63 @@ export async function GET(
     },
   ];
 
+  // ── GATE 5 — Compliance (PUBLIC bids only) ────────────────────────────────
+
+  let complianceChecks: Check[] | null = null;
+  if (bid.projectType === "PUBLIC") {
+    type ComplianceItem = { key: string; checked: boolean };
+    let items: ComplianceItem[] = [];
+    if (bid.complianceChecklist) {
+      try {
+        items = JSON.parse(bid.complianceChecklist) as ComplianceItem[];
+      } catch { /* ignore */ }
+    }
+
+    const total = items.length;
+    const checked = items.filter((i) => i.checked).length;
+
+    if (total === 0) {
+      complianceChecks = [
+        {
+          label: "Compliance checklist initialized",
+          status: "caution",
+          detail: "Open the compliance section on Overview to initialize the checklist",
+        },
+      ];
+    } else {
+      const pct = checked / total;
+      complianceChecks = [
+        {
+          label: "Compliance items verified",
+          status: pct >= 1 ? "pass" : pct >= 0.5 ? "caution" : "fail",
+          detail:
+            pct >= 1
+              ? `All ${total} compliance items checked`
+              : `${checked} of ${total} items checked — ${total - checked} remaining`,
+        },
+      ];
+
+      // Check specific critical items
+      const bidBond = items.find((i) => i.key === "bid_bond");
+      if (bidBond && !bidBond.checked) {
+        complianceChecks.push({
+          label: "Bid bond",
+          status: "fail",
+          detail: "Bid bond is required for public bid submission",
+        });
+      }
+
+      const dbeGoal = items.find((i) => i.key === "dbe_goal");
+      if (dbeGoal && !dbeGoal.checked) {
+        complianceChecks.push({
+          label: "DBE goal",
+          status: "caution",
+          detail: "DBE participation goal not yet identified",
+        });
+      }
+    }
+  }
+
   // ── Assemble ─────────────────────────────────────────────────────────────────
 
   const gates: Gate[] = [
@@ -393,6 +450,14 @@ export async function GET(
       score: gateScore(deadlineChecks),
       checks: deadlineChecks,
     },
+    ...(complianceChecks
+      ? [{
+          id: "compliance" as const,
+          label: "Compliance",
+          score: gateScore(complianceChecks),
+          checks: complianceChecks,
+        }]
+      : []),
   ];
 
   return Response.json({

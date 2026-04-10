@@ -35,9 +35,10 @@ model Bid {
   scope       String    @default("")
   status      String    @default("draft")
   projectType ProjectType @default(PRIVATE)
-  dueDate     DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  dueDate             DateTime?
+  complianceChecklist String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   bidTrades        BidTrade[]
   selections       BidInviteSelection[]
@@ -233,18 +234,27 @@ model AiGapFinding {
 }
 
 model GeneratedQuestion {
-  id             Int       @id @default(autoincrement())
+  id             Int         @id @default(autoincrement())
+  rfiNumber      Int?
   gapFindingId   Int?
   bidId          Int?
   levelingRowId  Int?
   tradeName      String?
   questionText   String
-  isInternal     Boolean   @default(true)
-  status         String    @default("draft")
+  isInternal     Boolean     @default(true)
+  status         RfiStatus   @default(OPEN)
+  priority       RfiPriority @default(MEDIUM)
   approvedAt     DateTime?
   sentAt         DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  responseText   String?
+  respondedAt    DateTime?
+  respondedBy    String?
+  impactFlag     Boolean     @default(false)
+  impactNote     String?
+  sourceRef      String?
+  dueDate        DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   gapFinding   AiGapFinding? @relation(fields: [gapFindingId], references: [id])
   bid          Bid?          @relation(fields: [bidId], references: [id])
@@ -277,6 +287,21 @@ enum ProjectType {
   PUBLIC
   PRIVATE
   NEGOTIATED
+}
+
+enum RfiStatus {
+  OPEN
+  SENT
+  ANSWERED
+  CLOSED
+  NO_RESPONSE
+}
+
+enum RfiPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
 }
 
 enum ParseStatus {

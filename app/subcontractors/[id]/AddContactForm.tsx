@@ -61,7 +61,7 @@ export default function AddContactForm({ subId }: { subId: number }) {
             value={fields.name}
             onChange={set("name")}
             required
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -70,7 +70,7 @@ export default function AddContactForm({ subId }: { subId: number }) {
             type="text"
             value={fields.title}
             onChange={set("title")}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -79,7 +79,7 @@ export default function AddContactForm({ subId }: { subId: number }) {
             type="email"
             value={fields.email}
             onChange={set("email")}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -88,7 +88,7 @@ export default function AddContactForm({ subId }: { subId: number }) {
             type="tel"
             value={fields.phone}
             onChange={set("phone")}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+            className="rounded-md bg-white border border-zinc-300 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
       </div>

@@ -50,7 +50,7 @@ export async function POST(
       tradeName: row.trade?.name ?? null,
       questionText,
       isInternal: false,
-      status: "draft",
+      status: "OPEN",
     },
   });
 

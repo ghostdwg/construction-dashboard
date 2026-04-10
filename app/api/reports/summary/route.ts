@@ -41,9 +41,9 @@ export async function GET() {
     ] = await Promise.all([
       Promise.resolve(activeBidIds.length),
       prisma.generatedQuestion.count({
-        where: { status: { in: ["draft", "approved", "queued"] } },
+        where: { status: { in: ["OPEN", "SENT"] } },
       }),
-      prisma.generatedQuestion.count({ where: { status: "unanswered" } }),
+      prisma.generatedQuestion.count({ where: { status: "NO_RESPONSE" } }),
       prisma.aiGapFinding.count({ where: { status: "pending_review" } }),
       prisma.exportBatch.count({ where: { exportedAt: { gte: startOfMonth } } }),
     ]);

@@ -24,7 +24,8 @@
 | **Tier A** | **All modules complete** | **✅ Complete** |
 | Module P1 | Procurement Timeline Engine | ✅ Complete |
 | Module P2 | Trade Tier Classification UI | ✅ Complete |
-| Tier B — Module P3 | — | ⬜ Next |
+| Module P3 | RFI Register Upgrade | ✅ Complete |
+| Module P4 | Public Bid Compliance Checklist | ✅ Complete |
 
 ## What Is Built
 - Subcontractor directory with trade filtering and tier system

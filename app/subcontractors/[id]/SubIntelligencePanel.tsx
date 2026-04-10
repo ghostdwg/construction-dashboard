@@ -100,7 +100,7 @@ export default function SubIntelligencePanel({
         <div className="rounded-md border border-zinc-200 p-4 flex flex-col gap-4">
           {/* Tier */}
           <div>
-            <label className="text-xs font-medium text-zinc-500 block mb-1">Tier</label>
+            <label className="text-xs font-medium text-zinc-600 block mb-1">Tier</label>
             <div className="flex gap-2 flex-wrap">
               {TIERS.map((t) => (
                 <button
@@ -120,7 +120,7 @@ export default function SubIntelligencePanel({
 
           {/* Project types */}
           <div>
-            <label className="text-xs font-medium text-zinc-500 block mb-1">
+            <label className="text-xs font-medium text-zinc-600 block mb-1">
               Project Types{" "}
               <span className="font-normal text-zinc-400">(comma-separated)</span>
             </label>
@@ -129,32 +129,32 @@ export default function SubIntelligencePanel({
               value={projectTypes}
               onChange={(e) => setProjectTypes(e.target.value)}
               placeholder="office, industrial, multifamily"
-              className="w-full text-sm border border-zinc-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-black"
+              className="w-full bg-white text-sm text-zinc-900 border border-zinc-300 rounded-md px-2 py-1.5 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
           {/* Region */}
           <div>
-            <label className="text-xs font-medium text-zinc-500 block mb-1">Region</label>
+            <label className="text-xs font-medium text-zinc-600 block mb-1">Region</label>
             <input
               type="text"
               value={region}
               onChange={(e) => setRegion(e.target.value)}
               placeholder="e.g. Des Moines Metro"
-              className="w-full text-sm border border-zinc-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-black"
+              className="w-full bg-white text-sm text-zinc-900 border border-zinc-300 rounded-md px-2 py-1.5 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
           {/* Internal notes */}
           <div>
-            <label className="text-xs font-medium text-zinc-500 block mb-1">
+            <label className="text-xs font-medium text-zinc-600 block mb-1">
               Internal Notes
             </label>
             <textarea
               value={internalNotes}
               onChange={(e) => setInternalNotes(e.target.value)}
               rows={3}
-              className="w-full text-sm border border-zinc-200 rounded px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-black"
+              className="w-full bg-white text-sm text-zinc-900 border border-zinc-300 rounded-md px-2 py-1.5 resize-none placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
@@ -177,7 +177,7 @@ export default function SubIntelligencePanel({
                   value={doNotUseReason}
                   onChange={(e) => setDoNotUseReason(e.target.value)}
                   placeholder="Reason…"
-                  className="mt-1 w-full text-sm border border-zinc-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-black"
+                  className="mt-1 w-full bg-white text-sm text-zinc-900 border border-zinc-300 rounded-md px-2 py-1.5 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               )}
             </div>

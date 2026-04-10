@@ -2,6 +2,40 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { assembleBriefPrompt } from "./assembleBriefPrompt";
 
+// ----- JSON repair for truncated responses -----
+
+function repairTruncatedJson(raw: string): string | null {
+  let s = raw.trim();
+  if (!s.startsWith("{")) return null;
+
+  // Close any open string literal (odd number of unescaped quotes)
+  const quotes = s.match(/(?<!\\)"/g);
+  if (quotes && quotes.length % 2 !== 0) s += '"';
+
+  // Walk through to figure out open brackets/braces
+  const stack: string[] = [];
+  let inString = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "\\" && inString) { i++; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+
+  if (stack.length === 0) return null; // already balanced — repair won't help
+
+  // Remove trailing comma or colon that would make JSON invalid
+  s = s.replace(/[,:\s]+$/, "");
+
+  // Close all open containers in reverse order
+  while (stack.length > 0) s += stack.pop();
+
+  return s;
+}
+
 // ----- Types -----
 
 type RawBrief = {
@@ -200,37 +234,58 @@ export async function generateBidIntelligenceBrief(
     update: { status: "generating", isStale: false, triggeredBy },
   });
 
-  const { systemPrompt, userPrompt, sourceContext } = await assembleBriefPrompt(bidId);
-
-  const client = new Anthropic({ apiKey });
-
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages: [{ role: "user", content: userPrompt }],
-  });
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("AI returned no text content");
-  }
-
-  // Strip markdown fences if present
-  const raw = textBlock.text
-    .trim()
-    .replace(/^```(?:json)?\n?/, "")
-    .replace(/\n?```$/, "")
-    .trim();
-
   let brief: RawBrief;
+  let sourceContext: Awaited<ReturnType<typeof assembleBriefPrompt>>["sourceContext"];
+
   try {
-    brief = JSON.parse(raw);
-    if (typeof brief !== "object" || Array.isArray(brief)) {
-      throw new Error("Response is not a JSON object");
+    const prompt = await assembleBriefPrompt(bidId);
+    sourceContext = prompt.sourceContext;
+
+    const client = new Anthropic({ apiKey });
+
+    const message = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8192,
+      system: prompt.systemPrompt,
+      messages: [{ role: "user", content: prompt.userPrompt }],
+    });
+
+    const textBlock = message.content.find((b) => b.type === "text");
+    if (!textBlock || textBlock.type !== "text") {
+      throw new Error("AI returned no text content");
     }
-  } catch {
-    throw new Error(`Failed to parse AI response as JSON: ${raw.slice(0, 300)}`);
+
+    // Strip markdown fences if present
+    const raw = textBlock.text
+      .trim()
+      .replace(/^```(?:json)?\n?/, "")
+      .replace(/\n?```$/, "")
+      .trim();
+
+    try {
+      brief = JSON.parse(raw);
+      if (typeof brief !== "object" || Array.isArray(brief)) {
+        throw new Error("Response is not a JSON object");
+      }
+    } catch {
+      // Attempt to repair truncated JSON before giving up
+      const repaired = repairTruncatedJson(raw);
+      if (repaired) {
+        brief = JSON.parse(repaired);
+        if (typeof brief !== "object" || Array.isArray(brief)) {
+          throw new Error("Repaired response is not a JSON object");
+        }
+      } else {
+        throw new Error(`Failed to parse AI response as JSON: ${raw.slice(0, 300)}`);
+      }
+    }
+  } catch (err) {
+    // Reset status so the UI doesn't poll forever
+    await prisma.bidIntelligenceBrief.update({
+      where: { bidId },
+      data: { status: "error" },
+    }).catch(() => {});
+    throw err;
   }
 
   const sourceContextStr = JSON.stringify({

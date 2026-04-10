@@ -165,8 +165,32 @@ This is the intended sequence for every bid:
   Critical Path badge on Tier 1 trade rows.
   GNG1 Gate 2 (Procurement Health): new Tier 1 check — OVERDUE → FAIL, AT_RISK → CAUTION.
 
-### Module P3 ⬜ Next
-  TBD
+### Module P3 ✅ Complete
+  RFI Register Upgrade
+  Schema: RfiStatus enum (OPEN/SENT/ANSWERED/CLOSED/NO_RESPONSE), RfiPriority enum (CRITICAL/HIGH/MEDIUM/LOW).
+  New fields on GeneratedQuestion: rfiNumber, priority, responseText, respondedAt, respondedBy, impactFlag, impactNote, sourceRef, dueDate.
+  Auto-incrementing RFI numbers per bid (RFI-001, RFI-002…).
+  GET /api/bids/[id]/questions: filterable by status/priority, returns summary counts.
+  POST /api/bids/[id]/questions: manual question creation with auto-RFI numbering.
+  PATCH /api/bids/[id]/questions/[questionId]: status transitions, priority changes, response recording, impact flagging. Ownership-verified before update.
+  QuestionsTab UI: summary bar, filter bar (status/priority/trade/search), question cards with inline priority editing.
+  Bulk select + bulk actions (Mark Sent, Mark No Response, Close).
+  Overdue detection: SENT items past due date or 5+ days without response highlighted with orange border + badge.
+  CSV export of filtered question list.
+  Migration converts old lowercase status values to new enum format.
+
+### Module P4 ✅ Complete
+  Public Bid Compliance Checklist
+  Schema: complianceChecklist JSON field on Bid model (nullable String).
+  Default 11-item checklist seeded on first access: bonding (bid/performance/payment bond),
+  labor (prevailing wage, certified payroll), DBE (goal, good faith, sub listing),
+  documentation (insurance, license, pre-qual, non-collusion).
+  GET /api/bids/[id]/compliance: returns checklist + summary, seeds defaults if null.
+  PATCH /api/bids/[id]/compliance: toggle items, add notes per item.
+  ComplianceWidget on Overview tab: category-grouped cards, progress badge, inline notes.
+  Only renders for PUBLIC bids; PRIVATE/NEGOTIATED bids see nothing.
+  Go/No-Go Gate 5 (Compliance): PUBLIC bids only — all checked → pass, >50% → caution,
+  ≤50% → fail. Specific checks for bid bond (fail if unchecked) and DBE goal (caution).
 
 ---
 

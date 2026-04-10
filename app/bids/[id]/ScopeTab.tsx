@@ -354,7 +354,7 @@ function TradeSection({
             placeholder="Scope item description (required)"
             rows={2}
             required
-            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-400 resize-none"
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
           />
           <div className="grid grid-cols-2 gap-3">
             <select
@@ -365,7 +365,7 @@ function TradeSection({
                   tradeId: e.target.value === "" ? "" : parseInt(e.target.value, 10),
                 }))
               }
-              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-400"
+              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">No trade (unassigned)</option>
               {bidTrades.map((t) => (
@@ -405,13 +405,13 @@ function TradeSection({
               value={form.specSection}
               onChange={(e) => setForm((f) => ({ ...f, specSection: e.target.value }))}
               placeholder="Spec section (e.g. 26 00 00)"
-              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-400"
+              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
             <input
               value={form.drawingRef}
               onChange={(e) => setForm((f) => ({ ...f, drawingRef: e.target.value }))}
               placeholder="Drawing ref (e.g. E-101)"
-              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-400"
+              className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
 
@@ -419,7 +419,7 @@ function TradeSection({
             value={form.notes}
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             placeholder="Notes (optional)"
-            className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-zinc-400"
+            className="rounded border border-zinc-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
 
           <div className="flex items-center justify-between">

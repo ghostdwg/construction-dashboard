@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 // ----- Types -----
@@ -123,10 +123,23 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
     loadBrief();
   }, [loadBrief]);
 
-  // Poll while generating
+  // Poll while generating — stop after 2 minutes to avoid infinite loop
+  const pollCount = useRef(0);
   useEffect(() => {
-    if (brief?.status !== "generating") return;
-    const t = setInterval(loadBrief, 4000);
+    if (brief?.status !== "generating") {
+      pollCount.current = 0;
+      return;
+    }
+    const MAX_POLLS = 30; // 30 × 4s = 2 minutes
+    const t = setInterval(() => {
+      pollCount.current++;
+      if (pollCount.current >= MAX_POLLS) {
+        clearInterval(t);
+        setBrief((prev) => prev ? { ...prev, status: "error" } : prev);
+        return;
+      }
+      loadBrief();
+    }, 4000);
     return () => clearInterval(t);
   }, [brief?.status, loadBrief]);
 
@@ -212,6 +225,26 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
           <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent" />
           <p className="text-sm text-zinc-500">Analyzing project documents…</p>
         </div>
+      </div>
+    );
+  }
+
+  // ----- STATE 2b — Error / failed generation -----
+
+  if (brief.status === "error" || (!brief.whatIsThisJob && !brief.howItGetsBuilt)) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 px-5 py-6 flex flex-col gap-3 items-start">
+        <p className="text-sm text-red-700">
+          Brief generation failed or timed out. You can try again.
+        </p>
+        <button
+          onClick={regenerate}
+          disabled={regenerating}
+          className="rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-white hover:bg-zinc-700 disabled:opacity-50"
+        >
+          {regenerating ? "Regenerating…" : "Regenerate brief"}
+        </button>
+        {regenError && <p className="text-sm text-red-500">{regenError}</p>}
       </div>
     );
   }

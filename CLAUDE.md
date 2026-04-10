@@ -19,10 +19,10 @@
 - Tier A — AI Layer + Core Data Model: COMPLETE
 - Module P1 — Procurement Timeline Engine: COMPLETE
 - Module P2 — Trade Tier Classification UI: COMPLETE
+- Module P3 — RFI Register Upgrade: COMPLETE
+- Module P4 — Public Bid Compliance Checklist: COMPLETE
 
 ## What Is Queued
-- Module P3 — RFI Register Upgrade (NEXT)
-- Module P4 — Public Bid Compliance Checklist
 - Tier C — Estimate intelligence layer
 - Tier D — Bid assembly + post-bid intelligence
 - Full roadmap: docs/architecture/ROADMAP.md

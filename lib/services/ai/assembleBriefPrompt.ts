@@ -173,7 +173,8 @@ Be specific. Reference actual section numbers, sheet prefixes, and addendum numb
 Do not produce generic construction advice.
 riskFlags must be sorted critical first.
 recommendedAction must be a concrete, actionable step — not a restatement of the risk.
-If no addendums were provided, return addendumSummary as an empty array.`;
+If no addendums were provided, return addendumSummary as an empty array.
+Keep your response concise. Limit each section to 3-5 sentences. Total response must be valid JSON under 6000 tokens.`;
 
   // ----- Assemble -----
   const promptSections: string[] = [sectionA];

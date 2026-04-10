@@ -32,7 +32,7 @@ export async function POST(
         tradeName: finding.tradeName,
         questionText,
         isInternal: false,
-        status: "draft",
+        status: "OPEN",
       },
     }),
     prisma.aiGapFinding.update({

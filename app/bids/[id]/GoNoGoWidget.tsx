@@ -15,7 +15,7 @@ type Check = {
 };
 
 type Gate = {
-  id: "readiness" | "procurement" | "scope" | "deadline";
+  id: "readiness" | "procurement" | "scope" | "deadline" | "compliance";
   label: string;
   score: Score;
   checks: Check[];
@@ -79,6 +79,10 @@ const CHECK_TAB: Record<string, string> = {
   "Critical gaps resolved": "ai-review",
   "Brief is current": "documents",
   "Bid due date set": "overview",
+  "Compliance items verified": "overview",
+  "Compliance checklist initialized": "overview",
+  "Bid bond": "overview",
+  "DBE goal": "overview",
 };
 
 const TAB_LABELS: Record<string, string> = {

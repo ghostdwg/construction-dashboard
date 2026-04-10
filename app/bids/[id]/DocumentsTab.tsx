@@ -335,7 +335,7 @@ function UnknownSection({
                     if (!isNaN(val)) onAssign(row.id, val);
                     e.target.value = "";
                   }}
-                  className="w-full rounded border border-zinc-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-black disabled:opacity-50"
+                  className="w-full rounded border border-zinc-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
                 >
                   <option value="">— Assign trade</option>
                   {allTrades.map((t) => (
@@ -755,27 +755,27 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
         {/* Upload form */}
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-500">Addendum #</label>
+            <label className="text-xs font-medium text-zinc-600">Addendum #</label>
             <input
               type="number"
               min={1}
               value={addendumNumber}
               onChange={(e) => setAddendumNumber(e.target.value)}
               placeholder="1"
-              className="w-24 rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-black"
+              className="w-24 rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-500">Date (optional)</label>
+            <label className="text-xs font-medium text-zinc-600">Date (optional)</label>
             <input
               type="date"
               value={addendumDate}
               onChange={(e) => setAddendumDate(e.target.value)}
-              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-black"
+              className="rounded border border-zinc-300 px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-500">PDF File</label>
+            <label className="text-xs font-medium text-zinc-600">PDF File</label>
             <input
               ref={addendumFileRef}
               type="file"

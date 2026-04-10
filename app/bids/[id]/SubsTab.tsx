@@ -547,7 +547,7 @@ export default function SubsTab({
                                 value={sel.rfqStatus}
                                 disabled={updatingRfq === sel.id}
                                 onChange={(e) => updateRfqStatus(sel.id, e.target.value)}
-                                className="text-xs border border-zinc-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-black disabled:opacity-50"
+                                className="text-xs bg-white border border-zinc-300 rounded-md px-1.5 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
                               >
                                 {RFQ_STATUSES.map((s) => (
                                   <option key={s} value={s}>{s.replace(/_/g, " ")}</option>

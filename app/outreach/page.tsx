@@ -98,9 +98,9 @@ function ExpandedRow({
       <td colSpan={7} className="px-4 py-4">
         <div className="flex flex-col gap-3 max-w-2xl">
           <div>
-            <label className="text-xs font-medium text-zinc-500 block mb-1">Notes</label>
+            <label className="text-xs font-medium text-zinc-600 block mb-1">Notes</label>
             <textarea
-              className="w-full text-sm border border-zinc-200 rounded px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-black"
+              className="w-full text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -108,12 +108,12 @@ function ExpandedRow({
           </div>
           <div className="flex items-center gap-4">
             <div>
-              <label className="text-xs font-medium text-zinc-500 block mb-1">
+              <label className="text-xs font-medium text-zinc-600 block mb-1">
                 Follow-up Due
               </label>
               <input
                 type="date"
-                className="text-sm border border-zinc-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-black"
+                className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 value={followUp}
                 onChange={(e) => setFollowUp(e.target.value)}
               />
@@ -211,9 +211,9 @@ export default function OutreachPage() {
       {/* Filter bar */}
       <div className="flex flex-wrap gap-3 mb-6 items-end">
         <div>
-          <label className="text-xs font-medium text-zinc-500 block mb-1">Bid</label>
+          <label className="text-xs font-medium text-zinc-600 block mb-1">Bid</label>
           <select
-            className="text-sm border border-zinc-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-black"
+            className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={filterBid}
             onChange={(e) => setFilterBid(e.target.value)}
           >
@@ -224,9 +224,9 @@ export default function OutreachPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-zinc-500 block mb-1">Status</label>
+          <label className="text-xs font-medium text-zinc-600 block mb-1">Status</label>
           <select
-            className="text-sm border border-zinc-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-black"
+            className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
           >
@@ -237,11 +237,11 @@ export default function OutreachPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-zinc-500 block mb-1">Company</label>
+          <label className="text-xs font-medium text-zinc-600 block mb-1">Company</label>
           <input
             type="text"
             placeholder="Search company…"
-            className="text-sm border border-zinc-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-black w-44"
+            className="text-sm bg-white border border-zinc-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-44"
             value={filterSearch}
             onChange={(e) => setFilterSearch(e.target.value)}
           />
