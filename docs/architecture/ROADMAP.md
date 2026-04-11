@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-10 — Module INT1 (Job Intake / Wing 1) complete
+# Last Updated: 2026-04-10 — Module H1 (Handoff Packet / Tier E entry point) complete
 
 ---
 
@@ -158,6 +158,7 @@ Every bid follows this sequence:
 | Theme Toggle | Light/dark mode with full app dark coverage | COMPLETE |
 | Module RFQ1 | RFQ Email Distribution via Resend | COMPLETE |
 | Module INT1 | Job Intake — Wing 1 project context capture | COMPLETE |
+| Module H1   | Handoff Packet — Tier E entry point | COMPLETE |
 
 ---
 
@@ -254,16 +255,68 @@ LIVE TEST PENDING: verify with self-send once RESEND_API_KEY + RESEND_FROM_EMAIL
 added to .env.local and a domain is verified in the Resend dashboard.
 
 ### Tier E — Post-Award Handoff Layer (H1-H8)
-Priority: MEDIUM
-Sessions: 8-12 total
+Priority: IN PROGRESS
+Status: H1 shipped 2026-04-10. H2-H8 queued.
 
-H1 Handoff packet — bid vs awarded scope delta
-H2 Buyout tracker — sub contracts, POs, committed costs
+### Module H1 — Handoff Packet ✅ COMPLETE (2026-04-10)
+
+Tier E entry point. Compiles the bid + intake + awarded subs + open items +
+risk flags + document inventory into a single packet. JSON API for UI, XLSX
+export for sending to PMs. Works for any bid status — preview mode shows a
+banner when not awarded.
+
+Architecture: pure data aggregation. No new schema, no re-entry of data.
+Reads from existing pursuit-phase tables (Bid, BidTrade, BidInviteSelection,
+GeneratedQuestion, BidIntelligenceBrief, SpecBook, DrawingUpload,
+AddendumUpload, BidSubmission).
+
+Awarded-sub detection: BidInviteSelection.rfqStatus === "accepted" is the
+award signal. If multiple are accepted for a trade, first wins; if none,
+awarded fields are null.
+
+Files shipped:
+  lib/services/handoff/assembleHandoffPacket.ts — pure aggregation service
+  app/api/bids/[id]/handoff/route.ts — GET: returns JSON packet
+  app/api/bids/[id]/handoff/export/route.ts — POST: returns 5-sheet XLSX
+  app/bids/[id]/HandoffTab.tsx — new bid detail tab (#10)
+  app/bids/[id]/TabBar.tsx — Handoff tab added at position 10
+  app/bids/[id]/page.tsx — HandoffTab mounted
+  app/bids/[id]/SubmissionPanel.tsx — "View Handoff Packet →" link when outcome=won
+
+XLSX sheets:
+  1. Project Summary — identity, profile, constraints, compliance (PUBLIC only)
+  2. Trade Awards — trade/CSI/tier/sub/contact/amount(empty)/status
+  3. Open Items — open RFIs + unresolved assumptions + risk flags
+  4. Contacts — awarded sub contacts (owner/architect deferred)
+  5. Documents — spec/drawing/addendum inventory
+
+UI sections on the Handoff tab:
+  1. Project Summary card — intake context + total bid amount
+  2. Trade Awards table — per-trade with awarded sub + contact + status badge
+     (Amount column omitted — deferred to H2)
+  3. Open Items — count badges with expandable detail panels for RFIs,
+     assumptions, risk flags
+  4. Document Inventory — spec/drawing/addendum table with type badges
+
+Boundary preserved:
+- EstimateUpload.pricingData NEVER touched
+- Sub names ARE included (packet is internal, never sent to AI)
+- Per-trade dollar amounts left null with a footnote pointing to H2
+
+Explicit deferrals (tracked for follow-up modules):
+- Per-trade buyout amounts → Module H2 (Buyout Tracker)
+- Contract status beyond PENDING → Module H2 (BuyoutItem.contractStatus)
+- Owner, architect, internal team contacts → future ProjectContact model
+- "Copy to Clipboard" text summary → follow-up if XLSX proves insufficient
+
+### Queued — H2 through H8
+
+H2 Buyout tracker — sub contracts, POs, committed costs (populates H1's empty columns)
 H3 Submittal register — spec seed, schedule, Procore CSV
 H4 Schedule seed — trade sequence to activity list
 H5 Owner-facing estimate — high-level rollup export
 H6 Budget creation — cost codes to budget lines
-H7 Contact handoff — PM team + awarded subs export
+H7 Contact handoff — PM team + awarded subs export (ProjectContact model)
 H8 Award notifications — via Resend (reuses RFQ1 infra)
 
 ### Tier F — Procore Integration Bridge

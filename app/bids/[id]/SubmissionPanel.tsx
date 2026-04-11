@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import OutcomeModal from "./OutcomeModal";
 
@@ -144,6 +145,14 @@ export default function SubmissionPanel({ bidId }: { bidId: number }) {
             >
               {submission.outcome ? "Edit outcome" : "Record outcome"}
             </button>
+            {submission.outcome === "won" && (
+              <Link
+                href={`/bids/${bidId}?tab=handoff`}
+                className="text-xs font-medium text-green-700 hover:underline dark:text-green-400"
+              >
+                View Handoff Packet →
+              </Link>
+            )}
           </div>
         </div>
 

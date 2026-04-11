@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: 2026-04-10 — Module INT1 (Job Intake / Wing 1) complete
+# Last Updated: 2026-04-10 — Module H1 (Handoff Packet / Tier E entry point) complete
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -51,7 +51,11 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | Theme Toggle | Light/dark mode with full app dark coverage | ✅ Complete |
 | Module RFQ1 | RFQ Email Distribution via Resend | ✅ Complete |
 | Module INT1 | Job Intake — Wing 1 project context capture | ✅ Complete |
+| **Tier E** | **Post-Award Handoff Layer** | **🏗️ In progress** |
+| Module H1 | Handoff Packet — Tier E entry point | ✅ Complete |
 | **Queued** | **Lifecycle expansion** | **🔜 Planned** |
+| Module H2 | Buyout Tracker (sub contracts, POs, committed cost) | 🔜 Queued |
+| Modules H3–H8 | Submittal register, schedule seed, owner estimate, budget, contacts, notifications | 🔜 Queued |
 | Tier E (H1-H8) | Post-Award Handoff Layer | 🔜 Queued |
 | Tier F (F1-F3) | Procore Integration Bridge | 🔜 Queued |
 | UI Nav Refactor | Sidebar with phase groupings + post-award shift | 🔜 Queued |
@@ -86,6 +90,7 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - Light/dark theme toggle in top nav — persists to localStorage, full dark variant coverage across all pages
 - RFQ Email Distribution (Module RFQ1) — Subs tab checkboxes + Send RFQ button → confirmation modal → Resend API → React Email template → OutreachLog tracking with delivery status badges
 - Job Intake (Module INT1) — JobIntakePanel on Overview tab with 14 fields across 5 sections (delivery & ownership, project profile, public bid terms, site & constraints, estimator notes). Empty bids show prominent "Complete Project Intake" CTA. Intake fields feed into the brief prompt as a new "PROJECT INTAKE" section, and into a new GNG1 Project Readiness check.
+- Handoff Packet (Module H1, Tier E entry point) — new Handoff tab on bid detail page (#10). Compiles project summary, trade awards, open items (RFIs + assumptions + risk flags), document inventory from existing captured data. XLSX export with 5 sheets (Project Summary, Trade Awards, Open Items, Contacts, Documents). "View Handoff Packet →" shortcut on SubmissionPanel when outcome=won. Works in preview mode for any bid status. Per-trade buyout amounts left null pending H2. Owner/architect contacts deferred pending ProjectContact model.
 
 ## Current Known State
 - pdfjs-dist installed and working — pdf-parse removed
@@ -123,6 +128,8 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - INT1 schema additions on Bid (migration 20260410225347_int1_job_intake): deliveryMethod, ownerType, buildingType, approxSqft, stories, ldAmountPerDay, ldCapAmount, occupiedSpace, phasingRequired, siteConstraints, estimatorNotes, scopeBoundaryNotes, veInterest, dbeGoalPercent. String fields validated in API layer (POST /api/bids and PATCH /api/bids/[id]) rather than as Prisma enums (SQLite-friendly). Valid deliveryMethod: HARD_BID, DESIGN_BUILD, CM_AT_RISK, NEGOTIATED. Valid ownerType: PUBLIC_ENTITY, PRIVATE_OWNER, DEVELOPER, INSTITUTIONAL.
 - INT1 brief prompt integration — assembleBriefPrompt.ts adds Section A2 "PROJECT INTAKE" between project identity and Division 1 sections. Only emits fields the estimator has populated (no padding "—" rows). Prompts the AI to factor intake constraints into risk flags and assumptions.
 - INT1 GNG1 integration — go-no-go route adds a "Project intake captured" check to Project Readiness gate. Counts populated fields (booleans count when true). 0 fields → fail, <50% → caution, ≥50% → pass. Total field count varies by projectType (PUBLIC bids count 14, others count 11 — LD/DBE fields not counted on private/negotiated).
+- H1 handoff packet assembles from existing pursuit data — never fabricates. Sources: Bid + intake fields (project/constraints), BidTrade (per-trade rows), BidInviteSelection with rfqStatus="accepted" (awarded subs), BidIntelligenceBrief.riskFlags + assumptionsToResolve (parsed JSON), GeneratedQuestion where status in ["OPEN","SENT"] (unresolved RFIs), SpecBook + DrawingUpload + AddendumUpload (documents inventory), BidSubmission.ourBidAmount (total bid — single field, not per-trade). Boundary preserved: EstimateUpload.pricingData never touched, sub names ARE included (internal artifact only, never sent to AI).
+- H1 deferred items (documented in-code and in UI): per-trade buyout amounts (source → Module H2), owner/architect/internal-team contacts (source → future ProjectContact model), contract status beyond PENDING (source → Module H2 BuyoutItem).
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

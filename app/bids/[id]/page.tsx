@@ -18,6 +18,7 @@ import ComplianceWidget from "./ComplianceWidget";
 import SubmissionPanel from "./SubmissionPanel";
 import EditableDueDate from "./EditableDueDate";
 import JobIntakePanel from "./JobIntakePanel";
+import HandoffTab from "./HandoffTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -241,6 +242,10 @@ export default async function BidDetailPage({
 
       {tab === "documents" && (
         <DocumentsTab bidId={bid.id} />
+      )}
+
+      {tab === "handoff" && (
+        <HandoffTab bidId={bid.id} />
       )}
     </div>
   );
