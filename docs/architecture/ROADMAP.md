@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module SET1+ (Email provider abstraction: Resend + SMTP) complete
+# Last Updated: 2026-04-11 — Module H7 (Contact Handoff export) complete
 
 ---
 
@@ -163,6 +163,7 @@ Every bid follows this sequence:
 | Module H2   | Buyout Tracker — per-trade contracts + rollup | COMPLETE |
 | Module H3   | Submittal Register — regex seeder, lifecycle, Procore CSV export | COMPLETE |
 | Module H4   | Schedule Seed — canonical CSI sequence, FS chain, MSP CSV export | COMPLETE |
+| Module H7   | Contact Handoff — Outlook/Google CSV + vCard export | COMPLETE |
 | Module SET1 | Settings & Cost Observability — shell, hot-applied creds, usage logging, cost previews | COMPLETE |
 | Module SET1+ | Email provider abstraction — Resend + Generic SMTP w/ presets | COMPLETE |
 
@@ -641,12 +642,70 @@ Explicit deferrals:
 - Procore schedule format → future (Procore uses .xer/.mpp primarily)
 - Procurement activities in the schedule → never (P1 timeline is the source)
 
-### Queued — H5 through H8
+### Queued — H5, H6, H8 (H7 shipped 2026-04-11)
 
 H5 Owner-facing estimate — high-level rollup export
 H6 Budget creation — cost codes to budget lines
-H7 Contact handoff — PM team + awarded subs export (ProjectContact model already exists from H1+ cleanup; H7 is mostly export work)
-H8 Award notifications — via Resend (reuses RFQ1 infra)
+H8 Award notifications — via Resend/SMTP (reuses RFQ1 + SET1+ infra)
+
+### Module H7 — Contact Handoff ✅ COMPLETE (2026-04-11)
+
+Export the project team + awarded subcontractors as Outlook CSV, Google
+Contacts CSV, or vCard (.vcf) so the PM can drag the file straight into
+their contact app on project handoff — no retyping. Builds on the
+ProjectContact model that was already shipped in H1+, so H7 is pure
+export work.
+
+Unified loader (lib/services/contacts/contactExporter.ts):
+- Reads ProjectContact rows via loadProjectContactsForBid()
+- Reads awarded subs from BuyoutItem.subcontractorId (primary source) +
+  the sub's primary Contact (contacts ordered isPrimary DESC, id ASC, take 1)
+- Multi-trade subs collapse into a single row — combined trade list goes
+  into the Notes / role label ("Subcontractor — Concrete, Masonry, Steel")
+- splitName() helper separates first/last for formats that want them split
+  (Outlook, Google); full name preserved for vCard's FN field
+
+Three formatters:
+- exportAsOutlookCsv — minimal Outlook-recognized columns only
+  (First Name, Last Name, Company, Job Title, E-mail Address, Business
+  Phone, Categories, Notes). RFC 4180-compliant quoting.
+- exportAsGoogleCsv — flexible Google Contacts shape with Name/Given/Family
+  split, typed email + phone ("Work"), Organization columns, and a Group
+  Membership column pre-labeled "* myContacts ::: Bid: {project}" so the
+  imported contacts land in their own Google group.
+- exportAsVcard — vCard 3.0 per RFC 6350. Escapes backslash, comma,
+  semicolon, newline per spec. One VCARD block per contact, CRLF between
+  blocks. CATEGORIES carries role + "Bid: {project}". NOTE field combines
+  role + project + any custom notes. Universal format that Apple Contacts,
+  Outlook, Google, and most CRMs read directly.
+
+API:
+- GET /api/bids/[id]/contacts/export?format=outlook|google|vcard
+- Returns the rendered file with the appropriate Content-Type
+  (text/csv; charset=utf-8 for CSV, text/vcard; charset=utf-8 for vCard)
+  and Content-Disposition attachment with filename
+  {ProjectName}_Contacts_{YYYY-MM-DD}.{csv|vcf}
+
+UI (app/bids/[id]/ProjectContactsPanel.tsx):
+- New "Export ▾" button in the card header next to "+ Add Contact"
+- Dropdown menu with three labeled options + description per format
+- Footer note in the menu: "Includes project team + awarded subs."
+- Clicking an option triggers a hidden anchor download (binary-safe)
+
+Files shipped:
+  lib/services/contacts/contactExporter.ts (NEW)
+  app/api/bids/[id]/contacts/export/route.ts (NEW)
+  app/bids/[id]/ProjectContactsPanel.tsx (Export dropdown + menu item component)
+
+Explicit deferrals:
+- Per-role filtering in the export (e.g. "owner only" or "internal team only")
+  — easy to add via a `&roles=OWNER,ARCHITECT` query param when needed
+- Per-sub filtering (exclude unawarded, include all RFQ-invited, etc.)
+- Photos / avatars in vCard PHOTO field (we don't store any)
+- Addresses — no address fields on ProjectContact or Subcontractor.contacts
+  at the moment; would require schema additions
+- Native Outlook .pst / .olm binary formats — CSV import is what PMs actually use
+
 
 ### Module SET1 — Settings & Cost Observability ✅ COMPLETE (2026-04-11)
 

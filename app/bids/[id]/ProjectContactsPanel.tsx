@@ -136,6 +136,9 @@ export default function ProjectContactsPanel({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
 
+  // Export menu open state
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
@@ -213,6 +216,18 @@ export default function ProjectContactsPanel({
     }
   }
 
+  function downloadExport(format: "outlook" | "google" | "vcard") {
+    setExportMenuOpen(false);
+    // Trigger download via a hidden anchor — keeps the response binary-safe.
+    const url = `/api/bids/${bidId}/contacts/export?format=${format}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   async function remove(id: number) {
     if (!confirm("Delete this contact?")) return;
     setError(null);
@@ -260,12 +275,48 @@ export default function ProjectContactsPanel({
           </p>
         </div>
         {!isAddingNew && (
-          <button
-            onClick={startAdd}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-          >
-            + Add Contact
-          </button>
+          <div className="flex items-center gap-2 relative">
+            <div className="relative">
+              <button
+                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                className="rounded-md border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                title="Export contacts (project team + awarded subs)"
+              >
+                Export ▾
+              </button>
+              {exportMenuOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 z-10 w-56 rounded-md border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+                  onMouseLeave={() => setExportMenuOpen(false)}
+                >
+                  <ExportMenuItem
+                    label="Outlook CSV"
+                    description="Import into classic Outlook or Outlook on the web"
+                    onClick={() => downloadExport("outlook")}
+                  />
+                  <ExportMenuItem
+                    label="Google Contacts CSV"
+                    description="Import into Google Contacts (groups by project)"
+                    onClick={() => downloadExport("google")}
+                  />
+                  <ExportMenuItem
+                    label="vCard (.vcf)"
+                    description="Universal — Apple Contacts, Outlook, Google, CRMs"
+                    onClick={() => downloadExport("vcard")}
+                  />
+                  <p className="border-t border-zinc-100 px-3 py-2 text-[10px] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                    Includes project team + awarded subs.
+                  </p>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={startAdd}
+              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              + Add Contact
+            </button>
+          </div>
         )}
       </div>
 
@@ -324,6 +375,32 @@ export default function ProjectContactsPanel({
         </div>
       )}
     </section>
+  );
+}
+
+// ── Export menu item ───────────────────────────────────────────────────────
+
+function ExportMenuItem({
+  label,
+  description,
+  onClick,
+}: {
+  label: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition-colors first:rounded-t-md"
+    >
+      <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+        {label}
+      </div>
+      <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+        {description}
+      </div>
+    </button>
   );
 }
 
