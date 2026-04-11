@@ -19,6 +19,7 @@ import SubmissionPanel from "./SubmissionPanel";
 import EditableDueDate from "./EditableDueDate";
 import JobIntakePanel from "./JobIntakePanel";
 import HandoffTab from "./HandoffTab";
+import SubmittalsTab from "./SubmittalsTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -246,6 +247,10 @@ export default async function BidDetailPage({
 
       {tab === "handoff" && (
         <HandoffTab bidId={bid.id} />
+      )}
+
+      {tab === "submittals" && (
+        <SubmittalsTab bidId={bid.id} />
       )}
     </div>
   );

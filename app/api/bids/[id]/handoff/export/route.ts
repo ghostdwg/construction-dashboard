@@ -1,12 +1,13 @@
 // POST /api/bids/[id]/handoff/export
 //
-// Generates a 6-sheet XLSX handoff packet for download:
+// Generates a 7-sheet XLSX handoff packet for download:
 //   1. Project Summary  — bid info, intake context, constraints, compliance
 //   2. Trade Awards     — trade by trade, committed amount + contract status (H2)
 //   3. Buyout Summary   — rollup + per-trade financial detail (H2)
-//   4. Open Items       — open RFIs, unresolved assumptions, risk flags
-//   5. Contacts         — awarded sub contacts (owner/architect deferred)
-//   6. Documents        — uploaded spec books, drawings, addendums
+//   4. Submittals       — submittal register (H3)
+//   5. Open Items       — open RFIs, unresolved assumptions, risk flags
+//   6. Contacts         — awarded sub contacts (owner/architect deferred)
+//   7. Documents        — uploaded spec books, drawings, addendums
 //
 // Pricing boundary: committedAmount / paidToDate are OUTBOUND commitments.
 // EstimateUpload.pricingData is never touched.
@@ -20,6 +21,10 @@ import {
   loadBuyoutItemsForBid,
   type BuyoutItemRow,
 } from "@/lib/services/buyout/buyoutService";
+import {
+  loadSubmittalsForBid,
+  type SubmittalRow,
+} from "@/lib/services/submittal/submittalService";
 
 // ── Style helpers ──────────────────────────────────────────────────────────
 
@@ -87,6 +92,29 @@ const CONTRACT_STATUS_LABELS: Record<string, string> = {
   PO_ISSUED: "PO Issued",
   ACTIVE: "Active",
   CLOSED: "Closed",
+};
+
+const SUBMITTAL_TYPE_LABELS: Record<string, string> = {
+  PRODUCT_DATA: "Product Data",
+  SHOP_DRAWING: "Shop Drawings",
+  SAMPLE: "Sample",
+  MOCKUP: "Mock-Up",
+  WARRANTY: "Warranty",
+  O_AND_M: "O&M Manual",
+  LEED: "LEED Doc",
+  CERT: "Certificate",
+  OTHER: "Other",
+};
+
+const SUBMITTAL_STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pending",
+  REQUESTED: "Requested",
+  RECEIVED: "Received",
+  UNDER_REVIEW: "Under Review",
+  APPROVED: "Approved",
+  APPROVED_AS_NOTED: "Approved as Noted",
+  REJECTED: "Rejected",
+  RESUBMIT: "Resubmit",
 };
 
 function fmtDollar(n: number | null | undefined): string {
@@ -160,6 +188,20 @@ function buildProjectSummarySheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
     { label: "Paid to Date", value: fmtDollar(p.buyoutRollup.totalPaid) },
     { label: "Remaining", value: fmtDollar(p.buyoutRollup.totalRemaining) },
     { label: "Retainage Held", value: fmtDollar(p.buyoutRollup.totalRetainageHeld) }
+  );
+
+  // Submittal register rollup (H3)
+  const subR = p.submittalRollup;
+  const subPending = subR.byStatus.PENDING + subR.byStatus.REQUESTED;
+  const subInReview = subR.byStatus.RECEIVED + subR.byStatus.UNDER_REVIEW;
+  const subApproved = subR.byStatus.APPROVED + subR.byStatus.APPROVED_AS_NOTED;
+  rows.push(
+    { section: "Submittal Register" },
+    { label: "Total", value: String(subR.total) },
+    { label: "Pending", value: String(subPending) },
+    { label: "In Review", value: String(subInReview) },
+    { label: "Approved", value: String(subApproved) },
+    { label: "Overdue", value: String(subR.overdue) }
   );
 
   // Render section headers and label/value pairs
@@ -313,6 +355,47 @@ function buildBuyoutSummarySheet(wb: ExcelJS.Workbook, items: BuyoutItemRow[]) {
   });
   for (const key of ["committed", "co", "total", "paid", "remaining", "retainage"]) {
     totalRow.getCell(key).alignment = { horizontal: "right" };
+  }
+
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+}
+
+function buildSubmittalsSheet(wb: ExcelJS.Workbook, items: SubmittalRow[]) {
+  const sheet = wb.addWorksheet("Submittals");
+  sheet.columns = [
+    { header: "Number", key: "number", width: 14 },
+    { header: "Title", key: "title", width: 40 },
+    { header: "Spec Section", key: "spec", width: 14 },
+    { header: "Type", key: "type", width: 16 },
+    { header: "Responsible", key: "responsible", width: 26 },
+    { header: "Status", key: "status", width: 18 },
+    { header: "Required By", key: "required", width: 14 },
+    { header: "Reviewer", key: "reviewer", width: 22 },
+  ];
+  applyHeader(sheet.getRow(1));
+
+  if (items.length === 0) {
+    const r = sheet.addRow(["(no submittals — run Seed from Specs on the Submittals tab)", "", "", "", "", "", "", ""]);
+    r.getCell(1).font = { italic: true, color: { argb: "FF71717A" } };
+    sheet.mergeCells(`A${r.number}:H${r.number}`);
+  } else {
+    for (const item of items) {
+      const isOverdue = item.isOverdue;
+      const r = sheet.addRow({
+        number: item.submittalNumber ?? "—",
+        title: item.title,
+        spec: item.specSectionNumber ?? "—",
+        type: SUBMITTAL_TYPE_LABELS[item.type] ?? item.type,
+        responsible: item.responsibleSubName ?? "(unassigned)",
+        status: SUBMITTAL_STATUS_LABELS[item.status] ?? item.status,
+        required: fmtDate(item.requiredBy),
+        reviewer: item.reviewer ?? "—",
+      });
+      r.getCell("title").alignment = { wrapText: true };
+      if (isOverdue) {
+        r.getCell("required").font = { bold: true, color: { argb: "FFB91C1C" } };
+      }
+    }
   }
 
   sheet.views = [{ state: "frozen", ySplit: 1 }];
@@ -489,9 +572,10 @@ export async function POST(
   }
 
   // H2 — load buyout items directly for the dedicated Buyout Summary sheet.
-  // (The packet already has buyoutRollup for the project summary, but we
-  // need the per-trade rows here.)
   const buyoutItems = await loadBuyoutItemsForBid(bidId);
+
+  // H3 — load submittal register rows for the dedicated Submittals sheet.
+  const submittalItems = await loadSubmittalsForBid(bidId);
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Bid Dashboard — Handoff Packet";
@@ -500,6 +584,7 @@ export async function POST(
   buildProjectSummarySheet(wb, packet);
   buildTradeAwardsSheet(wb, packet);
   buildBuyoutSummarySheet(wb, buyoutItems);
+  buildSubmittalsSheet(wb, submittalItems);
   buildOpenItemsSheet(wb, packet);
   buildContactsSheet(wb, packet);
   buildDocumentsSheet(wb, packet);

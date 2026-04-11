@@ -75,6 +75,7 @@ model Bid {
   intelligenceBrief   BidIntelligenceBrief?
   submission          BidSubmission?
   buyoutItems         BuyoutItem[]
+  submittalItems      SubmittalItem[]
 }
 
 model BidSubmission {
@@ -118,9 +119,10 @@ model BidTrade {
   quotesReceivedAt DateTime?
   rfqNotes         String?
 
-  bid        Bid         @relation(fields: [bidId], references: [id])
-  trade      Trade       @relation(fields: [tradeId], references: [id])
-  buyoutItem BuyoutItem?
+  bid            Bid             @relation(fields: [bidId], references: [id])
+  trade          Trade           @relation(fields: [tradeId], references: [id])
+  buyoutItem     BuyoutItem?
+  submittalItems SubmittalItem[]
 
   @@unique([bidId, tradeId])
 }
@@ -197,6 +199,7 @@ model Subcontractor {
   preferredForTrades PreferredSub[]
   estimateUploads    EstimateUpload[]
   buyoutItems        BuyoutItem[]
+  submittalItems     SubmittalItem[]
 }
 
 model SubcontractorTrade {
@@ -506,9 +509,10 @@ model SpecSection {
   covered        Boolean  @default(false)
   createdAt      DateTime @default(now())
 
-  specBook     SpecBook @relation(fields: [specBookId], references: [id], onDelete: Cascade)
-  trade        Trade?   @relation("SpecSectionTrade", fields: [tradeId], references: [id])
-  matchedTrade Trade?   @relation("MatchedSpecSection", fields: [matchedTradeId], references: [id])
+  specBook       SpecBook        @relation(fields: [specBookId], references: [id], onDelete: Cascade)
+  trade          Trade?          @relation("SpecSectionTrade", fields: [tradeId], references: [id])
+  matchedTrade   Trade?          @relation("MatchedSpecSection", fields: [matchedTradeId], references: [id])
+  submittalItems SubmittalItem[]
 }
 
 model DrawingUpload {
@@ -571,6 +575,51 @@ model DrawingSheet {
   drawingUpload DrawingUpload @relation(fields: [drawingUploadId], references: [id], onDelete: Cascade)
   trade         Trade?        @relation("DrawingSheetTrade", fields: [tradeId], references: [id])
   matchedTrade  Trade?        @relation("MatchedDrawingSheet", fields: [matchedTradeId], references: [id])
+}
+
+// Module H3 — Submittal Register
+// One SubmittalItem per required submittal. Seeded from SpecSection.rawText
+// via regex extraction, then manually managed through the lifecycle.
+//
+// Valid type values (validated in API, not enum for SQLite friendliness):
+//   PRODUCT_DATA | SHOP_DRAWING | SAMPLE | MOCKUP | WARRANTY | O_AND_M | LEED | CERT | OTHER
+// Valid status values:
+//   PENDING | REQUESTED | RECEIVED | UNDER_REVIEW | APPROVED | APPROVED_AS_NOTED | REJECTED | RESUBMIT
+model SubmittalItem {
+  id               Int       @id @default(autoincrement())
+  bidId            Int
+  bidTradeId       Int?
+  specSectionId    Int?
+
+  submittalNumber  String?
+  title            String
+  description      String?
+  type             String    @default("OTHER")
+
+  // Lifecycle
+  status           String    @default("PENDING")
+  requiredBy       DateTime?
+  requestedAt      DateTime?
+  receivedAt       DateTime?
+  reviewedAt       DateTime?
+  approvedAt       DateTime?
+
+  // Attribution
+  responsibleSubId Int?
+  reviewer         String?
+
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  bid            Bid            @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidTrade       BidTrade?      @relation(fields: [bidTradeId], references: [id])
+  specSection    SpecSection?   @relation(fields: [specSectionId], references: [id])
+  responsibleSub Subcontractor? @relation(fields: [responsibleSubId], references: [id])
+
+  @@index([bidId])
+  @@index([specSectionId])
+  @@index([status])
 }
 
 // Per-AI-call max_tokens overrides. If a row exists for a callKey, that value

@@ -72,11 +72,12 @@ with all pursuit data carrying forward. Procore export bridge (Tier F queued) fo
   - Light/Dark Theme Toggle (full app dark mode coverage): COMPLETE
 - Module RFQ1 — RFQ Email Distribution via Resend: COMPLETE (live send pending user test)
 - Module INT1 — Job Intake (Wing 1 — 14-field project context capture, brief prompt integration, GNG1 readiness check): COMPLETE
-- Module H1 — Handoff Packet (Tier E entry point — packet assembly service, 6-sheet XLSX export, Handoff tab, SubmissionPanel shortcut when outcome=won): COMPLETE
+- Module H1 — Handoff Packet (Tier E entry point — packet assembly service, 7-sheet XLSX export, Handoff tab, SubmissionPanel shortcut when outcome=won): COMPLETE
 - Module H2 — Buyout Tracker (BuyoutItem model, auto-created per BidTrade, inline-editable section on Handoff tab, committed/paid/remaining/retainage rollup, 7-stage contract lifecycle, feeds real amounts into H1 Trade Awards + XLSX): COMPLETE
+- Module H3 — Submittal Register (SubmittalItem model, regex seeder from spec book, new Submittals tab with lifecycle/filters/add/edit/delete, Procore CSV export as first Tier F piece, H1 rollup integration): COMPLETE
 
 ## What Is Queued
-- Tier E continuation — Modules H3 (Submittal register) through H8
+- Tier E continuation — Modules H4 (Schedule seed) through H8
 - Tier F — Procore Integration Bridge (F1-F3)
 - UI Nav Refactor — sidebar with phase groupings, post-award shift
 - Full roadmap: docs/architecture/ROADMAP.md

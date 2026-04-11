@@ -13,6 +13,7 @@ const TABS = [
   { key: "leveling", label: "Leveling" },
   { key: "activity", label: "Activity" },
   { key: "handoff", label: "Handoff" },
+  { key: "submittals", label: "Submittals" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];

@@ -18,6 +18,11 @@ import {
   computeBuyoutRollup,
   type BuyoutRollup,
 } from "@/lib/services/buyout/buyoutService";
+import {
+  loadSubmittalsForBid,
+  computeSubmittalRollup,
+  type SubmittalRollup,
+} from "@/lib/services/submittal/submittalService";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +62,7 @@ export type HandoffPacket = {
   trades: TradeAward[];
   awardedSubs: AwardedSub[];
   buyoutRollup: BuyoutRollup;
+  submittalRollup: SubmittalRollup;
 
   openItems: {
     unresolvedRfis: UnresolvedRfi[];
@@ -187,6 +193,12 @@ export async function assembleHandoffPacket(bidId: number): Promise<HandoffPacke
   const buyoutItems = await loadBuyoutItemsForBid(bidId);
   const buyoutByBidTradeId = new Map(buyoutItems.map((b) => [b.bidTradeId, b]));
   const buyoutRollup = computeBuyoutRollup(buyoutItems);
+
+  // ── Submittal register (H3) ─────────────────────────────────────────────
+  // Read-only here — the register is managed on the Submittals tab. We just
+  // compute the rollup for the handoff summary.
+  const submittalItems = await loadSubmittalsForBid(bidId);
+  const submittalRollup = computeSubmittalRollup(submittalItems);
 
   // ── Trades ──────────────────────────────────────────────────────────────
   // Awarded sub comes from BuyoutItem.subcontractorId (populated from accepted
@@ -443,6 +455,7 @@ export async function assembleHandoffPacket(bidId: number): Promise<HandoffPacke
     trades,
     awardedSubs,
     buyoutRollup,
+    submittalRollup,
 
     openItems: {
       unresolvedRfis,

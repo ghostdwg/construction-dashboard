@@ -77,6 +77,11 @@ type HandoffPacket = {
     totalRemaining: number;
     totalRetainageHeld: number;
   };
+  submittalRollup: {
+    total: number;
+    byStatus: Record<string, number>;
+    overdue: number;
+  };
   openItems: {
     unresolvedRfis: Array<{
       id: number;
@@ -455,6 +460,55 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
         onChanged={() => setPacketReloadTick((t) => t + 1)}
       />
 
+      {/* ── Section 2c — Submittal Register summary (Module H3) ── */}
+      <section className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              Submittal Register
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              Managed on the Submittals tab.
+            </p>
+          </div>
+          <a
+            href={`/bids/${bidId}?tab=submittals`}
+            className="text-xs text-blue-600 hover:underline dark:text-blue-400 mt-0.5"
+          >
+            Open Submittals tab →
+          </a>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <SubmittalStat label="Total" value={packet.submittalRollup.total} />
+          <SubmittalStat
+            label="Pending"
+            value={
+              (packet.submittalRollup.byStatus.PENDING ?? 0) +
+              (packet.submittalRollup.byStatus.REQUESTED ?? 0)
+            }
+          />
+          <SubmittalStat
+            label="In Review"
+            value={
+              (packet.submittalRollup.byStatus.RECEIVED ?? 0) +
+              (packet.submittalRollup.byStatus.UNDER_REVIEW ?? 0)
+            }
+          />
+          <SubmittalStat
+            label="Approved"
+            value={
+              (packet.submittalRollup.byStatus.APPROVED ?? 0) +
+              (packet.submittalRollup.byStatus.APPROVED_AS_NOTED ?? 0)
+            }
+          />
+          <SubmittalStat
+            label="Overdue"
+            value={packet.submittalRollup.overdue}
+            warn={packet.submittalRollup.overdue > 0}
+          />
+        </div>
+      </section>
+
       {/* ── Section 3 — Open Items (count badges + expandable) ── */}
       <section className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">
@@ -651,6 +705,28 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="text-sm text-zinc-800 dark:text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
+function SubmittalStat({
+  label,
+  value,
+  warn,
+}: {
+  label: string;
+  value: number;
+  warn?: boolean;
+}) {
+  const color = warn
+    ? "text-red-600 dark:text-red-400"
+    : "text-zinc-900 dark:text-zinc-100";
+  return (
+    <div>
+      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:text-zinc-400">
+        {label}
+      </p>
+      <p className={`text-lg font-semibold mt-0.5 ${color}`}>{value}</p>
     </div>
   );
 }

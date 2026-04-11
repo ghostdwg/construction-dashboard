@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module H2 (Buyout Tracker) complete
+# Last Updated: 2026-04-11 — Module H3 (Submittal Register) complete
 
 ---
 
@@ -160,6 +160,7 @@ Every bid follows this sequence:
 | Module INT1 | Job Intake — Wing 1 project context capture | COMPLETE |
 | Module H1   | Handoff Packet — Tier E entry point | COMPLETE |
 | Module H2   | Buyout Tracker — per-trade contracts + rollup | COMPLETE |
+| Module H3   | Submittal Register — regex seeder, lifecycle, Procore CSV export | COMPLETE |
 
 ---
 
@@ -257,7 +258,7 @@ added to .env.local and a domain is verified in the Resend dashboard.
 
 ### Tier E — Post-Award Handoff Layer (H1-H8)
 Priority: IN PROGRESS
-Status: H1 shipped 2026-04-10, H2 shipped 2026-04-11. H3-H8 queued.
+Status: H1 shipped 2026-04-10, H2 + H3 shipped 2026-04-11. H4-H8 queued.
 
 ### Module H1 — Handoff Packet ✅ COMPLETE (2026-04-10)
 
@@ -380,9 +381,99 @@ Explicit deferrals:
 - AIA-style pay-app tracking (line item breakdown per payment) → out of scope
 - PO issuance to sub via email → future (reuses RFQ1 Resend infrastructure)
 
-### Queued — H3 through H8
+### Module H3 — Submittal Register ✅ COMPLETE (2026-04-11)
 
-H3 Submittal register — spec seed, schedule, Procore CSV
+Full lifecycle submittal register. Extracts required submittals from spec
+book rawText via regex, then manages them through the 8-stage lifecycle.
+Exports to Procore's submittal import CSV format — first piece of Tier F.
+
+Schema additions (migration 20260411031055_h3_submittal_register):
+
+  model SubmittalItem {
+    id, bidId, bidTradeId?, specSectionId?,
+    submittalNumber?, title, description?, type (default "OTHER"),
+    status (default "PENDING"),
+    requiredBy?, requestedAt?, receivedAt?, reviewedAt?, approvedAt?,
+    responsibleSubId?, reviewer?, notes?,
+    createdAt, updatedAt,
+    @@index([bidId]), @@index([specSectionId]), @@index([status])
+  }
+
+Valid type values (validated in API, not enum for SQLite):
+  PRODUCT_DATA, SHOP_DRAWING, SAMPLE, MOCKUP, WARRANTY, O_AND_M, LEED, CERT, OTHER
+
+Valid status values:
+  PENDING, REQUESTED, RECEIVED, UNDER_REVIEW, APPROVED, APPROVED_AS_NOTED, REJECTED, RESUBMIT
+
+Services (lib/services/submittal/):
+- seedSubmittalRegister.ts — regex-based extraction from SpecSection.rawText.
+  Idempotent (skips existing items by specSectionId + normalized title).
+  Classifies lines into types via ordered TYPE_KEYWORDS patterns.
+  Auto-links responsibleSub from accepted RFQ selection.
+- submittalService.ts — CRUD + rollup. loadSubmittalsForBid computes
+  `isOverdue` server-side (avoids Date.now() in React render per React 19
+  purity rule). updateSubmittal auto-advances lifecycle timestamps when
+  status changes.
+
+API routes:
+- GET    /api/bids/[id]/submittals              → { items, rollup } with status/type/bidTradeId filters
+- POST   /api/bids/[id]/submittals              → manually add a row
+- POST   /api/bids/[id]/submittals/seed         → runs regex seeder, returns counts
+- POST   /api/bids/[id]/submittals/export       → downloads Procore-compatible CSV
+- PATCH  /api/bids/[id]/submittals/[itemId]     → update one row
+- DELETE /api/bids/[id]/submittals/[itemId]     → delete one row
+
+UI (app/bids/[id]/SubmittalsTab.tsx):
+- New tab at position 11 "Submittals"
+- Rollup card (total, pending, in-review, approved, overdue)
+- Seed from Specs / + Add Submittal / Export Procore CSV action buttons
+- Status + Type filters
+- Table with inline status dropdown per row, expandable detail editor
+- Overdue rows highlighted with red background + bold requiredBy
+- Empty state shows "Seed from Specs" prompt
+
+H1 integration:
+- HandoffPacket.submittalRollup added as top-level field
+- HandoffTab gains a compact Submittal Register summary card below Buyout Tracker
+  with a "Open Submittals tab →" link
+- XLSX export adds "Submittals" sheet at position 4 (sheets are now 7 total)
+- Project Summary sheet gains a "Submittal Register" rollup section
+
+Procore CSV export format:
+- Columns: Number, Title, Spec Section, Responsible Contractor, Submittal
+  Manager, Received From, Type, Status, Required On-Site Date, Description
+- Types mapped to Procore vocabulary (e.g. SHOP_DRAWING → "Shop Drawings",
+  PRODUCT_DATA → "Product Data", O_AND_M → "Operation and Maintenance Manual")
+- Statuses compressed to Procore's 4-state model (Draft, Open, Closed,
+  Revise and Resubmit)
+- This is the first piece of Tier F (Procore integration). Full Tier F1
+  will extend this pattern to vendors, budget, and contacts.
+
+Files shipped:
+  prisma/migrations/20260411031055_h3_submittal_register/migration.sql
+  prisma/schema.prisma (SubmittalItem model + relations on Bid/BidTrade/Subcontractor/SpecSection)
+  lib/services/submittal/seedSubmittalRegister.ts (NEW)
+  lib/services/submittal/submittalService.ts (NEW)
+  lib/services/handoff/assembleHandoffPacket.ts (submittalRollup integration)
+  app/api/bids/[id]/submittals/route.ts (NEW — GET + POST)
+  app/api/bids/[id]/submittals/[itemId]/route.ts (NEW — PATCH + DELETE)
+  app/api/bids/[id]/submittals/seed/route.ts (NEW)
+  app/api/bids/[id]/submittals/export/route.ts (NEW — Procore CSV)
+  app/api/bids/[id]/handoff/export/route.ts (Submittals sheet + rollup section)
+  app/bids/[id]/SubmittalsTab.tsx (NEW)
+  app/bids/[id]/TabBar.tsx (Submittals tab at position 11)
+  app/bids/[id]/page.tsx (SubmittalsTab mount)
+  app/bids/[id]/HandoffTab.tsx (Submittal Register summary card)
+
+Explicit deferrals:
+- AI-driven submittal extraction (Option B from planning) — regex-first works
+  for 70% of cases; AI upgrade deferred pending real-world accuracy signal
+- Submittal attachments / file uploads → future module
+- Review round tracking (1st submission, resubmission, re-resubmission) → future
+- Email-based submittal distribution → reuses RFQ1 Resend infra when added
+
+### Queued — H4 through H8
+
 H4 Schedule seed — trade sequence to activity list
 H5 Owner-facing estimate — high-level rollup export
 H6 Budget creation — cost codes to budget lines
