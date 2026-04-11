@@ -45,11 +45,11 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!isEmailConfigured()) {
+  if (!(await isEmailConfigured())) {
     return Response.json(
       {
         error:
-          "Email service not configured. Add RESEND_API_KEY and RESEND_FROM_EMAIL to .env.local",
+          "Email service not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL in /settings → Email (or .env.local).",
       },
       { status: 503 }
     );

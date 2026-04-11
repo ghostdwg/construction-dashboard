@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import Anthropic from "@anthropic-ai/sdk";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
+import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // POST /api/bids/[id]/leveling/[rowId]/question
 // Creates a GeneratedQuestion from a LevelingRow marked clarification_needed.
@@ -38,6 +40,7 @@ export async function POST(
 
   // Draft question text via Claude — falls back to template if key not set
   const questionText = await draftQuestion({
+    bidId,
     scopeText: row.scopeText,
     division: row.division,
     tradeName: row.trade?.name ?? null,
@@ -59,17 +62,19 @@ export async function POST(
 }
 
 async function draftQuestion({
+  bidId,
   scopeText,
   division,
   tradeName,
   projectName,
 }: {
+  bidId: number;
   scopeText: string;
   division: string;
   tradeName: string | null;
   projectName: string;
 }): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
   if (!apiKey) {
     return templateQuestion(scopeText);
   }
@@ -103,6 +108,14 @@ Return only the question text. No preamble, no explanation.`;
       model: "claude-sonnet-4-6",
       max_tokens: await getMaxTokens("leveling-question"),
       messages: [{ role: "user", content: prompt }],
+    });
+
+    await logAiUsage({
+      callKey: "leveling-question",
+      model: "claude-sonnet-4-6",
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      bidId,
     });
 
     const content = message.content[0];

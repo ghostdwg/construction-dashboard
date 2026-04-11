@@ -706,3 +706,45 @@ model AiTokenConfig {
   maxTokens Int
   updatedAt DateTime @updatedAt
 }
+
+// Module SET1 — App Settings (key/value)
+//
+// Hot-applied settings stored in DB. Reads are cached in-process and the
+// cache is invalidated on every write. Designed for credentials + config that
+// the user can change from the /settings UI without restarting the dev server.
+//
+// Conventions:
+// - Secret values (e.g. API keys) are stored as-is. SQLite is local-only and
+//   the .env.local pattern stores secrets in plaintext on the same disk
+//   anyway, so the security boundary is the file system, not the column.
+// - Service code reads via getSetting(key) which falls back to process.env.
+// - The UI masks secret values to last-4 display.
+model AppSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Module SET1 — AI Usage Log
+//
+// One row per Anthropic API call. Powers the Usage subsection on the AI
+// settings card and the cost estimator's calibration data.
+//
+// callKey aligns with AI_CALL_DEFINITIONS in aiTokenConfig.ts.
+model AiUsageLog {
+  id              Int       @id @default(autoincrement())
+  callKey         String
+  model           String
+  inputTokens     Int
+  outputTokens   Int
+  costUsd         Float
+  bidId           Int?
+  status          String    @default("ok") // "ok" | "error"
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+
+  @@index([callKey])
+  @@index([createdAt])
+  @@index([bidId])
+}

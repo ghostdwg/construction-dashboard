@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module H4 (Schedule Seed) complete
+# Last Updated: 2026-04-11 — Module SET1 (Settings & Cost Observability) complete
 
 ---
 
@@ -163,6 +163,7 @@ Every bid follows this sequence:
 | Module H2   | Buyout Tracker — per-trade contracts + rollup | COMPLETE |
 | Module H3   | Submittal Register — regex seeder, lifecycle, Procore CSV export | COMPLETE |
 | Module H4   | Schedule Seed — canonical CSI sequence, FS chain, MSP CSV export | COMPLETE |
+| Module SET1 | Settings & Cost Observability — shell, hot-applied creds, usage logging, cost previews | COMPLETE |
 
 ---
 
@@ -645,6 +646,132 @@ H5 Owner-facing estimate — high-level rollup export
 H6 Budget creation — cost codes to budget lines
 H7 Contact handoff — PM team + awarded subs export (ProjectContact model already exists from H1+ cleanup; H7 is mostly export work)
 H8 Award notifications — via Resend (reuses RFQ1 infra)
+
+### Module SET1 — Settings & Cost Observability ✅ COMPLETE (2026-04-11)
+
+Full settings system with hot-applied credentials, AI usage logging, and
+pre-send cost forecasting. Replaces the previous /settings/ai-tokens single
+page with a real shell that other modules can plug cards into.
+
+Schema additions (migration 20260411163239_set1_settings_and_usage):
+
+  model AppSetting {
+    id, key (unique), value, updatedAt
+  }
+
+  model AiUsageLog {
+    id, callKey, model, inputTokens, outputTokens, costUsd,
+    bidId?, status (default "ok"), errorMessage?, createdAt,
+    @@index([callKey]), @@index([createdAt]), @@index([bidId])
+  }
+
+Setting catalog (validated in service layer, all with env-fallback):
+  RESEND_API_KEY      (secret, category=email)
+  RESEND_FROM_EMAIL   (category=email)
+  ESTIMATOR_NAME      (category=estimator)
+  ESTIMATOR_EMAIL     (category=estimator)
+  ANTHROPIC_API_KEY   (secret, category=ai)
+
+**Phase 1 — Settings shell + Email card.**
+- /settings page with sidebar nav (Email, Estimator, AI, About)
+- appSettingsService.ts — DB-first / env-fallback / in-process cache,
+  invalidated on every write. getSetting(key) is the universal accessor.
+- Reusable SettingFieldRow component — display/edit toggle, last-4 mask
+  for secrets, "Replace" / "Clear" / source badge.
+- EmailSettingsCard with Resend status banner, both fields, and a
+  Test Connection panel. Two test modes:
+    - Validate Key (no email sent) — calls Resend.apiKeys.list()
+    - Send Test Email — sends a real test to a recipient address
+- /api/settings/app (GET+PATCH), /api/settings/email/test (POST)
+- resendClient.ts updated to read DB-first via getSetting() — RFQ
+  send route returns 503 with a pointer to /settings → Email when
+  credentials are missing.
+
+**Phase 2 — AI Tokens migrated into the shell.**
+- AiSettingsCard absorbs the legacy /settings/ai-tokens UI as the
+  "Per-Call Token Budgets" subsection.
+- /settings/ai-tokens URL kept as a redirect for backwards compatibility.
+- Each call definition now displays its model's input/output price per 1M
+  tokens next to the model name.
+
+**Phase 3 — AI Usage Logging.**
+- aiUsageLog.ts — logAiUsage(input) records every call, computeCallCost()
+  computes USD at log time using MODEL_PRICING (so historical cost stays
+  correct if rates change later).
+- All 5 Anthropic call sites wired:
+    - lib/services/ai/generateBidIntelligenceBrief.ts (callKey: brief)
+    - app/api/bids/[id]/gap-analysis/generate/route.ts (gap-analysis)
+    - app/api/bids/[id]/addendums/[addendumId]/delta/route.ts (addendum-delta)
+    - app/api/bids/[id]/intelligence/generate/route.ts (intelligence)
+    - app/api/bids/[id]/leveling/[rowId]/question/route.ts (leveling-question)
+- Each site now reads ANTHROPIC_API_KEY via getSetting() (was process.env)
+  so the key can be rotated from /settings → AI Configuration.
+- /api/settings/ai-usage returns rollups for today / 7d / 30d with totals
+  + per-callKey breakdown sorted by cost descending.
+- AiSettingsCard renders a Usage subsection with tab switcher (today/7d/30d)
+  and a stat grid (cost, calls, in tokens, out tokens) plus a per-call table.
+
+**Phase 4 — Pre-send Cost Forecasting.**
+- tokenEstimator.ts — chars/4 token approximation + per-call forecastCallCost()
+  that resolves max_tokens (override → DB → default), uses calibrated output
+  ratio when AiUsageLog has rows for the call type, and emits warnings for
+  oversized inputs.
+- Calibration: averages output_tokens / max_tokens over the last 30 days of
+  successful calls (clamped to 5%-100%). Refines automatically as you use
+  the app. Falls back to 50% default until 50 calls exist.
+- /api/settings/ai-forecast (GET) — accepts callKey + optional bidId. When
+  bidId is provided for "brief" or "intelligence", assembles the actual
+  prompt and tokenizes it for an accurate per-bid forecast. Other call
+  types use typicalInputTokens.
+- AiCostPreview client component — colored chip (green/blue/amber by cost
+  magnitude) with click-to-expand tooltip showing:
+    - Input tokens (estimated vs typical)
+    - Max + forecast output tokens (with calibration indicator)
+    - Input/output cost breakdown
+    - Realistic vs worst-case totals
+    - Warnings/suggestions list
+    - Footer note about accuracy + calibration source
+- Mounted on:
+    - IntelligenceBrief.tsx — both the empty-state Generate button and the
+      Regenerate button in the footer
+    - AiReviewTab.tsx — next to the Run Analysis button (gap-analysis)
+
+Files shipped:
+  prisma/migrations/20260411163239_set1_settings_and_usage/migration.sql
+  prisma/schema.prisma (AppSetting + AiUsageLog models)
+  lib/services/settings/appSettingsService.ts (NEW)
+  lib/services/ai/aiUsageLog.ts (NEW)
+  lib/services/ai/tokenEstimator.ts (NEW)
+  lib/services/email/resendClient.ts (DB-first via getSetting)
+  app/api/settings/app/route.ts (NEW — GET+PATCH)
+  app/api/settings/email/test/route.ts (NEW)
+  app/api/settings/ai-usage/route.ts (NEW)
+  app/api/settings/ai-forecast/route.ts (NEW)
+  app/api/bids/[id]/rfq/send/route.ts (async isEmailConfigured)
+  app/api/bids/[id]/rfq/status/route.ts (estimator defaults from settings)
+  app/api/bids/[id]/gap-analysis/generate/route.ts (key from settings + log usage)
+  app/api/bids/[id]/intelligence/generate/route.ts (key from settings + log usage)
+  app/api/bids/[id]/addendums/[addendumId]/delta/route.ts (key from settings + log usage)
+  app/api/bids/[id]/leveling/[rowId]/question/route.ts (key from settings + log usage)
+  lib/services/ai/generateBidIntelligenceBrief.ts (key from settings + log usage)
+  app/settings/page.tsx (NEW — sidebar shell)
+  app/settings/SettingFieldRow.tsx (NEW)
+  app/settings/EmailSettingsCard.tsx (NEW)
+  app/settings/EstimatorSettingsCard.tsx (NEW)
+  app/settings/AiSettingsCard.tsx (NEW — absorbs /settings/ai-tokens)
+  app/settings/AboutSettingsCard.tsx (NEW)
+  app/settings/ai-tokens/page.tsx (now a redirect to /settings?section=ai)
+  app/bids/[id]/AiCostPreview.tsx (NEW)
+  app/bids/[id]/IntelligenceBrief.tsx (cost preview chip mounted)
+  app/bids/[id]/AiReviewTab.tsx (cost preview chip mounted)
+  app/layout.tsx (Settings link points to /settings)
+
+Explicit deferrals:
+- Real Anthropic tokenizer (chars/4 is the v1 approximation)
+- Cost preview on addendum-delta + leveling-question buttons
+  (per-row UX is fiddly; gap-analysis covers the bulk of cost)
+- Per-bid cost ledger view (today's UI is global; per-bid view is a future card)
+- Budget alerts ("you've spent $X this month, set a cap?")
 
 ### Tier F — Procore Integration Bridge
 Priority: LOW

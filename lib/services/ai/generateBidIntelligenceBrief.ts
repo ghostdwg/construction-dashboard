@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { assembleBriefPrompt } from "./assembleBriefPrompt";
 import { getMaxTokens } from "./aiTokenConfig";
+import { logAiUsage } from "./aiUsageLog";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // ----- JSON repair for truncated responses -----
 
@@ -223,9 +225,11 @@ export async function generateBidIntelligenceBrief(
 
   // ----- LIVE MODE -----
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
   if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY is not set — AI generation unavailable");
+    throw new Error(
+      "ANTHROPIC_API_KEY is not set — configure it in /settings → AI Configuration (or .env.local)"
+    );
   }
 
   // Upsert brief in "generating" state immediately so UI shows spinner
@@ -249,6 +253,14 @@ export async function generateBidIntelligenceBrief(
       max_tokens: await getMaxTokens("brief"),
       system: prompt.systemPrompt,
       messages: [{ role: "user", content: prompt.userPrompt }],
+    });
+
+    await logAiUsage({
+      callKey: "brief",
+      model: "claude-sonnet-4-6",
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      bidId,
     });
 
     const textBlock = message.content.find((b) => b.type === "text");

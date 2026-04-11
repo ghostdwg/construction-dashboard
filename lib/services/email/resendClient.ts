@@ -1,31 +1,34 @@
 // Resend client + sendRfqEmail service.
 //
-// Configuration (set in .env.local):
-//   RESEND_API_KEY      — required to actually send mail; absent → 503 from API
-//   RESEND_FROM_EMAIL   — required, must be a verified sender domain in Resend
+// Configuration sources (in priority order):
+//   1. AppSetting DB row (managed via /settings → Email)
+//   2. process.env.RESEND_API_KEY / RESEND_FROM_EMAIL (legacy fallback)
 //
-// The send route in app/api/bids/[id]/rfq/send/route.ts is responsible for
-// returning the 503 when the key is missing. This file is a thin service
-// layer — it does not throw on missing config, it returns a structured error.
+// All reads go through getSetting() so changes in the UI are picked up
+// without restarting the server. The send route returns 503 when the API
+// key is not configured by either source.
 
 import { Resend } from "resend";
 import RfqInvitation from "@/lib/emails/RfqInvitation";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
-// ── Singleton client ───────────────────────────────────────────────────────
+// ── Client factory ─────────────────────────────────────────────────────────
 
-let _client: Resend | null = null;
-
-export function getResendClient(): Resend | null {
-  const apiKey = process.env.RESEND_API_KEY;
+/**
+ * Build a Resend client from the current API key. Returns null if no key is
+ * configured. We don't memoize the client because the API key may change at
+ * runtime via the settings page; constructing it is cheap.
+ */
+async function getResendClient(): Promise<Resend | null> {
+  const apiKey = await getSetting("RESEND_API_KEY");
   if (!apiKey) return null;
-  if (!_client) {
-    _client = new Resend(apiKey);
-  }
-  return _client;
+  return new Resend(apiKey);
 }
 
-export function isEmailConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
+export async function isEmailConfigured(): Promise<boolean> {
+  const apiKey = await getSetting("RESEND_API_KEY");
+  const fromEmail = await getSetting("RESEND_FROM_EMAIL");
+  return Boolean(apiKey && fromEmail);
 }
 
 // ── sendRfqEmail ───────────────────────────────────────────────────────────
@@ -50,8 +53,8 @@ export type SendRfqResult = {
 };
 
 export async function sendRfqEmail(params: SendRfqParams): Promise<SendRfqResult> {
-  const client = getResendClient();
-  const fromEmail = process.env.RESEND_FROM_EMAIL;
+  const client = await getResendClient();
+  const fromEmail = await getSetting("RESEND_FROM_EMAIL");
 
   if (!client || !fromEmail) {
     return {

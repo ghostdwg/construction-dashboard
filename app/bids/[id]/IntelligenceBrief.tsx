@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import AiCostPreview from "./AiCostPreview";
 
 // ----- Types -----
 
@@ -208,6 +209,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
           >
             {generating ? "Generating…" : "Generate brief"}
           </button>
+          <AiCostPreview callKey="brief" bidId={bidId} />
         </div>
         {generateError && (
           <p className="text-sm text-red-500">{generateError}</p>
@@ -425,13 +427,16 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
           )}
           {sourceParts.length > 0 && <span>{sourceParts.join(" · ")}</span>}
         </div>
-        <button
-          onClick={regenerate}
-          disabled={regenerating || brief.status === "generating"}
-          className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200"
-        >
-          {regenerating ? "Regenerating…" : "Regenerate brief"}
-        </button>
+        <div className="flex items-center gap-2">
+          <AiCostPreview callKey="brief" bidId={bidId} />
+          <button
+            onClick={regenerate}
+            disabled={regenerating || brief.status === "generating"}
+            className="rounded border border-zinc-300 px-3 py-1 text-xs text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            {regenerating ? "Regenerating…" : "Regenerate brief"}
+          </button>
+        </div>
       </div>
     </div>
   );

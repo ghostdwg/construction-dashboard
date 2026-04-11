@@ -9,6 +9,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { isEmailConfigured } from "@/lib/services/email/resendClient";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 export async function GET(
   _request: Request,
@@ -60,12 +61,18 @@ export async function GET(
     };
   }
 
+  const [emailConfigured, estimatorName, estimatorEmail] = await Promise.all([
+    isEmailConfigured(),
+    getSetting("ESTIMATOR_NAME"),
+    getSetting("ESTIMATOR_EMAIL"),
+  ]);
+
   return Response.json({
-    emailConfigured: isEmailConfigured(),
+    emailConfigured,
     bySubId,
     estimatorDefaults: {
-      name: process.env.ESTIMATOR_NAME ?? "",
-      email: process.env.ESTIMATOR_EMAIL ?? "",
+      name: estimatorName ?? "",
+      email: estimatorEmail ?? "",
     },
   });
 }

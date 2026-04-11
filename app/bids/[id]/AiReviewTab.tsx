@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import AiCostPreview from "./AiCostPreview";
 
 // ----- Types -----
 
@@ -310,6 +311,7 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
                 <span className="text-xs text-blue-700">Stub data</span>
               </div>
             )}
+            <AiCostPreview callKey="gap-analysis" />
             <button
               onClick={runAnalysis}
               disabled={running || tradeNames.length === 0}

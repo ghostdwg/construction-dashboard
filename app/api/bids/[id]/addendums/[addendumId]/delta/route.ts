@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { assembleAddendumDeltaPrompt } from "@/lib/services/ai/assembleAddendumDeltaPrompt";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
+import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // ----- Types -----
 
@@ -246,10 +248,13 @@ export async function POST(
   });
 
   // 8 — Call Anthropic
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
   if (!apiKey) {
     return Response.json(
-      { error: "ANTHROPIC_API_KEY is not set — AI generation unavailable" },
+      {
+        error:
+          "ANTHROPIC_API_KEY is not set — configure it in /settings → AI Configuration (or .env.local)",
+      },
       { status: 503 }
     );
   }
@@ -260,6 +265,14 @@ export async function POST(
     max_tokens: await getMaxTokens("addendum-delta"),
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
+  });
+
+  await logAiUsage({
+    callKey: "addendum-delta",
+    model: "claude-sonnet-4-6",
+    inputTokens: message.usage.input_tokens,
+    outputTokens: message.usage.output_tokens,
+    bidId,
   });
 
   const textBlock = message.content.find((b) => b.type === "text");

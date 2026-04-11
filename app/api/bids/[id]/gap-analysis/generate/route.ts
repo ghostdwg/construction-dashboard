@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { assembleGapPrompt } from "@/lib/services/ai/assembleGapPrompt";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
+import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // ----- Types -----
 
@@ -269,8 +271,11 @@ export async function runGapAnalysis(
   }
 
   // ----- LIVE MODE -----
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set — AI generation unavailable");
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey)
+    throw new Error(
+      "ANTHROPIC_API_KEY is not set — configure it in /settings → AI Configuration (or .env.local)"
+    );
 
   const client = new Anthropic({ apiKey });
 
@@ -296,6 +301,14 @@ export async function runGapAnalysis(
       max_tokens: await getMaxTokens("gap-analysis"),
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
+    });
+
+    await logAiUsage({
+      callKey: "gap-analysis",
+      model: "claude-sonnet-4-6",
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      bidId,
     });
 
     const textBlock = message.content.find((b) => b.type === "text");

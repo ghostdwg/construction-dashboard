@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { assembleReviewPrompt } from "@/lib/services/ai/assembleReviewPrompt";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
+import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // ----- Shared generation logic (importable from upload routes) -----
 
@@ -17,9 +19,11 @@ export async function generateBidIntelligence(bidId: number): Promise<{
   findingCount: number;
   coverage: Awaited<ReturnType<typeof assembleReviewPrompt>>["coverage"];
 }> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
   if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY is not set — AI generation unavailable");
+    throw new Error(
+      "ANTHROPIC_API_KEY is not set — configure it in /settings → AI Configuration (or .env.local)"
+    );
   }
 
   const { systemPrompt, userPrompt, coverage } = await assembleReviewPrompt(bidId);
@@ -31,6 +35,14 @@ export async function generateBidIntelligence(bidId: number): Promise<{
     max_tokens: await getMaxTokens("intelligence"),
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
+  });
+
+  await logAiUsage({
+    callKey: "intelligence",
+    model: "claude-sonnet-4-6",
+    inputTokens: message.usage.input_tokens,
+    outputTokens: message.usage.output_tokens,
+    bidId,
   });
 
   // Extract text block from response
@@ -125,9 +137,12 @@ export async function POST(
     return Response.json({ error: "Bid not found" }, { status: 404 });
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!(await getSetting("ANTHROPIC_API_KEY"))) {
     return Response.json(
-      { error: "ANTHROPIC_API_KEY is not set — AI generation unavailable" },
+      {
+        error:
+          "ANTHROPIC_API_KEY is not set — configure it in /settings → AI Configuration (or .env.local)",
+      },
       { status: 503 }
     );
   }

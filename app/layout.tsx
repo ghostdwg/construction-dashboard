@@ -85,7 +85,7 @@ export default function RootLayout({
                 Reports
               </Link>
               <Link
-                href="/settings/ai-tokens"
+                href="/settings"
                 className="ml-auto text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
               >
                 Settings
