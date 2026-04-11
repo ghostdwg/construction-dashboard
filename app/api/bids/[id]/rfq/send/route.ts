@@ -22,7 +22,7 @@
 // If RESEND_API_KEY is not configured, returns 503.
 
 import { prisma } from "@/lib/prisma";
-import { isEmailConfigured, sendRfqEmail } from "@/lib/services/email/resendClient";
+import { getActiveEmailProvider } from "@/lib/services/email/getActiveProvider";
 
 type SendRequestBody = {
   subIds?: unknown;
@@ -45,11 +45,11 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!(await isEmailConfigured())) {
+  const provider = await getActiveEmailProvider();
+  if (!(await provider.isConfigured())) {
     return Response.json(
       {
-        error:
-          "Email service not configured. Set RESEND_API_KEY and RESEND_FROM_EMAIL in /settings → Email (or .env.local).",
+        error: `Email service not configured. Open /settings → Email Integration to configure ${provider.label}.`,
       },
       { status: 503 }
     );
@@ -196,7 +196,7 @@ export async function POST(
     // Dedupe trades
     const trades = Array.from(new Set(group.trades));
 
-    const result = await sendRfqEmail({
+    const result = await provider.sendRfqEmail({
       to: group.contactEmail,
       subName: group.company,
       projectName,

@@ -35,6 +35,16 @@ export type SettingDefinition = {
 
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
   {
+    key: "EMAIL_PROVIDER",
+    label: "Email Provider",
+    description:
+      "Which service should send RFQ emails. Resend is API-based and best for transactional volume; SMTP works with Gmail, Outlook, Yahoo, iCloud, Fastmail, and any custom SMTP server.",
+    category: "email",
+    secret: false,
+    envVar: "EMAIL_PROVIDER",
+    placeholder: "resend",
+  },
+  {
     key: "RESEND_API_KEY",
     label: "Resend API Key",
     description:
@@ -46,13 +56,79 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   },
   {
     key: "RESEND_FROM_EMAIL",
-    label: "From Email",
+    label: "Resend From Email",
     description:
-      "Sender address used for outbound RFQ emails. Must be on a domain you've verified in Resend.",
+      "Sender address used for outbound RFQ emails when Resend is the active provider. Must be on a domain you've verified in Resend.",
     category: "email",
     secret: false,
     envVar: "RESEND_FROM_EMAIL",
     placeholder: "rfq@yourcompany.com",
+  },
+  {
+    key: "SMTP_HOST",
+    label: "SMTP Host",
+    description: "Outgoing SMTP server hostname.",
+    category: "email",
+    secret: false,
+    envVar: "SMTP_HOST",
+    placeholder: "smtp.gmail.com",
+  },
+  {
+    key: "SMTP_PORT",
+    label: "SMTP Port",
+    description: "Outgoing SMTP server port. 587 for STARTTLS (modern default), 465 for SSL.",
+    category: "email",
+    secret: false,
+    envVar: "SMTP_PORT",
+    placeholder: "587",
+  },
+  {
+    key: "SMTP_SECURE",
+    label: "SMTP Secure",
+    description:
+      "Set to \"true\" if connecting on port 465 with implicit SSL. Leave \"false\" for STARTTLS on port 587.",
+    category: "email",
+    secret: false,
+    envVar: "SMTP_SECURE",
+    placeholder: "false",
+  },
+  {
+    key: "SMTP_USER",
+    label: "SMTP Username",
+    description: "Usually your full email address.",
+    category: "email",
+    secret: false,
+    envVar: "SMTP_USER",
+    placeholder: "you@yourcompany.com",
+  },
+  {
+    key: "SMTP_PASSWORD",
+    label: "SMTP Password",
+    description:
+      "App password (NOT your regular account password). Generate one in your email provider's account security settings.",
+    category: "email",
+    secret: true,
+    envVar: "SMTP_PASSWORD",
+    placeholder: "xxxx xxxx xxxx xxxx",
+  },
+  {
+    key: "SMTP_FROM_EMAIL",
+    label: "SMTP From Email",
+    description:
+      "Optional sender address. Defaults to the SMTP username if not set. Some providers require this to match the authenticated mailbox.",
+    category: "email",
+    secret: false,
+    envVar: "SMTP_FROM_EMAIL",
+    placeholder: "rfq@yourcompany.com",
+  },
+  {
+    key: "SMTP_FROM_NAME",
+    label: "SMTP From Name",
+    description: "Optional display name shown next to the From address (e.g. \"Acme Estimating\").",
+    category: "email",
+    secret: false,
+    envVar: "SMTP_FROM_NAME",
+    placeholder: "Acme Estimating",
   },
   {
     key: "ESTIMATOR_NAME",
@@ -105,18 +181,35 @@ export function getSettingDefinition(key: string): SettingDefinition | null {
 }
 
 // ── In-process cache ────────────────────────────────────────────────────────
+//
+// Pinned to globalThis so the cache survives Next.js dev-mode module
+// duplication across route-handler bundles. Without this, a PATCH that runs
+// in one bundle's module instance can't invalidate another bundle's cache,
+// leading to stale reads. (Same pattern Prisma uses for its client singleton.)
 
-let cache: Map<string, string> | null = null;
+const globalForCache = globalThis as unknown as {
+  __appSettingsCache?: Map<string, string> | null;
+};
+
+function readCache(): Map<string, string> | null {
+  return globalForCache.__appSettingsCache ?? null;
+}
+
+function writeCache(value: Map<string, string> | null): void {
+  globalForCache.__appSettingsCache = value;
+}
 
 async function loadCache(): Promise<Map<string, string>> {
-  if (cache) return cache;
+  const existing = readCache();
+  if (existing) return existing;
   const rows = await prisma.appSetting.findMany();
-  cache = new Map(rows.map((r) => [r.key, r.value]));
-  return cache;
+  const fresh = new Map(rows.map((r) => [r.key, r.value]));
+  writeCache(fresh);
+  return fresh;
 }
 
 export function clearAppSettingsCache(): void {
-  cache = null;
+  writeCache(null);
 }
 
 // ── Read ────────────────────────────────────────────────────────────────────
@@ -144,6 +237,7 @@ export async function getSetting(key: string): Promise<string | null> {
  * null if the cache hasn't been primed.
  */
 export function getCachedSetting(key: string): string | null {
+  const cache = readCache();
   if (!cache) return null;
   const dbVal = cache.get(key);
   if (dbVal !== undefined && dbVal !== "") return dbVal;

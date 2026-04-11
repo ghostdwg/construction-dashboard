@@ -1,20 +1,18 @@
 // POST /api/settings/email/test
 //
-// Module SET1 — Email connection test.
-//
-// Verifies the configured Resend API key is valid by hitting Resend's
-// /api-keys list endpoint (cheap, idempotent, doesn't send mail). Optionally
-// accepts a `to` address in the body to send a real test email.
+// Tests the currently active email provider (Resend or SMTP). Two modes:
+//   - Validate-only (no `to` in body): runs the provider's validateConnection()
+//     to verify credentials without sending mail.
+//   - Send (with `to` in body): sends a real test email to that address.
 //
 // Body (optional): { to?: string }
 //
 // Response:
-//   { ok: true, mode: "validate" }                       — key valid, no email sent
-//   { ok: true, mode: "send", messageId: "abc-123" }     — test email sent
-//   { ok: false, error: "..." }                          — key missing/invalid
+//   { ok: true,  mode: "validate", provider: "resend"|"smtp", details?: string }
+//   { ok: true,  mode: "send", provider: "resend"|"smtp", messageId: string|null }
+//   { ok: false, error: string }
 
-import { Resend } from "resend";
-import { getSetting } from "@/lib/services/settings/appSettingsService";
+import { getActiveEmailProvider } from "@/lib/services/email/getActiveProvider";
 
 export async function POST(request: Request) {
   let body: { to?: string };
@@ -24,70 +22,37 @@ export async function POST(request: Request) {
     body = {};
   }
 
-  const apiKey = await getSetting("RESEND_API_KEY");
-  const fromEmail = await getSetting("RESEND_FROM_EMAIL");
+  const provider = await getActiveEmailProvider();
 
-  if (!apiKey) {
-    return Response.json(
-      { ok: false, error: "RESEND_API_KEY is not configured" },
-      { status: 400 }
-    );
-  }
-
-  const client = new Resend(apiKey);
-
-  // Mode 1: validate-only (no `to` provided) — list API keys to verify auth
+  // Mode 1: validate-only
   if (!body.to) {
-    try {
-      // Resend SDK exposes api_keys.list() — cheap auth check.
-      const result = await client.apiKeys.list();
-      if (result.error) {
-        return Response.json(
-          { ok: false, error: result.error.message ?? "Resend rejected the API key" },
-          { status: 400 }
-        );
-      }
-      return Response.json({ ok: true, mode: "validate" });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return Response.json({ ok: false, error: message }, { status: 400 });
+    const result = await provider.validateConnection();
+    if (result.ok) {
+      return Response.json({
+        ok: true,
+        mode: "validate",
+        provider: provider.id,
+        details: result.details ?? null,
+      });
     }
-  }
-
-  // Mode 2: send a real test email
-  if (!fromEmail) {
     return Response.json(
-      { ok: false, error: "RESEND_FROM_EMAIL is not configured — cannot send" },
+      { ok: false, provider: provider.id, error: result.error },
       { status: 400 }
     );
   }
-  if (!body.to.includes("@")) {
-    return Response.json({ ok: false, error: "Invalid recipient email" }, { status: 400 });
-  }
 
-  try {
-    const response = await client.emails.send({
-      from: fromEmail,
-      to: body.to,
-      subject: "Bid Dashboard — Resend test email",
-      text:
-        "This is a test email from your Bid Dashboard.\n\n" +
-        "If you received this, your Resend integration is configured correctly.\n\n" +
-        "You can now send RFQ emails from the Subs tab on any bid.",
-    });
-    if (response.error) {
-      return Response.json(
-        { ok: false, error: response.error.message ?? String(response.error) },
-        { status: 400 }
-      );
-    }
+  // Mode 2: real send
+  const result = await provider.sendTestEmail(body.to);
+  if (result.ok) {
     return Response.json({
       ok: true,
       mode: "send",
-      messageId: response.data?.id ?? null,
+      provider: provider.id,
+      messageId: result.messageId,
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return Response.json({ ok: false, error: message }, { status: 500 });
   }
+  return Response.json(
+    { ok: false, provider: provider.id, error: result.error },
+    { status: 400 }
+  );
 }

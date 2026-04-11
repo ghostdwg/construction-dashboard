@@ -8,7 +8,7 @@
 // to disable the "Send RFQ" button when no RESEND_API_KEY is set.
 
 import { prisma } from "@/lib/prisma";
-import { isEmailConfigured } from "@/lib/services/email/resendClient";
+import { getActiveEmailProvider } from "@/lib/services/email/getActiveProvider";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 export async function GET(
@@ -61,14 +61,16 @@ export async function GET(
     };
   }
 
+  const provider = await getActiveEmailProvider();
   const [emailConfigured, estimatorName, estimatorEmail] = await Promise.all([
-    isEmailConfigured(),
+    provider.isConfigured(),
     getSetting("ESTIMATOR_NAME"),
     getSetting("ESTIMATOR_EMAIL"),
   ]);
 
   return Response.json({
     emailConfigured,
+    emailProvider: provider.id,
     bySubId,
     estimatorDefaults: {
       name: estimatorName ?? "",

@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module SET1 (Settings & Cost Observability) complete
+# Last Updated: 2026-04-11 — Module SET1+ (Email provider abstraction: Resend + SMTP) complete
 
 ---
 
@@ -164,6 +164,7 @@ Every bid follows this sequence:
 | Module H3   | Submittal Register — regex seeder, lifecycle, Procore CSV export | COMPLETE |
 | Module H4   | Schedule Seed — canonical CSI sequence, FS chain, MSP CSV export | COMPLETE |
 | Module SET1 | Settings & Cost Observability — shell, hot-applied creds, usage logging, cost previews | COMPLETE |
+| Module SET1+ | Email provider abstraction — Resend + Generic SMTP w/ presets | COMPLETE |
 
 ---
 
@@ -773,6 +774,91 @@ Explicit deferrals:
 - Per-bid cost ledger view (today's UI is global; per-bid view is a future card)
 - Budget alerts ("you've spent $X this month, set a cap?")
 
+### Module SET1+ — Email Provider Abstraction ✅ COMPLETE (2026-04-11)
+
+Replaces the hardcoded Resend client with a provider abstraction so the app
+can send mail via Resend OR generic SMTP (Gmail, Outlook/M365, Yahoo,
+iCloud, Fastmail, custom corporate relays). The UI toggles between providers
+with a tile selector and SMTP gets a preset dropdown that bulk-fills
+host/port/secure for known providers.
+
+Architecture:
+- lib/services/email/types.ts — EmailProvider interface
+    isConfigured(), validateConnection(), sendRfqEmail(), sendTestEmail()
+- lib/services/email/providers/resendProvider.ts — wraps existing Resend flow
+- lib/services/email/providers/smtpProvider.ts — nodemailer-based SMTP flow
+- lib/services/email/getActiveProvider.ts — reads EMAIL_PROVIDER setting
+  and instantiates the right class (defaults to "resend")
+- lib/services/email/renderRfqHtml.ts — renders the React Email RFQ template
+  to an HTML string for nodemailer (Resend renders React natively, nodemailer
+  needs a string). Includes a plain-text fallback for clients that won't
+  render HTML.
+- lib/services/email/smtpPresets.ts — table of preset host/port/secure
+  values for Gmail, Outlook, Yahoo, iCloud, Fastmail, plus a "Custom" entry.
+  Each preset includes a notes string explaining the app-password requirement.
+- lib/services/email/resendClient.ts — DELETED (all callers moved to the
+  abstraction)
+
+Settings catalog additions (all in category="email"):
+- EMAIL_PROVIDER (resend|smtp, default "resend")
+- SMTP_HOST, SMTP_PORT, SMTP_SECURE
+- SMTP_USER, SMTP_PASSWORD (secret)
+- SMTP_FROM_EMAIL (defaults to SMTP_USER if blank)
+- SMTP_FROM_NAME (optional display name)
+
+UI rebuild (app/settings/EmailSettingsCard.tsx):
+- Provider tile selector at the top — switching providers preserves both
+  sets of settings, so users can flip back and forth without re-entering
+  anything.
+- Conditional config section: shows Resend fields when provider=resend,
+  SMTP fields when provider=smtp.
+- SMTP preset dropdown above the SMTP fields — selecting Gmail/Outlook/etc
+  bulk-PATCHes SMTP_HOST + SMTP_PORT + SMTP_SECURE in three sequential
+  calls, then refreshes the field list.
+- Inline preset notes explaining where to generate the app password.
+- Test panel adapts: validateConnection() runs against the active provider
+  (transporter.verify() for SMTP, /api-keys list for Resend). The Send Test
+  Email button uses the active provider's sendTestEmail().
+
+Refactored call sites:
+- app/api/bids/[id]/rfq/send/route.ts — uses getActiveEmailProvider()
+- app/api/bids/[id]/rfq/status/route.ts — uses getActiveEmailProvider() +
+  reports the active provider id back to the UI
+- app/api/settings/email/test/route.ts — provider-agnostic test endpoint
+
+Cache fix (appSettingsService.ts):
+- The original SET1 cache was a module-level `let` variable. Next.js dev
+  mode (Turbopack) duplicates module instances across route-handler bundles,
+  so a PATCH from one route couldn't invalidate the cache in another route's
+  bundle — leading to stale provider reads after switching.
+- Fix: pin the cache to globalThis (same pattern Prisma uses for its
+  client singleton). Now invalidation works across all route handlers.
+- Verified end-to-end with curl: switch provider → POST email/test reports
+  the new provider id immediately, no stale state.
+
+Files shipped:
+  package.json (+nodemailer, +@types/nodemailer)
+  lib/services/email/types.ts (NEW)
+  lib/services/email/smtpPresets.ts (NEW)
+  lib/services/email/renderRfqHtml.ts (NEW)
+  lib/services/email/providers/resendProvider.ts (NEW)
+  lib/services/email/providers/smtpProvider.ts (NEW)
+  lib/services/email/getActiveProvider.ts (NEW)
+  lib/services/email/resendClient.ts (DELETED)
+  lib/services/settings/appSettingsService.ts (globalThis cache + new SMTP keys)
+  app/api/bids/[id]/rfq/send/route.ts (uses provider abstraction)
+  app/api/bids/[id]/rfq/status/route.ts (uses provider abstraction + emailProvider field)
+  app/api/settings/email/test/route.ts (provider-agnostic)
+  app/settings/EmailSettingsCard.tsx (full rebuild — provider tiles + preset dropdown)
+
+Explicit deferrals:
+- Microsoft Graph API provider — Option 3 from planning. Worth building if
+  IT admin disables SMTP AUTH at the tenant level. Would slot in as a third
+  EmailProvider implementation with no further refactor needed.
+- Per-user email credentials (when multi-tenant lands — see Auth Wall queue).
+- Bounce handling for SMTP (Resend webhooks already wired; SMTP would need
+  IMAP polling or VERP rewriting which is heavy).
+
 ### Tier F — Procore Integration Bridge
 Priority: LOW
 Sessions: 5-8 total
@@ -788,6 +874,35 @@ Sessions: 2-3
 Sidebar nav with phase groupings.
 Pursuit tabs vs post-award modules based on bid status.
 All pursuit data stays accessible in collapsed section.
+
+### Auth Wall + Multi-Tenancy (queued — only if app proves useful inside the company)
+Priority: DEFERRED until there's a real second user
+Sessions: 2-3 (Phase A only) + 4-6 (Phase B)
+
+Phase A — Auth wall only:
+- Long-lived feat/auth-wall branch (kept off main, rebased periodically)
+- Auth.js (NextAuth) install — sessions, password hashing, OAuth, magic links
+- middleware.ts at app root: any unauthenticated request → /login
+- User { id, email, name, hashedPassword, role, createdAt } — no workspace yet
+- AUTH_DISABLED env flag bypasses middleware for solo dev
+- Login/logout pages, password reset via the existing email provider
+- After Phase A: company login wall, but everyone still shares the same data
+
+Phase B — Multi-tenancy (when there's a real second user):
+- Add ownerId/workspaceId to Bid, Subcontractor, AppSetting, AiUsageLog, etc.
+- One-shot migration assigning all existing rows to user 1
+- requireOwnership(bidId, userId) helper wrapping all read/write paths
+- Touches every API route — real refactor
+- Decision needed: per-workspace shared credentials vs per-user
+
+Production-readiness tasks (must precede multi-user go-live):
+- SQLite → Postgres migration (one line in schema.prisma + fresh migrate)
+- Secrets out of AppSetting → real secret manager (Doppler / Vault / AWS SM
+  / or just env vars on the host with no UI write path). The hybrid SET1
+  design makes this easy: remove the write path for `secret: true` keys,
+  they fall back to env automatically.
+- HTTPS, rate limiting, secure cookie flags
+- Backups + a deploy target (Vercel / Fly.io / self-hosted)
 
 ---
 
