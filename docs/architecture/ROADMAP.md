@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-10 — Module H1 (Handoff Packet / Tier E entry point) complete
+# Last Updated: 2026-04-11 — Module H2 (Buyout Tracker) complete
 
 ---
 
@@ -159,6 +159,7 @@ Every bid follows this sequence:
 | Module RFQ1 | RFQ Email Distribution via Resend | COMPLETE |
 | Module INT1 | Job Intake — Wing 1 project context capture | COMPLETE |
 | Module H1   | Handoff Packet — Tier E entry point | COMPLETE |
+| Module H2   | Buyout Tracker — per-trade contracts + rollup | COMPLETE |
 
 ---
 
@@ -256,7 +257,7 @@ added to .env.local and a domain is verified in the Resend dashboard.
 
 ### Tier E — Post-Award Handoff Layer (H1-H8)
 Priority: IN PROGRESS
-Status: H1 shipped 2026-04-10. H2-H8 queued.
+Status: H1 shipped 2026-04-10, H2 shipped 2026-04-11. H3-H8 queued.
 
 ### Module H1 — Handoff Packet ✅ COMPLETE (2026-04-10)
 
@@ -309,9 +310,78 @@ Explicit deferrals (tracked for follow-up modules):
 - Owner, architect, internal team contacts → future ProjectContact model
 - "Copy to Clipboard" text summary → follow-up if XLSX proves insufficient
 
-### Queued — H2 through H8
+### Module H2 — Buyout Tracker ✅ COMPLETE (2026-04-11)
 
-H2 Buyout tracker — sub contracts, POs, committed costs (populates H1's empty columns)
+Per-trade contract tracking. Populates the Trade Awards `bidAmount` +
+`contractStatus` columns that H1 left blank/hardcoded. One BuyoutItem per
+BidTrade, auto-created on first GET, inline-editable on the Handoff tab.
+
+Schema additions (migration 20260411014717_h2_buyout_tracker):
+
+  model BuyoutItem {
+    id, bidId, bidTradeId (unique), subcontractorId?,
+    committedAmount?, originalBidAmount?,
+    contractStatus (default "PENDING"),
+    loiSentAt?, contractSentAt?, contractSignedAt?,
+    poNumber?, poIssuedAt?,
+    changeOrderAmount (default 0), paidToDate (default 0),
+    retainagePercent (default 5),
+    notes?, createdAt, updatedAt,
+    @@index([bidId]), @@index([subcontractorId])
+  }
+
+Valid contractStatus values (validated in API layer, not enum for SQLite):
+  PENDING, LOI_SENT, CONTRACT_SENT, CONTRACT_SIGNED, PO_ISSUED, ACTIVE, CLOSED
+
+Service layer (lib/services/buyout/buyoutService.ts):
+- loadBuyoutItemsForBid: auto-creates missing rows, returns full rows with
+  derived fields (totalCommitted, remainingToPay, retainageHeld)
+- computeBuyoutRollup: total committed/paid/remaining/retainage + status histogram
+- updateBuyoutItem: ownership check, numeric non-negativity, status enum,
+  retainagePercent 0-100
+
+API routes:
+- GET  /api/bids/[id]/buyout           → { items, rollup }
+- PATCH /api/bids/[id]/buyout/[itemId] → updates one row
+
+UI (app/bids/[id]/BuyoutTracker.tsx):
+- Rollup card at top (committed / paid / remaining / retainage)
+- One editable row per trade with: committed amount, PO#, status dropdown,
+  paid-to-date, expandable detail panel (COs, totals, retainage, notes)
+- Save button appears only when row is dirty
+- After save: reloads local state AND bumps parent's packetReloadTick to
+  refresh the Trade Awards table above
+
+H1 integration:
+- assembleHandoffPacket reads BuyoutItem.totalCommitted into TradeAward.bidAmount
+- Per-sub contractStatus on AwardedSub uses "weakest link" (earliest-stage)
+  across all trades that sub is awarded on
+- HandoffPacket.buyoutRollup added as top-level field
+
+XLSX export changes:
+- Trade Awards sheet: "Committed" column now shows real amounts + total row
+- NEW sheet "Buyout Summary" (position 3): per-trade committed/COs/total/paid/
+  remaining/retainage with totals row
+- Project Summary sheet: new "Buyout Rollup" section
+
+Files shipped:
+  prisma/migrations/20260411014717_h2_buyout_tracker/migration.sql
+  prisma/schema.prisma (BuyoutItem model + relations on Bid/BidTrade/Subcontractor)
+  lib/services/buyout/buyoutService.ts (NEW)
+  lib/services/handoff/assembleHandoffPacket.ts (buyout integration)
+  app/api/bids/[id]/buyout/route.ts (NEW — GET)
+  app/api/bids/[id]/buyout/[itemId]/route.ts (NEW — PATCH)
+  app/api/bids/[id]/handoff/export/route.ts (Buyout Summary sheet + rollup)
+  app/bids/[id]/BuyoutTracker.tsx (NEW)
+  app/bids/[id]/HandoffTab.tsx (BuyoutTracker mount + packet refetch on change)
+
+Explicit deferrals:
+- Automatic originalBidAmount population from leveling data → future module
+- AIA-style pay-app tracking (line item breakdown per payment) → out of scope
+- PO issuance to sub via email → future (reuses RFQ1 Resend infrastructure)
+
+### Queued — H3 through H8
+
 H3 Submittal register — spec seed, schedule, Procore CSV
 H4 Schedule seed — trade sequence to activity list
 H5 Owner-facing estimate — high-level rollup export

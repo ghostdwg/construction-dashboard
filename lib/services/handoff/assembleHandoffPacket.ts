@@ -1,18 +1,23 @@
 // Module H1 — Handoff Packet assembly
+// Module H2 — Buyout Tracker integration
 //
 // Pure data aggregation. Compiles the bid + intake + awarded subs + open items
-// + risk flags + documents into a single object that can be rendered to JSON
-// (for the UI) or XLSX (for download).
+// + risk flags + documents + buyout items into a single object that can be
+// rendered to JSON (for the UI) or XLSX (for download).
 //
 // IMPORTANT — runs server-side ONLY:
 // - Sub names and contact info are INCLUDED. The packet is internal — handed
 //   from estimator to PM. It is NEVER sent to AI and NEVER exposed to subs.
 // - EstimateUpload.pricingData is NEVER read or returned.
-// - Per-trade dollar amounts are LEFT NULL in this module. Module H2 (Buyout
-//   Tracker) is the natural source of truth for committed sub amounts. We
-//   surface the total ourBidAmount from BidSubmission instead.
+// - Per-trade dollar amounts come from BuyoutItem (H2). committedAmount +
+//   changeOrderAmount is our outbound commitment, never sub inbound pricing.
 
 import { prisma } from "@/lib/prisma";
+import {
+  loadBuyoutItemsForBid,
+  computeBuyoutRollup,
+  type BuyoutRollup,
+} from "@/lib/services/buyout/buyoutService";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -51,6 +56,7 @@ export type HandoffPacket = {
 
   trades: TradeAward[];
   awardedSubs: AwardedSub[];
+  buyoutRollup: BuyoutRollup;
 
   openItems: {
     unresolvedRfis: UnresolvedRfi[];
@@ -75,11 +81,10 @@ export type TradeAward = {
   awardedContactName: string | null;
   awardedContactEmail: string | null;
   awardedContactPhone: string | null;
-  // Per-trade buyout amount: NULL in H1 (no source).
-  // Module H2 (Buyout Tracker) will populate this from a future BuyoutItem model.
+  // H2 — sourced from BuyoutItem. bidAmount is totalCommitted (committedAmount + changeOrders).
   bidAmount: number | null;
-  // Hardcoded "PENDING" in H1. Module H2 will derive from BuyoutItem.contractStatus.
-  contractStatus: "PENDING";
+  // H2 — sourced from BuyoutItem.contractStatus
+  contractStatus: string;
 };
 
 export type AwardedSub = {
@@ -89,7 +94,8 @@ export type AwardedSub = {
   contactEmail: string | null;
   contactPhone: string | null;
   trades: string[];
-  contractStatus: "PENDING";
+  // H2 — worst (earliest) contract status across this sub's trades
+  contractStatus: string;
 };
 
 export type UnresolvedRfi = {
@@ -175,16 +181,38 @@ export async function assembleHandoffPacket(bidId: number): Promise<HandoffPacke
 
   if (!bid) return null;
 
+  // ── Buyout items (H2) ───────────────────────────────────────────────────
+  // Auto-creates BuyoutItem rows for any BidTrade without one. Feeds
+  // per-trade amounts + contract status directly into the handoff packet.
+  const buyoutItems = await loadBuyoutItemsForBid(bidId);
+  const buyoutByBidTradeId = new Map(buyoutItems.map((b) => [b.bidTradeId, b]));
+  const buyoutRollup = computeBuyoutRollup(buyoutItems);
+
   // ── Trades ──────────────────────────────────────────────────────────────
-  // For each BidTrade, find the "awarded" sub. We use rfqStatus === "accepted"
-  // as the award signal (the closest thing in the current schema). If multiple
-  // selections on the same trade are accepted, pick the first; if none are
-  // accepted, awarded fields are null.
+  // Awarded sub comes from BuyoutItem.subcontractorId (populated from accepted
+  // RFQ selections on first load). Fall back to BidInviteSelection lookup
+  // for display contacts if needed. Contract status + bidAmount come from
+  // BuyoutItem directly.
   const trades: TradeAward[] = bid.bidTrades.map((bt) => {
-    const accepted = bid.selections.find(
-      (sel) => sel.tradeId === bt.tradeId && sel.rfqStatus === "accepted"
-    );
-    const sub = accepted?.subcontractor ?? null;
+    const buyout = buyoutByBidTradeId.get(bt.id) ?? null;
+
+    // Resolve awarded sub: buyout item is source of truth. If it has a sub,
+    // pull the contact from bid.selections where possible.
+    const awardedSubId = buyout?.subcontractorId ?? null;
+    let sub: (typeof bid.selections)[number]["subcontractor"] | null = null;
+    if (awardedSubId != null) {
+      const sel = bid.selections.find(
+        (s) => s.subcontractorId === awardedSubId && s.tradeId === bt.tradeId
+      );
+      sub = sel?.subcontractor ?? null;
+      // If the sub was assigned in buyout but the selection is not present
+      // for this trade (e.g. manual assignment), fall back to any selection
+      // for that sub on this bid so we can surface contact info.
+      if (!sub) {
+        const anySel = bid.selections.find((s) => s.subcontractorId === awardedSubId);
+        sub = anySel?.subcontractor ?? null;
+      }
+    }
     const contact = sub?.contacts[0] ?? null;
 
     return {
@@ -194,17 +222,19 @@ export async function assembleHandoffPacket(bidId: number): Promise<HandoffPacke
       costCode: bt.trade.costCode,
       tier: bt.tier,
       leadTimeDays: bt.leadTimeDays,
-      awardedSubcontractorId: sub?.id ?? null,
-      awardedSubName: sub?.company ?? null,
+      awardedSubcontractorId: awardedSubId,
+      awardedSubName: sub?.company ?? buyout?.subcontractorName ?? null,
       awardedContactName: contact?.name ?? null,
       awardedContactEmail: contact?.email ?? null,
       awardedContactPhone: contact?.phone ?? null,
-      bidAmount: null, // Deferred to Module H2
-      contractStatus: "PENDING" as const,
+      bidAmount: buyout ? (buyout.totalCommitted > 0 ? buyout.totalCommitted : null) : null,
+      contractStatus: buyout?.contractStatus ?? "PENDING",
     };
   });
 
   // ── Awarded Subs (deduped by sub, with all trades collapsed) ────────────
+  // contractStatus per sub = earliest-in-lifecycle across their trades
+  // (ordered by CONTRACT_STATUS_ORDER below — the "weakest link" view)
   type SubGroup = {
     subcontractorId: number;
     companyName: string;
@@ -212,6 +242,7 @@ export async function assembleHandoffPacket(bidId: number): Promise<HandoffPacke
     contactEmail: string | null;
     contactPhone: string | null;
     trades: string[];
+    statuses: string[];
   };
   const groupMap = new Map<number, SubGroup>();
   for (const t of trades) {
@@ -225,15 +256,40 @@ export async function assembleHandoffPacket(bidId: number): Promise<HandoffPacke
         contactEmail: t.awardedContactEmail,
         contactPhone: t.awardedContactPhone,
         trades: [],
+        statuses: [],
       };
       groupMap.set(t.awardedSubcontractorId, group);
     }
     if (!group.trades.includes(t.tradeName)) group.trades.push(t.tradeName);
+    group.statuses.push(t.contractStatus);
   }
-  const awardedSubs: AwardedSub[] = Array.from(groupMap.values()).map((g) => ({
-    ...g,
-    contractStatus: "PENDING" as const,
-  }));
+  const CONTRACT_STATUS_ORDER: Record<string, number> = {
+    PENDING: 0,
+    LOI_SENT: 1,
+    CONTRACT_SENT: 2,
+    CONTRACT_SIGNED: 3,
+    PO_ISSUED: 4,
+    ACTIVE: 5,
+    CLOSED: 6,
+  };
+  const awardedSubs: AwardedSub[] = Array.from(groupMap.values()).map((g) => {
+    const worstStatus =
+      g.statuses.length === 0
+        ? "PENDING"
+        : g.statuses.reduce((a, b) =>
+            (CONTRACT_STATUS_ORDER[a] ?? 0) <= (CONTRACT_STATUS_ORDER[b] ?? 0) ? a : b
+          );
+    return {
+      subcontractorId: g.subcontractorId,
+      companyName: g.companyName,
+      contactName: g.contactName,
+      contactEmail: g.contactEmail,
+      contactPhone: g.contactPhone,
+      trades: g.trades,
+      contractStatus: worstStatus,
+    };
+  });
+
 
   // ── Open RFIs ───────────────────────────────────────────────────────────
   const unresolvedRfis: UnresolvedRfi[] = bid.generatedQuestions.map((q) => ({
@@ -386,6 +442,7 @@ export async function assembleHandoffPacket(bidId: number): Promise<HandoffPacke
 
     trades,
     awardedSubs,
+    buyoutRollup,
 
     openItems: {
       unresolvedRfis,

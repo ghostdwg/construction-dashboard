@@ -74,6 +74,7 @@ model Bid {
   addendums           AddendumUpload[]
   intelligenceBrief   BidIntelligenceBrief?
   submission          BidSubmission?
+  buyoutItems         BuyoutItem[]
 }
 
 model BidSubmission {
@@ -117,10 +118,52 @@ model BidTrade {
   quotesReceivedAt DateTime?
   rfqNotes         String?
 
-  bid   Bid   @relation(fields: [bidId], references: [id])
-  trade Trade @relation(fields: [tradeId], references: [id])
+  bid        Bid         @relation(fields: [bidId], references: [id])
+  trade      Trade       @relation(fields: [tradeId], references: [id])
+  buyoutItem BuyoutItem?
 
   @@unique([bidId, tradeId])
+}
+
+// Module H2 — Buyout Tracker
+// One BuyoutItem per BidTrade. Auto-created on first read of the buyout
+// endpoint, then updated via PATCH as the estimator works through buyout.
+// contractStatus values (validated in API, not enum for SQLite friendliness):
+//   PENDING | LOI_SENT | CONTRACT_SENT | CONTRACT_SIGNED | PO_ISSUED | ACTIVE | CLOSED
+model BuyoutItem {
+  id                Int       @id @default(autoincrement())
+  bidId             Int
+  bidTradeId        Int       @unique
+  subcontractorId   Int?
+
+  // Commitment
+  committedAmount   Float?
+  originalBidAmount Float?
+
+  // Contract lifecycle
+  contractStatus    String    @default("PENDING")
+  loiSentAt         DateTime?
+  contractSentAt    DateTime?
+  contractSignedAt  DateTime?
+  poNumber          String?
+  poIssuedAt        DateTime?
+
+  // Financial tracking
+  changeOrderAmount Float?    @default(0)
+  paidToDate        Float?    @default(0)
+  retainagePercent  Float?    @default(5)
+
+  notes             String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  bid           Bid            @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidTrade      BidTrade       @relation(fields: [bidTradeId], references: [id], onDelete: Cascade)
+  subcontractor Subcontractor? @relation(fields: [subcontractorId], references: [id])
+
+  @@index([bidId])
+  @@index([subcontractorId])
 }
 
 model Subcontractor {
@@ -153,6 +196,7 @@ model Subcontractor {
   outreachLogs       OutreachLog[]
   preferredForTrades PreferredSub[]
   estimateUploads    EstimateUpload[]
+  buyoutItems        BuyoutItem[]
 }
 
 model SubcontractorTrade {

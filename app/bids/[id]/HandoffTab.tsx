@@ -15,6 +15,7 @@
 // Action: Download XLSX handoff packet.
 
 import { useEffect, useState } from "react";
+import BuyoutTracker from "./BuyoutTracker";
 
 // ── Types (mirror lib/services/handoff/assembleHandoffPacket.ts) ───────────
 
@@ -67,6 +68,15 @@ type HandoffPacket = {
     trades: string[];
     contractStatus: string;
   }>;
+  buyoutRollup: {
+    tradeCount: number;
+    tradesCommitted: number;
+    tradesAwarded: number;
+    totalCommitted: number;
+    totalPaid: number;
+    totalRemaining: number;
+    totalRetainageHeld: number;
+  };
   openItems: {
     unresolvedRfis: Array<{
       id: number;
@@ -128,13 +138,25 @@ const OWNER_LABELS: Record<string, string> = {
   INSTITUTIONAL: "Institutional",
 };
 
-// Contract status badge color (currently always PENDING in H1, but the
-// styles are pre-built for when H2 expands the set)
+// Contract status badge color (H2 — full lifecycle)
 const CONTRACT_STATUS_STYLES: Record<string, string> = {
-  PENDING:        "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
-  IN_NEGOTIATION: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  CONTRACT_SENT:  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  EXECUTED:       "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  PENDING:         "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  LOI_SENT:        "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  CONTRACT_SENT:   "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  CONTRACT_SIGNED: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+  PO_ISSUED:       "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  ACTIVE:          "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  CLOSED:          "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
+};
+
+const CONTRACT_STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pending",
+  LOI_SENT: "LOI Sent",
+  CONTRACT_SENT: "Contract Sent",
+  CONTRACT_SIGNED: "Contract Signed",
+  PO_ISSUED: "PO Issued",
+  ACTIVE: "Active",
+  CLOSED: "Closed",
 };
 
 const SEVERITY_STYLES: Record<string, string> = {
@@ -157,6 +179,9 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [openSection, setOpenSection] = useState<"rfis" | "assumptions" | "risks" | null>(null);
+  // Bumped by BuyoutTracker after a save → refetches the packet so the
+  // Trade Awards table and downloadable XLSX reflect fresh committed amounts.
+  const [packetReloadTick, setPacketReloadTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,7 +207,7 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
     return () => {
       cancelled = true;
     };
-  }, [bidId]);
+  }, [bidId, packetReloadTick]);
 
   async function downloadPacket() {
     setDownloading(true);
@@ -344,8 +369,8 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
           <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
             Trade Awards ({packet.trades.length})
           </h3>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 italic">
-            Per-trade buyout amounts will populate after Module H2 (Buyout Tracker) ships.
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+            Committed amounts + contract status sourced from the Buyout Tracker below.
           </p>
         </div>
         {packet.trades.length === 0 ? (
@@ -359,6 +384,7 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
                 <th className="px-4 py-2.5">Trade</th>
                 <th className="px-4 py-2.5">Awarded Sub</th>
                 <th className="px-4 py-2.5">Contact</th>
+                <th className="px-4 py-2.5 text-right">Committed</th>
                 <th className="px-4 py-2.5">Status</th>
               </tr>
             </thead>
@@ -366,6 +392,8 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
               {packet.trades.map((t) => {
                 const statusStyle =
                   CONTRACT_STATUS_STYLES[t.contractStatus] ?? CONTRACT_STATUS_STYLES.PENDING;
+                const statusLabel =
+                  CONTRACT_STATUS_LABELS[t.contractStatus] ?? t.contractStatus;
                 return (
                   <tr key={t.tradeId}>
                     <td className="px-4 py-2.5">
@@ -401,11 +429,16 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
                         <span className="text-zinc-400 dark:text-zinc-500">—</span>
                       )}
                     </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-zinc-800 dark:text-zinc-100">
+                      {t.bidAmount != null ? fmtDollar(t.bidAmount) : (
+                        <span className="text-zinc-400 dark:text-zinc-500">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyle}`}
                       >
-                        {t.contractStatus}
+                        {statusLabel}
                       </span>
                     </td>
                   </tr>
@@ -415,6 +448,12 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
           </table>
         )}
       </section>
+
+      {/* ── Section 2b — Buyout Tracker (Module H2) ── */}
+      <BuyoutTracker
+        bidId={bidId}
+        onChanged={() => setPacketReloadTick((t) => t + 1)}
+      />
 
       {/* ── Section 3 — Open Items (count badges + expandable) ── */}
       <section className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">

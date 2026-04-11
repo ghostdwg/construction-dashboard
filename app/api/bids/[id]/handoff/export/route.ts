@@ -1,21 +1,25 @@
 // POST /api/bids/[id]/handoff/export
 //
-// Generates a 5-sheet XLSX handoff packet for download:
+// Generates a 6-sheet XLSX handoff packet for download:
 //   1. Project Summary  — bid info, intake context, constraints, compliance
-//   2. Trade Awards     — trade by trade, with awarded sub + contact + status
-//   3. Open Items       — open RFIs, unresolved assumptions, risk flags
-//   4. Contacts         — awarded sub contacts (owner/architect deferred)
-//   5. Documents        — uploaded spec books, drawings, addendums
+//   2. Trade Awards     — trade by trade, committed amount + contract status (H2)
+//   3. Buyout Summary   — rollup + per-trade financial detail (H2)
+//   4. Open Items       — open RFIs, unresolved assumptions, risk flags
+//   5. Contacts         — awarded sub contacts (owner/architect deferred)
+//   6. Documents        — uploaded spec books, drawings, addendums
 //
-// Pricing boundary: per-trade dollar amounts are LEFT BLANK in this module.
-// Module H2 (Buyout Tracker) will populate them. The total ourBidAmount is
-// shown on the Project Summary sheet (single field, not per-trade).
+// Pricing boundary: committedAmount / paidToDate are OUTBOUND commitments.
+// EstimateUpload.pricingData is never touched.
 
 import ExcelJS from "exceljs";
 import {
   assembleHandoffPacket,
   type HandoffPacket,
 } from "@/lib/services/handoff/assembleHandoffPacket";
+import {
+  loadBuyoutItemsForBid,
+  type BuyoutItemRow,
+} from "@/lib/services/buyout/buyoutService";
 
 // ── Style helpers ──────────────────────────────────────────────────────────
 
@@ -75,6 +79,21 @@ const OWNER_LABELS: Record<string, string> = {
   INSTITUTIONAL: "Institutional",
 };
 
+const CONTRACT_STATUS_LABELS: Record<string, string> = {
+  PENDING: "Pending",
+  LOI_SENT: "LOI Sent",
+  CONTRACT_SENT: "Contract Sent",
+  CONTRACT_SIGNED: "Contract Signed",
+  PO_ISSUED: "PO Issued",
+  ACTIVE: "Active",
+  CLOSED: "Closed",
+};
+
+function fmtDollar(n: number | null | undefined): string {
+  if (n == null || n === 0) return n === 0 ? "$0" : "—";
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
 // ── Sheet builders ─────────────────────────────────────────────────────────
 
 function buildProjectSummarySheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
@@ -133,6 +152,16 @@ function buildProjectSummarySheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
     }
   }
 
+  // Buyout rollup (H2)
+  rows.push(
+    { section: "Buyout Rollup" },
+    { label: "Trades Committed", value: `${p.buyoutRollup.tradesCommitted} of ${p.buyoutRollup.tradeCount}` },
+    { label: "Total Committed", value: fmtDollar(p.buyoutRollup.totalCommitted) },
+    { label: "Paid to Date", value: fmtDollar(p.buyoutRollup.totalPaid) },
+    { label: "Remaining", value: fmtDollar(p.buyoutRollup.totalRemaining) },
+    { label: "Retainage Held", value: fmtDollar(p.buyoutRollup.totalRetainageHeld) }
+  );
+
   // Render section headers and label/value pairs
   for (const row of rows) {
     if (row.section) {
@@ -163,12 +192,14 @@ function buildTradeAwardsSheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
     { header: "Contact", key: "contact", width: 22 },
     { header: "Email", key: "email", width: 28 },
     { header: "Phone", key: "phone", width: 16 },
-    { header: "Amount", key: "amount", width: 14 },
+    { header: "Committed", key: "amount", width: 14 },
     { header: "Contract Status", key: "status", width: 18 },
   ];
   applyHeader(sheet.getRow(1));
 
+  let total = 0;
   for (const t of p.trades) {
+    if (t.bidAmount != null) total += t.bidAmount;
     const r = sheet.addRow({
       trade: t.tradeName,
       csi: t.csiCode ?? "—",
@@ -177,9 +208,10 @@ function buildTradeAwardsSheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
       contact: t.awardedContactName ?? "—",
       email: t.awardedContactEmail ?? "—",
       phone: t.awardedContactPhone ?? "—",
-      amount: t.bidAmount != null ? `$${t.bidAmount.toLocaleString()}` : "— (H2)",
-      status: t.contractStatus,
+      amount: fmtDollar(t.bidAmount),
+      status: CONTRACT_STATUS_LABELS[t.contractStatus] ?? t.contractStatus,
     });
+    r.getCell("amount").alignment = { horizontal: "right" };
     if (!t.awardedSubName) {
       r.eachCell((cell) => {
         cell.font = { color: { argb: "FF71717A" }, italic: true };
@@ -187,13 +219,101 @@ function buildTradeAwardsSheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
     }
   }
 
-  // Note row at bottom
-  sheet.addRow([]);
-  const noteRow = sheet.addRow([
-    "Note: Per-trade dollar amounts will populate when Module H2 (Buyout Tracker) ships.",
-  ]);
-  sheet.mergeCells(`A${noteRow.number}:I${noteRow.number}`);
-  noteRow.getCell(1).font = { italic: true, color: { argb: "FF71717A" } };
+  // Total row
+  const totalRow = sheet.addRow({
+    trade: "Total committed",
+    csi: "",
+    tier: "",
+    sub: "",
+    contact: "",
+    email: "",
+    phone: "",
+    amount: fmtDollar(total),
+    status: "",
+  });
+  totalRow.eachCell((cell) => {
+    cell.font = { bold: true };
+    cell.fill = SECTION_FILL;
+  });
+  totalRow.getCell("amount").alignment = { horizontal: "right" };
+
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+}
+
+function buildBuyoutSummarySheet(wb: ExcelJS.Workbook, items: BuyoutItemRow[]) {
+  const sheet = wb.addWorksheet("Buyout Summary");
+  sheet.columns = [
+    { header: "Trade", key: "trade", width: 30 },
+    { header: "Awarded Sub", key: "sub", width: 28 },
+    { header: "Status", key: "status", width: 16 },
+    { header: "PO #", key: "po", width: 14 },
+    { header: "Committed", key: "committed", width: 14 },
+    { header: "Change Orders", key: "co", width: 14 },
+    { header: "Total w/ COs", key: "total", width: 14 },
+    { header: "Paid", key: "paid", width: 14 },
+    { header: "Remaining", key: "remaining", width: 14 },
+    { header: "Retainage", key: "retainage", width: 14 },
+  ];
+  applyHeader(sheet.getRow(1));
+
+  let tCommitted = 0;
+  let tCO = 0;
+  let tTotal = 0;
+  let tPaid = 0;
+  let tRemaining = 0;
+  let tRetainage = 0;
+
+  for (const it of items) {
+    tCommitted += it.committedAmount ?? 0;
+    tCO += it.changeOrderAmount;
+    tTotal += it.totalCommitted;
+    tPaid += it.paidToDate;
+    tRemaining += it.remainingToPay;
+    tRetainage += it.retainageHeld;
+
+    const r = sheet.addRow({
+      trade: it.tradeName,
+      sub: it.subcontractorName ?? "(not yet awarded)",
+      status: CONTRACT_STATUS_LABELS[it.contractStatus] ?? it.contractStatus,
+      po: it.poNumber ?? "—",
+      committed: fmtDollar(it.committedAmount),
+      co: fmtDollar(it.changeOrderAmount),
+      total: fmtDollar(it.totalCommitted),
+      paid: fmtDollar(it.paidToDate),
+      remaining: fmtDollar(it.remainingToPay),
+      retainage: fmtDollar(it.retainageHeld),
+    });
+    for (const key of ["committed", "co", "total", "paid", "remaining", "retainage"]) {
+      r.getCell(key).alignment = { horizontal: "right" };
+    }
+    if (!it.subcontractorName) {
+      r.eachCell((cell) => {
+        if (cell.font?.italic) return;
+        cell.font = { color: { argb: "FF71717A" }, italic: true };
+      });
+    }
+  }
+
+  // Total row
+  const totalRow = sheet.addRow({
+    trade: "Totals",
+    sub: "",
+    status: "",
+    po: "",
+    committed: fmtDollar(tCommitted),
+    co: fmtDollar(tCO),
+    total: fmtDollar(tTotal),
+    paid: fmtDollar(tPaid),
+    remaining: fmtDollar(tRemaining),
+    retainage: fmtDollar(tRetainage),
+  });
+  totalRow.eachCell((cell) => {
+    cell.font = { bold: true };
+    cell.fill = SECTION_FILL;
+  });
+  for (const key of ["committed", "co", "total", "paid", "remaining", "retainage"]) {
+    totalRow.getCell(key).alignment = { horizontal: "right" };
+  }
 
   sheet.views = [{ state: "frozen", ySplit: 1 }];
 }
@@ -368,12 +488,18 @@ export async function POST(
     return Response.json({ error: "Bid not found" }, { status: 404 });
   }
 
+  // H2 — load buyout items directly for the dedicated Buyout Summary sheet.
+  // (The packet already has buyoutRollup for the project summary, but we
+  // need the per-trade rows here.)
+  const buyoutItems = await loadBuyoutItemsForBid(bidId);
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "Bid Dashboard — Handoff Packet";
   wb.created = new Date();
 
   buildProjectSummarySheet(wb, packet);
   buildTradeAwardsSheet(wb, packet);
+  buildBuyoutSummarySheet(wb, buyoutItems);
   buildOpenItemsSheet(wb, packet);
   buildContactsSheet(wb, packet);
   buildDocumentsSheet(wb, packet);
