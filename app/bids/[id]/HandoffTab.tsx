@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from "react";
 import BuyoutTracker from "./BuyoutTracker";
+import ProjectContactsPanel from "./ProjectContactsPanel";
 
 // ── Types (mirror lib/services/handoff/assembleHandoffPacket.ts) ───────────
 
@@ -81,6 +82,15 @@ type HandoffPacket = {
     total: number;
     byStatus: Record<string, number>;
     overdue: number;
+  };
+  scheduleSummary: {
+    constructionStartDate: string | null;
+    projectDurationDays: number | null;
+    computedStartDate: string | null;
+    computedFinishDate: string | null;
+    activityCount: number;
+    constructionCount: number;
+    milestoneCount: number;
   };
   openItems: {
     unresolvedRfis: Array<{
@@ -368,6 +378,9 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
         )}
       </section>
 
+      {/* ── Section 1b — Project Team Contacts (Module H1) ── */}
+      <ProjectContactsPanel bidId={bidId} />
+
       {/* ── Section 2 — Trade Awards ── */}
       <section className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900 overflow-hidden">
         <div className="px-5 py-3 border-b border-zinc-200 dark:border-zinc-700">
@@ -506,6 +519,56 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
             value={packet.submittalRollup.overdue}
             warn={packet.submittalRollup.overdue > 0}
           />
+        </div>
+      </section>
+
+      {/* ── Section 2d — Project Schedule summary (Module H4) ── */}
+      <section className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              Project Schedule
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              Seeded from trades. Managed on the Schedule tab.
+            </p>
+          </div>
+          <a
+            href={`/bids/${bidId}?tab=schedule`}
+            className="text-xs text-blue-600 hover:underline dark:text-blue-400 mt-0.5"
+          >
+            Open Schedule tab →
+          </a>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <SubmittalStat
+            label="Activities"
+            value={packet.scheduleSummary.constructionCount}
+          />
+          <SubmittalStat
+            label="Milestones"
+            value={packet.scheduleSummary.milestoneCount}
+          />
+          <div>
+            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:text-zinc-400">
+              Construction Start
+            </p>
+            <p className="text-sm font-semibold text-zinc-900 mt-0.5 dark:text-zinc-100">
+              {packet.scheduleSummary.constructionStartDate
+                ? new Date(packet.scheduleSummary.constructionStartDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:text-zinc-400">
+              Substantial Completion
+            </p>
+            <p className="text-sm font-semibold text-zinc-900 mt-0.5 dark:text-zinc-100">
+              {packet.scheduleSummary.computedFinishDate
+                ? new Date(packet.scheduleSummary.computedFinishDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                : "—"}
+            </p>
+          </div>
         </div>
       </section>
 

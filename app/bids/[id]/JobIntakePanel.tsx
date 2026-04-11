@@ -36,6 +36,8 @@ type IntakeFields = {
   scopeBoundaryNotes: string | null;
   veInterest: boolean;
   dbeGoalPercent: number | null;
+  // Module H4 — Schedule Seed
+  constructionStartDate: string | null; // ISO date (YYYY-MM-DD) or null
 };
 
 const DELIVERY_METHODS = [
@@ -75,6 +77,7 @@ function countPopulated(f: IntakeFields): { populated: number; total: number } {
     "buildingType",
     "approxSqft",
     "stories",
+    "constructionStartDate",
     "occupiedSpace",
     "phasingRequired",
     "siteConstraints",
@@ -160,6 +163,7 @@ export default function JobIntakePanel({
           scopeBoundaryNotes: draft.scopeBoundaryNotes,
           veInterest: draft.veInterest,
           dbeGoalPercent: draft.dbeGoalPercent,
+          constructionStartDate: draft.constructionStartDate,
         }),
       });
       if (!res.ok) {
@@ -248,7 +252,11 @@ export default function JobIntakePanel({
               onChange={(v) => setDraft({ ...draft, stories: v })}
               placeholder="0"
             />
-            <div />
+            <DateField
+              label="Construction Start Date"
+              value={draft.constructionStartDate}
+              onChange={(v) => setDraft({ ...draft, constructionStartDate: v })}
+            />
           </Row>
         </Section>
 
@@ -405,6 +413,18 @@ export default function JobIntakePanel({
         <SummaryRow label="Owner Type" value={labelFor(OWNER_TYPES, data.ownerType)} />
         <SummaryRow label="Building Type" value={data.buildingType ?? "—"} />
         <SummaryRow label="Sqft / Stories" value={`${fmtNumber(data.approxSqft)} sf · ${fmtNumber(data.stories)}`} />
+        <SummaryRow
+          label="Construction Start"
+          value={
+            data.constructionStartDate
+              ? new Date(data.constructionStartDate).toLocaleDateString(undefined, {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                })
+              : "—"
+          }
+        />
         {isPublic && (
           <>
             <SummaryRow label="LD per Day" value={fmtDollar(data.ldAmountPerDay)} />
@@ -608,6 +628,30 @@ function TextareaField({
         placeholder={placeholder}
         rows={2}
         className="w-full text-sm bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-zinc-900 dark:text-zinc-100 resize-none"
+      />
+    </div>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  // ISO string may arrive as full timestamp or YYYY-MM-DD; trim to the date part.
+  const datePart = value ? value.slice(0, 10) : "";
+  return (
+    <div>
+      <FieldLabel label={label} />
+      <input
+        type="date"
+        value={datePart}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="w-full text-sm bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-zinc-900 dark:text-zinc-100"
       />
     </div>
   );

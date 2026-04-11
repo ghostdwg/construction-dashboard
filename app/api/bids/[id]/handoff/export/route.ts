@@ -1,13 +1,14 @@
 // POST /api/bids/[id]/handoff/export
 //
-// Generates a 7-sheet XLSX handoff packet for download:
+// Generates an 8-sheet XLSX handoff packet for download:
 //   1. Project Summary  — bid info, intake context, constraints, compliance
 //   2. Trade Awards     — trade by trade, committed amount + contract status (H2)
 //   3. Buyout Summary   — rollup + per-trade financial detail (H2)
 //   4. Submittals       — submittal register (H3)
-//   5. Open Items       — open RFIs, unresolved assumptions, risk flags
-//   6. Contacts         — awarded sub contacts (owner/architect deferred)
-//   7. Documents        — uploaded spec books, drawings, addendums
+//   5. Schedule         — seeded project schedule (H4)
+//   6. Open Items       — open RFIs, unresolved assumptions, risk flags
+//   7. Contacts         — project team + awarded subs (H1+)
+//   8. Documents        — uploaded spec books, drawings, addendums
 //
 // Pricing boundary: committedAmount / paidToDate are OUTBOUND commitments.
 // EstimateUpload.pricingData is never touched.
@@ -25,6 +26,10 @@ import {
   loadSubmittalsForBid,
   type SubmittalRow,
 } from "@/lib/services/submittal/submittalService";
+import {
+  loadScheduleForBid,
+  type ScheduleActivityRow,
+} from "@/lib/services/schedule/scheduleService";
 
 // ── Style helpers ──────────────────────────────────────────────────────────
 
@@ -202,6 +207,16 @@ function buildProjectSummarySheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
     { label: "In Review", value: String(subInReview) },
     { label: "Approved", value: String(subApproved) },
     { label: "Overdue", value: String(subR.overdue) }
+  );
+
+  // Schedule summary (H4)
+  const sched = p.scheduleSummary;
+  rows.push(
+    { section: "Project Schedule" },
+    { label: "Construction Start", value: fmtDate(sched.constructionStartDate) },
+    { label: "Substantial Completion", value: fmtDate(sched.computedFinishDate) },
+    { label: "Total Duration", value: sched.projectDurationDays != null ? `${sched.projectDurationDays} working days` : "—" },
+    { label: "Activities", value: `${sched.constructionCount} construction · ${sched.milestoneCount} milestones` }
   );
 
   // Render section headers and label/value pairs
@@ -401,6 +416,47 @@ function buildSubmittalsSheet(wb: ExcelJS.Workbook, items: SubmittalRow[]) {
   sheet.views = [{ state: "frozen", ySplit: 1 }];
 }
 
+function buildScheduleSheet(wb: ExcelJS.Workbook, activities: ScheduleActivityRow[]) {
+  const sheet = wb.addWorksheet("Schedule");
+  sheet.columns = [
+    { header: "ID", key: "id", width: 10 },
+    { header: "Activity Name", key: "name", width: 36 },
+    { header: "Duration (d)", key: "duration", width: 12 },
+    { header: "Start", key: "start", width: 14 },
+    { header: "Finish", key: "finish", width: 14 },
+    { header: "Predecessors", key: "predecessors", width: 20 },
+    { header: "Trade", key: "trade", width: 24 },
+  ];
+  applyHeader(sheet.getRow(1));
+
+  if (activities.length === 0) {
+    const r = sheet.addRow(["(no activities — run Seed from Trades on the Schedule tab)", "", "", "", "", "", ""]);
+    r.getCell(1).font = { italic: true, color: { argb: "FF71717A" } };
+    sheet.mergeCells(`A${r.number}:G${r.number}`);
+  } else {
+    for (const a of activities) {
+      const isMilestone = a.kind === "MILESTONE";
+      const r = sheet.addRow({
+        id: a.activityId,
+        name: (isMilestone ? "◆ " : "") + a.name,
+        duration: isMilestone ? 0 : a.durationDays,
+        start: fmtDate(a.startDate),
+        finish: fmtDate(a.finishDate),
+        predecessors: a.predecessorIds.join(","),
+        trade: a.tradeName ?? "—",
+      });
+      r.getCell("name").alignment = { wrapText: true };
+      if (isMilestone) {
+        r.eachCell((cell) => {
+          cell.font = { bold: true, color: { argb: "FF4338CA" } }; // indigo-700
+        });
+      }
+    }
+  }
+
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+}
+
 function buildOpenItemsSheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
   const sheet = wb.addWorksheet("Open Items");
   sheet.columns = [
@@ -480,48 +536,86 @@ function buildOpenItemsSheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
   }
 }
 
+const CONTACT_ROLE_LABELS: Record<string, string> = {
+  OWNER: "Owner",
+  OWNER_REP: "Owner's Rep",
+  ARCHITECT: "Architect",
+  ENGINEER: "Engineer",
+  INTERNAL_PM: "Internal — PM",
+  INTERNAL_ESTIMATOR: "Internal — Estimator",
+  INTERNAL_SUPER: "Internal — Superintendent",
+  OTHER: "Other",
+};
+
 function buildContactsSheet(wb: ExcelJS.Workbook, p: HandoffPacket) {
   const sheet = wb.addWorksheet("Contacts");
   sheet.columns = [
-    { header: "Company", key: "company", width: 30 },
-    { header: "Contact", key: "name", width: 22 },
-    { header: "Email", key: "email", width: 30 },
-    { header: "Phone", key: "phone", width: 16 },
-    { header: "Trades", key: "trades", width: 40 },
+    { header: "", key: "role", width: 22 },
+    { header: "", key: "name", width: 24 },
+    { header: "", key: "title", width: 22 },
+    { header: "", key: "company", width: 28 },
+    { header: "", key: "email", width: 30 },
+    { header: "", key: "phone", width: 16 },
   ];
 
-  // Section: Awarded Subs
-  const sectionRow = sheet.addRow(["Awarded Subcontractors", "", "", "", ""]);
-  sectionRow.eachCell((cell) => { cell.fill = SECTION_FILL; cell.font = SECTION_FONT; });
-  sheet.mergeCells(`A${sectionRow.number}:E${sectionRow.number}`);
+  // ── Section 1: Owner & Project Team (H1 ProjectContact rows) ─────────────
+  const teamSection = sheet.addRow(["Owner & Project Team", "", "", "", "", ""]);
+  teamSection.eachCell((cell) => { cell.fill = SECTION_FILL; cell.font = SECTION_FONT; });
+  sheet.mergeCells(`A${teamSection.number}:F${teamSection.number}`);
 
-  // Header row
-  applyHeader(sheet.addRow(["Company", "Contact", "Email", "Phone", "Trades"]));
+  applyHeader(
+    sheet.addRow(["Role", "Name", "Title", "Company", "Email", "Phone"])
+  );
 
-  if (p.awardedSubs.length === 0) {
-    const r = sheet.addRow(["(no awarded subs yet)", "", "", "", ""]);
+  if (p.projectContacts.length === 0) {
+    const r = sheet.addRow([
+      "(no project contacts captured yet — add them on the Overview or Handoff tab)",
+      "", "", "", "", "",
+    ]);
     r.getCell(1).font = { italic: true, color: { argb: "FF71717A" } };
-    sheet.mergeCells(`A${r.number}:E${r.number}`);
+    r.getCell(1).alignment = { wrapText: true };
+    sheet.mergeCells(`A${r.number}:F${r.number}`);
   } else {
-    for (const sub of p.awardedSubs) {
-      sheet.addRow([
-        sub.companyName,
-        sub.contactName ?? "—",
-        sub.contactEmail ?? "—",
-        sub.contactPhone ?? "—",
-        sub.trades.join(", "),
-      ]);
+    for (const c of p.projectContacts) {
+      const namePrefix = c.isPrimary ? "★ " : "";
+      sheet.addRow({
+        role: CONTACT_ROLE_LABELS[c.role] ?? c.role,
+        name: namePrefix + c.name,
+        title: c.title ?? "—",
+        company: c.company ?? "—",
+        email: c.email ?? "—",
+        phone: c.phone ?? "—",
+      });
     }
   }
 
-  // Note about owner/architect/internal team
+  // Spacer
   sheet.addRow([]);
-  const noteRow = sheet.addRow([
-    "Note: Owner, architect, and internal team contacts will populate after a ProjectContact model is added in a future module.",
-  ]);
-  sheet.mergeCells(`A${noteRow.number}:E${noteRow.number}`);
-  noteRow.getCell(1).font = { italic: true, color: { argb: "FF71717A" } };
-  noteRow.getCell(1).alignment = { wrapText: true };
+
+  // ── Section 2: Awarded Subcontractors (existing) ─────────────────────────
+  const subsSection = sheet.addRow(["Awarded Subcontractors", "", "", "", "", ""]);
+  subsSection.eachCell((cell) => { cell.fill = SECTION_FILL; cell.font = SECTION_FONT; });
+  sheet.mergeCells(`A${subsSection.number}:F${subsSection.number}`);
+
+  applyHeader(
+    sheet.addRow(["", "Company", "Contact", "Trades", "Email", "Phone"])
+  );
+
+  if (p.awardedSubs.length === 0) {
+    const r = sheet.addRow(["", "(no awarded subs yet)", "", "", "", ""]);
+    r.getCell(2).font = { italic: true, color: { argb: "FF71717A" } };
+  } else {
+    for (const sub of p.awardedSubs) {
+      sheet.addRow([
+        "",
+        sub.companyName,
+        sub.contactName ?? "—",
+        sub.trades.join(", "),
+        sub.contactEmail ?? "—",
+        sub.contactPhone ?? "—",
+      ]);
+    }
+  }
 
   sheet.views = [{ state: "frozen", ySplit: 2 }];
 }
@@ -577,6 +671,9 @@ export async function POST(
   // H3 — load submittal register rows for the dedicated Submittals sheet.
   const submittalItems = await loadSubmittalsForBid(bidId);
 
+  // H4 — load schedule activities for the dedicated Schedule sheet.
+  const { activities: scheduleActivities } = await loadScheduleForBid(bidId);
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "Bid Dashboard — Handoff Packet";
   wb.created = new Date();
@@ -585,6 +682,7 @@ export async function POST(
   buildTradeAwardsSheet(wb, packet);
   buildBuyoutSummarySheet(wb, buyoutItems);
   buildSubmittalsSheet(wb, submittalItems);
+  buildScheduleSheet(wb, scheduleActivities);
   buildOpenItemsSheet(wb, packet);
   buildContactsSheet(wb, packet);
   buildDocumentsSheet(wb, packet);

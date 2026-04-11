@@ -23,6 +23,14 @@ import {
   computeSubmittalRollup,
   type SubmittalRollup,
 } from "@/lib/services/submittal/submittalService";
+import {
+  loadProjectContactsForBid,
+  type ProjectContactRow,
+} from "@/lib/services/contacts/projectContactService";
+import {
+  loadScheduleForBid,
+  type ScheduleProjectSummary,
+} from "@/lib/services/schedule/scheduleService";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -61,8 +69,10 @@ export type HandoffPacket = {
 
   trades: TradeAward[];
   awardedSubs: AwardedSub[];
+  projectContacts: ProjectContactRow[];
   buyoutRollup: BuyoutRollup;
   submittalRollup: SubmittalRollup;
+  scheduleSummary: ScheduleProjectSummary;
 
   openItems: {
     unresolvedRfis: UnresolvedRfi[];
@@ -199,6 +209,15 @@ export async function assembleHandoffPacket(bidId: number): Promise<HandoffPacke
   // compute the rollup for the handoff summary.
   const submittalItems = await loadSubmittalsForBid(bidId);
   const submittalRollup = computeSubmittalRollup(submittalItems);
+
+  // ── Project contacts (H1 — owner / architect / engineer / internal) ────
+  // Managed on the Overview + Handoff tabs via ProjectContactsPanel.
+  const projectContacts = await loadProjectContactsForBid(bidId);
+
+  // ── Schedule summary (H4 — project schedule seed) ──────────────────────
+  // Managed on the Schedule tab. We only surface the project-level summary
+  // here. The full activity list renders in its own XLSX sheet.
+  const { summary: scheduleSummary } = await loadScheduleForBid(bidId);
 
   // ── Trades ──────────────────────────────────────────────────────────────
   // Awarded sub comes from BuyoutItem.subcontractorId (populated from accepted
@@ -454,8 +473,10 @@ export async function assembleHandoffPacket(bidId: number): Promise<HandoffPacke
 
     trades,
     awardedSubs,
+    projectContacts,
     buyoutRollup,
     submittalRollup,
+    scheduleSummary,
 
     openItems: {
       unresolvedRfis,

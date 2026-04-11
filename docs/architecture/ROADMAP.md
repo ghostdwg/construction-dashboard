@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module H3 (Submittal Register) complete
+# Last Updated: 2026-04-11 — Module H4 (Schedule Seed) complete
 
 ---
 
@@ -159,8 +159,10 @@ Every bid follows this sequence:
 | Module RFQ1 | RFQ Email Distribution via Resend | COMPLETE |
 | Module INT1 | Job Intake — Wing 1 project context capture | COMPLETE |
 | Module H1   | Handoff Packet — Tier E entry point | COMPLETE |
+| Module H1+  | Project Contacts — owner/architect/engineer/internal team | COMPLETE |
 | Module H2   | Buyout Tracker — per-trade contracts + rollup | COMPLETE |
 | Module H3   | Submittal Register — regex seeder, lifecycle, Procore CSV export | COMPLETE |
+| Module H4   | Schedule Seed — canonical CSI sequence, FS chain, MSP CSV export | COMPLETE |
 
 ---
 
@@ -258,7 +260,7 @@ added to .env.local and a domain is verified in the Resend dashboard.
 
 ### Tier E — Post-Award Handoff Layer (H1-H8)
 Priority: IN PROGRESS
-Status: H1 shipped 2026-04-10, H2 + H3 shipped 2026-04-11. H4-H8 queued.
+Status: H1 shipped 2026-04-10. H1+ / H2 / H3 / H4 all shipped 2026-04-11. H5-H8 queued.
 
 ### Module H1 — Handoff Packet ✅ COMPLETE (2026-04-10)
 
@@ -306,10 +308,74 @@ Boundary preserved:
 - Per-trade dollar amounts left null with a footnote pointing to H2
 
 Explicit deferrals (tracked for follow-up modules):
-- Per-trade buyout amounts → Module H2 (Buyout Tracker)
-- Contract status beyond PENDING → Module H2 (BuyoutItem.contractStatus)
-- Owner, architect, internal team contacts → future ProjectContact model
+- Per-trade buyout amounts → Module H2 (Buyout Tracker) — DONE
+- Contract status beyond PENDING → Module H2 (BuyoutItem.contractStatus) — DONE
+- Owner, architect, internal team contacts → ProjectContact model — DONE (2026-04-11)
 - "Copy to Clipboard" text summary → follow-up if XLSX proves insufficient
+
+### Module H1+ — Project Contacts ✅ COMPLETE (2026-04-11)
+
+Cleared the H1 deferred owner/architect/internal-team contacts loose end. Also
+front-loads the data H7 (Contact Handoff) will need so that module becomes
+mostly export work.
+
+Schema additions (migration 20260411153143_h1_project_contacts):
+
+  model ProjectContact {
+    id, bidId,
+    role (default "OTHER"),
+    name (required), company?, title?, email?, phone?, notes?,
+    isPrimary (default false),
+    createdAt, updatedAt,
+    @@index([bidId]), @@index([bidId, role])
+  }
+
+Valid role values (validated in API, not enum for SQLite):
+  OWNER, OWNER_REP, ARCHITECT, ENGINEER,
+  INTERNAL_PM, INTERNAL_ESTIMATOR, INTERNAL_SUPER, OTHER
+
+Multiple primaries per role allowed (no demote-when-promote logic) — primaries
+just sort first within their role group.
+
+Service layer (lib/services/contacts/projectContactService.ts):
+- loadProjectContactsForBid: returns rows sorted by role > primary > name
+- createProjectContact: validates role + non-empty name, checks bid exists
+- updateProjectContact: ownership check, role + name validation
+- deleteProjectContact: ownership check
+
+API routes:
+- GET    /api/bids/[id]/contacts                → { items }
+- POST   /api/bids/[id]/contacts                → creates a contact
+- PATCH  /api/bids/[id]/contacts/[contactId]    → updates a contact
+- DELETE /api/bids/[id]/contacts/[contactId]    → deletes a contact
+
+UI (app/bids/[id]/ProjectContactsPanel.tsx):
+- Reusable, self-contained component. Mounted on BOTH the Overview tab
+  (between JobIntakePanel and SubmissionPanel) and the Handoff tab
+  (between Project Summary and Trade Awards). Same data source.
+- Click-to-edit rows with full form (role, name, title, company, email, phone,
+  notes, isPrimary). New rows open in edit mode.
+- Empty state with "Add your first contact →" CTA.
+- Optional onChanged callback so parents can refetch dependent data.
+
+H1 integration:
+- HandoffPacket.projectContacts added as top-level field
+- assembleHandoffPacket reads via loadProjectContactsForBid
+- Contacts XLSX sheet rebuilt: "Owner & Project Team" section above
+  "Awarded Subcontractors" — replaces the deferred-note placeholder.
+  Primary contacts marked with ★ in the Name column.
+
+Files shipped:
+  prisma/migrations/20260411153143_h1_project_contacts/migration.sql
+  prisma/schema.prisma (ProjectContact model + Bid relation)
+  lib/services/contacts/projectContactService.ts (NEW)
+  app/api/bids/[id]/contacts/route.ts (NEW — GET + POST)
+  app/api/bids/[id]/contacts/[contactId]/route.ts (NEW — PATCH + DELETE)
+  app/bids/[id]/ProjectContactsPanel.tsx (NEW)
+  app/bids/[id]/page.tsx (mount on Overview)
+  app/bids/[id]/HandoffTab.tsx (mount on Handoff tab)
+  lib/services/handoff/assembleHandoffPacket.ts (projectContacts integration)
+  app/api/bids/[id]/handoff/export/route.ts (rebuilt Contacts sheet)
 
 ### Module H2 — Buyout Tracker ✅ COMPLETE (2026-04-11)
 
@@ -472,12 +538,112 @@ Explicit deferrals:
 - Review round tracking (1st submission, resubmission, re-resubmission) → future
 - Email-based submittal distribution → reuses RFQ1 Resend infra when added
 
-### Queued — H4 through H8
+### Module H4 — Schedule Seed ✅ COMPLETE (2026-04-11)
 
-H4 Schedule seed — trade sequence to activity list
+Turns the bid's trade list into a starter construction schedule — sequenced
+activities with durations, start/finish dates, and predecessors. Exports to
+MS Project CSV so the PM's day 1 isn't "retype every trade into P6/MSP".
+
+Schema additions (migration 20260411154112_h4_schedule_seed):
+
+  Bid model — 2 new fields:
+    constructionStartDate DateTime?
+    projectDurationDays   Int?
+
+  model ScheduleActivity {
+    id, bidId, bidTradeId?,
+    activityId (Primavera-style, e.g. "A1010"),
+    name, kind (default "CONSTRUCTION"), sequence (default 0),
+    durationDays (default 5), startDate?, finishDate?, predecessorIds?,
+    notes?, createdAt, updatedAt,
+    @@index([bidId]), @@index([bidId, sequence])
+  }
+
+Valid kind values (validated in API, not enum for SQLite):
+  CONSTRUCTION, MILESTONE
+
+v1 design decisions (from planning session):
+- One CONSTRUCTION activity per BidTrade (procurement stays on Subs tab)
+- Canonical CSI division sequence as seed; estimator reorders manually
+- Duration defaults hardcoded in lib/services/schedule/durationDefaults.ts
+- FS predecessors only, chained sequentially (no SS/FF/SF or lag)
+- Mon-Fri working days, no holidays (MSP tracks those after import)
+- MSP CSV only for v1 export (Procore schedule is .xer/.mpp territory)
+- Table-only UI for v1 (SVG Gantt deferred to v1.5)
+- constructionStartDate lives on Job Intake, not a separate schedule field
+
+Services (lib/services/schedule/):
+- durationDefaults.ts — CSI_DIVISION_SEQUENCE (ordered array),
+  DIVISION_DURATION_DAYS lookup, csiDivision() normalizer,
+  defaultDurationFor() + compareByDivisionOrder() helpers
+- scheduleService.ts — seedScheduleActivities, recalculateSchedule,
+  loadScheduleForBid, createScheduleActivity, updateScheduleActivity,
+  deleteScheduleActivity. All mutations auto-recalc the schedule so
+  start/finish dates stay in sync with duration + predecessor chain.
+
+API routes:
+- GET    /api/bids/[id]/schedule                 → { activities, summary }
+- POST   /api/bids/[id]/schedule                 → manually add activity
+- POST   /api/bids/[id]/schedule/seed            → runs seeder, returns counts
+- POST   /api/bids/[id]/schedule/recalculate     → forward-walks all dates
+- POST   /api/bids/[id]/schedule/export          → MSP CSV download
+- PATCH  /api/bids/[id]/schedule/[activityId]    → update one row
+- DELETE /api/bids/[id]/schedule/[activityId]    → delete one row
+
+UI (app/bids/[id]/ScheduleTab.tsx):
+- New tab at position 12 "Schedule"
+- Project summary card (construction start, substantial completion, total
+  duration, activity counts)
+- Action bar: Seed from Trades / Recalculate Dates / + Add Activity / Export MSP CSV
+- Inline-editable table: ID | Activity | Duration | Start | Finish | Predecessors
+- Save button appears per-row only when dirty; delete × per row
+- Missing-start-date warning banner when activities exist but constructionStartDate is null
+
+JobIntakePanel extension:
+- New Construction Start Date field in Project Profile section
+- Pulls from / writes to Bid.constructionStartDate via the existing PATCH route
+- New DateField helper component added to the form library
+- API PATCH route calls recalculateSchedule when the field changes
+
+H1 integration:
+- HandoffPacket.scheduleSummary added as top-level field
+- assembleHandoffPacket reads via loadScheduleForBid (summary only)
+- HandoffTab UI gains a Project Schedule summary card with "Open Schedule tab →" link
+- XLSX export adds "Schedule" sheet at position 5 (sheets are now 8 total)
+- Project Summary XLSX sheet gains a "Project Schedule" section
+
+Files shipped:
+  prisma/migrations/20260411154112_h4_schedule_seed/migration.sql
+  prisma/schema.prisma (ScheduleActivity model + 2 Bid fields + relations)
+  lib/services/schedule/durationDefaults.ts (NEW)
+  lib/services/schedule/scheduleService.ts (NEW)
+  lib/services/handoff/assembleHandoffPacket.ts (scheduleSummary integration)
+  app/api/bids/[id]/route.ts (constructionStartDate handling + recalc trigger)
+  app/api/bids/[id]/schedule/route.ts (NEW — GET + POST)
+  app/api/bids/[id]/schedule/[activityId]/route.ts (NEW — PATCH + DELETE)
+  app/api/bids/[id]/schedule/seed/route.ts (NEW)
+  app/api/bids/[id]/schedule/recalculate/route.ts (NEW)
+  app/api/bids/[id]/schedule/export/route.ts (NEW — MSP CSV)
+  app/api/bids/[id]/handoff/export/route.ts (Schedule sheet + rollup section)
+  app/bids/[id]/ScheduleTab.tsx (NEW)
+  app/bids/[id]/TabBar.tsx (Schedule tab at position 12)
+  app/bids/[id]/page.tsx (ScheduleTab mount + constructionStartDate in initial prop)
+  app/bids/[id]/JobIntakePanel.tsx (constructionStartDate field + DateField helper)
+  app/bids/[id]/HandoffTab.tsx (Project Schedule summary card)
+
+Explicit deferrals:
+- SVG Gantt visualization → v1.5 (CSV is primary delivery)
+- Drag-to-reorder activities → v1.5 (sequence editable via PATCH today)
+- SS/FF/SF predecessors + lag → future (this is a seed, not a CPM engine)
+- Holiday calendar → never (MSP tracks these after import)
+- Procore schedule format → future (Procore uses .xer/.mpp primarily)
+- Procurement activities in the schedule → never (P1 timeline is the source)
+
+### Queued — H5 through H8
+
 H5 Owner-facing estimate — high-level rollup export
 H6 Budget creation — cost codes to budget lines
-H7 Contact handoff — PM team + awarded subs export (ProjectContact model)
+H7 Contact handoff — PM team + awarded subs export (ProjectContact model already exists from H1+ cleanup; H7 is mostly export work)
 H8 Award notifications — via Resend (reuses RFQ1 infra)
 
 ### Tier F — Procore Integration Bridge

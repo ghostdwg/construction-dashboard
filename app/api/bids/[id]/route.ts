@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { recalculateSchedule } from "@/lib/services/schedule/scheduleService";
 
 // Module INT1 — valid enum-string values for intake fields
 const VALID_DELIVERY_METHODS = ["HARD_BID", "DESIGN_BUILD", "CM_AT_RISK", "NEGOTIATED"];
@@ -76,6 +77,12 @@ function buildIntakeUpdateData(body: Record<string, unknown>): Record<string, un
   setStr("estimatorNotes");
   setStr("scopeBoundaryNotes");
   setBool("veInterest");
+  // H4 — construction start date
+  if (body.constructionStartDate !== undefined) {
+    const v = body.constructionStartDate;
+    data.constructionStartDate =
+      v === "" || v === null ? null : new Date(String(v));
+  }
   return data;
 }
 
@@ -147,6 +154,18 @@ export async function PATCH(
         ...intakeData,
       },
     });
+
+    // H4 — if the construction start date changed, recalculate the schedule
+    // so all start/finish dates hydrate from the new anchor.
+    if ("constructionStartDate" in intakeData) {
+      try {
+        await recalculateSchedule(bidId);
+      } catch (recErr) {
+        // Don't fail the bid update if recalculation has issues; log and continue
+        console.error("[PATCH /api/bids/:id] schedule recalc failed", recErr);
+      }
+    }
+
     return Response.json(bid);
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {

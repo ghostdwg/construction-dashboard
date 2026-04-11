@@ -18,8 +18,10 @@ import ComplianceWidget from "./ComplianceWidget";
 import SubmissionPanel from "./SubmissionPanel";
 import EditableDueDate from "./EditableDueDate";
 import JobIntakePanel from "./JobIntakePanel";
+import ProjectContactsPanel from "./ProjectContactsPanel";
 import HandoffTab from "./HandoffTab";
 import SubmittalsTab from "./SubmittalsTab";
+import ScheduleTab from "./ScheduleTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -181,8 +183,15 @@ export default async function BidDetailPage({
                 scopeBoundaryNotes: bid.scopeBoundaryNotes,
                 veInterest: bid.veInterest,
                 dbeGoalPercent: bid.dbeGoalPercent,
+                constructionStartDate: bid.constructionStartDate
+                  ? bid.constructionStartDate.toISOString()
+                  : null,
               }}
             />
+          </section>
+
+          <section>
+            <ProjectContactsPanel bidId={bid.id} />
           </section>
 
           <section>
@@ -251,6 +260,10 @@ export default async function BidDetailPage({
 
       {tab === "submittals" && (
         <SubmittalsTab bidId={bid.id} />
+      )}
+
+      {tab === "schedule" && (
+        <ScheduleTab bidId={bid.id} />
       )}
     </div>
   );

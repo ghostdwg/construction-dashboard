@@ -59,6 +59,10 @@ model Bid {
   veInterest         Boolean   @default(false)
   dbeGoalPercent     Float?
 
+  // Module H4 — Schedule Seed
+  constructionStartDate DateTime?
+  projectDurationDays   Int?
+
   bidTrades        BidTrade[]
   selections       BidInviteSelection[]
   exportBatches    ExportBatch[]
@@ -76,6 +80,8 @@ model Bid {
   submission          BidSubmission?
   buyoutItems         BuyoutItem[]
   submittalItems      SubmittalItem[]
+  projectContacts     ProjectContact[]
+  scheduleActivities  ScheduleActivity[]
 }
 
 model BidSubmission {
@@ -119,10 +125,11 @@ model BidTrade {
   quotesReceivedAt DateTime?
   rfqNotes         String?
 
-  bid            Bid             @relation(fields: [bidId], references: [id])
-  trade          Trade           @relation(fields: [tradeId], references: [id])
-  buyoutItem     BuyoutItem?
-  submittalItems SubmittalItem[]
+  bid                Bid                 @relation(fields: [bidId], references: [id])
+  trade              Trade               @relation(fields: [tradeId], references: [id])
+  buyoutItem         BuyoutItem?
+  submittalItems     SubmittalItem[]
+  scheduleActivities ScheduleActivity[]
 
   @@unique([bidId, tradeId])
 }
@@ -620,6 +627,75 @@ model SubmittalItem {
   @@index([bidId])
   @@index([specSectionId])
   @@index([status])
+}
+
+// Module H1 — Project Contacts (owner / architect / engineer / internal team)
+//
+// Replaces the deferred contacts placeholder in the H1 Handoff Packet. One row
+// per contact, parented to a Bid. Manageable on the Overview and Handoff tabs.
+//
+// Valid role values (validated in API, not enum for SQLite friendliness):
+//   OWNER | OWNER_REP | ARCHITECT | ENGINEER |
+//   INTERNAL_PM | INTERNAL_ESTIMATOR | INTERNAL_SUPER | OTHER
+model ProjectContact {
+  id        Int      @id @default(autoincrement())
+  bidId     Int
+
+  role      String   @default("OTHER")
+
+  name      String
+  company   String?
+  title     String?
+  email     String?
+  phone     String?
+  notes     String?
+
+  // Within a role, primary contacts sort first. Multiple primaries allowed.
+  isPrimary Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([bidId])
+  @@index([bidId, role])
+}
+
+// Module H4 — Schedule Seed
+// One ScheduleActivity per BidTrade (plus 2 milestones). Seeded from the
+// bid's trade list in canonical CSI order, then manually refined. MS Project
+// CSV export is the primary delivery.
+//
+// Valid kind values (validated in API, not enum for SQLite friendliness):
+//   CONSTRUCTION | MILESTONE
+//
+// predecessorIds is a comma-separated list of activityId strings (Primavera
+// style — e.g. "A1010,A1020"). Only Finish-to-Start is supported in v1.
+model ScheduleActivity {
+  id             Int       @id @default(autoincrement())
+  bidId          Int
+  bidTradeId     Int?
+
+  activityId     String    // "A1010" style
+  name           String
+  kind           String    @default("CONSTRUCTION")
+  sequence       Int       @default(0)
+
+  durationDays   Int       @default(5)
+  startDate      DateTime?
+  finishDate     DateTime?
+  predecessorIds String?
+
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  bid      Bid       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidTrade BidTrade? @relation(fields: [bidTradeId], references: [id])
+
+  @@index([bidId])
+  @@index([bidId, sequence])
 }
 
 // Per-AI-call max_tokens overrides. If a row exists for a callKey, that value
