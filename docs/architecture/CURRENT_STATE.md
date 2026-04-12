@@ -4,17 +4,30 @@
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
 - Local: c:/Users/jjcou/bid-dashboard
-- Stack: Next.js 14, TypeScript, Tailwind v4, Prisma, SQLite
+- Stack: Next.js 16, React 19, TypeScript 5, Tailwind CSS v4, Prisma 7/SQLite, Claude API, Auth.js v5
+
+## Repository Status
+
+- **35 modules complete** — platform is functionally complete for a solo estimator
+- Last shipped: Auth Wall Level A (email/password login + route protection) on 2026-04-12
+- Tier E (Post-Award Handoff): **COMPLETE** — all 8 modules (H1-H8) shipped
+- Operations (SET1, SET1+, Auth Wall Level A): **COMPLETE**
+- UI Nav Refactor (two-level sidebar): **COMPLETE**
+- Remaining work:
+  - Tier F (Procore Integration Bridge) — F1 CSV/XLSX, F2 REST API, F3 sync — LOW priority
+  - Auth Wall Level B+C (multi-tenancy + role-based access) — DEFERRED until second user
+  - ~10 minor enhancements deferred from shipped modules (see ROADMAP.md)
+- Parallel repo: ghostdwg/construction-dashboard for Phase 5 expansion
 
 ## Architecture — Three Wings + Lifecycle
 
 The system is structured as three pursuit wings plus a post-award handoff layer:
 
-- **Wing 1 — Job Intake (Module INT1, queued):** project context capture before AI runs
+- **Wing 1 — Job Intake (Module INT1):** project context capture before AI runs
 - **Wing 2 — Scope Intelligence (Modules 14, 15, 15a, 15b):** what specs require vs what subs cover
 - **Wing 3 — Bid Leveling (Modules 6a-6c, Tier C, Tier D):** apples-to-apples comparison + post-bid analytics
-- **Tier E — Post-Award Handoff (queued):** carry data forward into project execution
-- **Tier F — Procore Bridge (queued):** CSV export then API integration
+- **Tier E — Post-Award Handoff:** carry data forward into project execution (COMPLETE)
+- **Tier F — Procore Bridge:** CSV export then API integration (queued)
 
 ## Build Status
 
@@ -63,9 +76,11 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | Module H8 | Award Notifications (sub award + internal team emails via provider abstraction) | ✅ Complete |
 | **Module SET1** | **Settings & Cost Observability — shell, email/AI cards, usage logging, cost previews** | **✅ Complete** |
 | **Module SET1+** | **Email provider abstraction — Resend + Generic SMTP (Gmail/Outlook/Yahoo/iCloud/Fastmail/Custom)** | **✅ Complete** |
-| **Queued** | **Lifecycle expansion** | **🔜 Planned** |
-| Tier F (F1-F3) | Procore Integration Bridge | 🔜 Queued |
-| UI Nav Refactor | Sidebar with phase groupings + post-award shift | 🔜 Queued |
+| **UI Nav Refactor** | **Two-level sidebar with pursuit/post-award grouping** | **✅ Complete** |
+| **Auth Wall A** | **Email/password login, JWT sessions, route protection, AUTH_DISABLED bypass** | **✅ Complete** |
+| **Queued** | **Future expansion** | **🔜 Planned** |
+| Tier F (F1-F3) | Procore Integration Bridge (CSV exports partially shipped) | 🔜 Queued |
+| Auth Wall B+C | Multi-tenancy + role-based access | 🔜 Deferred |
 
 ## What Is Built
 - Subcontractor directory with trade filtering, tier system, single-sub form with isPreferred
