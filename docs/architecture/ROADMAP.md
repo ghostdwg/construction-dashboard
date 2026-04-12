@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — TIER E COMPLETE (all 8 modules shipped)
+# Last Updated: 2026-04-11 — UI Nav Refactor complete (sidebar with phase groupings)
 
 ---
 
@@ -1084,13 +1084,26 @@ F1 CSV/XLSX export — vendor, budget, submittal, contact imports
 F2 REST API — OAuth 2.0, project/vendor/budget/submittal push
 F3 Bidirectional sync — webhooks, RFI sync (future)
 
-### UI Nav Refactor
-Priority: AFTER Tier E stable
-Sessions: 2-3
+### UI Nav Refactor ✅ COMPLETE (2026-04-11)
+Priority: shipped
 
-Sidebar nav with phase groupings.
-Pursuit tabs vs post-award modules based on bid status.
-All pursuit data stays accessible in collapsed section.
+Replaced the 12-tab horizontal bar with a two-level vertical sidebar.
+Tabs are grouped into Pursuit (9 tabs — intake through submission) and
+Post-Award (3 tabs — handoff, submittals, schedule). The active phase
+gets an emerald dot indicator; the inactive phase's tabs are muted.
+Bid status ("awarded") drives which phase is highlighted.
+
+Page layout changed from single-column max-w-4xl to a
+grid-cols-[210px_1fr] sidebar + content grid (max-w-6xl). On mobile
+(< md breakpoint) it stacks vertically.
+
+Each sidebar item shows label + one-line description so users can see
+what lives where without clicking through. Active state uses the same
+dark-fill/white-text pattern as the /settings sidebar.
+
+Files shipped:
+  app/bids/[id]/TabBar.tsx (full rewrite — sidebar with SectionHeader + SidebarItem)
+  app/bids/[id]/page.tsx (grid layout, passes bidStatus to TabBar)
 
 ### Auth Wall + Multi-Tenancy (queued — only if app proves useful inside the company)
 Priority: DEFERRED until there's a real second user
