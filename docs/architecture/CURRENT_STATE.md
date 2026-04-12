@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module H8 (Award Notifications) complete
+# Last Updated: 2026-04-11 — Module H5 (Owner-Facing Estimate) complete
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -58,11 +58,12 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | Module H3 | Submittal Register (regex seeder, lifecycle, Procore CSV export) | ✅ Complete |
 | Module H4 | Schedule Seed (canonical CSI sequence, FS chain, MSP CSV export) | ✅ Complete |
 | Module H7 | Contact Handoff (Outlook/Google CSV + vCard export) | ✅ Complete |
+| Module H5 | Owner-Facing Estimate (trade-level XLSX with GC markup, contingency, exclusions) | ✅ Complete |
 | Module H8 | Award Notifications (sub award + internal team emails via provider abstraction) | ✅ Complete |
 | **Module SET1** | **Settings & Cost Observability — shell, email/AI cards, usage logging, cost previews** | **✅ Complete** |
 | **Module SET1+** | **Email provider abstraction — Resend + Generic SMTP (Gmail/Outlook/Yahoo/iCloud/Fastmail/Custom)** | **✅ Complete** |
 | **Queued** | **Lifecycle expansion** | **🔜 Planned** |
-| Modules H5, H6 | Owner estimate, budget | 🔜 Queued |
+| Module H6 | Budget creation | 🔜 Queued |
 | Tier F (F1-F3) | Procore Integration Bridge | 🔜 Queued |
 | UI Nav Refactor | Sidebar with phase groupings + post-award shift | 🔜 Queued |
 

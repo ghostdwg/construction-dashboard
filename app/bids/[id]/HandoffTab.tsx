@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import BuyoutTracker from "./BuyoutTracker";
 import ProjectContactsPanel from "./ProjectContactsPanel";
 import AwardNotificationSection from "./AwardNotificationSection";
+import OwnerEstimateSection from "./OwnerEstimateSection";
 
 // ── Types (mirror lib/services/handoff/assembleHandoffPacket.ts) ───────────
 
@@ -476,6 +477,9 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
         bidId={bidId}
         onChanged={() => setPacketReloadTick((t) => t + 1)}
       />
+
+      {/* ── Section 2b+ — Owner-Facing Estimate (Module H5) ── */}
+      <OwnerEstimateSection bidId={bidId} />
 
       {/* ── Section 2c — Submittal Register summary (Module H3) ── */}
       <section className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">

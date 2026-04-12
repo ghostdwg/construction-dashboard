@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module H8 (Award Notifications) complete
+# Last Updated: 2026-04-11 — Module H5 (Owner-Facing Estimate) complete
 
 ---
 
@@ -164,6 +164,7 @@ Every bid follows this sequence:
 | Module H3   | Submittal Register — regex seeder, lifecycle, Procore CSV export | COMPLETE |
 | Module H4   | Schedule Seed — canonical CSI sequence, FS chain, MSP CSV export | COMPLETE |
 | Module H7   | Contact Handoff — Outlook/Google CSV + vCard export | COMPLETE |
+| Module H5   | Owner-Facing Estimate — trade-level XLSX with GC markup + contingency + exclusions | COMPLETE |
 | Module H8   | Award Notifications — sub award + internal team emails via provider abstraction | COMPLETE |
 | Module SET1 | Settings & Cost Observability — shell, hot-applied creds, usage logging, cost previews | COMPLETE |
 | Module SET1+ | Email provider abstraction — Resend + Generic SMTP w/ presets | COMPLETE |
@@ -643,10 +644,54 @@ Explicit deferrals:
 - Procore schedule format → future (Procore uses .xer/.mpp primarily)
 - Procurement activities in the schedule → never (P1 timeline is the source)
 
-### Queued — H5, H6 (H7 + H8 shipped 2026-04-11)
+### Queued — H6 (H5 + H7 + H8 shipped 2026-04-11)
 
-H5 Owner-facing estimate — high-level rollup export
 H6 Budget creation — cost codes to budget lines
+
+### Module H5 — Owner-Facing Estimate ✅ COMPLETE (2026-04-11)
+
+Professional trade-level cost summary XLSX for sharing with the project
+owner. Shows aggregated GC commitments per trade (from BuyoutItem) plus
+estimator-supplied markup, contingency, exclusions, and qualifications.
+No sub-level detail — privacy boundary enforced structurally.
+
+No new schema. GC markup, contingency, exclusions, qualifications, and
+validity date are all ephemeral inputs at export time — the estimator
+fills in fresh values each time they generate.
+
+Service (lib/services/ownerEstimate/assembleOwnerEstimate.ts):
+  assembleOwnerEstimate(bidId, input) reuses loadBuyoutItemsForBid() for
+  trade costs. Filters to trades with totalCommitted > 0, sorts by CSI
+  code then name. Computes tradeSubtotal + markupTotal +
+  subtotalBeforeContingency + contingencyAmount + grandTotal.
+
+API: POST /api/bids/[id]/owner-estimate/export
+  Body: { markupLines, contingencyPercent, exclusions, qualifications,
+  validUntil }. Returns a single-sheet XLSX download.
+
+XLSX layout (single sheet "Owner Estimate"):
+  1. Title + date
+  2. Project Information section (name, location, delivery, building, sqft)
+  3. Cost Summary table: CSI Code | Trade | Amount → Trade Subtotal
+  4. GC Markup lines → Subtotal with Markup
+  5. Contingency (X%) → amount
+  6. TOTAL ESTIMATED COST (black fill, white bold text)
+  7. Exclusions section (word-wrapped free text)
+  8. Qualifications section
+  9. Validity note ("valid until [date]" or "30 days from date above")
+
+UI (app/bids/[id]/OwnerEstimateSection.tsx):
+  Collapsible card on the Handoff tab between Buyout Tracker and
+  Submittal Register. When expanded: editable markup line item list
+  (pre-seeded with "General Conditions" + "Overhead & Profit"), contingency
+  %, exclusions textarea, qualifications textarea, valid-until date picker,
+  "Generate Owner Estimate" download button.
+
+Files shipped:
+  lib/services/ownerEstimate/assembleOwnerEstimate.ts (NEW)
+  app/api/bids/[id]/owner-estimate/export/route.ts (NEW)
+  app/bids/[id]/OwnerEstimateSection.tsx (NEW)
+  app/bids/[id]/HandoffTab.tsx (mount OwnerEstimateSection)
 
 ### Module H8 — Award Notifications ✅ COMPLETE (2026-04-11)
 
