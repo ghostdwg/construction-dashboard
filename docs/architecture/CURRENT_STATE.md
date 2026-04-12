@@ -1,5 +1,5 @@
 # Current State — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module H5 (Owner-Facing Estimate) complete
+# Last Updated: 2026-04-11 — Tier E COMPLETE (Module H6 Budget Creation shipped)
 
 ## Repository
 - GitHub: ghostdwg/bid-dashboard — main branch
@@ -51,7 +51,7 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | Theme Toggle | Light/dark mode with full app dark coverage | ✅ Complete |
 | Module RFQ1 | RFQ Email Distribution via Resend | ✅ Complete |
 | Module INT1 | Job Intake — Wing 1 project context capture | ✅ Complete |
-| **Tier E** | **Post-Award Handoff Layer** | **🏗️ In progress** |
+| **Tier E** | **Post-Award Handoff Layer** | **✅ Complete** |
 | Module H1 | Handoff Packet — Tier E entry point | ✅ Complete |
 | Module H1 + | Project Contacts (owner / architect / engineer / internal team) | ✅ Complete |
 | Module H2 | Buyout Tracker (sub contracts, POs, committed cost) | ✅ Complete |
@@ -59,11 +59,11 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | Module H4 | Schedule Seed (canonical CSI sequence, FS chain, MSP CSV export) | ✅ Complete |
 | Module H7 | Contact Handoff (Outlook/Google CSV + vCard export) | ✅ Complete |
 | Module H5 | Owner-Facing Estimate (trade-level XLSX with GC markup, contingency, exclusions) | ✅ Complete |
+| Module H6 | Budget Creation (cost codes, trade + GC lines, XLSX for ERP import) | ✅ Complete |
 | Module H8 | Award Notifications (sub award + internal team emails via provider abstraction) | ✅ Complete |
 | **Module SET1** | **Settings & Cost Observability — shell, email/AI cards, usage logging, cost previews** | **✅ Complete** |
 | **Module SET1+** | **Email provider abstraction — Resend + Generic SMTP (Gmail/Outlook/Yahoo/iCloud/Fastmail/Custom)** | **✅ Complete** |
 | **Queued** | **Lifecycle expansion** | **🔜 Planned** |
-| Module H6 | Budget creation | 🔜 Queued |
 | Tier F (F1-F3) | Procore Integration Bridge | 🔜 Queued |
 | UI Nav Refactor | Sidebar with phase groupings + post-award shift | 🔜 Queued |
 

@@ -19,6 +19,7 @@ import BuyoutTracker from "./BuyoutTracker";
 import ProjectContactsPanel from "./ProjectContactsPanel";
 import AwardNotificationSection from "./AwardNotificationSection";
 import OwnerEstimateSection from "./OwnerEstimateSection";
+import BudgetSection from "./BudgetSection";
 
 // ── Types (mirror lib/services/handoff/assembleHandoffPacket.ts) ───────────
 
@@ -481,7 +482,10 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
       {/* ── Section 2b+ — Owner-Facing Estimate (Module H5) ── */}
       <OwnerEstimateSection bidId={bidId} />
 
-      {/* ── Section 2c — Submittal Register summary (Module H3) ── */}
+      {/* ── Section 2c — Project Budget (Module H6) ── */}
+      <BudgetSection bidId={bidId} />
+
+      {/* ── Section 2d — Submittal Register summary (Module H3) ── */}
       <section className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">
         <div className="flex items-start justify-between gap-4 mb-3">
           <div>

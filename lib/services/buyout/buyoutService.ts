@@ -38,6 +38,7 @@ export type BuyoutItemRow = {
   tradeId: number;
   tradeName: string;
   csiCode: string | null;
+  costCode: string | null;
   tier: string;
 
   subcontractorId: number | null;
@@ -163,6 +164,7 @@ export async function loadBuyoutItemsForBid(bidId: number): Promise<BuyoutItemRo
       tradeId: it.bidTrade.tradeId,
       tradeName: it.bidTrade.trade.name,
       csiCode: it.bidTrade.trade.csiCode,
+      costCode: it.bidTrade.trade.costCode,
       tier: it.bidTrade.tier,
 
       subcontractorId: it.subcontractorId,

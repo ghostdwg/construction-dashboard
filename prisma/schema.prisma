@@ -63,6 +63,10 @@ model Bid {
   constructionStartDate DateTime?
   projectDurationDays   Int?
 
+  // Module H6 — Budget Creation
+  // JSON: Array<{ label: string; costCode: string; amount: number }>
+  budgetGcLines         String?
+
   bidTrades        BidTrade[]
   selections       BidInviteSelection[]
   exportBatches    ExportBatch[]

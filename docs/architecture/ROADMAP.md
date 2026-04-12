@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module H5 (Owner-Facing Estimate) complete
+# Last Updated: 2026-04-11 — TIER E COMPLETE (all 8 modules shipped)
 
 ---
 
@@ -165,6 +165,7 @@ Every bid follows this sequence:
 | Module H4   | Schedule Seed — canonical CSI sequence, FS chain, MSP CSV export | COMPLETE |
 | Module H7   | Contact Handoff — Outlook/Google CSV + vCard export | COMPLETE |
 | Module H5   | Owner-Facing Estimate — trade-level XLSX with GC markup + contingency + exclusions | COMPLETE |
+| Module H6   | Budget Creation — cost codes, trade + GC lines, XLSX for ERP import | COMPLETE |
 | Module H8   | Award Notifications — sub award + internal team emails via provider abstraction | COMPLETE |
 | Module SET1 | Settings & Cost Observability — shell, hot-applied creds, usage logging, cost previews | COMPLETE |
 | Module SET1+ | Email provider abstraction — Resend + Generic SMTP w/ presets | COMPLETE |
@@ -263,9 +264,9 @@ renders into the email body but is NOT persisted to OutreachLog (option b — di
 LIVE TEST PENDING: verify with self-send once RESEND_API_KEY + RESEND_FROM_EMAIL are
 added to .env.local and a domain is verified in the Resend dashboard.
 
-### Tier E — Post-Award Handoff Layer (H1-H8)
-Priority: IN PROGRESS
-Status: H1 shipped 2026-04-10. H1+ / H2 / H3 / H4 all shipped 2026-04-11. H5-H8 queued.
+### Tier E — Post-Award Handoff Layer (H1-H8) ✅ COMPLETE
+Priority: shipped
+Status: All 8 modules + 1 extension shipped 2026-04-10 through 2026-04-11.
 
 ### Module H1 — Handoff Packet ✅ COMPLETE (2026-04-10)
 
@@ -644,10 +645,6 @@ Explicit deferrals:
 - Procore schedule format → future (Procore uses .xer/.mpp primarily)
 - Procurement activities in the schedule → never (P1 timeline is the source)
 
-### Queued — H6 (H5 + H7 + H8 shipped 2026-04-11)
-
-H6 Budget creation — cost codes to budget lines
-
 ### Module H5 — Owner-Facing Estimate ✅ COMPLETE (2026-04-11)
 
 Professional trade-level cost summary XLSX for sharing with the project
@@ -757,6 +754,57 @@ Files shipped:
   app/bids/[id]/AwardNotificationModal.tsx (NEW)
   app/bids/[id]/AwardNotificationSection.tsx (NEW)
   app/bids/[id]/HandoffTab.tsx (mount AwardNotificationSection)
+
+### Module H6 — Budget Creation ✅ COMPLETE (2026-04-11)
+
+Project budget from cost codes to XLSX. Derives trade lines from BuyoutItem
+(all trades, including $0 committed — PM needs the full cost code structure)
+and stores GC overhead items as JSON on Bid.budgetGcLines (persistent across
+sessions, unlike H5's ephemeral markup).
+
+Schema addition (migration 20260412034502_h6_budget_gc_lines):
+  Bid.budgetGcLines String? — JSON: Array<{ label, costCode, amount }>
+
+Also added: BuyoutItemRow.costCode (was queried but not mapped; 2-line fix
+in buyoutService.ts).
+
+Service (lib/services/budget/assembleBudget.ts):
+  assembleBudget(bidId) — loads buyout items + bid.budgetGcLines, sorts
+  trades by costCode numerically, computes tradeSubtotal + gcSubtotal +
+  grandTotal. Seeds default GC lines on first load (General Conditions,
+  GL Insurance, Builder's Risk, Bond, Overhead, Profit, Contingency —
+  all Division 1 codes, no collision with trade dictionary).
+  updateBudgetGcLines(bidId, lines) — validates + persists GC lines.
+
+API routes:
+  GET   /api/bids/[id]/budget         → assembled budget JSON
+  PATCH /api/bids/[id]/budget         → saves GC line items
+  POST  /api/bids/[id]/budget/export  → single-sheet XLSX download
+
+XLSX layout ("Project Budget"):
+  1. Title + project identity
+  2. Trade Costs table: Cost Code | CSI | Trade | Sub | Committed | COs | Total
+  3. Trade Subtotal
+  4. GC / General Requirements: Cost Code | Description | Amount
+  5. GC Subtotal
+  6. GRAND TOTAL (dark fill, white text)
+
+UI (app/bids/[id]/BudgetSection.tsx):
+  Collapsible card on the Handoff tab between Owner Estimate and Submittals.
+  Fetches budget on expand. Trade lines read-only table; GC lines editable
+  (cost code + label + amount inputs, add/remove buttons). Live-computed
+  subtotals + grand total. "Save GC Lines" button (only when dirty) +
+  "Download Budget" button (auto-saves before download).
+
+Files shipped:
+  prisma/migrations/20260412034502_h6_budget_gc_lines/migration.sql
+  prisma/schema.prisma (Bid.budgetGcLines)
+  lib/services/buyout/buyoutService.ts (costCode on BuyoutItemRow)
+  lib/services/budget/assembleBudget.ts (NEW)
+  app/api/bids/[id]/budget/route.ts (NEW — GET + PATCH)
+  app/api/bids/[id]/budget/export/route.ts (NEW — POST XLSX)
+  app/bids/[id]/BudgetSection.tsx (NEW)
+  app/bids/[id]/HandoffTab.tsx (mount BudgetSection)
 
 ### Module H7 — Contact Handoff ✅ COMPLETE (2026-04-11)
 
