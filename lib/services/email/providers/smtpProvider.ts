@@ -16,6 +16,7 @@ import type {
   SendRfqParams,
   SendRfqResult,
   SendTestResult,
+  SendHtmlParams,
   ValidationResult,
 } from "../types";
 
@@ -183,6 +184,27 @@ export class SmtpProvider implements EmailProvider {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       };
+    }
+  }
+
+  async sendHtml(params: SendHtmlParams): Promise<SendRfqResult> {
+    const cfg = await loadSmtpConfig();
+    if (!cfg) {
+      return { messageId: null, status: "FAILED", error: "SMTP is not configured" };
+    }
+    try {
+      const transport = buildTransport(cfg);
+      const info = await transport.sendMail({
+        from: fromHeader(cfg),
+        to: params.to,
+        replyTo: params.replyTo,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+      });
+      return { messageId: info.messageId ?? null, status: "QUEUED" };
+    } catch (err) {
+      return { messageId: null, status: "FAILED", error: err instanceof Error ? err.message : String(err) };
     }
   }
 }

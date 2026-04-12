@@ -386,6 +386,10 @@ model OutreachLog {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  // Module H8 — plain-string recipient for notifications where the FK
+  // target isn't a sub Contact (e.g. ProjectContact rows for internal notifications).
+  recipientEmail String?
+
   // Email delivery tracking (Module RFQ1)
   // deliveryStatus values (validated in API): QUEUED, SENT, DELIVERED, OPENED, BOUNCED, FAILED
   emailMessageId String?

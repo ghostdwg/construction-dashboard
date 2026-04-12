@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import BuyoutTracker from "./BuyoutTracker";
 import ProjectContactsPanel from "./ProjectContactsPanel";
+import AwardNotificationSection from "./AwardNotificationSection";
 
 // ── Types (mirror lib/services/handoff/assembleHandoffPacket.ts) ───────────
 
@@ -291,6 +292,9 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
           handoff for project execution.
         </div>
       )}
+
+      {/* ── Award Notifications (Module H8 — only when awarded) ── */}
+      {isAwarded && <AwardNotificationSection bidId={bidId} />}
 
       {/* ── Section 1 — Project Summary ── */}
       <section className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">

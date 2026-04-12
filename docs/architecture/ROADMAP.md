@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — Module H7 (Contact Handoff export) complete
+# Last Updated: 2026-04-11 — Module H8 (Award Notifications) complete
 
 ---
 
@@ -164,6 +164,7 @@ Every bid follows this sequence:
 | Module H3   | Submittal Register — regex seeder, lifecycle, Procore CSV export | COMPLETE |
 | Module H4   | Schedule Seed — canonical CSI sequence, FS chain, MSP CSV export | COMPLETE |
 | Module H7   | Contact Handoff — Outlook/Google CSV + vCard export | COMPLETE |
+| Module H8   | Award Notifications — sub award + internal team emails via provider abstraction | COMPLETE |
 | Module SET1 | Settings & Cost Observability — shell, hot-applied creds, usage logging, cost previews | COMPLETE |
 | Module SET1+ | Email provider abstraction — Resend + Generic SMTP w/ presets | COMPLETE |
 
@@ -642,11 +643,75 @@ Explicit deferrals:
 - Procore schedule format → future (Procore uses .xer/.mpp primarily)
 - Procurement activities in the schedule → never (P1 timeline is the source)
 
-### Queued — H5, H6, H8 (H7 shipped 2026-04-11)
+### Queued — H5, H6 (H7 + H8 shipped 2026-04-11)
 
 H5 Owner-facing estimate — high-level rollup export
 H6 Budget creation — cost codes to budget lines
-H8 Award notifications — via Resend/SMTP (reuses RFQ1 + SET1+ infra)
+
+### Module H8 — Award Notifications ✅ COMPLETE (2026-04-11)
+
+Manual-trigger award notification emails: awarded subs get a congratulations
++ next-steps email; the project team gets an internal summary of who was
+awarded on which trades. Fully provider-agnostic via the SET1+ EmailProvider
+abstraction (Resend or SMTP). Logged via OutreachLog with distinct channels.
+
+Schema additions (migration 20260412022702_h8_award_notification_recipient_email):
+  OutreachLog.recipientEmail String? — for non-sub recipients (ProjectContact
+  rows) where there is no existing FK target
+
+EmailProvider interface extension:
+  sendHtml(params: SendHtmlParams): Promise<SendRfqResult> — generic HTML
+  send method so the provider interface does not need a method per template.
+  Both ResendProvider and SmtpProvider implement it.
+
+Email templates (React Email):
+  lib/emails/AwardNotification.tsx — sub award (congratulations + trades +
+  next steps, never includes pricing)
+  lib/emails/InternalAwardNotification.tsx — internal team summary with a
+  trade/sub/status table; no dollar amounts (those go through the packet)
+
+Service (lib/services/notifications/awardNotificationService.ts):
+  previewAwardNotifications(bidId) — returns sub recipients (from BuyoutItem
+  subcontractorId → Subcontractor.contacts), team recipients (from
+  ProjectContact), already-sent count, email config status, estimator defaults
+  sendAwardNotifications(bidId, options) — renders templates, sends via
+  provider.sendHtml(), logs to OutreachLog. Options: sendToSubs, sendToTeam,
+  estimatorName, estimatorEmail, customMessage.
+  getAwardNotificationStatus(bidId) — reads OutreachLog for award_notification
+  + internal_notification channels
+
+API routes:
+  GET  /api/bids/[id]/notifications/award/preview → recipients + config status
+  POST /api/bids/[id]/notifications/award/send    → sends notifications
+  GET  /api/bids/[id]/notifications/award/status  → delivery log
+
+UI:
+  AwardNotificationSection (app/bids/[id]/AwardNotificationSection.tsx) —
+  section on the Handoff tab, visible only when isAwarded. Shows either a CTA
+  ("Send Award Notifications") or a delivery status table. Fetches status on
+  mount.
+  AwardNotificationModal (app/bids/[id]/AwardNotificationModal.tsx) — modal
+  following the RFQ send pattern. Two recipient groups (subs + team) with
+  toggle checkboxes, estimator name/email inputs, optional custom message
+  textarea, already-sent warning, send button with count badge.
+  HandoffTab.tsx — mounts AwardNotificationSection between the header and
+  Project Summary, gated by isAwarded.
+
+Files shipped:
+  prisma/migrations/20260412022702_h8_award_notification_recipient_email/migration.sql
+  prisma/schema.prisma (OutreachLog.recipientEmail)
+  lib/services/email/types.ts (SendHtmlParams + sendHtml on interface)
+  lib/services/email/providers/resendProvider.ts (sendHtml implementation)
+  lib/services/email/providers/smtpProvider.ts (sendHtml implementation)
+  lib/emails/AwardNotification.tsx (NEW)
+  lib/emails/InternalAwardNotification.tsx (NEW)
+  lib/services/notifications/awardNotificationService.ts (NEW)
+  app/api/bids/[id]/notifications/award/preview/route.ts (NEW)
+  app/api/bids/[id]/notifications/award/send/route.ts (NEW)
+  app/api/bids/[id]/notifications/award/status/route.ts (NEW)
+  app/bids/[id]/AwardNotificationModal.tsx (NEW)
+  app/bids/[id]/AwardNotificationSection.tsx (NEW)
+  app/bids/[id]/HandoffTab.tsx (mount AwardNotificationSection)
 
 ### Module H7 — Contact Handoff ✅ COMPLETE (2026-04-11)
 

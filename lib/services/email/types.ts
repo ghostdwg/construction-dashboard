@@ -52,4 +52,19 @@ export interface EmailProvider {
 
   /** Sends a small "this is a test" message to a single recipient. */
   sendTestEmail(to: string): Promise<SendTestResult>;
+
+  /**
+   * Generic send: accepts pre-rendered HTML + plain-text body. Used by
+   * notification systems (H8 award notifications, future templates) so the
+   * provider interface doesn't need a method per email type.
+   */
+  sendHtml(params: SendHtmlParams): Promise<SendRfqResult>;
 }
+
+export type SendHtmlParams = {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  replyTo?: string;
+};

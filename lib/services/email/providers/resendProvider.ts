@@ -11,6 +11,7 @@ import type {
   SendRfqParams,
   SendRfqResult,
   SendTestResult,
+  SendHtmlParams,
   ValidationResult,
 } from "../types";
 
@@ -138,6 +139,30 @@ export class ResendProvider implements EmailProvider {
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       };
+    }
+  }
+
+  async sendHtml(params: SendHtmlParams): Promise<SendRfqResult> {
+    const client = await this.getClient();
+    const fromEmail = await getSetting("RESEND_FROM_EMAIL");
+    if (!client || !fromEmail) {
+      return { messageId: null, status: "FAILED", error: "Resend is not configured" };
+    }
+    try {
+      const response = await client.emails.send({
+        from: fromEmail,
+        to: params.to,
+        replyTo: params.replyTo,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+      });
+      if (response.error) {
+        return { messageId: null, status: "FAILED", error: response.error.message ?? String(response.error) };
+      }
+      return { messageId: response.data?.id ?? null, status: "QUEUED" };
+    } catch (err) {
+      return { messageId: null, status: "FAILED", error: err instanceof Error ? err.message : String(err) };
     }
   }
 }
