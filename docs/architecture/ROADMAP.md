@@ -1,5 +1,5 @@
 # Roadmap — Preconstruction Intelligence System
-# Last Updated: 2026-04-11 — UI Nav Refactor complete (sidebar with phase groupings)
+# Last Updated: 2026-04-12 — Auth Wall Level A complete (email/password + route protection)
 
 ---
 
@@ -1105,18 +1105,62 @@ Files shipped:
   app/bids/[id]/TabBar.tsx (full rewrite — sidebar with SectionHeader + SidebarItem)
   app/bids/[id]/page.tsx (grid layout, passes bidStatus to TabBar)
 
-### Auth Wall + Multi-Tenancy (queued — only if app proves useful inside the company)
-Priority: DEFERRED until there's a real second user
-Sessions: 2-3 (Phase A only) + 4-6 (Phase B)
+### Auth Wall — Level A ✅ COMPLETE (2026-04-12)
+Priority: shipped
 
-Phase A — Auth wall only:
-- Long-lived feat/auth-wall branch (kept off main, rebased periodically)
-- Auth.js (NextAuth) install — sessions, password hashing, OAuth, magic links
-- middleware.ts at app root: any unauthenticated request → /login
-- User { id, email, name, hashedPassword, role, createdAt } — no workspace yet
-- AUTH_DISABLED env flag bypasses middleware for solo dev
-- Login/logout pages, password reset via the existing email provider
-- After Phase A: company login wall, but everyone still shares the same data
+Auth.js v5 with Credentials provider (email + password). JWT session
+strategy. Every route protected via proxy.ts (Next.js 16 convention,
+formerly middleware.ts). AUTH_DISABLED=true bypasses auth for solo dev.
+
+Schema (migration 20260412153938_auth_wall_user_models):
+  User { id (cuid), name, email (unique), emailVerified, image,
+    hashedPassword, role (default "estimator"), createdAt, updatedAt }
+  Account (OAuth — for future Microsoft/Google SSO)
+  Session (database sessions — for future use)
+  VerificationToken (magic links — for future use)
+  Bid.createdById String? (nullable, backfill when multi-tenant)
+
+Roles: admin | estimator | pm
+  - Level A: roles exist on User but aren't checked (shared workspace)
+  - Level B: add where clause on bidId queries → per-user isolation
+  - Level C: role-based middleware → admin sees all, PM sees awarded, etc.
+
+Dependencies: next-auth@5 (beta), @auth/prisma-adapter, bcryptjs
+  nodemailer peer conflict resolved via --legacy-peer-deps (next-auth
+  optionally wants nodemailer@7, we have v8 — safe since we don't use
+  next-auth's built-in email provider)
+
+First-user setup flow:
+  GET /api/auth/setup → { hasUsers: boolean }
+  POST /api/auth/setup → creates admin user (one-shot, rejected if users exist)
+  Login page detects hasUsers=false and shows "Create Admin Account" form
+
+Route protection (proxy.ts):
+  AUTH_DISABLED=true → all requests pass through
+  Otherwise: unauthenticated → redirect to /login?callbackUrl=...
+  Public routes: /login, /api/auth/*, /_next/*, /favicon.ico
+
+Layout changes:
+  AuthProvider wraps ThemeProvider
+  UserNav component in top nav: name + role badge + sign-out button
+  Top nav max-width widened to max-w-6xl (matches sidebar layout)
+
+Files shipped:
+  prisma/migrations/20260412153938_auth_wall_user_models/migration.sql
+  prisma/schema.prisma (User, Account, Session, VerificationToken + Bid.createdById)
+  lib/auth.ts (NEW — Auth.js config, Credentials provider, JWT callbacks)
+  app/api/auth/[...nextauth]/route.ts (NEW)
+  app/api/auth/setup/route.ts (NEW — first-user creation)
+  proxy.ts (NEW — route protection, AUTH_DISABLED bypass)
+  app/login/page.tsx (NEW — login + setup form)
+  app/components/AuthProvider.tsx (NEW — SessionProvider wrapper)
+  app/components/UserNav.tsx (NEW — name + role + sign-out)
+  app/layout.tsx (AuthProvider wrap + UserNav)
+  .env.local (AUTH_SECRET + AUTH_DISABLED=true)
+
+### Auth Wall + Multi-Tenancy (queued)
+Priority: DEFERRED until there's a real second user
+Sessions: 4-6 (Levels B + C)
 
 Phase B — Multi-tenancy (when there's a real second user):
 - Add ownerId/workspaceId to Bid, Subcontractor, AppSetting, AiUsageLog, etc.

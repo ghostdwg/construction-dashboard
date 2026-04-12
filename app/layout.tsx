@@ -4,6 +4,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";
 import ThemeToggle from "./components/ThemeToggle";
+import AuthProvider from "./components/AuthProvider";
+import UserNav from "./components/UserNav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -54,47 +56,50 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
       </head>
       <body className="min-h-full flex flex-col bg-white text-gray-900 dark:bg-zinc-950 dark:text-zinc-100">
-        <ThemeProvider>
-          <nav className="border-b border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="max-w-5xl mx-auto px-4 flex items-center gap-6 h-12">
-              <span className="font-semibold text-sm tracking-tight text-gray-900 dark:text-zinc-100">
-                Bid Dashboard
-              </span>
-              <Link
-                href="/bids"
-                className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                Bids
-              </Link>
-              <Link
-                href="/subcontractors"
-                className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                Subcontractors
-              </Link>
-              <Link
-                href="/outreach"
-                className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                Outreach
-              </Link>
-              <Link
-                href="/reports"
-                className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                Reports
-              </Link>
-              <Link
-                href="/settings"
-                className="ml-auto text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-              >
-                Settings
-              </Link>
-              <ThemeToggle />
-            </div>
-          </nav>
-          {children}
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <nav className="border-b border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="max-w-6xl mx-auto px-4 flex items-center gap-6 h-12">
+                <span className="font-semibold text-sm tracking-tight text-gray-900 dark:text-zinc-100">
+                  Bid Dashboard
+                </span>
+                <Link
+                  href="/bids"
+                  className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                >
+                  Bids
+                </Link>
+                <Link
+                  href="/subcontractors"
+                  className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                >
+                  Subcontractors
+                </Link>
+                <Link
+                  href="/outreach"
+                  className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                >
+                  Outreach
+                </Link>
+                <Link
+                  href="/reports"
+                  className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                >
+                  Reports
+                </Link>
+                <Link
+                  href="/settings"
+                  className="ml-auto text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                >
+                  Settings
+                </Link>
+                <UserNav />
+                <ThemeToggle />
+              </div>
+            </nav>
+            {children}
+          </ThemeProvider>
+        </AuthProvider>
       </body>
     </html>
   );
