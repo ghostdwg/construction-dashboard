@@ -6,6 +6,19 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 type Trade = { id: number; name: string };
 
+type AiAnalysis = {
+  description?: string;
+  severity?: string;
+  severity_reason?: string;
+  submittals?: Array<{ type: string; description: string; engineer_review?: boolean }>;
+  pain_points?: Array<{ issue: string; severity: string; cost_impact: string }>;
+  gaps?: Array<{ issue: string; recommendation: string }>;
+  flags?: string[];
+  products?: Array<{ manufacturer: string; product: string; basis_of_design?: boolean }>;
+  warranty?: Array<{ duration: string; type: string; scope: string }>;
+  _model?: string;
+};
+
 type SectionRow = {
   id: number;
   csiNumber: string;
@@ -15,6 +28,7 @@ type SectionRow = {
   matchedTradeId: number | null;
   matchedTrade: Trade | null;
   source: string | null;
+  aiExtractions: AiAnalysis | null;
 };
 
 type SpecBookMeta = {
@@ -33,6 +47,10 @@ type SpecData = {
   covered: SectionRow[];
   missing: SectionRow[];
   unknown: SectionRow[];
+  aiAnalysis?: {
+    sectionsAnalyzed: number;
+    severity: Record<string, number>;
+  } | null;
 };
 
 type DrawingSheetRow = {
@@ -319,6 +337,245 @@ function MissingSection({
         );
       })}
     </div>
+  );
+}
+
+// ── AI Spec Intelligence Results ─────────────────────────────────────────────
+
+const SEVERITY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
+  CRITICAL: { bg: "bg-red-100 dark:bg-red-900/40", text: "text-red-800 dark:text-red-300", border: "border-red-200 dark:border-red-800" },
+  HIGH: { bg: "bg-orange-100 dark:bg-orange-900/40", text: "text-orange-800 dark:text-orange-300", border: "border-orange-200 dark:border-orange-800" },
+  MODERATE: { bg: "bg-amber-100 dark:bg-amber-900/30", text: "text-amber-800 dark:text-amber-300", border: "border-amber-200 dark:border-amber-800" },
+  LOW: { bg: "bg-zinc-100 dark:bg-zinc-800", text: "text-zinc-600 dark:text-zinc-400", border: "border-zinc-200 dark:border-zinc-700" },
+  INFO: { bg: "bg-blue-50 dark:bg-blue-900/20", text: "text-blue-700 dark:text-blue-400", border: "border-blue-200 dark:border-blue-900" },
+};
+
+function SeverityBadge({ severity }: { severity: string }) {
+  const s = SEVERITY_STYLES[severity.toUpperCase()] ?? SEVERITY_STYLES.INFO;
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${s.bg} ${s.text}`}>
+      {severity}
+    </span>
+  );
+}
+
+function AiSpecResults({
+  sections,
+  severity,
+}: {
+  sections: SectionRow[];
+  severity: Record<string, number>;
+}) {
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [filterSeverity, setFilterSeverity] = useState<string | null>(null);
+
+  // Sort: CRITICAL first, then HIGH, MODERATE, LOW, INFO
+  const severityOrder = ["CRITICAL", "HIGH", "MODERATE", "LOW", "INFO"];
+  const sorted = [...sections].sort((a, b) => {
+    const aIdx = severityOrder.indexOf((a.aiExtractions?.severity || "INFO").toUpperCase());
+    const bIdx = severityOrder.indexOf((b.aiExtractions?.severity || "INFO").toUpperCase());
+    return aIdx - bIdx;
+  });
+
+  const filtered = filterSeverity
+    ? sorted.filter((s) => (s.aiExtractions?.severity || "").toUpperCase() === filterSeverity)
+    : sorted;
+
+  return (
+    <section className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+      {/* Header + severity filter */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+          AI Spec Intelligence — {sections.length} sections analyzed
+        </h3>
+        <div className="flex gap-1.5">
+          <button
+            onClick={() => setFilterSeverity(null)}
+            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+              !filterSeverity
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+            }`}
+          >
+            All ({sections.length})
+          </button>
+          {severityOrder.map((sev) => {
+            const count = severity[sev] || 0;
+            if (count === 0) return null;
+            const s = SEVERITY_STYLES[sev];
+            return (
+              <button
+                key={sev}
+                onClick={() => setFilterSeverity(filterSeverity === sev ? null : sev)}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  filterSeverity === sev
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : `${s.bg} ${s.text}`
+                }`}
+              >
+                {count} {sev}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Section list */}
+      <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        {filtered.map((sec) => {
+          const ai = sec.aiExtractions;
+          const isExpanded = expandedId === sec.id;
+          const sev = (ai?.severity || "INFO").toUpperCase();
+
+          return (
+            <div key={sec.id}>
+              {/* Row header */}
+              <button
+                onClick={() => setExpandedId(isExpanded ? null : sec.id)}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+              >
+                <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400 w-16 shrink-0">
+                  {sec.csiNumber}
+                </span>
+                <SeverityBadge severity={sev} />
+                <span className="text-sm text-zinc-800 dark:text-zinc-200 flex-1 truncate">
+                  {sec.csiTitle}
+                </span>
+                <span className="flex gap-2 text-[10px] text-zinc-400 dark:text-zinc-500 shrink-0">
+                  {(ai?.pain_points?.length ?? 0) > 0 && (
+                    <span>{ai!.pain_points!.length} pain pts</span>
+                  )}
+                  {(ai?.gaps?.length ?? 0) > 0 && (
+                    <span>{ai!.gaps!.length} gaps</span>
+                  )}
+                  {(ai?.submittals?.length ?? 0) > 0 && (
+                    <span>{ai!.submittals!.length} submittals</span>
+                  )}
+                </span>
+                <span className="text-zinc-400 text-xs">{isExpanded ? "▲" : "▼"}</span>
+              </button>
+
+              {/* Expanded detail */}
+              {isExpanded && ai && (
+                <div className="px-4 pb-4 pt-1 space-y-3 bg-zinc-50/50 dark:bg-zinc-800/30">
+                  {/* Description */}
+                  {ai.description && (
+                    <p className="text-sm text-zinc-700 dark:text-zinc-300">{ai.description}</p>
+                  )}
+
+                  {/* Flags */}
+                  {ai.flags && ai.flags.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase mb-1">Flags</h4>
+                      <ul className="space-y-1">
+                        {ai.flags.map((f, i) => (
+                          <li key={i} className="text-xs text-red-700 dark:text-red-400 flex gap-1.5">
+                            <span className="shrink-0">!</span>
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Pain Points */}
+                  {ai.pain_points && ai.pain_points.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-orange-700 dark:text-orange-400 uppercase mb-1">Pain Points</h4>
+                      <div className="space-y-1.5">
+                        {ai.pain_points.map((p, i) => (
+                          <div key={i} className="text-xs">
+                            <div className="flex gap-2 items-start">
+                              <SeverityBadge severity={p.severity} />
+                              <span className="text-zinc-800 dark:text-zinc-200">{p.issue}</span>
+                            </div>
+                            {p.cost_impact && (
+                              <p className="text-zinc-500 dark:text-zinc-400 ml-12 mt-0.5">{p.cost_impact}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Gaps */}
+                  {ai.gaps && ai.gaps.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase mb-1">Gaps</h4>
+                      <div className="space-y-1.5">
+                        {ai.gaps.map((g, i) => (
+                          <div key={i} className="text-xs">
+                            <p className="text-zinc-800 dark:text-zinc-200">{g.issue}</p>
+                            <p className="text-zinc-500 dark:text-zinc-400 mt-0.5">Recommendation: {g.recommendation}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Submittals */}
+                  {ai.submittals && ai.submittals.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase mb-1">Submittals ({ai.submittals.length})</h4>
+                      <div className="space-y-1">
+                        {ai.submittals.map((s, i) => (
+                          <div key={i} className="flex items-start gap-2 text-xs">
+                            <span className="rounded bg-blue-100 dark:bg-blue-900/40 px-1.5 py-0.5 text-[10px] font-mono text-blue-700 dark:text-blue-400 shrink-0">
+                              {s.type}
+                            </span>
+                            <span className="text-zinc-700 dark:text-zinc-300">{s.description}</span>
+                            {s.engineer_review && (
+                              <span className="text-[10px] text-violet-600 dark:text-violet-400 shrink-0">ENG REVIEW</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Products */}
+                  {ai.products && ai.products.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase mb-1">Products</h4>
+                      <div className="space-y-1">
+                        {ai.products.map((p, i) => (
+                          <div key={i} className="text-xs text-zinc-700 dark:text-zinc-300">
+                            <span className="font-medium">{p.manufacturer}</span> — {p.product}
+                            {p.basis_of_design && (
+                              <span className="ml-1 text-[10px] text-green-600 dark:text-green-400">(BOD)</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Warranty */}
+                  {ai.warranty && ai.warranty.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase mb-1">Warranty</h4>
+                      <div className="space-y-1">
+                        {ai.warranty.map((w, i) => (
+                          <div key={i} className="text-xs text-zinc-700 dark:text-zinc-300">
+                            <span className="font-medium">{w.duration}</span> — {w.type}: {w.scope}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {ai._model && (
+                    <p className="text-[10px] text-zinc-400 dark:text-zinc-500 pt-1">
+                      Analyzed by {ai._model}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -1069,6 +1326,18 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
             </button>
           )}
         </div>
+      )}
+
+      {/* ── AI Spec Intelligence Results ── */}
+      {specData?.aiAnalysis && (
+        <AiSpecResults
+          sections={[
+            ...(specData.covered ?? []),
+            ...(specData.missing ?? []),
+            ...(specData.unknown ?? []),
+          ].filter((s) => s.aiExtractions)}
+          severity={specData.aiAnalysis.severity}
+        />
       )}
 
       {/* ── Three-state coverage report ── */}

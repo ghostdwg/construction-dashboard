@@ -48,7 +48,7 @@ export async function POST(
       method: "POST",
       body: form,
       headers,
-      signal: AbortSignal.timeout(60_000), // Just submitting, should be fast
+      signal: AbortSignal.timeout(120_000), // File upload + job submission
     });
 
     if (!res.ok) {

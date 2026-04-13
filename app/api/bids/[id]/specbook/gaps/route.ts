@@ -47,7 +47,19 @@ export async function GET(
     matchedTradeId: s.matchedTradeId,
     matchedTrade: s.matchedTrade,
     source: s.source,
+    aiExtractions: s.aiExtractions ? JSON.parse(s.aiExtractions) : null,
   });
+
+  // AI analysis summary
+  const analyzedSections = specBook.sections.filter((s) => s.aiExtractions);
+  const severityCounts: Record<string, number> = {};
+  for (const s of analyzedSections) {
+    try {
+      const ai = JSON.parse(s.aiExtractions!);
+      const sev = (ai.severity || "INFO").toUpperCase();
+      severityCounts[sev] = (severityCounts[sev] || 0) + 1;
+    } catch { /* skip */ }
+  }
 
   return Response.json({
     specBook: {
@@ -63,5 +75,9 @@ export async function GET(
     covered: coveredSections.map(toRow),
     missing: missingSections.map(toRow),
     unknown: unknownSections.map(toRow),
+    aiAnalysis: analyzedSections.length > 0 ? {
+      sectionsAnalyzed: analyzedSections.length,
+      severity: severityCounts,
+    } : null,
   });
 }

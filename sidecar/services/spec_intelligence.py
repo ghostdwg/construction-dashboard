@@ -17,7 +17,7 @@ import os
 import re
 import json
 import anthropic
-import pymupdf4llm
+import pymupdf
 
 
 # ── Model routing by CSI division ────────────────────────────────────────────
@@ -116,15 +116,28 @@ def _identify_sections(full_text: str, page_count: int, client: anthropic.Anthro
     smart_text = smart_text[:190_000]
 
     model = HAIKU_MODEL
-    response = client.messages.create(
-        model=model,
-        max_tokens=8000,  # Enough for 100+ sections
-        system=IDENTIFY_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": IDENTIFY_USER.format(text=smart_text, page_count=page_count),
-        }],
-    )
+    import time as _time
+    response = None
+    for attempt in range(5):
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=8000,  # Enough for 100+ sections
+                system=IDENTIFY_SYSTEM,
+                messages=[{
+                    "role": "user",
+                    "content": IDENTIFY_USER.format(text=smart_text, page_count=page_count),
+                }],
+            )
+            break
+        except anthropic.APIStatusError as e:
+            if e.status_code in (429, 529) and attempt < 4:
+                _time.sleep((attempt + 1) * 5)
+                continue
+            raise
+
+    if response is None:
+        raise RuntimeError("Failed to identify sections after 5 retries")
 
     text = response.content[0].text if response.content else "[]"
 
@@ -156,34 +169,38 @@ def _identify_sections(full_text: str, page_count: int, client: anthropic.Anthro
 def _extract_section_text(csi: str, title: str, full_text: str) -> str:
     """
     Find the body text for a specific CSI section in the full document.
-    Searches for "SECTION XX XX XX" header and grabs text until the next section.
-    """
-    # Normalize CSI for search
-    csi_compact = re.sub(r"\s+", r"\\s*", re.escape(csi))
+    Searches for "SECTION XX XX XX" or "SECTION XXXXXX" header and grabs
+    text until the next section or END OF SECTION.
 
-    # Search for the section header in the body (not TOC)
-    # Pattern: "SECTION 03 30 00" possibly with "- TITLE" after
-    pattern = re.compile(
-        rf"SECTION\s+{csi_compact}\s*[-–—]?\s*{re.escape(title[:20])}",
+    Handles various CSI formatting: "21 00 00", "21 0000", "210000"
+    """
+    # Build a flexible CSI pattern that matches any spacing variant
+    digits = re.sub(r"\D", "", csi)  # "210000"
+    if len(digits) == 6:
+        # Match: "21 00 00", "21 0000", "210000", "21  00  00" etc
+        csi_pattern = rf"{digits[0:2]}\s*{digits[2:4]}\s*{digits[4:6]}"
+    else:
+        csi_pattern = re.escape(csi)
+
+    # Search for "SECTION <csi>" in the text — prefer matches with "PART 1" nearby
+    section_re = re.compile(
+        rf"SECTION\s+{csi_pattern}\b",
         re.IGNORECASE,
     )
-    match = pattern.search(full_text)
 
-    if not match:
-        # Fallback: just search for the CSI number followed by content indicators
-        pattern2 = re.compile(
-            rf"SECTION\s+{csi_compact}",
-            re.IGNORECASE,
-        )
-        # Find all matches, prefer ones followed by "PART 1" (body, not TOC)
-        matches = list(pattern2.finditer(full_text))
-        for m in matches:
-            peek = full_text[m.start():m.start() + 500].upper()
-            if "PART 1" in peek or "GENERAL" in peek:
-                match = m
-                break
-        if not match and matches:
-            match = matches[-1]  # Last occurrence (body, not TOC)
+    matches = list(section_re.finditer(full_text))
+    match = None
+
+    # Prefer matches followed by "PART 1" or "GENERAL" (body, not TOC)
+    for m in matches:
+        peek = full_text[m.start():m.start() + 800].upper()
+        if "PART 1" in peek or "GENERAL REQUIREMENTS" in peek or "GENERAL REQUIREMENT" in peek:
+            match = m
+            break
+
+    # Fallback: last occurrence (usually the body, TOC is earlier)
+    if not match and matches:
+        match = matches[-1]
 
     if not match:
         return ""
@@ -192,15 +209,15 @@ def _extract_section_text(csi: str, title: str, full_text: str) -> str:
 
     # Find the end: next "SECTION XX XX XX" or "END OF SECTION"
     end_pattern = re.compile(
-        r"\bSECTION\s+\d{2}\s*\d{2}\s*\d{2}\b|\bEND\s+OF\s+SECTION\b",
+        r"\bSECTION\s+\d{2}\s*\d{2}\s*\d{2,4}\b|\bEND\s+OF\s+SECTION\b",
         re.IGNORECASE,
     )
-    end_match = end_pattern.search(full_text, start + 100)
-    end = end_match.start() if end_match else start + 15000
+    end_match = end_pattern.search(full_text, start + 200)
+    end = end_match.start() if end_match else min(start + 15000, len(full_text))
 
-    # Include "END OF SECTION" if that's what we found
-    if end_match and "END OF SECTION" in full_text[end_match.start():end_match.end() + 20].upper():
-        end = end_match.end() + 20
+    # Include "END OF SECTION" text if that's what we found
+    if end_match and "END OF SECTION" in full_text[end_match.start():end_match.end() + 25].upper():
+        end = end_match.end() + 25
 
     raw = full_text[start:end].strip()
     return raw[:12000]  # Cap at 12K chars per section
@@ -274,15 +291,30 @@ def _analyze_section(
             "warranty": [],
         }, {"model": model, "input_tokens": 0, "output_tokens": 0, "cost": 0}
 
-    response = client.messages.create(
-        model=model,
-        max_tokens=2500,
-        system=ANALYZE_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": ANALYZE_USER.format(csi=csi, title=title, text=section_text[:8000]),
-        }],
-    )
+    # Retry on overloaded (529) and rate limit (429) errors
+    import time as _time
+    response = None
+    for attempt in range(5):
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=2500,
+                system=ANALYZE_SYSTEM,
+                messages=[{
+                    "role": "user",
+                    "content": ANALYZE_USER.format(csi=csi, title=title, text=section_text[:8000]),
+                }],
+            )
+            break
+        except anthropic.APIStatusError as e:
+            if e.status_code in (429, 529) and attempt < 4:
+                wait = (attempt + 1) * 5  # 5, 10, 15, 20 seconds
+                _time.sleep(wait)
+                continue
+            raise
+
+    if response is None:
+        raise RuntimeError(f"Failed to analyze section {csi} after 5 retries")
 
     text = response.content[0].text if response.content else "{}"
 
@@ -339,12 +371,12 @@ def run_spec_intelligence(
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    # Step 1: Extract text with page markers
-    md_pages = pymupdf4llm.to_markdown(pdf_path, page_chunks=True)
+    # Step 1: Extract text with PyMuPDF (fast raw text, not markdown)
+    doc = pymupdf.open(pdf_path)
     page_texts = []
-    for page in md_pages:
-        text = page.get("text", "") if isinstance(page, dict) else str(page)
-        page_texts.append(text)
+    for page in doc:
+        page_texts.append(page.get_text("text"))
+    doc.close()
 
     full_text_parts = []
     for i, pt in enumerate(page_texts):
@@ -385,11 +417,16 @@ def run_spec_intelligence(
     total_pass2_cost = 0.0
     severity_counts = {"CRITICAL": 0, "HIGH": 0, "MODERATE": 0, "LOW": 0, "INFO": 0}
 
+    import time as _time
     for i, sec in enumerate(sections_with_text):
         if on_progress:
             on_progress(i + 1, len(sections_with_text), sec["csi"])
 
         if analyze:
+            # Throttle: 2 second pause between API calls to avoid rate limits
+            if i > 0:
+                _time.sleep(2)
+
             analysis, usage = _analyze_section(
                 sec["csi"], sec["title"], sec["raw_text"], client
             )
