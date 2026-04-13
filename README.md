@@ -1,6 +1,6 @@
-# Bid Dashboard — Preconstruction Intelligence Platform
+# Construction Dashboard — Construction Intelligence Platform
 
-A modular preconstruction intelligence system covering the full project lifecycle, from bid intake through post-award handoff. Designed for a solo estimator managing multiple bids simultaneously, the platform removes manual re-entry, catches scope gaps before bid day, and generates day-1 deliverables (handoff packets, budgets, schedules, contact exports) so the project team hits the ground running after award.
+Forked from bid-dashboard. Extends the 35-module preconstruction platform with Python-powered document intelligence, AI spec extraction, interactive scheduling, meeting analysis, and superintendent field briefings.
 
 ## Tech Stack
 
@@ -14,64 +14,30 @@ A modular preconstruction intelligence system covering the full project lifecycl
 | Auth | Auth.js v5 (email/password, JWT sessions) |
 | Email | Resend API + Generic SMTP (provider-abstracted) |
 | Export | ExcelJS (XLSX), CSV (MSP, Procore, Outlook, Google, vCard) |
+| Planned | Python FastAPI sidecar (port 8001) — document intelligence, OCR, schedule export, PDF generation |
 
-## Features
+## Inherited from bid-dashboard (35 modules)
 
-### Phase 1 — Pursuit
+The full preconstruction platform ships with this repo: job intake, scope intelligence, bid leveling, procurement, RFQ distribution, go/no-go gate, bid assembly, post-award handoff (H1–H8), settings hub, auth wall, and theme toggle. All 35 modules are COMPLETE.
 
-| Wing | Capability |
-|------|-----------|
-| **Job Intake** | 14-field project context capture branching AI analysis, compliance gates, and risk scoring |
-| **Scope Intelligence** | Spec book + drawing upload, CSI extraction, AI brief generation, per-trade gap analysis, addendum delta processing |
-| **Bid Leveling** | Estimate intake with pricing boundary, scope leveling engine, AI-drafted questions, bid spread analysis, scope-cost correlation |
-| **Procurement** | Timeline engine, trade tier classification, RFI register, public bid compliance checklist |
-| **RFQ Distribution** | Templated email via Resend or SMTP, delivery tracking, per-sub status badges |
-| **Go/No-Go Gate** | Five-gate widget: timeline, coverage, documents, risk, compliance |
-| **Bid Assembly** | Submission snapshot, frozen JSON artifacts, outcome tracking, post-bid analytics |
+See [ROADMAP.md Section 4 — Completed Modules](docs/architecture/ROADMAP.md) for the full inventory.
 
-### Phase 2 — Award Gate
+## Phase 5 — Construction Intelligence (NEW)
 
-Bid status transitions to **awarded**. The sidebar shifts from pursuit modules to post-award modules. All pursuit data carries forward.
-
-### Phase 3 — Post-Award Handoff (Tier E)
-
-| Module | Capability |
-|--------|-----------|
-| **Handoff Packet** | 8-sheet XLSX export compiling project summary, trade awards, buyout, submittals, schedule, open items, contacts, documents |
-| **Buyout Tracker** | Per-trade contract lifecycle (7 stages), committed/paid/remaining/retainage rollup |
-| **Submittal Register** | Regex seeder from spec book, 8-stage lifecycle, Procore CSV export |
-| **Schedule Seed** | Canonical CSI sequence, working-day math, FS predecessor chain, MS Project CSV export |
-| **Owner Estimate** | Trade-level XLSX with GC markup, contingency, exclusions |
-| **Budget Creation** | Cost codes, trade + GC lines, XLSX for ERP import |
-| **Contact Handoff** | Outlook CSV, Google Contacts CSV, vCard 3.0 export |
-| **Award Notifications** | Sub award + internal team emails via provider abstraction |
-
-### Operations
-
-| Feature | Description |
-|---------|-----------|
-| **Settings Hub** | Hot-applied credentials (no restart), email provider switching, AI cost observability |
-| **AI Token Config** | Per-call max_tokens presets with live cost estimates |
-| **Cost Previews** | Real-time cost chips on AI buttons with calibrated output ratios |
-| **Theme Toggle** | Full light/dark mode coverage across all pages |
-| **Auth Wall** | Email/password login, JWT sessions, AUTH_DISABLED bypass for solo dev |
-
-### Queued
-
-| Item | Status |
-|------|--------|
-| **Tier F — Procore Bridge** | F1 CSV exports (partially shipped), F2 REST API, F3 bidirectional sync |
-| **Auth Level B+C** | Multi-tenancy + role-based access (deferred until second user) |
-
-## Module Count
-
-**35 modules shipped.** Platform is functionally complete for a solo estimator.
+| Sub-Phase | Description |
+|-----------|-------------|
+| **5A** | Python FastAPI sidecar — document parsing, OCR, schedule export, PDF generation, PostgreSQL migration |
+| **5B** | Spec intelligence pipeline — five registers (submittals, warranties, training, closeout, testing) via AI extraction |
+| **5C** | Interactive scheduling module — in-browser Gantt with CPM, DHTMLX, MSP/P6 export via sidecar |
+| **5D** | Meeting intelligence pipeline — transcription, diarization, Claude analysis, structured action items |
+| **5E** | Superintendent briefing — auto-assembled PDF from all registers (schedule, submittals, inspections, risks) |
+| **5F** | Drawing OCR & quantity takeoff — symbol detection, room segmentation, scale detection (STRETCH) |
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/ghostdwg/bid-dashboard.git
-cd bid-dashboard
+git clone https://github.com/ghostdwg/construction-dashboard.git
+cd construction-dashboard
 npm install
 cp .env.example .env.local
 # Edit .env.local — add your ANTHROPIC_API_KEY for AI features
@@ -83,28 +49,16 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Environment Variables
+> **Note:** The Python sidecar is not yet built. The app runs identically to bid-dashboard until Phase 5A begins.
 
-Core variables are configured in `.env.local`. Additional credentials (Resend API key, SMTP settings, estimator profile) can be set through the in-app **Settings** page at `/settings` — they persist to the database and take effect immediately without a restart.
+## Architecture
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | Yes | SQLite path (default: `file:./dev.db`) |
-| `ANTHROPIC_API_KEY` | For AI | Claude API key — also settable in Settings UI |
-| `AUTH_SECRET` | For auth | Auth.js session signing key |
-| `AUTH_DISABLED` | No | Set `true` to bypass login (solo dev mode) |
+Full architecture plan, three-stream build sequence, cost projections, and sync protocol: [ROADMAP.md](docs/architecture/ROADMAP.md)
 
-### Solo Dev Mode
+## Parallel Repos
 
-Set `AUTH_DISABLED=true` in `.env.local` to skip authentication entirely. All routes are accessible without login. This is the intended mode for a single estimator — auth exists for future multi-user scenarios.
-
-## Repository Notes
-
-- **This repo** (`ghostdwg/bid-dashboard`) is the stable production version
-- **`ghostdwg/construction-dashboard`** is the expansion repo for Phase 5+ work
-- Architecture docs live in `docs/architecture/`:
-  - [ROADMAP.md](docs/architecture/ROADMAP.md) — full build sequence, module specs, and queued items
-  - [CURRENT_STATE.md](docs/architecture/CURRENT_STATE.md) — authoritative build status and technical known-state
+- **`ghostdwg/bid-dashboard`** — the stable production version, receives Tier F, auth fixes, and bug fixes from live jobs
+- **`ghostdwg/construction-dashboard`** (this repo) — Phase 5 expansion, experimental work
 
 ## License
 

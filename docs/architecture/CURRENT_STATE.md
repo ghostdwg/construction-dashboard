@@ -1,9 +1,17 @@
-# Current State — Preconstruction Intelligence System
-# Last Updated: 2026-04-12 — Auth Wall Level A (email/password login + route protection) complete
+# Current State — Construction Intelligence Platform
+# Last Updated: 2026-04-12
+
+## Repository Context
+- This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
+- 35 modules carried forward from bid-dashboard (all COMPLETE)
+- This repo adds **Phase 5: construction intelligence expansion**
+- Parallel repo `ghostdwg/bid-dashboard` remains active for Tier F, auth, bug fixes
+- Sync protocol: pull `bid-dashboard/main` into this repo before starting new Phase 5 work
+- See `docs/architecture/ROADMAP.md` v2.1 for full three-stream plan
 
 ## Repository
-- GitHub: ghostdwg/bid-dashboard — main branch
-- Local: c:/Users/jjcou/bid-dashboard
+- GitHub: ghostdwg/construction-dashboard — main branch
+- Local: c:/Users/jjcou/construction-dashboard
 - Stack: Next.js 16, React 19, TypeScript 5, Tailwind CSS v4, Prisma 7/SQLite, Claude API, Auth.js v5
 
 ## Repository Status
