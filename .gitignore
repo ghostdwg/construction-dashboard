@@ -48,4 +48,10 @@ next-env.d.ts
 
 # uploaded files
 /uploads/
+
+# sidecar python
+/sidecar/.venv/
+/sidecar/__pycache__/
+/sidecar/**/__pycache__/
+
 .claude/settings.local.json

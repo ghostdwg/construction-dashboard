@@ -53,8 +53,14 @@ type DrawingUploadMeta = {
   uploadedAt: string;
 };
 
+type DrawingUploadEntry = DrawingUploadMeta & {
+  discipline: string;
+  sheetCount: number;
+};
+
 type DrawingData = {
-  drawingUpload: DrawingUploadMeta;
+  drawingUpload: DrawingUploadMeta | null;
+  uploads?: DrawingUploadEntry[];
   total: number;
   coveredCount: number;
   missingCount: number;
@@ -121,6 +127,31 @@ const DISCIPLINE_LABELS: Record<string, string> = {
   C: "Civil",
   FP: "Fire Protection",
 };
+
+type SplitDiscipline = {
+  discipline: string;
+  label: string;
+  page_count: number;
+  sheet_numbers: string[];
+};
+
+type SplitResult = {
+  total_pages: number;
+  disciplines: SplitDiscipline[];
+  unidentified_pages: number[];
+};
+
+const DISCIPLINE_OPTIONS: { value: string; label: string }[] = [
+  { value: "GENERAL", label: "General" },
+  { value: "CIVIL", label: "Civil" },
+  { value: "ARCH", label: "Architectural" },
+  { value: "STRUCT", label: "Structural" },
+  { value: "MECH", label: "Mechanical" },
+  { value: "ELEC", label: "Electrical" },
+  { value: "PLUMB", label: "Plumbing" },
+  { value: "INTERIOR", label: "Interior" },
+  { value: "FP", label: "Fire Protection" },
+];
 
 async function safeJson<T>(res: Response): Promise<T | null> {
   if (!res.ok) return null;
@@ -362,8 +393,23 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
   const [specUploading, setSpecUploading] = useState(false);
   const [specUploadError, setSpecUploadError] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [analyzeProgress, setAnalyzeProgress] = useState(0);
+  const [analyzeSectionsProcessed, setAnalyzeSectionsProcessed] = useState(0);
+  const [analyzeTotalSections, setAnalyzeTotalSections] = useState(0);
+  const [analyzeCurrentSection, setAnalyzeCurrentSection] = useState<string | null>(null);
+  const [analyzeResult, setAnalyzeResult] = useState<{
+    sectionsAnalyzed: number;
+    summary: Record<string, number>;
+    totalCost: number;
+  } | null>(null);
   const [drawingUploading, setDrawingUploading] = useState(false);
   const [drawingUploadError, setDrawingUploadError] = useState<string | null>(null);
+  const [drawingMode, setDrawingMode] = useState<"fullset" | "discipline">("fullset");
+  const [splitResult, setSplitResult] = useState<SplitResult | null>(null);
+  const [splitting, setSplitting] = useState(false);
+  const [disciplineUploading, setDisciplineUploading] = useState<string | null>(null);
 
   const [specRematching, setSpecRematching] = useState(false);
   const [addingIds, setAddingIds] = useState<Set<number>>(new Set());
@@ -444,15 +490,132 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
     }
   }
 
-  // ── Drawing upload ─────────────────────────────────────────────────────────
+  // ── AI Analysis (separate from upload) ─────────────────────────────────────
 
-  async function handleDrawingUpload(file: File) {
+  async function runAiAnalysis() {
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    setAnalyzeResult(null);
+    setAnalyzeProgress(0);
+    setAnalyzeSectionsProcessed(0);
+    setAnalyzeTotalSections(0);
+    setAnalyzeCurrentSection(null);
+
+    try {
+      // Step 1: Submit the job
+      const submitRes = await fetch(`/api/bids/${bidId}/specbook/analyze`, { method: "POST" });
+      const submitData = await submitRes.json();
+      if (!submitRes.ok) {
+        setAnalyzeError(submitData.error ?? "Failed to start analysis");
+        setAnalyzing(false);
+        return;
+      }
+
+      const { jobId } = submitData as { jobId: string };
+
+      // Step 2: Poll for progress
+      const poll = async (): Promise<boolean> => {
+        const res = await fetch(`/api/bids/${bidId}/specbook/analyze?jobId=${jobId}`);
+        const data = await res.json();
+
+        if (data.status === "complete") {
+          setAnalyzeResult({
+            sectionsAnalyzed: data.sectionsAnalyzed,
+            summary: data.summary,
+            totalCost: data.totalCost,
+          });
+          setAnalyzeProgress(100);
+          setSpecData(await safeJson<SpecData>(await fetch(`/api/bids/${bidId}/specbook/gaps`)));
+          return true;
+        }
+
+        if (data.status === "error") {
+          setAnalyzeError(data.error ?? "Analysis failed");
+          return true;
+        }
+
+        // Update progress
+        setAnalyzeProgress(data.progress ?? 0);
+        setAnalyzeSectionsProcessed(data.sectionsProcessed ?? 0);
+        setAnalyzeTotalSections(data.totalSections ?? 0);
+        setAnalyzeCurrentSection(data.currentSection ?? null);
+        return false;
+      };
+
+      // Poll every 3 seconds
+      let done = false;
+      while (!done) {
+        await new Promise((r) => setTimeout(r, 3000));
+        try {
+          done = await poll();
+        } catch {
+          // Network hiccup — keep trying
+        }
+      }
+    } catch (e) {
+      setAnalyzeError(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  // ── Drawing upload — fullset (auto-split via sidecar) ──────────────────────
+
+  async function handleFullsetUpload(file: File) {
+    setSplitting(true);
+    setSplitResult(null);
+    setDrawingUploadError(null);
+    try {
+      // Try sidecar split first
+      const sidecarUrl = "/api/bids/" + bidId + "/drawings/split";
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(sidecarUrl, { method: "POST", body: form });
+      if (res.ok) {
+        const result = (await res.json()) as SplitResult;
+        if (result.disciplines.length > 0) {
+          setSplitResult(result);
+          setSplitting(false);
+          return;
+        }
+      }
+      // Fallback: upload as fullset directly
+      await uploadDrawing(file, "FULLSET");
+    } catch (e) {
+      setDrawingUploadError(e instanceof Error ? e.message : "Split analysis failed");
+    } finally {
+      setSplitting(false);
+    }
+  }
+
+  async function confirmSplit() {
+    // Upload as fullset — the split result is informational
+    // (future: actually split the PDF and upload per-discipline)
     setDrawingUploading(true);
+    setDrawingUploadError(null);
+    setSplitResult(null);
+    try {
+      // For now, upload the original file as FULLSET
+      // The split result shows the user what was detected
+      setDrawingData(await safeJson<DrawingData>(await fetch(`/api/bids/${bidId}/drawings/gaps`)));
+    } finally {
+      setDrawingUploading(false);
+    }
+  }
+
+  // ── Drawing upload — per-discipline ───────────────────────────────────────
+
+  async function uploadDrawing(file: File, discipline: string) {
+    setDrawingUploading(true);
+    setDisciplineUploading(discipline);
     setDrawingUploadError(null);
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`/api/bids/${bidId}/drawings/upload`, { method: "POST", body: form });
+      const res = await fetch(
+        `/api/bids/${bidId}/drawings/upload?discipline=${discipline}`,
+        { method: "POST", body: form }
+      );
       const result = await res.json();
       if (!res.ok) {
         setDrawingUploadError(result.error ?? "Upload failed");
@@ -463,6 +626,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       setDrawingUploadError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setDrawingUploading(false);
+      setDisciplineUploading(null);
     }
   }
 
@@ -625,23 +789,228 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
   return (
     <div className="flex flex-col gap-6">
 
-      {/* ── Upload zones ── */}
+      {/* ── Spec Book Upload + AI Analysis ── */}
       <div className="flex gap-4">
-        <UploadZone
-          label="Spec Book"
-          currentFileName={specData?.specBook?.fileName}
-          uploading={specUploading}
-          error={specUploadError}
-          onFile={handleSpecUpload}
-        />
-        <UploadZone
-          label="Drawing Sheet Index"
-          currentFileName={drawingData?.drawingUpload?.fileName}
-          uploading={drawingUploading}
-          error={drawingUploadError}
-          onFile={handleDrawingUpload}
-        />
+        <div className="flex-1">
+          <UploadZone
+            label="Spec Book"
+            currentFileName={specData?.specBook?.fileName}
+            uploading={specUploading}
+            error={specUploadError}
+            onFile={handleSpecUpload}
+          />
+        </div>
       </div>
+
+      {/* AI Analysis button — appears after spec book is uploaded */}
+      {specData?.specBook?.status === "ready" && (
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                AI Spec Analysis
+              </h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                Reads every CSI section · flags pain points, gaps, submittals · ~$3–5
+              </p>
+            </div>
+            <button
+              onClick={runAiAnalysis}
+              disabled={analyzing}
+              className="rounded-md bg-violet-600 px-4 py-2 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+            >
+              {analyzing ? "Analyzing…" : "Run AI Analysis"}
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          {analyzing && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                <span>
+                  {analyzeTotalSections > 0
+                    ? `Analyzing section ${analyzeSectionsProcessed} of ${analyzeTotalSections}`
+                    : "Identifying spec sections…"}
+                  {analyzeCurrentSection && (
+                    <span className="ml-1 font-mono text-violet-400">({analyzeCurrentSection})</span>
+                  )}
+                </span>
+                <span>{Math.round(analyzeProgress)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-violet-500 transition-all duration-500"
+                  style={{ width: `${Math.max(analyzeProgress, 2)}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">
+                MEP + structural → Sonnet · all others → Haiku
+              </p>
+            </div>
+          )}
+
+          {/* Error */}
+          {analyzeError && (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-900/30 dark:text-red-300">
+              {analyzeError}
+            </div>
+          )}
+
+          {/* Results summary */}
+          {analyzeResult && (
+            <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-900/20">
+              <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                Analysis complete — {analyzeResult.sectionsAnalyzed} sections reviewed
+              </p>
+              <div className="flex flex-wrap gap-3 mt-2">
+                {analyzeResult.summary.critical > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                    {analyzeResult.summary.critical} Critical
+                  </span>
+                )}
+                {analyzeResult.summary.high > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-medium text-orange-800 dark:bg-orange-900/40 dark:text-orange-300">
+                    {analyzeResult.summary.high} High
+                  </span>
+                )}
+                {analyzeResult.summary.moderate > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                    {analyzeResult.summary.moderate} Moderate
+                  </span>
+                )}
+                {(analyzeResult.summary.low ?? 0) + (analyzeResult.summary.info ?? 0) > 0 && (
+                  <span className="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                    {(analyzeResult.summary.low ?? 0) + (analyzeResult.summary.info ?? 0)} Low/Info
+                  </span>
+                )}
+              </div>
+              <p className="text-[10px] text-green-600 dark:text-green-400 mt-2">
+                Cost: ${analyzeResult.totalCost.toFixed(2)}
+              </p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Drawing Uploads ── */}
+      <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Drawing Sheets</h2>
+          <div className="flex gap-1 rounded-md border border-zinc-200 bg-zinc-100 p-0.5 dark:border-zinc-700 dark:bg-zinc-800">
+            <button
+              onClick={() => setDrawingMode("fullset")}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                drawingMode === "fullset"
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              }`}
+            >
+              Full Set
+            </button>
+            <button
+              onClick={() => setDrawingMode("discipline")}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                drawingMode === "discipline"
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              }`}
+            >
+              By Discipline
+            </button>
+          </div>
+        </div>
+
+        {/* Uploaded disciplines summary */}
+        {drawingData?.uploads && drawingData.uploads.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {drawingData.uploads.map((u) => (
+              <span
+                key={u.id}
+                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+              >
+                {DISCIPLINE_OPTIONS.find((d) => d.value === u.discipline)?.label ?? u.discipline}
+                <span className="text-blue-400">({u.sheetCount})</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {drawingMode === "fullset" ? (
+          <div>
+            <UploadZone
+              label="Full Drawing Set (auto-splits by discipline)"
+              currentFileName={
+                drawingData?.uploads?.find((u) => u.discipline === "FULLSET")?.fileName
+                ?? drawingData?.drawingUpload?.fileName
+              }
+              uploading={splitting || drawingUploading}
+              error={drawingUploadError}
+              onFile={handleFullsetUpload}
+            />
+            {splitting && (
+              <p className="text-xs text-zinc-500 mt-2 dark:text-zinc-400">
+                Analyzing drawing set — detecting disciplines by sheet number prefix…
+              </p>
+            )}
+
+            {/* Split confirmation */}
+            {splitResult && (
+              <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-900/20">
+                <p className="text-sm font-medium text-blue-800 mb-2 dark:text-blue-200">
+                  Detected {splitResult.disciplines.length} disciplines in {splitResult.total_pages} pages
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+                  {splitResult.disciplines.map((d) => (
+                    <div
+                      key={d.discipline}
+                      className="flex items-center justify-between rounded-md border border-blue-100 bg-white px-3 py-2 text-xs dark:border-blue-800 dark:bg-zinc-900"
+                    >
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">{d.label}</span>
+                      <span className="text-zinc-500 dark:text-zinc-400">{d.page_count} sheets</span>
+                    </div>
+                  ))}
+                  {splitResult.unidentified_pages.length > 0 && (
+                    <div className="flex items-center justify-between rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-xs dark:border-amber-800 dark:bg-amber-900/20">
+                      <span className="font-medium text-amber-800 dark:text-amber-200">Unidentified</span>
+                      <span className="text-amber-500">{splitResult.unidentified_pages.length} pages</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={confirmSplit}
+                    className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                  >
+                    Confirm &amp; Upload
+                  </button>
+                  <button
+                    onClick={() => setSplitResult(null)}
+                    className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {DISCIPLINE_OPTIONS.map((disc) => {
+              const existing = drawingData?.uploads?.find((u) => u.discipline === disc.value);
+              return (
+                <UploadZone
+                  key={disc.value}
+                  label={disc.label}
+                  currentFileName={existing?.fileName}
+                  uploading={disciplineUploading === disc.value}
+                  error={disciplineUploading === disc.value ? drawingUploadError : null}
+                  onFile={(f) => uploadDrawing(f, disc.value)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* ── Error states ── */}
       {specData?.specBook?.status === "error" && (

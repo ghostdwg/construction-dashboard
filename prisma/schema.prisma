@@ -582,12 +582,20 @@ model SpecSection {
   covered        Boolean  @default(false)
   createdAt      DateTime @default(now())
 
+  // Phase 5A: AI extraction results (JSON blob from Claude analysis)
+  // Contains: submittals, warranties, training, testing, closeout, products, performance
+  aiExtractions  String?
+
   specBook       SpecBook        @relation(fields: [specBookId], references: [id], onDelete: Cascade)
   trade          Trade?          @relation("SpecSectionTrade", fields: [tradeId], references: [id])
   matchedTrade   Trade?          @relation("MatchedSpecSection", fields: [matchedTradeId], references: [id])
   submittalItems SubmittalItem[]
 }
 
+// Drawing uploads support two modes:
+//   FULLSET  — one PDF containing all disciplines (legacy behavior)
+//   Per-discipline — one PDF per discipline (ARCH, CIVIL, STRUCT, MECH, ELEC, PLUMB, INTERIOR, FP, GENERAL)
+// Multiple uploads per bid are allowed. Re-uploading the same discipline replaces it.
 model DrawingUpload {
   id         Int      @id @default(autoincrement())
   bidId      Int
@@ -596,8 +604,14 @@ model DrawingUpload {
   uploadedAt DateTime @default(now())
   status     String   @default("processing")
 
+  // Discipline tag: FULLSET | GENERAL | CIVIL | ARCH | STRUCT | MECH | ELEC | PLUMB | INTERIOR | FP
+  // Validated in API, not enum for SQLite friendliness.
+  discipline String   @default("FULLSET")
+
   bid    Bid            @relation(fields: [bidId], references: [id])
   sheets DrawingSheet[]
+
+  @@index([bidId, discipline])
 }
 
 model AddendumUpload {
