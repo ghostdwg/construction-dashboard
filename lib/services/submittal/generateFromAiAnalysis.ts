@@ -196,18 +196,11 @@ export async function generateSubmittalsFromAiAnalysis(
     };
   }
 
-  // Map trade → bidTrade so we can set bidTradeId on the submittal
-  const bidTrades = await prisma.bidTrade.findMany({
-    where: { bidId },
-    select: { id: true, tradeId: true },
-  });
+  const [bidTrades, existing] = await Promise.all([
+    prisma.bidTrade.findMany({ where: { bidId }, select: { id: true, tradeId: true } }),
+    prisma.submittalItem.findMany({ where: { bidId }, select: { specSectionId: true, type: true, title: true } }),
+  ]);
   const tradeToBidTrade = new Map(bidTrades.map((bt) => [bt.tradeId, bt.id]));
-
-  // Index existing submittals for dedupe
-  const existing = await prisma.submittalItem.findMany({
-    where: { bidId },
-    select: { specSectionId: true, type: true, title: true },
-  });
   const existingKey = new Set(
     existing.map((s) => `${s.specSectionId}|${s.type}|${s.title.toLowerCase()}`)
   );
@@ -330,58 +323,58 @@ export async function generateSubmittalsFromAiAnalysis(
     return num;
   };
 
-  // Create any missing packages
-  for (const tradeId of tradesNeedingPackages) {
-    if (packageByTradeId.has(tradeId)) continue;
-    const name = tradeId === null ? "Unassigned" : bidTradeNameById.get(tradeId) ?? "Unassigned";
-    const pkg = await prisma.submittalPackage.create({
-      data: {
-        bidId,
-        bidTradeId: tradeId,
-        packageNumber: allocatePackageNumber(),
-        name,
-        status: "DRAFT",
-      },
-    });
-    packageByTradeId.set(tradeId, pkg.id);
+  // Create any missing packages in parallel
+  const missingPackages = Array.from(tradesNeedingPackages).filter(
+    (tradeId) => !packageByTradeId.has(tradeId)
+  );
+  if (missingPackages.length > 0) {
+    const newPkgs = await Promise.all(
+      missingPackages.map((tradeId) => {
+        const name = tradeId === null ? "Unassigned" : bidTradeNameById.get(tradeId) ?? "Unassigned";
+        return prisma.submittalPackage.create({
+          data: { bidId, bidTradeId: tradeId, packageNumber: allocatePackageNumber(), name, status: "DRAFT" },
+        });
+      })
+    );
+    for (const pkg of newPkgs) packageByTradeId.set(pkg.bidTradeId, pkg.id);
   }
 
-  // Create one row per bucket
+  // Build all items, filter dupes, then batch-insert
+  const itemsToCreate: {
+    bidId: number; bidTradeId: number | null; packageId: number | null;
+    specSectionId: number; type: string; title: string; description: string;
+    source: string; status: string; notes: string | null;
+  }[] = [];
+
   for (const bucket of buckets.values()) {
     const title = deriveTitle(bucket.descriptions[0], bucket.sectionTitle, bucket.type);
     const key = `${bucket.sectionId}|${bucket.type}|${title.toLowerCase()}`;
+    if (existingKey.has(key)) { skipped++; continue; }
 
-    if (existingKey.has(key)) {
-      skipped++;
-      continue;
-    }
-
-    // Merged description: first item as-is, or bulleted list if >1
     const mergedDescription =
       bucket.descriptions.length === 1
         ? bucket.descriptions[0]
         : bucket.descriptions.map((d) => `• ${d}`).join("\n");
 
-    const packageId = packageByTradeId.get(bucket.bidTradeId) ?? null;
-
-    await prisma.submittalItem.create({
-      data: {
-        bidId,
-        bidTradeId: bucket.bidTradeId,
-        packageId,
-        specSectionId: bucket.sectionId,
-        type: bucket.type,
-        title,
-        description: mergedDescription,
-        source: "ai_extraction",
-        status: "PENDING",
-        notes: bucket.engineerReview ? "Engineer review required" : null,
-      },
+    itemsToCreate.push({
+      bidId,
+      bidTradeId: bucket.bidTradeId,
+      packageId: packageByTradeId.get(bucket.bidTradeId) ?? null,
+      specSectionId: bucket.sectionId,
+      type: bucket.type,
+      title,
+      description: mergedDescription,
+      source: "ai_extraction",
+      status: "PENDING",
+      notes: bucket.engineerReview ? "Engineer review required" : null,
     });
-    existingKey.add(key);
-    created++;
     if (bucket.bidTradeId) bidTradesLinked++;
   }
+
+  if (itemsToCreate.length > 0) {
+    await prisma.submittalItem.createMany({ data: itemsToCreate });
+  }
+  created = itemsToCreate.length;
 
   return {
     sectionsScanned: specBook.sections.length,

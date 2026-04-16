@@ -46,14 +46,19 @@ export async function GET(
     return true;
   });
 
+  const coveredSections: typeof validSections = [];
+  const missingSections: typeof validSections = [];
+  const unknownSections: typeof validSections = [];
+  const analyzedSections: typeof validSections = [];
+
+  for (const s of validSections) {
+    if (s.tradeId !== null) coveredSections.push(s);
+    else if (s.matchedTradeId !== null) missingSections.push(s);
+    else unknownSections.push(s);
+    if (s.aiExtractions) analyzedSections.push(s);
+  }
+
   const total = validSections.length;
-  const coveredSections = validSections.filter((s) => s.tradeId !== null);
-  const missingSections = validSections.filter(
-    (s) => s.tradeId === null && s.matchedTradeId !== null
-  );
-  const unknownSections = validSections.filter(
-    (s) => s.tradeId === null && s.matchedTradeId === null
-  );
 
   // Clean up merged TOC titles — find earliest truncation point
   function cleanTitle(raw: string): string {
@@ -98,7 +103,6 @@ export async function GET(
   });
 
   // AI analysis summary
-  const analyzedSections = validSections.filter((s) => s.aiExtractions);
   const severityCounts: Record<string, number> = {};
   for (const s of analyzedSections) {
     try {

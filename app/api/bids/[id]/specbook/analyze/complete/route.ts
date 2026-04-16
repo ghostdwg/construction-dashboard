@@ -65,19 +65,20 @@ export async function POST(
   });
   const byCsi = new Map(existing.map((s) => [s.csiNumber.replace(/\s+/g, ""), s.id]));
 
-  let updated = 0;
-  for (const sec of payload.result.sections) {
-    const key = sec.csi.replace(/\s+/g, "");
-    const sectionId = byCsi.get(key);
-    if (!sectionId) continue;
-    await prisma.specSection.update({
-      where: { id: sectionId },
-      data: {
-        aiExtractions: sec.analysis ? JSON.stringify(sec.analysis) : null,
-      },
-    });
-    updated++;
-  }
+  const toUpdate = payload.result.sections
+    .map((sec) => ({ sectionId: byCsi.get(sec.csi.replace(/\s+/g, "")), analysis: sec.analysis }))
+    .filter((u): u is { sectionId: number; analysis: typeof u.analysis } => u.sectionId !== undefined);
+
+  await Promise.all(
+    toUpdate.map((u) =>
+      prisma.specSection.update({
+        where: { id: u.sectionId },
+        data: { aiExtractions: u.analysis ? JSON.stringify(u.analysis) : null },
+      })
+    )
+  );
+
+  const updated = toUpdate.length;
 
   console.log(
     `[analyze/complete] job ${payload.job_id}: ${updated}/${payload.result.section_count} ` +
