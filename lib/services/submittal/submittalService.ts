@@ -24,6 +24,8 @@ export type SubmittalRow = {
   tradeCsiCode: string | null;
   specSectionId: number | null;
   specSectionNumber: string | null;
+  packageId: number | null;
+  packageNumber: string | null;
 
   submittalNumber: string | null;
   title: string;
@@ -84,6 +86,7 @@ export async function loadSubmittalsForBid(
       bidTrade: { include: { trade: true } },
       specSection: { select: { id: true, csiNumber: true, aiExtractions: true } },
       responsibleSub: { select: { id: true, company: true } },
+      package: { select: { id: true, packageNumber: true } },
     },
     orderBy: [{ submittalNumber: "asc" }, { id: "asc" }],
   });
@@ -112,6 +115,8 @@ export async function loadSubmittalsForBid(
     tradeCsiCode: it.bidTrade?.trade.csiCode ?? null,
     specSectionId: it.specSectionId,
     specSectionNumber: it.specSection?.csiNumber ?? null,
+    packageId: it.packageId,
+    packageNumber: it.package?.packageNumber ?? null,
     submittalNumber: it.submittalNumber,
     title: it.title,
     description: it.description,
@@ -167,6 +172,7 @@ export type SubmittalCreateInput = {
   submittalNumber?: string | null;
   bidTradeId?: number | null;
   specSectionId?: number | null;
+  packageId?: number | null;
   responsibleSubId?: number | null;
   reviewer?: string | null;
   requiredBy?: string | null;
@@ -249,6 +255,7 @@ export async function updateSubmittal(
   if ("submittalNumber" in input) data.submittalNumber = input.submittalNumber;
   if ("bidTradeId" in input) data.bidTradeId = input.bidTradeId;
   if ("specSectionId" in input) data.specSectionId = input.specSectionId;
+  if ("packageId" in input) data.packageId = input.packageId;
   if ("responsibleSubId" in input) data.responsibleSubId = input.responsibleSubId;
   if ("reviewer" in input) data.reviewer = input.reviewer;
   if ("notes" in input) data.notes = input.notes;

@@ -77,6 +77,7 @@ export async function POST(
     const items = await loadSubmittalsForBid(bidId);
 
     const header = [
+      "Package",
       "Number",
       "Title",
       "Spec Section",
@@ -93,6 +94,7 @@ export async function POST(
     for (const item of items) {
       rows.push(
         toCsvRow([
+          item.packageNumber,
           item.submittalNumber,
           item.title,
           item.specSectionNumber,

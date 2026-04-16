@@ -1,19 +1,15 @@
 "use client";
 
-// Module H3 — Submittal Register UI
+// Phase 5G-3.5/3.6 — Package-grouped Submittal Register
 //
-// Rendered as a new tab "Submittals" on the bid detail page (position 11).
-// Features:
-//   - Rollup card (total, by status, overdue)
-//   - Filters (status, type)
-//   - Seed from specs button (runs regex extraction)
-//   - Manually add submittal form
-//   - Inline-editable row status dropdown
-//   - Expand row → full detail edit
-//   - Export to Procore CSV
-//   - Delete row
+// Replaces the flat table (Module H3) with collapsible trade-based packages.
+// Data comes from GET /api/bids/[id]/submittals/packages which returns packages
+// with their items + an unassigned bucket + an overall rollup.
+//
+// Inline editing: click a Status badge or Due date cell to edit in place.
+// Full field editing is in the expand-row detail editor (unchanged from H3).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -66,49 +62,70 @@ const STATUS_LABELS: Record<SubmittalStatus, string> = {
 };
 
 const STATUS_STYLES: Record<SubmittalStatus, string> = {
-  PENDING:           "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
-  REQUESTED:         "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
-  RECEIVED:          "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  UNDER_REVIEW:      "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  APPROVED:          "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  APPROVED_AS_NOTED: "bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300",
-  REJECTED:          "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  RESUBMIT:          "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  PENDING: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
+  REQUESTED: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  RECEIVED: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  UNDER_REVIEW:
+    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  APPROVED:
+    "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  APPROVED_AS_NOTED:
+    "bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300",
+  REJECTED: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  RESUBMIT:
+    "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
 };
 
-type SubmittalRow = {
+const PKG_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Draft",
+  IN_PROGRESS: "In Progress",
+  SUBMITTED: "Submitted",
+  APPROVED: "Approved",
+  CLOSED: "Closed",
+};
+
+type PackageItemRow = {
   id: number;
-  bidTradeId: number | null;
-  tradeName: string | null;
-  tradeCsiCode: string | null;
-  specSectionId: number | null;
-  specSectionNumber: string | null;
   submittalNumber: string | null;
   title: string;
-  description: string | null;
-  type: SubmittalType;
-  status: SubmittalStatus;
+  type: string;
+  status: string;
   requiredBy: string | null;
-  requestedAt: string | null;
-  receivedAt: string | null;
-  reviewedAt: string | null;
-  approvedAt: string | null;
+  specSectionNumber: string | null;
   responsibleSubId: number | null;
   responsibleSubName: string | null;
   reviewer: string | null;
   notes: string | null;
+  description: string | null;
   isOverdue: boolean;
   severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW" | "INFO" | null;
+  tradeName?: string | null;
 };
 
-type Rollup = {
+type PackageRow = {
+  id: number;
+  packageNumber: string;
+  name: string;
+  bidTradeId: number | null;
+  tradeName: string | null;
+  status: string;
+  responsibleContractor: string | null;
+  submittalManager: string | null;
   total: number;
-  byStatus: Record<SubmittalStatus, number>;
-  byType: Record<SubmittalType, number>;
+  approved: number;
   overdue: number;
+  items: PackageItemRow[];
 };
 
-type GenerateFromAiResult = {
+type ApiRollup = {
+  total: number;
+  open: number;
+  approved: number;
+  overdue: number;
+  critical: number;
+};
+
+type GenerateResult = {
   sectionsScanned: number;
   sectionsWithExtractions: number;
   submittalsFound: number;
@@ -121,6 +138,8 @@ type GenerateFromAiResult = {
   previousAutoItemsRemoved: number;
 };
 
+type FilterChip = "all" | "open" | "overdue" | "critical";
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null): string {
@@ -128,51 +147,71 @@ function fmtDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+function toInputDate(iso: string | null): string {
+  if (!iso) return "";
+  return iso.slice(0, 10);
+}
+
+const isTerminal = (s: string) => s === "APPROVED" || s === "APPROVED_AS_NOTED";
+
+// ── Shared prop type for item grid ─────────────────────────────────────────
+
+type SharedItemProps = {
+  bidId: number;
+  expandedId: number | null;
+  editingCell: {
+    itemId: number;
+    field: "status" | "requiredBy";
+  } | null;
+  onToggleExpand: (id: number) => void;
+  onEditCell: (
+    cell: { itemId: number; field: "status" | "requiredBy" } | null
+  ) => void;
+  onPatch: (itemId: number, patch: Record<string, unknown>) => Promise<void>;
+  onDelete: (itemId: number) => void;
+  onEdited: () => void;
+};
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function SubmittalsTab({ bidId }: { bidId: number }) {
-  const [items, setItems] = useState<SubmittalRow[] | null>(null);
-  const [rollup, setRollup] = useState<Rollup | null>(null);
+  const [packages, setPackages] = useState<PackageRow[]>([]);
+  const [unassigned, setUnassigned] = useState<PackageItemRow[]>([]);
+  const [rollup, setRollup] = useState<ApiRollup | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [filter, setFilter] = useState<FilterChip>("all");
+  const [collapsedPkgs, setCollapsedPkgs] = useState<Set<number>>(new Set());
   const [expandedId, setExpandedId] = useState<number | null>(null);
-
-  // View group — client-side filter across type categories
-  type ViewGroup = "all" | "active" | "closeout";
-  const [view, setView] = useState<ViewGroup>("all");
-
-  const VIEW_TYPES: Record<ViewGroup, SubmittalType[] | null> = {
-    all: null,
-    active: ["PRODUCT_DATA", "SHOP_DRAWING", "SAMPLE", "MOCKUP", "OTHER"],
-    closeout: ["WARRANTY", "O_AND_M"],
-  };
-
+  const [editingCell, setEditingCell] = useState<{
+    itemId: number;
+    field: "status" | "requiredBy";
+  } | null>(null);
   const [generatingFromAi, setGeneratingFromAi] = useState(false);
-  const [aiBanner, setAiBanner] = useState<GenerateFromAiResult | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [aiBanner, setAiBanner] = useState<GenerateResult | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddPackageForm, setShowAddPackageForm] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
+    setLoading(true);
     (async () => {
       try {
-        const params = new URLSearchParams();
-        if (statusFilter) params.set("status", statusFilter);
-        if (typeFilter) params.set("type", typeFilter);
-        const qs = params.toString() ? `?${params.toString()}` : "";
-        const res = await fetch(`/api/bids/${bidId}/submittals${qs}`, { signal: controller.signal });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error ?? `HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as { items: SubmittalRow[]; rollup: Rollup };
+        const res = await fetch(`/api/bids/${bidId}/submittals/packages`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as {
+          packages: PackageRow[];
+          unassigned: PackageItemRow[];
+          rollup: ApiRollup;
+        };
         if (cancelled) return;
-        setItems(data.items);
+        setPackages(data.packages);
+        setUnassigned(data.unassigned);
         setRollup(data.rollup);
         setError(null);
       } catch (e) {
@@ -187,21 +226,23 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
       cancelled = true;
       controller.abort();
     };
-  }, [bidId, statusFilter, typeFilter, reloadTick]);
+  }, [bidId, reloadTick]);
+
+  const reload = () => setReloadTick((t) => t + 1);
 
   async function runGenerateFromAi() {
     setGeneratingFromAi(true);
     setAiBanner(null);
     setError(null);
     try {
-      const res = await fetch(`/api/bids/${bidId}/submittals/generate-from-specs`, { method: "POST" });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? `HTTP ${res.status}`);
-      }
-      const data = (await res.json()) as GenerateFromAiResult;
+      const res = await fetch(
+        `/api/bids/${bidId}/submittals/generate-from-specs`,
+        { method: "POST" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as GenerateResult;
       setAiBanner(data);
-      setReloadTick((t) => t + 1);
+      reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -213,10 +254,10 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     setExporting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/bids/${bidId}/submittals/export`, { method: "POST" });
-      if (!res.ok) {
-        throw new Error(`Export failed: HTTP ${res.status}`);
-      }
+      const res = await fetch(`/api/bids/${bidId}/submittals/export`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`);
       const blob = await res.blob();
       const disposition = res.headers.get("Content-Disposition") ?? "";
       const match = disposition.match(/filename="([^"]+)"/);
@@ -234,45 +275,113 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     }
   }
 
-  async function updateStatus(id: number, status: SubmittalStatus) {
-    setError(null);
+  async function patchItem(
+    itemId: number,
+    patch: Record<string, unknown>
+  ): Promise<void> {
+    const res = await fetch(`/api/bids/${bidId}/submittals/${itemId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error ?? `HTTP ${res.status}`);
+    }
+    reload();
+  }
+
+  async function deleteItem(itemId: number) {
+    if (!confirm("Delete this submittal?")) return;
     try {
-      const res = await fetch(`/api/bids/${bidId}/submittals/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+      const res = await fetch(`/api/bids/${bidId}/submittals/${itemId}`, {
+        method: "DELETE",
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? `HTTP ${res.status}`);
-      }
-      setReloadTick((t) => t + 1);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }
 
-  async function deleteItem(id: number) {
-    if (!confirm("Delete this submittal?")) return;
-    setError(null);
+  async function deletePackage(pkgId: number) {
+    if (!confirm("Delete this package? Items will become unassigned.")) return;
     try {
-      const res = await fetch(`/api/bids/${bidId}/submittals/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? `HTTP ${res.status}`);
-      }
-      setReloadTick((t) => t + 1);
+      const res = await fetch(
+        `/api/bids/${bidId}/submittals/packages/${pkgId}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  async function renamePackage(pkgId: number, name: string) {
+    try {
+      const res = await fetch(
+        `/api/bids/${bidId}/submittals/packages/${pkgId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function filterItems(items: PackageItemRow[]): PackageItemRow[] {
+    if (filter === "open") return items.filter((i) => !isTerminal(i.status));
+    if (filter === "overdue") return items.filter((i) => i.isOverdue);
+    if (filter === "critical") return items.filter((i) => i.severity === "CRITICAL");
+    return items;
+  }
+
+  function toggleCollapse(key: number) {
+    setCollapsedPkgs((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   if (loading) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading submittal register…</p>;
+    return (
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        Loading submittal register…
+      </p>
+    );
   }
 
+  const totalItems = rollup?.total ?? 0;
+
+  const sharedItemProps: SharedItemProps = {
+    bidId,
+    expandedId,
+    editingCell,
+    onToggleExpand: (id) =>
+      setExpandedId(expandedId === id ? null : id),
+    onEditCell: setEditingCell,
+    onPatch: async (itemId, patch) => {
+      try {
+        await patchItem(itemId, patch);
+        setEditingCell(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    onDelete: deleteItem,
+    onEdited: reload,
+  };
+
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {/* ── Header + Actions ── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -280,7 +389,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             Submittal Register
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5 dark:text-zinc-400">
-            Track submittals through the full lifecycle. Seed from spec book, then manage manually.
+            Package-grouped by trade. Click status or due date to edit inline.
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -288,201 +397,529 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             onClick={runGenerateFromAi}
             disabled={generatingFromAi}
             className="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-            title="Regenerates the register from AI Spec Analysis. Replaces all auto-generated items; manual entries are preserved."
+            title="Regenerates register from AI Spec Analysis. Replaces auto-generated items; manual entries preserved."
           >
-            {generatingFromAi ? "Generating…" : "Generate from AI Analysis"}
+            {generatingFromAi ? "Generating…" : "Generate from AI"}
+          </button>
+          <button
+            onClick={() => setShowAddPackageForm(!showAddPackageForm)}
+            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+          >
+            + Package
           </button>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
             className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
           >
-            {showAddForm ? "Cancel Add" : "+ Add Submittal"}
+            {showAddForm ? "Cancel" : "+ Item"}
           </button>
           <button
             onClick={runExport}
-            disabled={exporting || !items || items.length === 0}
+            disabled={exporting || totalItems === 0}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {exporting ? "Exporting…" : "Export Procore CSV"}
+            {exporting ? "Exporting…" : "Export CSV"}
           </button>
         </div>
       </div>
 
-      {/* ── Error banner ── */}
+      {/* ── Banners ── */}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/30 dark:text-red-300">
           {error}
         </div>
       )}
-
-      {/* ── AI generation result banner ── */}
       {aiBanner && (
         <div className="rounded-md border border-purple-200 bg-purple-50 px-4 py-2 text-sm text-purple-700 dark:border-purple-900 dark:bg-purple-900/30 dark:text-purple-300">
-          AI analysis read {aiBanner.sectionsWithExtractions} sections, found{" "}
+          AI read {aiBanner.sectionsWithExtractions} sections, found{" "}
           <strong>{aiBanner.submittalsFound}</strong> requirements.
-          {aiBanner.previousAutoItemsRemoved > 0 && ` Replaced ${aiBanner.previousAutoItemsRemoved} prior auto-generated items.`}
-          {" "}Created <strong>{aiBanner.created}</strong> items
-          {aiBanner.skippedProcedural > 0 && `, skipped ${aiBanner.skippedProcedural} Div 00/01 (procedural)`}
-          {aiBanner.skippedBoilerplate > 0 && `, skipped ${aiBanner.skippedBoilerplate} generic boilerplate`}
-          {aiBanner.deferredToCloseout > 0 && `, deferred ${aiBanner.deferredToCloseout} warranty/O&M/LEED to closeout register`}
-          {aiBanner.bidTradesLinked > 0 && ` · ${aiBanner.bidTradesLinked} auto-linked to bid trades`}.
+          {aiBanner.previousAutoItemsRemoved > 0 &&
+            ` Replaced ${aiBanner.previousAutoItemsRemoved} prior items.`}{" "}
+          Created <strong>{aiBanner.created}</strong> items
+          {aiBanner.skippedProcedural > 0 &&
+            `, skipped ${aiBanner.skippedProcedural} Div 00/01`}
+          {aiBanner.skippedBoilerplate > 0 &&
+            `, ${aiBanner.skippedBoilerplate} boilerplate`}
+          {aiBanner.deferredToCloseout > 0 &&
+            `, ${aiBanner.deferredToCloseout} deferred to closeout`}
+          {aiBanner.bidTradesLinked > 0 &&
+            ` · ${aiBanner.bidTradesLinked} linked to trades`}.
         </div>
       )}
 
-      {/* ── Rollup card ── */}
-      {rollup && (
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <RollupStat label="Total" value={rollup.total} />
-            <RollupStat label="Pending" value={rollup.byStatus.PENDING + rollup.byStatus.REQUESTED} />
-            <RollupStat label="In Review" value={rollup.byStatus.RECEIVED + rollup.byStatus.UNDER_REVIEW} />
-            <RollupStat
-              label="Approved"
-              value={rollup.byStatus.APPROVED + rollup.byStatus.APPROVED_AS_NOTED}
-            />
-            <RollupStat label="Overdue" value={rollup.overdue} tone={rollup.overdue > 0 ? "warn" : undefined} />
-          </div>
-        </section>
+      {/* ── Add Package form ── */}
+      {showAddPackageForm && (
+        <AddPackageForm
+          bidId={bidId}
+          onCreated={() => {
+            setShowAddPackageForm(false);
+            reload();
+          }}
+          onCancel={() => setShowAddPackageForm(false)}
+        />
       )}
 
-      {/* ── Add form ── */}
+      {/* ── Add Item form ── */}
       {showAddForm && (
         <AddSubmittalForm
           bidId={bidId}
           onCreated={() => {
             setShowAddForm(false);
-            setReloadTick((t) => t + 1);
+            reload();
           }}
         />
       )}
 
-      {/* ── View chips (group by type) ── */}
-      <div className="flex gap-2 items-center flex-wrap">
-        {([
-          ["all", "All"],
-          ["active", "Active Review"],
-          ["closeout", "Closeout"],
-        ] as const).map(([key, label]) => {
-          const isActive = view === key;
-          const count = (() => {
-            if (!items) return null;
-            const types = VIEW_TYPES[key as ViewGroup];
-            return types === null
-              ? items.length
-              : items.filter((i) => types.includes(i.type as SubmittalType)).length;
-          })();
-          return (
-            <button
-              key={key}
-              onClick={() => setView(key as ViewGroup)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                isActive
-                  ? "bg-purple-600 text-white"
-                  : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-              }`}
-            >
-              {label}
-              {count !== null && <span className="ml-1.5 opacity-70">({count})</span>}
-            </button>
-          );
-        })}
-      </div>
+      {/* ── Rollup ── */}
+      {rollup && (
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
+            <RollupStat label="Total" value={rollup.total} />
+            <RollupStat label="Open" value={rollup.open} />
+            <RollupStat label="Approved" value={rollup.approved} />
+            <RollupStat
+              label="Overdue"
+              value={rollup.overdue}
+              tone={rollup.overdue > 0 ? "warn" : undefined}
+            />
+            <RollupStat
+              label="Critical"
+              value={rollup.critical}
+              tone={rollup.critical > 0 ? "warn" : undefined}
+            />
+          </div>
+        </section>
+      )}
 
-      {/* ── Filters ── */}
-      <div className="flex gap-3 items-center flex-wrap">
-        <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
-          <span className="font-medium">Status:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-          >
-            <option value="">All</option>
-            {SUBMITTAL_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-300">
-          <span className="font-medium">Type:</span>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-          >
-            <option value="">All</option>
-            {SUBMITTAL_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {TYPE_LABELS[t]}
-              </option>
-            ))}
-          </select>
-        </label>
-        {(statusFilter || typeFilter) && (
+      {/* ── Filter chips ── */}
+      <div className="flex gap-2 flex-wrap">
+        {(
+          [
+            ["all", "All", null],
+            ["open", "Open", rollup?.open ?? 0],
+            ["overdue", "Overdue", rollup?.overdue ?? 0],
+            ["critical", "Critical", rollup?.critical ?? 0],
+          ] as const
+        ).map(([chip, label, count]) => (
           <button
-            onClick={() => {
-              setStatusFilter("");
-              setTypeFilter("");
-            }}
-            className="text-xs text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 underline"
+            key={chip}
+            onClick={() => setFilter(chip)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              filter === chip
+                ? "bg-purple-600 text-white"
+                : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            }`}
           >
-            Clear filters
+            {label}
+            {count !== null && (
+              <span className="ml-1.5 opacity-70">({count})</span>
+            )}
           </button>
-        )}
+        ))}
       </div>
 
-      {/* ── Table ── */}
-      {(() => {
-        const allowedTypes = VIEW_TYPES[view];
-        const viewFiltered = items
-          ? allowedTypes === null
-            ? items
-            : items.filter((i) => allowedTypes.includes(i.type as SubmittalType))
-          : null;
-        return viewFiltered && viewFiltered.length === 0 ? (
+      {/* ── Empty state ── */}
+      {totalItems === 0 && (
         <section className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center dark:border-zinc-700 dark:bg-zinc-900">
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {statusFilter || typeFilter || view !== "all"
-              ? "No submittals match the current filter."
-              : "No submittals yet. Click \"Generate from AI Analysis\" to extract them, or add one manually."}
+            No submittals yet. Click &ldquo;Generate from AI&rdquo; to extract
+            from spec book, or add one manually.
           </p>
         </section>
-      ) : (
-        <section className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
-                <th className="px-4 py-2.5 w-20">Risk</th>
-                <th className="px-4 py-2.5 w-28">Number</th>
-                <th className="px-4 py-2.5">Title</th>
-                <th className="px-4 py-2.5 w-28">Type</th>
-                <th className="px-4 py-2.5 w-36">Responsible</th>
-                <th className="px-4 py-2.5 w-28">Required By</th>
-                <th className="px-4 py-2.5 w-40">Status</th>
-                <th className="px-4 py-2.5 w-10"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {viewFiltered?.map((item) => (
-                <SubmittalTableRow
-                  key={item.id}
-                  item={item}
-                  expanded={expandedId === item.id}
-                  onToggleExpand={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                  onStatusChange={(s) => updateStatus(item.id, s)}
-                  onDelete={() => deleteItem(item.id)}
-                  onEdited={() => setReloadTick((t) => t + 1)}
-                  bidId={bidId}
-                />
-              ))}
-            </tbody>
-          </table>
-        </section>
-      );
-      })()}
+      )}
+
+      {/* ── Package sections ── */}
+      {packages.map((pkg) => {
+        const visible = filterItems(pkg.items);
+        if (filter !== "all" && visible.length === 0) return null;
+        return (
+          <PackageSection
+            key={pkg.id}
+            pkg={pkg}
+            visibleItems={visible}
+            collapsed={collapsedPkgs.has(pkg.id)}
+            onToggleCollapse={() => toggleCollapse(pkg.id)}
+            onDeletePackage={() => deletePackage(pkg.id)}
+            onRenamed={(name) => renamePackage(pkg.id, name)}
+            {...sharedItemProps}
+          />
+        );
+      })}
+
+      {/* ── Unassigned section ── */}
+      {unassigned.length > 0 &&
+        (() => {
+          const visible = filterItems(unassigned);
+          if (filter !== "all" && visible.length === 0) return null;
+          return (
+            <UnassignedSection
+              items={visible}
+              totalCount={unassigned.length}
+              collapsed={collapsedPkgs.has(-1)}
+              onToggleCollapse={() => toggleCollapse(-1)}
+              {...sharedItemProps}
+            />
+          );
+        })()}
     </div>
+  );
+}
+
+// ── Package Section ────────────────────────────────────────────────────────
+
+function PackageSection({
+  pkg,
+  visibleItems,
+  collapsed,
+  onToggleCollapse,
+  onDeletePackage,
+  onRenamed,
+  ...shared
+}: {
+  pkg: PackageRow;
+  visibleItems: PackageItemRow[];
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  onDeletePackage: () => void;
+  onRenamed: (name: string) => void;
+} & SharedItemProps) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState(pkg.name);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  function commitName() {
+    const trimmed = nameVal.trim();
+    if (trimmed && trimmed !== pkg.name) onRenamed(trimmed);
+    setEditingName(false);
+  }
+
+  const pct =
+    pkg.total > 0 ? Math.round((pkg.approved / pkg.total) * 100) : 0;
+
+  return (
+    <section className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900 overflow-hidden">
+      {/* Package header */}
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-800/40">
+        <button
+          onClick={onToggleCollapse}
+          className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-[10px] w-3 shrink-0"
+        >
+          {collapsed ? "▶" : "▼"}
+        </button>
+
+        {/* Package number badge */}
+        <span className="font-mono text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 rounded px-1.5 py-0.5 shrink-0">
+          {pkg.packageNumber}
+        </span>
+
+        {/* Package name (click to rename) */}
+        {editingName ? (
+          <input
+            ref={nameRef}
+            value={nameVal}
+            onChange={(e) => setNameVal(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitName();
+              if (e.key === "Escape") {
+                setNameVal(pkg.name);
+                setEditingName(false);
+              }
+            }}
+            className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 bg-transparent border-b border-zinc-400 outline-none px-0 min-w-0 w-40"
+            autoFocus
+          />
+        ) : (
+          <button
+            onClick={() => {
+              setEditingName(true);
+              setNameVal(pkg.name);
+              setTimeout(() => nameRef.current?.select(), 0);
+            }}
+            className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 hover:text-purple-600 dark:hover:text-purple-400 text-left truncate"
+          >
+            {pkg.name}
+          </button>
+        )}
+
+        {pkg.tradeName && (
+          <span className="text-xs text-zinc-400 dark:text-zinc-500 truncate hidden sm:block">
+            {pkg.tradeName}
+          </span>
+        )}
+
+        {/* Right side: overdue warning, progress, status, delete */}
+        <div className="flex items-center gap-2.5 ml-auto shrink-0">
+          {pkg.overdue > 0 && (
+            <span className="text-[10px] font-semibold text-red-600 dark:text-red-400">
+              {pkg.overdue} overdue
+            </span>
+          )}
+
+          <div className="flex items-center gap-1.5">
+            <div className="w-16 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-green-500 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 tabular-nums">
+              {pkg.approved}/{pkg.total}
+            </span>
+          </div>
+
+          <span className="text-[10px] font-medium text-zinc-400 dark:text-zinc-500 border border-zinc-200 dark:border-zinc-700 rounded px-1.5 py-0.5 hidden sm:inline">
+            {PKG_STATUS_LABELS[pkg.status] ?? pkg.status}
+          </span>
+
+          <button
+            onClick={onDeletePackage}
+            title="Delete package (items become unassigned)"
+            className="text-zinc-300 hover:text-red-500 dark:text-zinc-600 dark:hover:text-red-400 text-xs"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {!collapsed && <SubmittalGrid items={visibleItems} {...shared} />}
+    </section>
+  );
+}
+
+// ── Unassigned Section ─────────────────────────────────────────────────────
+
+function UnassignedSection({
+  items,
+  totalCount,
+  collapsed,
+  onToggleCollapse,
+  ...shared
+}: {
+  items: PackageItemRow[];
+  totalCount: number;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+} & SharedItemProps) {
+  return (
+    <section className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden">
+      <div
+        className="flex items-center gap-3 px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800 cursor-pointer"
+        onClick={onToggleCollapse}
+      >
+        <span className="text-zinc-400 dark:text-zinc-500 text-[10px] w-3">
+          {collapsed ? "▶" : "▼"}
+        </span>
+        <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+          Unassigned
+        </span>
+        <span className="text-xs text-zinc-400 dark:text-zinc-500">
+          · {totalCount} items
+        </span>
+      </div>
+      {!collapsed && <SubmittalGrid items={items} {...shared} />}
+    </section>
+  );
+}
+
+// ── Submittal Grid ─────────────────────────────────────────────────────────
+
+function SubmittalGrid({
+  items,
+  ...shared
+}: { items: PackageItemRow[] } & SharedItemProps) {
+  if (items.length === 0) {
+    return (
+      <p className="px-4 py-3 text-xs text-zinc-400 dark:text-zinc-500 italic">
+        No items match the current filter.
+      </p>
+    );
+  }
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wide border-b border-zinc-100 dark:border-zinc-800">
+          <th className="px-3 py-2 w-12">Risk</th>
+          <th className="px-3 py-2 w-20">#</th>
+          <th className="px-3 py-2">Title</th>
+          <th className="px-3 py-2 w-24 hidden md:table-cell">Type</th>
+          <th className="px-3 py-2 w-32 hidden lg:table-cell">Sub</th>
+          <th className="px-3 py-2 w-24">Due</th>
+          <th className="px-3 py-2 w-36">Status</th>
+          <th className="px-3 py-2 w-10"></th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-zinc-50 dark:divide-zinc-800/60">
+        {items.map((item) => (
+          <SubmittalGridRow key={item.id} item={item} {...shared} />
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ── Grid Row ───────────────────────────────────────────────────────────────
+
+function SubmittalGridRow({
+  item,
+  bidId,
+  expandedId,
+  editingCell,
+  onToggleExpand,
+  onEditCell,
+  onPatch,
+  onDelete,
+  onEdited,
+}: { item: PackageItemRow } & SharedItemProps) {
+  const isExpanded = expandedId === item.id;
+  const editing = editingCell?.itemId === item.id ? editingCell.field : null;
+
+  return (
+    <>
+      <tr
+        className={
+          item.isOverdue
+            ? "bg-red-50/30 dark:bg-red-900/5"
+            : "hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30"
+        }
+      >
+        {/* Risk */}
+        <td className="px-3 py-2">
+          <SeverityBadge severity={item.severity} />
+        </td>
+
+        {/* # */}
+        <td className="px-3 py-2 font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
+          {item.submittalNumber ?? "—"}
+        </td>
+
+        {/* Title + spec section */}
+        <td className="px-3 py-2">
+          <div className="font-medium text-zinc-800 dark:text-zinc-100 leading-tight text-xs">
+            {item.title}
+          </div>
+          {item.specSectionNumber && (
+            <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">
+              Spec {item.specSectionNumber}
+            </div>
+          )}
+          {item.tradeName && (
+            <div className="text-[10px] text-zinc-400 dark:text-zinc-500">
+              {item.tradeName}
+            </div>
+          )}
+        </td>
+
+        {/* Type */}
+        <td className="px-3 py-2 text-[11px] text-zinc-500 dark:text-zinc-400 hidden md:table-cell">
+          {TYPE_LABELS[item.type as SubmittalType] ?? item.type}
+        </td>
+
+        {/* Sub (display only — assign via detail editor) */}
+        <td className="px-3 py-2 text-[11px] hidden lg:table-cell">
+          {item.responsibleSubName ? (
+            <span className="text-zinc-600 dark:text-zinc-300">
+              {item.responsibleSubName}
+            </span>
+          ) : (
+            <span className="text-zinc-300 dark:text-zinc-600 italic">
+              unassigned
+            </span>
+          )}
+        </td>
+
+        {/* Due — inline editable */}
+        <td className="px-3 py-2">
+          {editing === "requiredBy" ? (
+            <input
+              type="date"
+              defaultValue={toInputDate(item.requiredBy)}
+              onBlur={(e) =>
+                onPatch(item.id, { requiredBy: e.target.value || null })
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") onEditCell(null);
+              }}
+              autoFocus
+              className="text-xs border border-zinc-300 dark:border-zinc-600 rounded px-1 py-0.5 bg-white dark:bg-zinc-800 dark:text-zinc-100 outline-none w-28"
+            />
+          ) : (
+            <button
+              onClick={() =>
+                onEditCell({ itemId: item.id, field: "requiredBy" })
+              }
+              className={`text-xs ${
+                item.isOverdue
+                  ? "text-red-600 dark:text-red-400 font-semibold"
+                  : "text-zinc-600 dark:text-zinc-300"
+              }`}
+            >
+              {fmtDate(item.requiredBy)}
+            </button>
+          )}
+        </td>
+
+        {/* Status — inline editable */}
+        <td className="px-3 py-2">
+          {editing === "status" ? (
+            <select
+              defaultValue={item.status}
+              onChange={(e) =>
+                onPatch(item.id, { status: e.target.value })
+              }
+              onBlur={() => onEditCell(null)}
+              autoFocus
+              className="text-xs rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 dark:text-zinc-100 px-1 py-0.5 outline-none"
+            >
+              {SUBMITTAL_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <button
+              onClick={() =>
+                onEditCell({ itemId: item.id, field: "status" })
+              }
+              className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                STATUS_STYLES[item.status as SubmittalStatus] ?? ""
+              }`}
+            >
+              {STATUS_LABELS[item.status as SubmittalStatus] ?? item.status}
+            </button>
+          )}
+        </td>
+
+        {/* Expand toggle */}
+        <td className="px-2 py-2 text-right">
+          <button
+            onClick={() => onToggleExpand(item.id)}
+            className="text-xs text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-200"
+            title={isExpanded ? "Collapse" : "Edit details"}
+          >
+            {isExpanded ? "▲" : "▼"}
+          </button>
+        </td>
+      </tr>
+
+      {isExpanded && (
+        <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+          <td colSpan={8} className="px-4 py-4">
+            <SubmittalDetailEditor
+              item={item}
+              bidId={bidId}
+              onSaved={() => {
+                onEdited();
+                onToggleExpand(item.id);
+              }}
+              onDelete={() => onDelete(item.id)}
+            />
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -491,19 +928,18 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
 function SeverityBadge({
   severity,
 }: {
-  severity: SubmittalRow["severity"];
+  severity: PackageItemRow["severity"];
 }) {
-  if (!severity) {
-    return <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>;
-  }
-  const styles: Record<NonNullable<SubmittalRow["severity"]>, string> = {
+  if (!severity)
+    return <span className="text-xs text-zinc-300 dark:text-zinc-600">—</span>;
+  const styles: Record<NonNullable<PackageItemRow["severity"]>, string> = {
     CRITICAL: "bg-red-600 text-white",
     HIGH: "bg-orange-500 text-white",
     MODERATE: "bg-amber-400 text-amber-900",
     LOW: "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
     INFO: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   };
-  const labels: Record<NonNullable<SubmittalRow["severity"]>, string> = {
+  const labels: Record<NonNullable<PackageItemRow["severity"]>, string> = {
     CRITICAL: "CRIT",
     HIGH: "HIGH",
     MODERATE: "MOD",
@@ -512,8 +948,7 @@ function SeverityBadge({
   };
   return (
     <span
-      className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${styles[severity]}`}
-      title={`Risk: ${severity}`}
+      className={`inline-block rounded px-1 py-0.5 text-[9px] font-semibold tracking-wide ${styles[severity]}`}
     >
       {labels[severity]}
     </span>
@@ -545,104 +980,90 @@ function RollupStat({
   );
 }
 
-// ── Table row ─────────────────────────────────────────────────────────────
+// ── Add Package Form ───────────────────────────────────────────────────────
 
-function SubmittalTableRow({
-  item,
-  expanded,
-  onToggleExpand,
-  onStatusChange,
-  onDelete,
-  onEdited,
+function AddPackageForm({
   bidId,
+  onCreated,
+  onCancel,
 }: {
-  item: SubmittalRow;
-  expanded: boolean;
-  onToggleExpand: () => void;
-  onStatusChange: (s: SubmittalStatus) => void;
-  onDelete: () => void;
-  onEdited: () => void;
   bidId: number;
+  onCreated: () => void;
+  onCancel: () => void;
 }) {
-  const isOverdue = item.isOverdue;
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (!name.trim()) {
+      setErr("Name is required");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/submittals/packages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(e.error ?? `HTTP ${res.status}`);
+      }
+      onCreated();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
-    <>
-      <tr className={isOverdue ? "bg-red-50/40 dark:bg-red-900/10" : ""}>
-        <td className="px-4 py-2.5">
-          <SeverityBadge severity={item.severity} />
-        </td>
-        <td className="px-4 py-2.5 font-mono text-xs text-zinc-700 dark:text-zinc-300">
-          {item.submittalNumber ?? "—"}
-        </td>
-        <td className="px-4 py-2.5">
-          <div className="font-medium text-zinc-800 dark:text-zinc-100">{item.title}</div>
-          {item.specSectionNumber && (
-            <div className="text-xs text-zinc-500 dark:text-zinc-400 font-mono">
-              Spec {item.specSectionNumber}
-            </div>
-          )}
-        </td>
-        <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-300">
-          <span>{TYPE_LABELS[item.type]}</span>
-          {(item.type === "WARRANTY" || item.type === "O_AND_M") && (
-            <span className="ml-1.5 inline-block rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-              CLOSEOUT
-            </span>
-          )}
-        </td>
-        <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-300">
-          {item.responsibleSubName ?? (
-            <span className="text-zinc-400 italic dark:text-zinc-500">unassigned</span>
-          )}
-        </td>
-        <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-300">
-          <span className={isOverdue ? "text-red-600 dark:text-red-400 font-semibold" : ""}>
-            {fmtDate(item.requiredBy)}
-          </span>
-        </td>
-        <td className="px-4 py-2.5">
-          <select
-            value={item.status}
-            onChange={(e) => onStatusChange(e.target.value as SubmittalStatus)}
-            className={`rounded-full px-2 py-0.5 text-xs font-medium border-0 ${STATUS_STYLES[item.status]}`}
-          >
-            {SUBMITTAL_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </td>
-        <td className="px-2 py-2.5 text-right">
-          <button
-            onClick={onToggleExpand}
-            className="text-xs text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-          >
-            {expanded ? "▲" : "▼"}
-          </button>
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="bg-zinc-50 dark:bg-zinc-800/50">
-          <td colSpan={8} className="px-4 py-4">
-            <SubmittalDetailEditor
-              item={item}
-              bidId={bidId}
-              onSaved={() => {
-                onEdited();
-                onToggleExpand();
-              }}
-              onDelete={onDelete}
-            />
-          </td>
-        </tr>
+    <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
+      <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">
+        New Package
+      </h3>
+      <div className="flex gap-2 items-end">
+        <div className="flex-1">
+          <label className="block text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-0.5 dark:text-zinc-400">
+            Package Name
+          </label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Structural Steel"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+              if (e.key === "Escape") onCancel();
+            }}
+            autoFocus
+            className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+        </div>
+        <button
+          onClick={submit}
+          disabled={saving}
+          className="rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saving ? "Adding…" : "Add"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="text-xs text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+        >
+          Cancel
+        </button>
+      </div>
+      {err && (
+        <p className="mt-2 text-xs text-red-600 dark:text-red-400">{err}</p>
       )}
-    </>
+    </section>
   );
 }
 
-// ── Detail editor (expand row) ────────────────────────────────────────────
+// ── Detail Editor (expand row) ─────────────────────────────────────────────
 
 function SubmittalDetailEditor({
   item,
@@ -650,19 +1071,19 @@ function SubmittalDetailEditor({
   onSaved,
   onDelete,
 }: {
-  item: SubmittalRow;
+  item: PackageItemRow;
   bidId: number;
   onSaved: () => void;
   onDelete: () => void;
 }) {
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description ?? "");
-  const [type, setType] = useState<SubmittalType>(item.type);
-  const [submittalNumber, setSubmittalNumber] = useState(item.submittalNumber ?? "");
-  const [reviewer, setReviewer] = useState(item.reviewer ?? "");
-  const [requiredBy, setRequiredBy] = useState(
-    item.requiredBy ? item.requiredBy.slice(0, 10) : ""
+  const [type, setType] = useState<SubmittalType>(item.type as SubmittalType);
+  const [submittalNumber, setSubmittalNumber] = useState(
+    item.submittalNumber ?? ""
   );
+  const [reviewer, setReviewer] = useState(item.reviewer ?? "");
+  const [requiredBy, setRequiredBy] = useState(toInputDate(item.requiredBy));
   const [notes, setNotes] = useState(item.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -685,7 +1106,7 @@ function SubmittalDetailEditor({
         }),
       });
       if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
+        const e = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(e.error ?? `HTTP ${res.status}`);
       }
       onSaved();
@@ -758,7 +1179,9 @@ function SubmittalDetailEditor({
         />
       </Field>
       {err && (
-        <div className="md:col-span-2 text-xs text-red-600 dark:text-red-400">{err}</div>
+        <div className="md:col-span-2 text-xs text-red-600 dark:text-red-400">
+          {err}
+        </div>
       )}
       <div className="md:col-span-2 flex items-center justify-between gap-2 pt-2">
         <button
@@ -779,6 +1202,8 @@ function SubmittalDetailEditor({
   );
 }
 
+// ── Field wrapper ──────────────────────────────────────────────────────────
+
 function Field({
   label,
   children,
@@ -798,7 +1223,7 @@ function Field({
   );
 }
 
-// ── Add form ──────────────────────────────────────────────────────────────
+// ── Add Item Form ──────────────────────────────────────────────────────────
 
 function AddSubmittalForm({
   bidId,
@@ -833,7 +1258,7 @@ function AddSubmittalForm({
         }),
       });
       if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
+        const e = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(e.error ?? `HTTP ${res.status}`);
       }
       onCreated();
