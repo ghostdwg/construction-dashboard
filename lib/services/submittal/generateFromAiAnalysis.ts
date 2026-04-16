@@ -323,6 +323,16 @@ export async function generateSubmittalsFromAiAnalysis(
     return num;
   };
 
+  // Load distribution templates so new packages can inherit routing defaults
+  const distributionTemplates = await prisma.submittalDistributionTemplate.findMany({
+    where: { bidId },
+  });
+  const templateByTradeId = new Map(
+    distributionTemplates
+      .filter((t) => t.bidTradeId !== null)
+      .map((t) => [t.bidTradeId!, t])
+  );
+
   // Create any missing packages in parallel
   const missingPackages = Array.from(tradesNeedingPackages).filter(
     (tradeId) => !packageByTradeId.has(tradeId)
@@ -331,8 +341,21 @@ export async function generateSubmittalsFromAiAnalysis(
     const newPkgs = await Promise.all(
       missingPackages.map((tradeId) => {
         const name = tradeId === null ? "Unassigned" : bidTradeNameById.get(tradeId) ?? "Unassigned";
+        const tmpl = tradeId !== null ? templateByTradeId.get(tradeId) : undefined;
         return prisma.submittalPackage.create({
-          data: { bidId, bidTradeId: tradeId, packageNumber: allocatePackageNumber(), name, status: "DRAFT" },
+          data: {
+            bidId,
+            bidTradeId: tradeId,
+            packageNumber: allocatePackageNumber(),
+            name,
+            status: "DRAFT",
+            ...(tmpl && {
+              responsibleContractor: tmpl.responsibleContractor,
+              submittalManager: tmpl.submittalManager,
+              defaultReviewers: tmpl.reviewers,
+              defaultDistribution: tmpl.distribution,
+            }),
+          },
         });
       })
     );

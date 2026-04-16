@@ -141,9 +141,10 @@ model Bid {
   intelligenceBrief   BidIntelligenceBrief?
   submission          BidSubmission?
   buyoutItems         BuyoutItem[]
-  submittalItems      SubmittalItem[]
-  submittalPackages   SubmittalPackage[]
-  projectContacts     ProjectContact[]
+  submittalItems              SubmittalItem[]
+  submittalPackages           SubmittalPackage[]
+  distributionTemplates       SubmittalDistributionTemplate[]
+  projectContacts             ProjectContact[]
   scheduleActivities  ScheduleActivity[]
   schedules           Schedule[]
 }
@@ -191,10 +192,11 @@ model BidTrade {
 
   bid                Bid                 @relation(fields: [bidId], references: [id])
   trade              Trade               @relation(fields: [tradeId], references: [id])
-  buyoutItem         BuyoutItem?
-  submittalItems     SubmittalItem[]
-  submittalPackages  SubmittalPackage[]
-  scheduleActivities ScheduleActivity[]
+  buyoutItem             BuyoutItem?
+  submittalItems         SubmittalItem[]
+  submittalPackages      SubmittalPackage[]
+  distributionTemplates  SubmittalDistributionTemplate[]
+  scheduleActivities     ScheduleActivity[]
 
   @@unique([bidId, tradeId])
 }
@@ -782,6 +784,33 @@ model SubmittalItem {
   @@index([status])
   @@index([packageId])
   @@index([linkedActivityId])
+}
+
+// Phase 5G-3 — Per-trade submittal routing template
+//
+// One row per (bid, trade). Stores the default contractor, submittal manager,
+// reviewer chain, and distribution list for submittals belonging to that trade.
+// Auto-applied to packages when AI generation runs; user edits via the
+// Routing panel on the Submittals tab. Override per submittal is via the
+// item's own reviewer field or the package's responsibleContractor field.
+model SubmittalDistributionTemplate {
+  id                    Int       @id @default(autoincrement())
+  bidId                 Int
+  bidTradeId            Int?      // null = bid-wide fallback
+
+  responsibleContractor String?   // default sub/vendor responsible for submittals
+  submittalManager      String?   // GC role/person who manages the package
+  reviewers             String    @default("[]")   // JSON: ["Architect", "MEP Eng"]
+  distribution          String    @default("[]")   // JSON: ["Owner Rep", "Inspector"]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bid      Bid       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidTrade BidTrade? @relation(fields: [bidTradeId], references: [id], onDelete: Cascade)
+
+  @@unique([bidId, bidTradeId])
+  @@index([bidId])
 }
 
 // Module H1 — Project Contacts (owner / architect / engineer / internal team)

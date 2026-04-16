@@ -26,6 +26,7 @@ function severityFromExtractions(
 // Shared item select — used for both package items and unassigned items
 const ITEM_SELECT = {
   id: true,
+  bidTradeId: true,
   submittalNumber: true,
   title: true,
   type: true,
@@ -48,6 +49,7 @@ const ITEM_SELECT = {
 
 type DbItem = {
   id: number;
+  bidTradeId: number | null;
   submittalNumber: string | null;
   title: string;
   type: string;
@@ -73,6 +75,7 @@ const isTerminal = (s: string) => s === "APPROVED" || s === "APPROVED_AS_NOTED";
 function mapItem(it: DbItem, now: number) {
   return {
     id: it.id,
+    bidTradeId: it.bidTradeId,
     submittalNumber: it.submittalNumber,
     title: it.title,
     type: it.type,

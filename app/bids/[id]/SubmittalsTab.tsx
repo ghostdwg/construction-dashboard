@@ -86,6 +86,7 @@ const PKG_STATUS_LABELS: Record<string, string> = {
 
 type PackageItemRow = {
   id: number;
+  bidTradeId: number | null;
   submittalNumber: string | null;
   title: string;
   type: string;
@@ -107,6 +108,26 @@ type PackageItemRow = {
   resubmitBufferDays: number;
   requiredOnSiteDate: string | null;
   submitByDate: string | null;
+};
+
+// Phase 5G-3 — Distribution template type (mirrors API response)
+type DistributionTemplate = {
+  id: number;
+  bidTradeId: number | null;
+  tradeName: string | null;
+  tradeCsiCode: string | null;
+  awardedContractor: string | null;
+  responsibleContractor: string | null;
+  submittalManager: string | null;
+  reviewers: string[];
+  distribution: string[];
+};
+
+type BidTradeOption = {
+  id: number;
+  tradeName: string;
+  tradeCsiCode: string | null;
+  awardedContractor: string | null;
 };
 
 type PackageRow = {
@@ -198,6 +219,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
   const [aiBanner, setAiBanner] = useState<GenerateResult | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAddPackageForm, setShowAddPackageForm] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
 
@@ -409,6 +431,17 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             {generatingFromAi ? "Generating…" : "Generate from AI"}
           </button>
           <button
+            onClick={() => setShowTemplates(!showTemplates)}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+              showTemplates
+                ? "border-teal-400 bg-teal-50 text-teal-700 dark:border-teal-600 dark:bg-teal-900/30 dark:text-teal-300"
+                : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+            title="Manage per-trade routing templates (reviewer chains, distribution lists)"
+          >
+            Routing
+          </button>
+          <button
             onClick={() => setShowAddPackageForm(!showAddPackageForm)}
             className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
           >
@@ -452,6 +485,14 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
           {aiBanner.bidTradesLinked > 0 &&
             ` · ${aiBanner.bidTradesLinked} linked to trades`}.
         </div>
+      )}
+
+      {/* ── Distribution Routing Templates panel ── */}
+      {showTemplates && (
+        <DistributionTemplatesPanel
+          bidId={bidId}
+          onApplied={reload}
+        />
       )}
 
       {/* ── Add Package form ── */}
@@ -1006,6 +1047,352 @@ function RollupStat({
   );
 }
 
+// ── Distribution Routing Templates Panel ──────────────────────────────────
+
+function DistributionTemplatesPanel({
+  bidId,
+  onApplied,
+}: {
+  bidId: number;
+  onApplied: () => void;
+}) {
+  const [templates, setTemplates] = useState<DistributionTemplate[]>([]);
+  const [bidTrades, setBidTrades] = useState<BidTradeOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [applyResult, setApplyResult] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  // Which template row is being edited (id → field → value)
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editFields, setEditFields] = useState<{
+    responsibleContractor: string;
+    submittalManager: string;
+    reviewers: string;
+    distribution: string;
+  }>({ responsibleContractor: "", submittalManager: "", reviewers: "", distribution: "" });
+  // New template form
+  const [showAdd, setShowAdd] = useState(false);
+  const [newTradeId, setNewTradeId] = useState<string>("");
+
+  const reload = () => {
+    setLoading(true);
+    fetch(`/api/bids/${bidId}/submittals/distribution-templates`)
+      .then((r) => r.json())
+      .then((data: { templates: DistributionTemplate[]; bidTrades: BidTradeOption[] }) => {
+        setTemplates(data.templates ?? []);
+        setBidTrades(data.bidTrades ?? []);
+        setErr(null);
+      })
+      .catch((e: unknown) => setErr(String(e)))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { reload(); }, [bidId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function startEdit(t: DistributionTemplate) {
+    setEditingId(t.id);
+    setEditFields({
+      responsibleContractor: t.responsibleContractor ?? "",
+      submittalManager: t.submittalManager ?? "",
+      reviewers: t.reviewers.join(", "),
+      distribution: t.distribution.join(", "),
+    });
+  }
+
+  async function saveEdit(id: number) {
+    const splitList = (s: string) =>
+      s.split(",").map((v) => v.trim()).filter(Boolean);
+    try {
+      const res = await fetch(
+        `/api/bids/${bidId}/submittals/distribution-templates/${id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            responsibleContractor: editFields.responsibleContractor || null,
+            submittalManager: editFields.submittalManager || null,
+            reviewers: splitList(editFields.reviewers),
+            distribution: splitList(editFields.distribution),
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setEditingId(null);
+      reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function deleteTemplate(id: number) {
+    if (!confirm("Delete this routing template?")) return;
+    try {
+      const res = await fetch(
+        `/api/bids/${bidId}/submittals/distribution-templates/${id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function createTemplate() {
+    const tradeId = newTradeId ? parseInt(newTradeId, 10) : null;
+    try {
+      const res = await fetch(
+        `/api/bids/${bidId}/submittals/distribution-templates`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bidTradeId: tradeId }),
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { id: number };
+      setShowAdd(false);
+      setNewTradeId("");
+      reload();
+      // Immediately open the new row for editing
+      setTimeout(() => {
+        setEditingId(data.id);
+        setEditFields({ responsibleContractor: "", submittalManager: "", reviewers: "", distribution: "" });
+      }, 200);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function applyToPackages() {
+    setApplying(true);
+    setApplyResult(null);
+    try {
+      const res = await fetch(
+        `/api/bids/${bidId}/submittals/distribution-templates/apply`,
+        { method: "POST" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { updated: number };
+      setApplyResult(`Applied to ${data.updated} package${data.updated !== 1 ? "s" : ""}.`);
+      onApplied();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  const existingTradeIds = new Set(templates.map((t) => t.bidTradeId));
+  const availableTrades = bidTrades.filter((bt) => !existingTradeIds.has(bt.id));
+
+  return (
+    <section className="rounded-lg border border-teal-200 bg-teal-50/30 dark:border-teal-800 dark:bg-teal-950/20 overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-teal-100 dark:border-teal-800/60 bg-teal-50/60 dark:bg-teal-900/20">
+        <div>
+          <span className="text-sm font-semibold text-teal-800 dark:text-teal-200">
+            Routing Templates
+          </span>
+          <span className="ml-2 text-xs text-teal-600 dark:text-teal-400">
+            Per-trade defaults for contractor, reviewer chain &amp; distribution
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {applyResult && (
+            <span className="text-xs text-teal-700 dark:text-teal-300">{applyResult}</span>
+          )}
+          <button
+            onClick={applyToPackages}
+            disabled={applying || templates.length === 0}
+            className="rounded-md bg-teal-600 px-3 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+            title="Push template values to matching packages"
+          >
+            {applying ? "Applying…" : "Apply to Packages"}
+          </button>
+        </div>
+      </div>
+
+      {err && (
+        <p className="px-4 py-2 text-xs text-red-600 dark:text-red-400">{err}</p>
+      )}
+
+      {loading ? (
+        <p className="px-4 py-3 text-xs text-zinc-400 dark:text-zinc-500">Loading…</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wide border-b border-teal-100 dark:border-teal-800/60">
+                <th className="px-3 py-2 w-32">Trade</th>
+                <th className="px-3 py-2">Responsible Contractor</th>
+                <th className="px-3 py-2">Submittal Manager</th>
+                <th className="px-3 py-2">Reviewers (comma-sep)</th>
+                <th className="px-3 py-2">Distribution (comma-sep)</th>
+                <th className="px-3 py-2 w-20"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-teal-50 dark:divide-teal-900/40">
+              {templates.map((t) => (
+                <tr key={t.id} className="hover:bg-teal-50/50 dark:hover:bg-teal-900/20">
+                  <td className="px-3 py-2 font-medium text-zinc-700 dark:text-zinc-200 whitespace-nowrap">
+                    {t.tradeName ?? "—"}
+                    {t.tradeCsiCode && (
+                      <span className="ml-1 text-zinc-400 font-mono text-[10px]">
+                        {t.tradeCsiCode}
+                      </span>
+                    )}
+                  </td>
+                  {editingId === t.id ? (
+                    <>
+                      <td className="px-2 py-1">
+                        <input
+                          value={editFields.responsibleContractor}
+                          onChange={(e) => setEditFields((f) => ({ ...f, responsibleContractor: e.target.value }))}
+                          placeholder={t.awardedContractor ?? "e.g. ABC Mechanical LLC"}
+                          className="w-full rounded border border-zinc-200 bg-white px-1.5 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                        />
+                      </td>
+                      <td className="px-2 py-1">
+                        <input
+                          value={editFields.submittalManager}
+                          onChange={(e) => setEditFields((f) => ({ ...f, submittalManager: e.target.value }))}
+                          placeholder="e.g. John Smith, PM"
+                          className="w-full rounded border border-zinc-200 bg-white px-1.5 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                        />
+                      </td>
+                      <td className="px-2 py-1">
+                        <input
+                          value={editFields.reviewers}
+                          onChange={(e) => setEditFields((f) => ({ ...f, reviewers: e.target.value }))}
+                          placeholder="Architect, Engineer"
+                          className="w-full rounded border border-zinc-200 bg-white px-1.5 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                        />
+                      </td>
+                      <td className="px-2 py-1">
+                        <input
+                          value={editFields.distribution}
+                          onChange={(e) => setEditFields((f) => ({ ...f, distribution: e.target.value }))}
+                          placeholder="Owner Rep, Inspector"
+                          className="w-full rounded border border-zinc-200 bg-white px-1.5 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                        />
+                      </td>
+                      <td className="px-2 py-1">
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => saveEdit(t.id)}
+                            className="rounded bg-teal-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-teal-700"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-[10px]"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
+                        {t.responsibleContractor ?? (
+                          <span className="text-zinc-300 dark:text-zinc-600 italic">
+                            {t.awardedContractor ? `← ${t.awardedContractor}` : "—"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
+                        {t.submittalManager ?? <span className="text-zinc-300 dark:text-zinc-600">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
+                        {t.reviewers.length > 0
+                          ? t.reviewers.join(" → ")
+                          : <span className="text-zinc-300 dark:text-zinc-600">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
+                        {t.distribution.length > 0
+                          ? t.distribution.join(", ")
+                          : <span className="text-zinc-300 dark:text-zinc-600">—</span>}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => startEdit(t)}
+                            className="text-teal-600 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-200 text-[10px] font-medium"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteTemplate(t.id)}
+                            className="text-zinc-300 hover:text-red-500 dark:text-zinc-600 dark:hover:text-red-400 text-[10px]"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+
+              {templates.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-4 text-center text-zinc-400 dark:text-zinc-500 italic">
+                    No templates yet. Add one per trade below.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add template row */}
+      <div className="px-4 py-2.5 border-t border-teal-100 dark:border-teal-800/60">
+        {showAdd ? (
+          <div className="flex items-center gap-2">
+            <select
+              value={newTradeId}
+              onChange={(e) => setNewTradeId(e.target.value)}
+              className="rounded border border-zinc-200 bg-white px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+            >
+              <option value="">— select trade —</option>
+              {availableTrades.map((bt) => (
+                <option key={bt.id} value={String(bt.id)}>
+                  {bt.tradeName}
+                  {bt.awardedContractor ? ` (${bt.awardedContractor})` : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={createTemplate}
+              disabled={!newTradeId}
+              className="rounded bg-teal-600 px-3 py-1 text-xs font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              Add
+            </button>
+            <button
+              onClick={() => setShowAdd(false)}
+              className="text-xs text-zinc-400 hover:text-zinc-600"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAdd(true)}
+            disabled={availableTrades.length === 0}
+            className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-800 dark:hover:text-teal-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            + Add template for trade
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // ── Add Package Form ───────────────────────────────────────────────────────
 
 function AddPackageForm({
@@ -1117,19 +1504,34 @@ function SubmittalDetailEditor({
   const [reviewBufferDays, setReviewBufferDays] = useState(item.reviewBufferDays);
   const [resubmitBufferDays, setResubmitBufferDays] = useState(item.resubmitBufferDays);
   const [activities, setActivities] = useState<ActivityOption[]>([]);
+  const [template, setTemplate] = useState<DistributionTemplate | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/bids/${bidId}/schedule-v2`)
-      .then((r) => r.json())
-      .then((data: { activities?: ActivityOption[] }) => {
-        if (data.activities) {
-          setActivities(data.activities.filter((a) => !a.name.match(/^\d+\.0\s/)));
-        }
-      })
-      .catch(() => {});
-  }, [bidId]);
+    Promise.all([
+      fetch(`/api/bids/${bidId}/schedule-v2`)
+        .then((r) => r.json())
+        .catch(() => ({})),
+      fetch(`/api/bids/${bidId}/submittals/distribution-templates`)
+        .then((r) => r.json())
+        .catch(() => ({ templates: [] })),
+    ]).then(([schedData, tmplData]) => {
+      if (schedData?.activities) {
+        setActivities(
+          (schedData.activities as ActivityOption[]).filter(
+            (a) => !a.name.match(/^\d+\.0\s/)
+          )
+        );
+      }
+      if (tmplData?.templates && item.bidTradeId != null) {
+        const match = (tmplData.templates as DistributionTemplate[]).find(
+          (t) => t.bidTradeId === item.bidTradeId
+        );
+        setTemplate(match ?? null);
+      }
+    });
+  }, [bidId, item.bidTradeId]);
 
   async function save() {
     setSaving(true);
@@ -1269,6 +1671,52 @@ function SubmittalDetailEditor({
             <div>
               <span className="font-semibold text-blue-700 dark:text-blue-300">Required On Site: </span>
               <span className="text-blue-800 dark:text-blue-200">{derivedOnSite}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Phase 5G-3 — Routing template hint */}
+      {template && (
+        <div className="md:col-span-2 rounded-md bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900 px-3 py-2 text-xs space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-teal-700 dark:text-teal-300">
+              Routing template · {template.tradeName}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (template.reviewers.length > 0)
+                  setReviewer(template.reviewers.join(", "));
+              }}
+              className="rounded px-2 py-0.5 text-[10px] font-medium bg-teal-100 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-800"
+              title="Copy reviewer chain from template into the Reviewer field"
+            >
+              Apply reviewers
+            </button>
+          </div>
+          {template.responsibleContractor && (
+            <div className="text-teal-800 dark:text-teal-200">
+              <span className="opacity-70">Responsible:</span>{" "}
+              {template.responsibleContractor}
+            </div>
+          )}
+          {template.submittalManager && (
+            <div className="text-teal-800 dark:text-teal-200">
+              <span className="opacity-70">Manager:</span>{" "}
+              {template.submittalManager}
+            </div>
+          )}
+          {template.reviewers.length > 0 && (
+            <div className="text-teal-800 dark:text-teal-200">
+              <span className="opacity-70">Reviewers:</span>{" "}
+              {template.reviewers.join(" → ")}
+            </div>
+          )}
+          {template.distribution.length > 0 && (
+            <div className="text-teal-800 dark:text-teal-200">
+              <span className="opacity-70">Distribution:</span>{" "}
+              {template.distribution.join(", ")}
             </div>
           )}
         </div>
