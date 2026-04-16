@@ -6,6 +6,7 @@
 // - Validating + applying updates (with contract-status-style checks)
 
 import { prisma } from "@/lib/prisma";
+import { addWorkingDays } from "@/lib/services/schedule/scheduleV2Service";
 import {
   isValidSubmittalType,
   isValidSubmittalStatus,
@@ -54,6 +55,14 @@ export type SubmittalRow = {
   // (CRITICAL | HIGH | MODERATE | LOW | INFO). Null if no analysis ran
   // for the section, or the submittal is manual / not linked to a section.
   severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW" | "INFO" | null;
+
+  // Phase 5G-2 — Schedule-tied due dates
+  linkedActivityId: string | null;
+  leadTimeDays: number;
+  reviewBufferDays: number;
+  resubmitBufferDays: number;
+  requiredOnSiteDate: string | null;
+  submitByDate: string | null;
 };
 
 export type SubmittalRollup = {
@@ -138,6 +147,12 @@ export async function loadSubmittalsForBid(
       it.requiredBy.getTime() < now &&
       !isTerminal(it.status),
     severity: severityFromSection(it.specSection?.aiExtractions),
+    linkedActivityId: it.linkedActivityId,
+    leadTimeDays: it.leadTimeDays,
+    reviewBufferDays: it.reviewBufferDays,
+    resubmitBufferDays: it.resubmitBufferDays,
+    requiredOnSiteDate: it.requiredOnSiteDate?.toISOString() ?? null,
+    submitByDate: it.submitByDate?.toISOString() ?? null,
   }));
 }
 
@@ -177,6 +192,11 @@ export type SubmittalCreateInput = {
   reviewer?: string | null;
   requiredBy?: string | null;
   notes?: string | null;
+  // Phase 5G-2
+  linkedActivityId?: string | null;
+  leadTimeDays?: number;
+  reviewBufferDays?: number;
+  resubmitBufferDays?: number;
 };
 
 export type SubmittalUpdateInput = Partial<
@@ -268,6 +288,17 @@ export async function updateSubmittal(
     }
   }
 
+  // Phase 5G-2 — schedule link fields
+  const schedLinkChanged =
+    "linkedActivityId" in input ||
+    "leadTimeDays" in input ||
+    "reviewBufferDays" in input ||
+    "resubmitBufferDays" in input;
+  if ("linkedActivityId" in input) data.linkedActivityId = input.linkedActivityId ?? null;
+  if ("leadTimeDays" in input && input.leadTimeDays != null) data.leadTimeDays = input.leadTimeDays;
+  if ("reviewBufferDays" in input && input.reviewBufferDays != null) data.reviewBufferDays = input.reviewBufferDays;
+  if ("resubmitBufferDays" in input && input.resubmitBufferDays != null) data.resubmitBufferDays = input.resubmitBufferDays;
+
   // Auto-advance timestamps when status changes
   if (input.status) {
     const now = new Date();
@@ -283,7 +314,47 @@ export async function updateSubmittal(
   }
 
   await prisma.submittalItem.update({ where: { id: itemId }, data });
+
+  if (schedLinkChanged) await recalcSubmittalDates(itemId);
+
   return { ok: true };
+}
+
+// Recompute requiredOnSiteDate + submitByDate for one SubmittalItem.
+// Called when the schedule link or buffer fields change on a single item.
+export async function recalcSubmittalDates(itemId: number): Promise<void> {
+  const item = await prisma.submittalItem.findUnique({
+    where: { id: itemId },
+    select: {
+      linkedActivityId: true,
+      leadTimeDays: true,
+      reviewBufferDays: true,
+      resubmitBufferDays: true,
+    },
+  });
+  if (!item?.linkedActivityId) {
+    await prisma.submittalItem.update({
+      where: { id: itemId },
+      data: { requiredOnSiteDate: null, submitByDate: null },
+    });
+    return;
+  }
+
+  const activity = await prisma.scheduleActivityV2.findUnique({
+    where: { id: item.linkedActivityId },
+    select: { startDate: true },
+  });
+  if (!activity?.startDate) return;
+
+  const requiredOnSiteDate = addWorkingDays(activity.startDate, -item.leadTimeDays);
+  const submitByDate = addWorkingDays(
+    requiredOnSiteDate,
+    -(item.reviewBufferDays + item.resubmitBufferDays)
+  );
+  await prisma.submittalItem.update({
+    where: { id: itemId },
+    data: { requiredOnSiteDate, submitByDate },
+  });
 }
 
 export async function deleteSubmittal(

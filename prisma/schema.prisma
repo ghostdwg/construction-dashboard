@@ -761,16 +761,27 @@ model SubmittalItem {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // Phase 5G-2 — Schedule-tied due dates
+  // Backward math: submitByDate = linkedActivity.startDate - leadTimeDays - reviewBufferDays - resubmitBufferDays
+  linkedActivityId    String?   // FK to ScheduleActivityV2
+  leadTimeDays        Int       @default(0)    // mfr delivery lead time (working days)
+  reviewBufferDays    Int       @default(21)   // A/E review window per AIA A201 §4.2.7
+  resubmitBufferDays  Int       @default(7)    // one resubmission cycle buffer
+  requiredOnSiteDate  DateTime?               // derived: linkedActivity.startDate - leadTimeDays
+  submitByDate        DateTime?               // derived: requiredOnSiteDate - reviewBuffer - resubmitBuffer
+
   bid            Bid               @relation(fields: [bidId], references: [id], onDelete: Cascade)
   bidTrade       BidTrade?         @relation(fields: [bidTradeId], references: [id])
   specSection    SpecSection?      @relation(fields: [specSectionId], references: [id])
   responsibleSub Subcontractor?    @relation(fields: [responsibleSubId], references: [id])
   package        SubmittalPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  linkedActivity ScheduleActivityV2? @relation(fields: [linkedActivityId], references: [id], onDelete: SetNull)
 
   @@index([bidId])
   @@index([specSectionId])
   @@index([status])
   @@index([packageId])
+  @@index([linkedActivityId])
 }
 
 // Module H1 — Project Contacts (owner / architect / engineer / internal team)
@@ -907,6 +918,7 @@ model ScheduleActivityV2 {
 
   predecessors ScheduleDependency[] @relation("SuccessorActivity")
   successors   ScheduleDependency[] @relation("PredecessorActivity")
+  submittals   SubmittalItem[]
 
   @@index([scheduleId])
   @@index([scheduleId, sortOrder])

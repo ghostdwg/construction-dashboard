@@ -100,6 +100,13 @@ type PackageItemRow = {
   isOverdue: boolean;
   severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW" | "INFO" | null;
   tradeName?: string | null;
+  // Phase 5G-2
+  linkedActivityId: string | null;
+  leadTimeDays: number;
+  reviewBufferDays: number;
+  resubmitBufferDays: number;
+  requiredOnSiteDate: string | null;
+  submitByDate: string | null;
 };
 
 type PackageRow = {
@@ -745,6 +752,7 @@ function SubmittalGrid({
           <th className="px-3 py-2 w-24 hidden md:table-cell">Type</th>
           <th className="px-3 py-2 w-32 hidden lg:table-cell">Sub</th>
           <th className="px-3 py-2 w-24">Due</th>
+          <th className="px-3 py-2 w-24 hidden lg:table-cell" title="Schedule-tied submit-by date (backward math from install activity)">Submit By</th>
           <th className="px-3 py-2 w-36">Status</th>
           <th className="px-3 py-2 w-10"></th>
         </tr>
@@ -860,6 +868,24 @@ function SubmittalGridRow({
           )}
         </td>
 
+        {/* Submit By — schedule-derived, read-only */}
+        <td className="px-3 py-2 hidden lg:table-cell">
+          {item.submitByDate ? (
+            <span
+              className={`text-xs ${
+                !isTerminal(item.status) && new Date(item.submitByDate) < new Date()
+                  ? "text-red-600 dark:text-red-400 font-semibold"
+                  : "text-zinc-500 dark:text-zinc-400"
+              }`}
+              title={`Required on site: ${fmtDate(item.requiredOnSiteDate)}\nLead: ${item.leadTimeDays}d  Review: ${item.reviewBufferDays}d  Resubmit: ${item.resubmitBufferDays}d`}
+            >
+              {fmtDate(item.submitByDate)}
+            </span>
+          ) : (
+            <span className="text-xs text-zinc-300 dark:text-zinc-600">—</span>
+          )}
+        </td>
+
         {/* Status — inline editable */}
         <td className="px-3 py-2">
           {editing === "status" ? (
@@ -906,7 +932,7 @@ function SubmittalGridRow({
 
       {isExpanded && (
         <tr className="bg-zinc-50 dark:bg-zinc-800/50">
-          <td colSpan={8} className="px-4 py-4">
+          <td colSpan={9} className="px-4 py-4">
             <SubmittalDetailEditor
               item={item}
               bidId={bidId}
@@ -1065,6 +1091,8 @@ function AddPackageForm({
 
 // ── Detail Editor (expand row) ─────────────────────────────────────────────
 
+type ActivityOption = { id: string; activityCode: string; name: string; startDate: string | null };
+
 function SubmittalDetailEditor({
   item,
   bidId,
@@ -1079,14 +1107,29 @@ function SubmittalDetailEditor({
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description ?? "");
   const [type, setType] = useState<SubmittalType>(item.type as SubmittalType);
-  const [submittalNumber, setSubmittalNumber] = useState(
-    item.submittalNumber ?? ""
-  );
+  const [submittalNumber, setSubmittalNumber] = useState(item.submittalNumber ?? "");
   const [reviewer, setReviewer] = useState(item.reviewer ?? "");
   const [requiredBy, setRequiredBy] = useState(toInputDate(item.requiredBy));
   const [notes, setNotes] = useState(item.notes ?? "");
+  // Phase 5G-2
+  const [linkedActivityId, setLinkedActivityId] = useState(item.linkedActivityId ?? "");
+  const [leadTimeDays, setLeadTimeDays] = useState(item.leadTimeDays);
+  const [reviewBufferDays, setReviewBufferDays] = useState(item.reviewBufferDays);
+  const [resubmitBufferDays, setResubmitBufferDays] = useState(item.resubmitBufferDays);
+  const [activities, setActivities] = useState<ActivityOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/bids/${bidId}/schedule-v2`)
+      .then((r) => r.json())
+      .then((data: { activities?: ActivityOption[] }) => {
+        if (data.activities) {
+          setActivities(data.activities.filter((a) => !a.name.match(/^\d+\.0\s/)));
+        }
+      })
+      .catch(() => {});
+  }, [bidId]);
 
   async function save() {
     setSaving(true);
@@ -1103,6 +1146,10 @@ function SubmittalDetailEditor({
           reviewer: reviewer || null,
           requiredBy: requiredBy || null,
           notes: notes || null,
+          linkedActivityId: linkedActivityId || null,
+          leadTimeDays,
+          reviewBufferDays,
+          resubmitBufferDays,
         }),
       });
       if (!res.ok) {
@@ -1116,6 +1163,9 @@ function SubmittalDetailEditor({
       setSaving(false);
     }
   }
+
+  const derivedOnSite = item.requiredOnSiteDate ? fmtDate(item.requiredOnSiteDate) : null;
+  const derivedSubmitBy = item.submitByDate ? fmtDate(item.submitByDate) : null;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -1162,6 +1212,68 @@ function SubmittalDetailEditor({
           className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
         />
       </Field>
+
+      {/* Phase 5G-2 — Schedule link */}
+      <Field label="Linked Schedule Activity" fullWidth>
+        <select
+          value={linkedActivityId}
+          onChange={(e) => setLinkedActivityId(e.target.value)}
+          className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+        >
+          <option value="">— not linked —</option>
+          {activities.map((a) => (
+            <option key={a.id} value={a.id}>
+              [{a.activityCode}] {a.name}{a.startDate ? ` — starts ${fmtDate(a.startDate)}` : ""}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Mfr Lead Time (working days)">
+        <input
+          type="number"
+          min={0}
+          value={leadTimeDays}
+          onChange={(e) => setLeadTimeDays(Math.max(0, parseInt(e.target.value) || 0))}
+          className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+        />
+      </Field>
+      <Field label="Review Buffer (working days)">
+        <input
+          type="number"
+          min={0}
+          value={reviewBufferDays}
+          onChange={(e) => setReviewBufferDays(Math.max(0, parseInt(e.target.value) || 0))}
+          className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+        />
+      </Field>
+      <Field label="Resubmit Buffer (working days)">
+        <input
+          type="number"
+          min={0}
+          value={resubmitBufferDays}
+          onChange={(e) => setResubmitBufferDays(Math.max(0, parseInt(e.target.value) || 0))}
+          className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+        />
+      </Field>
+      {(derivedSubmitBy || derivedOnSite) && (
+        <div className="md:col-span-2 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 px-3 py-2 text-xs space-y-1">
+          {derivedSubmitBy && (
+            <div>
+              <span className="font-semibold text-blue-700 dark:text-blue-300">Submit By: </span>
+              <span className={`${item.submitByDate && !isTerminal(item.status) && new Date(item.submitByDate) < new Date() ? "text-red-600 dark:text-red-400 font-semibold" : "text-blue-800 dark:text-blue-200"}`}>
+                {derivedSubmitBy}
+              </span>
+            </div>
+          )}
+          {derivedOnSite && (
+            <div>
+              <span className="font-semibold text-blue-700 dark:text-blue-300">Required On Site: </span>
+              <span className="text-blue-800 dark:text-blue-200">{derivedOnSite}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       <Field label="Description" fullWidth>
         <textarea
           value={description}

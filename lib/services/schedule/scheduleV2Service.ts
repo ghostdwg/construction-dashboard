@@ -82,7 +82,7 @@ function isWeekend(d: Date): boolean {
 }
 
 // Advance by |days| working days, forward (days>0) or backward (days<0).
-function addWorkingDays(start: Date, days: number): Date {
+export function addWorkingDays(start: Date, days: number): Date {
   if (days === 0) return new Date(start);
   const step = days > 0 ? 1 : -1;
   let remaining = Math.abs(days);
@@ -384,7 +384,54 @@ export async function recalculateScheduleV2(scheduleId: string): Promise<Activit
     where: { scheduleId },
     orderBy: { sortOrder: "asc" },
   });
+
+  // Recalculate schedule-tied submittal due dates for any submittals linked to
+  // activities in this schedule. Runs after startDates are committed above.
+  await recalcSubmittalsForSchedule(scheduleId);
+
   return refreshed.map(mapActivity);
+}
+
+// Recalculate requiredOnSiteDate + submitByDate for all SubmittalItems that are
+// linked to activities belonging to this schedule.
+async function recalcSubmittalsForSchedule(scheduleId: string): Promise<void> {
+  const sched = await prisma.schedule.findUnique({
+    where: { id: scheduleId },
+    select: { bidId: true },
+  });
+  if (!sched) return;
+
+  const submittals = await prisma.submittalItem.findMany({
+    where: { bidId: sched.bidId, linkedActivityId: { not: null } },
+    select: {
+      id: true,
+      linkedActivityId: true,
+      leadTimeDays: true,
+      reviewBufferDays: true,
+      resubmitBufferDays: true,
+      linkedActivity: { select: { startDate: true, scheduleId: true } },
+    },
+  });
+
+  // Only touch submittals whose linked activity belongs to this schedule
+  const relevant = submittals.filter(
+    (s) => s.linkedActivity?.scheduleId === scheduleId && s.linkedActivity.startDate != null
+  );
+
+  await Promise.all(
+    relevant.map((s) => {
+      const startDate = s.linkedActivity!.startDate!;
+      const requiredOnSiteDate = addWorkingDays(startDate, -s.leadTimeDays);
+      const submitByDate = addWorkingDays(
+        requiredOnSiteDate,
+        -(s.reviewBufferDays + s.resubmitBufferDays)
+      );
+      return prisma.submittalItem.update({
+        where: { id: s.id },
+        data: { requiredOnSiteDate, submitByDate },
+      });
+    })
+  );
 }
 
 // ── GC Schedule Template ──────────────────────────────────────────────────────

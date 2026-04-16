@@ -37,6 +37,13 @@ const ITEM_SELECT = {
   reviewer: true,
   notes: true,
   description: true,
+  // Phase 5G-2
+  linkedActivityId: true,
+  leadTimeDays: true,
+  reviewBufferDays: true,
+  resubmitBufferDays: true,
+  requiredOnSiteDate: true,
+  submitByDate: true,
 } as const;
 
 type DbItem = {
@@ -52,6 +59,13 @@ type DbItem = {
   reviewer: string | null;
   notes: string | null;
   description: string | null;
+  // Phase 5G-2
+  linkedActivityId: string | null;
+  leadTimeDays: number;
+  reviewBufferDays: number;
+  resubmitBufferDays: number;
+  requiredOnSiteDate: Date | null;
+  submitByDate: Date | null;
 };
 
 const isTerminal = (s: string) => s === "APPROVED" || s === "APPROVED_AS_NOTED";
@@ -75,6 +89,13 @@ function mapItem(it: DbItem, now: number) {
       it.requiredBy.getTime() < now &&
       !isTerminal(it.status),
     severity: severityFromExtractions(it.specSection?.aiExtractions),
+    // Phase 5G-2
+    linkedActivityId: it.linkedActivityId,
+    leadTimeDays: it.leadTimeDays,
+    reviewBufferDays: it.reviewBufferDays,
+    resubmitBufferDays: it.resubmitBufferDays,
+    requiredOnSiteDate: it.requiredOnSiteDate?.toISOString() ?? null,
+    submitByDate: it.submitByDate?.toISOString() ?? null,
   };
 }
 
