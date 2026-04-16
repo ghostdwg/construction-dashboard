@@ -60,6 +60,29 @@ def _cost(model: str, inp: int, out: int) -> float:
     return inp * rates["input"] + out * rates["output"]
 
 
+def _extract_json_block(text: str) -> str:
+    """
+    Extract JSON from a Claude response that may be wrapped in markdown
+    code blocks. Handles partial/truncated responses gracefully.
+    """
+    # Try ```json ... ``` first
+    start_marker = text.find("```json")
+    if start_marker >= 0:
+        start = start_marker + 7
+        end = text.find("```", start)
+        return text[start:end] if end > start else text[start:]
+
+    # Try plain ``` ... ```
+    start_marker = text.find("```")
+    if start_marker >= 0:
+        start = start_marker + 3
+        end = text.find("```", start)
+        return text[start:end] if end > start else text[start:]
+
+    # No code block — return as-is
+    return text
+
+
 # ── Pass 1: TOC-based section identification ─────────────────────────────────
 
 IDENTIFY_SYSTEM = """You are a construction specification analyst. You read spec book text and identify every CSI MasterFormat section.
@@ -140,14 +163,7 @@ def _identify_sections(full_text: str, page_count: int, client: anthropic.Anthro
         raise RuntimeError("Failed to identify sections after 5 retries")
 
     text = response.content[0].text if response.content else "[]"
-
-    # Extract JSON
-    if "```json" in text:
-        text = text[text.index("```json") + 7:]
-        text = text[:text.index("```")]
-    elif "```" in text:
-        text = text[text.index("```") + 3:]
-        text = text[:text.index("```")]
+    text = _extract_json_block(text)
 
     try:
         sections = json.loads(text.strip())
@@ -317,13 +333,7 @@ def _analyze_section(
         raise RuntimeError(f"Failed to analyze section {csi} after 5 retries")
 
     text = response.content[0].text if response.content else "{}"
-
-    if "```json" in text:
-        text = text[text.index("```json") + 7:]
-        text = text[:text.index("```")]
-    elif "```" in text:
-        text = text[text.index("```") + 3:]
-        text = text[:text.index("```")]
+    text = _extract_json_block(text)
 
     try:
         analysis = json.loads(text.strip())
@@ -341,6 +351,93 @@ def _analyze_section(
     }
 
     return analysis, usage
+
+
+# ── Section-PDF-based analysis (skips Pass 1 — uses split PDFs as source) ────
+
+def analyze_split_sections(
+    sections: list[dict],
+    on_progress: callable = None,
+) -> dict:
+    """
+    Analyze already-split spec sections. Each section has its own PDF file
+    (from spec_splitter), so context is clean and isolated.
+
+    Input: [{ csi, title, pdf_path }]
+    Each PDF is opened, text extracted, then sent to Claude (tiered by division).
+
+    Returns same shape as run_spec_intelligence.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY not configured")
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    results = []
+    usages = []
+    total_cost = 0.0
+    severity_counts = {"CRITICAL": 0, "HIGH": 0, "MODERATE": 0, "LOW": 0, "INFO": 0}
+
+    import time as _time
+    for i, sec in enumerate(sections):
+        csi = sec.get("csi", "")
+        title = sec.get("title", "")
+        pdf_path = sec.get("pdf_path", "")
+
+        if on_progress:
+            on_progress(i + 1, len(sections), csi)
+
+        # Extract text from the per-section PDF
+        section_text = ""
+        if pdf_path and os.path.exists(pdf_path):
+            try:
+                doc = pymupdf.open(pdf_path)
+                for page in doc:
+                    section_text += page.get_text("text") + "\n"
+                doc.close()
+            except Exception as e:
+                section_text = f"[extraction error: {e}]"
+
+        # Throttle
+        if i > 0:
+            _time.sleep(2)
+
+        analysis, usage = _analyze_section(csi, title, section_text, client)
+
+        results.append({
+            "csi": csi,
+            "title": title,
+            "pdf_path": pdf_path,
+            "raw_text": section_text[:5000],
+            "analysis": analysis,
+            "model_tier": "Sonnet" if _model_for_division(csi) == SONNET_MODEL else "Haiku",
+        })
+        usages.append({"csi": csi, **usage})
+        total_cost += usage["cost"]
+
+        sev = analysis.get("severity", "MODERATE").upper()
+        if sev in severity_counts:
+            severity_counts[sev] += 1
+
+    return {
+        "sections": results,
+        "section_count": len(results),
+        "summary": {
+            "total": len(results),
+            **{k.lower(): v for k, v in severity_counts.items()},
+        },
+        "pass1_usage": None,  # No Pass 1 — splitter did section identification
+        "pass2_usage": {
+            "total_input": sum(u["input_tokens"] for u in usages),
+            "total_output": sum(u["output_tokens"] for u in usages),
+            "total_cost": round(total_cost, 4),
+            "sections_analyzed": len(usages),
+            "sonnet_sections": sum(1 for u in usages if "sonnet" in u["model"]),
+            "haiku_sections": sum(1 for u in usages if "haiku" in u["model"]),
+        },
+        "total_cost": round(total_cost, 4),
+    }
 
 
 # ── Full pipeline ────────────────────────────────────────────────────────────

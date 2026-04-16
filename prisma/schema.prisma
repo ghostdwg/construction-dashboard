@@ -142,6 +142,7 @@ model Bid {
   submission          BidSubmission?
   buyoutItems         BuyoutItem[]
   submittalItems      SubmittalItem[]
+  submittalPackages   SubmittalPackage[]
   projectContacts     ProjectContact[]
   scheduleActivities  ScheduleActivity[]
 }
@@ -191,6 +192,7 @@ model BidTrade {
   trade              Trade               @relation(fields: [tradeId], references: [id])
   buyoutItem         BuyoutItem?
   submittalItems     SubmittalItem[]
+  submittalPackages  SubmittalPackage[]
   scheduleActivities ScheduleActivity[]
 
   @@unique([bidId, tradeId])
@@ -571,7 +573,8 @@ model SpecBook {
 }
 
 model SpecSection {
-  id             Int      @id @default(autoincrement())
+  id                 Int      @id @default(autoincrement())
+  csiCanonicalTitle  String?          // enriched from CsiMasterformat on split
   specBookId     Int
   csiNumber      String
   csiTitle       String
@@ -585,6 +588,14 @@ model SpecSection {
   // Phase 5A: AI extraction results (JSON blob from Claude analysis)
   // Contains: submittals, warranties, training, testing, closeout, products, performance
   aiExtractions  String?
+
+  // Phase 5A: per-section PDF split (Procore-style)
+  // Each section extracted as its own PDF file for download/preview/AI analysis
+  pdfPath        String?   // Server path to the split PDF
+  pdfFileName    String?   // Display filename (e.g., "03_30_00_cast_in_place_concrete.pdf")
+  pageStart      Int?      // 1-indexed start page in original spec book
+  pageEnd        Int?      // 1-indexed end page
+  pageCount      Int?
 
   specBook       SpecBook        @relation(fields: [specBookId], references: [id], onDelete: Cascade)
   trade          Trade?          @relation("SpecSectionTrade", fields: [tradeId], references: [id])
@@ -672,16 +683,66 @@ model DrawingSheet {
 //   PRODUCT_DATA | SHOP_DRAWING | SAMPLE | MOCKUP | WARRANTY | O_AND_M | LEED | CERT | OTHER
 // Valid status values:
 //   PENDING | REQUESTED | RECEIVED | UNDER_REVIEW | APPROVED | APPROVED_AS_NOTED | REJECTED | RESUBMIT
+// Phase 5G-3.5 — Submittal Package (Procore-compatible container)
+//
+// Groups SubmittalItems — maps 1:1 to Procore's "Submittal Package" field on
+// CSV import/export. Typically one package per trade (Concrete, Masonry,
+// Electrical). Auto-created when AI generator runs; user can rename/merge.
+model SubmittalPackage {
+  id            Int      @id @default(autoincrement())
+  bidId         Int
+  packageNumber String            // "PKG-01", "PKG-02" — unique per bid
+  name          String            // "Concrete", "Electrical", "HVAC Closeout"
+  status        String   @default("DRAFT")  // DRAFT | OPEN | CLOSED
+
+  // Optional 1:1 link to a bid trade (most packages mirror trades)
+  bidTradeId    Int?
+
+  // Package-level defaults (items in package inherit unless overridden)
+  responsibleContractor   String?
+  submittalManager        String?
+  defaultReviewers        String?   // JSON array: ["GC PM", "Architect"]
+  defaultDistribution     String?   // JSON array: ["Owner Rep", "Inspector"]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bid      Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidTrade BidTrade?       @relation(fields: [bidTradeId], references: [id])
+  items    SubmittalItem[]
+
+  @@unique([bidId, packageNumber])
+  @@index([bidId])
+}
+
+// Module CSI1 — Canonical CSI MasterFormat 2020 reference
+//
+// Seeded from prisma/seed/data/CSI_MasterFormat_2020.xlsx (Level 3 only).
+// Used by the spec splitter and AI pipeline to validate/reconcile parsed
+// section titles against the official MasterFormat naming.
+model CsiMasterformat {
+  id             Int    @id @default(autoincrement())
+  csiNumber      String @unique    // "03 30 00"
+  canonicalTitle String              // "Cast-in-Place Concrete"
+  division       String              // "03"
+
+  @@index([division])
+}
+
 model SubmittalItem {
   id               Int       @id @default(autoincrement())
   bidId            Int
   bidTradeId       Int?
   specSectionId    Int?
+  packageId        Int?      // Phase 5G-3.5 — optional FK to SubmittalPackage
 
   submittalNumber  String?
   title            String
   description      String?
   type             String    @default("OTHER")
+
+  // Provenance — "manual" | "regex_seed" | "ai_extraction"
+  source           String    @default("manual")
 
   // Lifecycle
   status           String    @default("PENDING")
@@ -699,14 +760,16 @@ model SubmittalItem {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  bid            Bid            @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  bidTrade       BidTrade?      @relation(fields: [bidTradeId], references: [id])
-  specSection    SpecSection?   @relation(fields: [specSectionId], references: [id])
-  responsibleSub Subcontractor? @relation(fields: [responsibleSubId], references: [id])
+  bid            Bid               @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidTrade       BidTrade?         @relation(fields: [bidTradeId], references: [id])
+  specSection    SpecSection?      @relation(fields: [specSectionId], references: [id])
+  responsibleSub Subcontractor?    @relation(fields: [responsibleSubId], references: [id])
+  package        SubmittalPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
 
   @@index([bidId])
   @@index([specSectionId])
   @@index([status])
+  @@index([packageId])
 }
 
 // Module H1 — Project Contacts (owner / architect / engineer / internal team)

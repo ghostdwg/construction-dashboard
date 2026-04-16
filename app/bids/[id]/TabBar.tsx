@@ -1,36 +1,50 @@
 "use client";
 
-// UI Nav Refactor — Two-level vertical sidebar
+// UI Nav Refactor v2 — Modern compact sidebar
 //
-// Replaces the 12-tab horizontal bar with a grouped sidebar. Tabs are split
-// into Pursuit (bid intake through submission) and Post-Award (handoff
-// modules). The ?tab= URL scheme is unchanged.
+// Flat list, icon + label, no subtitles. Tighter spacing, subtle hover,
+// accent-bar active state. Matches Procore-style sidebar conventions.
 
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  LayoutDashboard,
+  FileText,
+  Wrench,
+  Users,
+  ClipboardList,
+  Sparkles,
+  MessagesSquare,
+  Scale,
+  Activity,
+  PackageCheck,
+  FileCheck,
+  CalendarDays,
+  type LucideIcon,
+} from "lucide-react";
 
 type TabKey =
   | "overview" | "documents" | "trades" | "scope" | "subs"
   | "ai-review" | "questions" | "leveling" | "activity"
   | "handoff" | "submittals" | "schedule";
 
-type TabDef = { key: TabKey; label: string; description: string };
+type TabDef = { key: TabKey; label: string; icon: LucideIcon };
 
 const PURSUIT_TABS: TabDef[] = [
-  { key: "overview", label: "Overview", description: "Intake, brief, go/no-go" },
-  { key: "documents", label: "Documents", description: "Specs, drawings, addendums" },
-  { key: "trades", label: "Trades", description: "Trade list, tiers, procurement" },
-  { key: "subs", label: "Subs", description: "Invitations, RFQ, selection" },
-  { key: "scope", label: "Scope", description: "Normalization, trade assignment" },
-  { key: "ai-review", label: "AI Review", description: "Gap analysis by trade" },
-  { key: "questions", label: "Questions", description: "RFIs, clarifications" },
-  { key: "leveling", label: "Leveling", description: "Side-by-side comparison" },
-  { key: "activity", label: "Activity", description: "Outreach log, reporting" },
+  { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "documents", label: "Documents", icon: FileText },
+  { key: "trades", label: "Trades", icon: Wrench },
+  { key: "subs", label: "Subs", icon: Users },
+  { key: "scope", label: "Scope", icon: ClipboardList },
+  { key: "ai-review", label: "AI Review", icon: Sparkles },
+  { key: "questions", label: "Questions", icon: MessagesSquare },
+  { key: "leveling", label: "Leveling", icon: Scale },
+  { key: "activity", label: "Activity", icon: Activity },
 ];
 
 const POST_AWARD_TABS: TabDef[] = [
-  { key: "handoff", label: "Handoff", description: "Packet, buyout, estimate, budget" },
-  { key: "submittals", label: "Submittals", description: "Register, lifecycle, Procore CSV" },
-  { key: "schedule", label: "Schedule", description: "Activities, MSP export" },
+  { key: "handoff", label: "Handoff", icon: PackageCheck },
+  { key: "submittals", label: "Submittals", icon: FileCheck },
+  { key: "schedule", label: "Schedule", icon: CalendarDays },
 ];
 
 export default function TabBar({
@@ -50,7 +64,7 @@ export default function TabBar({
   }
 
   return (
-    <nav className="flex flex-col gap-1 min-w-[200px]">
+    <nav className="flex flex-col gap-0.5 min-w-[200px]">
       {/* ── Pursuit phase ── */}
       <SectionHeader label="Pursuit" active={!isAwarded} />
       {PURSUIT_TABS.map((t) => (
@@ -64,9 +78,8 @@ export default function TabBar({
       ))}
 
       {/* ── Post-Award phase ── */}
-      <div className="mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-700">
-        <SectionHeader label="Post-Award" active={isAwarded} />
-      </div>
+      <div className="mt-4" />
+      <SectionHeader label="Post-Award" active={isAwarded} />
       {POST_AWARD_TABS.map((t) => (
         <SidebarItem
           key={t.key}
@@ -88,16 +101,10 @@ function SectionHeader({
   active: boolean;
 }) {
   return (
-    <p
-      className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-widest ${
-        active
-          ? "text-zinc-900 dark:text-zinc-100"
-          : "text-zinc-400 dark:text-zinc-500"
-      }`}
-    >
+    <p className="px-3 pt-2 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 flex items-center gap-1.5">
       {label}
       {active && (
-        <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 align-middle" />
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
       )}
     </p>
   );
@@ -114,29 +121,30 @@ function SidebarItem({
   muted: boolean;
   onClick: () => void;
 }) {
+  const Icon = tab.icon;
+
+  const base =
+    "group relative w-full flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors";
+  const state = active
+    ? "bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-zinc-100"
+    : muted
+      ? "text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 dark:text-zinc-500 dark:hover:text-zinc-200 dark:hover:bg-zinc-800/60"
+      : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800/60";
+
   return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left rounded-md px-3 py-2 transition-colors ${
-        active
-          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-          : muted
-            ? "text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 dark:text-zinc-500 dark:hover:text-zinc-300 dark:hover:bg-zinc-800"
-            : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
-      }`}
-    >
-      <span className="block text-sm font-medium leading-tight">{tab.label}</span>
-      <span
-        className={`block text-[11px] leading-tight mt-0.5 ${
+    <button onClick={onClick} className={`${base} ${state}`}>
+      {/* Active accent bar on the left edge */}
+      {active && (
+        <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-emerald-500" />
+      )}
+      <Icon
+        className={`h-4 w-4 shrink-0 ${
           active
-            ? "text-zinc-300 dark:text-zinc-600"
-            : muted
-              ? "text-zinc-300 dark:text-zinc-600"
-              : "text-zinc-500 dark:text-zinc-400"
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
         }`}
-      >
-        {tab.description}
-      </span>
+      />
+      <span className="truncate">{tab.label}</span>
     </button>
   );
 }

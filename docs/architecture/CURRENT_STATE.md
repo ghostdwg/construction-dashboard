@@ -88,6 +88,7 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **Auth Wall A** | **Email/password login, JWT sessions, route protection, AUTH_DISABLED bypass** | **✅ Complete** |
 | **Queued** | **Future expansion** | **🔜 Planned** |
 | Tier F (F1-F3) | Procore Integration Bridge (CSV exports partially shipped) | 🔜 Queued |
+| Phase 5G | Submittal Intelligence Layer (4 sub-phases — bridges 5A AI extractions into H3 register, schedule-tied due dates) | 🔜 Queued |
 | Auth Wall B+C | Multi-tenancy + role-based access | 🔜 Deferred |
 
 ## What Is Built

@@ -121,7 +121,7 @@ export default function InternalAwardNotification({
 
           <Section style={section}>
             <Text style={footer}>
-              This is an automated notification from Bid Dashboard.
+              This is an automated notification from Construction Dashboard.
             </Text>
           </Section>
         </Container>

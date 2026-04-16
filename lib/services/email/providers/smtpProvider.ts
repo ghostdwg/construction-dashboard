@@ -172,9 +172,9 @@ export class SmtpProvider implements EmailProvider {
       const info = await transport.sendMail({
         from: fromHeader(cfg),
         to,
-        subject: "Bid Dashboard — SMTP test email",
+        subject: "Construction Dashboard — SMTP test email",
         text:
-          "This is a test email from your Bid Dashboard.\n\n" +
+          "This is a test email from your Construction Dashboard.\n\n" +
           "If you received this, your SMTP integration is configured correctly.\n\n" +
           `Sent via ${cfg.host}:${cfg.port} as ${cfg.user}.`,
       });

@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bid Dashboard",
+  title: "Construction Dashboard",
   description: "Preconstruction Intelligence System",
 };
 
@@ -61,7 +61,7 @@ export default function RootLayout({
             <nav className="border-b border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
               <div className="max-w-6xl mx-auto px-4 flex items-center gap-6 h-12">
                 <span className="font-semibold text-sm tracking-tight text-gray-900 dark:text-zinc-100">
-                  Bid Dashboard
+                  Construction Dashboard
                 </span>
                 <Link
                   href="/bids"

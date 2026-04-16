@@ -111,7 +111,7 @@ export default function LoginPage() {
           <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
             {isSetup
               ? "No accounts exist yet. Create the first admin account."
-              : "Bid Dashboard — Preconstruction Intelligence"}
+              : "Construction Dashboard — Preconstruction Intelligence"}
           </p>
         </div>
 

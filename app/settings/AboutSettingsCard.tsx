@@ -13,7 +13,7 @@ export default function AboutSettingsCard() {
           About this app
         </h3>
         <p className="text-sm text-zinc-700 dark:text-zinc-300">
-          Bid Dashboard is a modular preconstruction intelligence platform for
+          Construction Dashboard is a modular preconstruction intelligence platform for
           solo estimators. It covers the full lifecycle from bid intake through
           post-award handoff — three pursuit wings (Job Intake → Scope
           Intelligence → Bid Leveling) plus a post-award handoff layer.

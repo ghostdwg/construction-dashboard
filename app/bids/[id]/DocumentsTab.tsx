@@ -23,12 +23,18 @@ type SectionRow = {
   id: number;
   csiNumber: string;
   csiTitle: string;
+  csiCanonicalTitle?: string | null;
   tradeId: number | null;
   trade: Trade | null;
   matchedTradeId: number | null;
   matchedTrade: Trade | null;
   source: string | null;
   aiExtractions: AiAnalysis | null;
+  pdfFileName?: string | null;
+  pageStart?: number | null;
+  pageEnd?: number | null;
+  pageCount?: number | null;
+  hasPdf?: boolean;
 };
 
 type SpecBookMeta = {
@@ -579,6 +585,171 @@ function AiSpecResults({
   );
 }
 
+// ── Spec Sections grouped by CSI Division (Procore-style) ───────────────────
+
+const DIVISION_NAMES: Record<string, string> = {
+  "01": "General Requirements",
+  "02": "Existing Conditions",
+  "03": "Concrete",
+  "04": "Masonry",
+  "05": "Metals",
+  "06": "Wood, Plastics, and Composites",
+  "07": "Thermal and Moisture Protection",
+  "08": "Openings",
+  "09": "Finishes",
+  "10": "Specialties",
+  "11": "Equipment",
+  "12": "Furnishings",
+  "13": "Special Construction",
+  "14": "Conveying Equipment",
+  "21": "Fire Suppression",
+  "22": "Plumbing",
+  "23": "HVAC",
+  "25": "Integrated Automation",
+  "26": "Electrical",
+  "27": "Communications",
+  "28": "Electronic Safety and Security",
+  "31": "Earthwork",
+  "32": "Exterior Improvements",
+  "33": "Utilities",
+};
+
+function SpecSectionsByDivision({
+  bidId,
+  sections,
+}: {
+  bidId: number;
+  sections: SectionRow[];
+}) {
+  const [expandedDivs, setExpandedDivs] = useState<Set<string>>(new Set());
+
+  // Group by division
+  const byDivision = new Map<string, SectionRow[]>();
+  for (const s of sections) {
+    const div = s.csiNumber.replace(/\s+/g, "").slice(0, 2);
+    if (!byDivision.has(div)) byDivision.set(div, []);
+    byDivision.get(div)!.push(s);
+  }
+
+  // Sort each division's sections by full CSI number
+  for (const secs of byDivision.values()) {
+    secs.sort((a, b) =>
+      a.csiNumber.replace(/\s+/g, "").localeCompare(b.csiNumber.replace(/\s+/g, ""))
+    );
+  }
+
+  const sortedDivisions = Array.from(byDivision.keys()).sort();
+
+  function toggleDiv(div: string) {
+    setExpandedDivs((prev) => {
+      const next = new Set(prev);
+      if (next.has(div)) next.delete(div);
+      else next.add(div);
+      return next;
+    });
+  }
+
+  return (
+    <section className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+          Specifications by Division — {sections.length} sections
+        </h3>
+      </div>
+
+      <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        {sortedDivisions.map((div) => {
+          const secs = byDivision.get(div)!;
+          const isOpen = expandedDivs.has(div);
+          const divName = DIVISION_NAMES[div] ?? "Other";
+          const hasPdfs = secs.some((s) => s.hasPdf);
+
+          return (
+            <div key={div}>
+              <button
+                onClick={() => toggleDiv(div)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+              >
+                <span className="text-zinc-400 text-xs w-3">{isOpen ? "▼" : "▶"}</span>
+                <span className="font-mono text-sm text-zinc-600 dark:text-zinc-400 w-8">{div}</span>
+                <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                  {divName}
+                </span>
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  ({secs.length})
+                </span>
+                {hasPdfs && (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 ml-auto">
+                    {secs.filter((s) => s.hasPdf).length} PDFs
+                  </span>
+                )}
+              </button>
+
+              {isOpen && (
+                <div className="bg-zinc-50/50 dark:bg-zinc-800/30">
+                  {secs.map((sec) => (
+                    <div
+                      key={sec.id}
+                      className="flex items-center gap-3 px-4 py-2 pl-12 border-t border-zinc-100 dark:border-zinc-800 text-sm hover:bg-zinc-100/50 dark:hover:bg-zinc-800/50"
+                    >
+                      {sec.hasPdf ? (
+                        <a
+                          href={`/api/bids/${bidId}/specbook/sections/${sec.id}/pdf`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline w-20"
+                        >
+                          {sec.csiNumber}
+                        </a>
+                      ) : (
+                        <span className="font-mono text-xs text-zinc-500 dark:text-zinc-500 w-20">
+                          {sec.csiNumber}
+                        </span>
+                      )}
+                      <span className="text-zinc-800 dark:text-zinc-200 flex-1">
+                        {sec.csiCanonicalTitle ?? sec.csiTitle}
+                        {sec.csiCanonicalTitle && sec.csiCanonicalTitle.toLowerCase() !== sec.csiTitle.toLowerCase() && (
+                          <span className="ml-2 text-[10px] text-zinc-400 dark:text-zinc-500 italic">
+                            (spec: {sec.csiTitle})
+                          </span>
+                        )}
+                      </span>
+                      {sec.pageCount && (
+                        <span className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                          {sec.pageCount}p (p.{sec.pageStart}–{sec.pageEnd})
+                        </span>
+                      )}
+                      {sec.aiExtractions?.severity && (
+                        <SeverityBadge severity={sec.aiExtractions.severity} />
+                      )}
+                      {sec.tradeId && sec.trade && (
+                        <span className="text-[10px] text-green-600 dark:text-green-400">
+                          ✓ {sec.trade.name}
+                        </span>
+                      )}
+                      {sec.hasPdf && (
+                        <a
+                          href={`/api/bids/${bidId}/specbook/sections/${sec.id}/pdf`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400"
+                          title="Open PDF"
+                        >
+                          📄
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function UnknownSection({
   rows,
   allTrades,
@@ -650,6 +821,10 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
   const [specUploading, setSpecUploading] = useState(false);
   const [specUploadError, setSpecUploadError] = useState<string | null>(null);
+  const [specSplitting, setSpecSplitting] = useState(false);
+  const [specSplitError, setSpecSplitError] = useState<string | null>(null);
+  const [specSplitResult, setSpecSplitResult] = useState<{ sectionCount: number } | null>(null);
+
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
@@ -744,6 +919,28 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       setSpecUploadError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setSpecUploading(false);
+    }
+  }
+
+  // ── Split spec book into per-section PDFs ────────────────────────────────
+
+  async function runSpecSplit() {
+    setSpecSplitting(true);
+    setSpecSplitError(null);
+    setSpecSplitResult(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/specbook/split`, { method: "POST" });
+      const result = await res.json();
+      if (!res.ok) {
+        setSpecSplitError(result.error ?? "Split failed");
+      } else {
+        setSpecSplitResult({ sectionCount: result.sectionCount });
+        setSpecData(await safeJson<SpecData>(await fetch(`/api/bids/${bidId}/specbook/gaps`)));
+      }
+    } catch (e) {
+      setSpecSplitError(e instanceof Error ? e.message : "Split failed");
+    } finally {
+      setSpecSplitting(false);
     }
   }
 
@@ -1059,6 +1256,47 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
         </div>
       </div>
 
+      {/* Split spec book into per-section PDFs (Procore-style) */}
+      {specData?.specBook?.status === "ready" && (
+        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                Split into Per-Section PDFs
+              </h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                Extracts each CSI section as its own downloadable PDF · replaces regex-parsed sections with accurate page ranges · free (no AI)
+              </p>
+            </div>
+            <button
+              onClick={runSpecSplit}
+              disabled={specSplitting}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {specSplitting ? "Splitting…" : "Split into Sections"}
+            </button>
+          </div>
+
+          {specSplitting && (
+            <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+              Scanning pages, finding section boundaries, extracting PDFs…
+            </p>
+          )}
+
+          {specSplitError && (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-900/30 dark:text-red-300">
+              {specSplitError}
+            </div>
+          )}
+
+          {specSplitResult && (
+            <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300">
+              Split into <strong>{specSplitResult.sectionCount}</strong> section PDFs.
+            </div>
+          )}
+        </section>
+      )}
+
       {/* AI Analysis button — appears after spec book is uploaded */}
       {specData?.specBook?.status === "ready" && (
         <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
@@ -1326,6 +1564,18 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
             </button>
           )}
         </div>
+      )}
+
+      {/* ── Spec Sections by Division (Procore-style) ── */}
+      {specData && (specData.total ?? 0) > 0 && (
+        <SpecSectionsByDivision
+          bidId={bidId}
+          sections={[
+            ...(specData.covered ?? []),
+            ...(specData.missing ?? []),
+            ...(specData.unknown ?? []),
+          ]}
+        />
       )}
 
       {/* ── AI Spec Intelligence Results ── */}

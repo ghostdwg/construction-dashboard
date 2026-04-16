@@ -675,7 +675,7 @@ export async function POST(
   const { activities: scheduleActivities } = await loadScheduleForBid(bidId);
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Bid Dashboard — Handoff Packet";
+  wb.creator = "Construction Dashboard — Handoff Packet";
   wb.created = new Date();
 
   buildProjectSummarySheet(wb, packet);

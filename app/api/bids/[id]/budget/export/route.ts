@@ -160,7 +160,7 @@ export async function POST(
     }
 
     const wb = new ExcelJS.Workbook();
-    wb.creator = "Bid Dashboard — Project Budget";
+    wb.creator = "Construction Dashboard — Project Budget";
     wb.created = new Date();
     buildBudgetSheet(wb, budget);
 

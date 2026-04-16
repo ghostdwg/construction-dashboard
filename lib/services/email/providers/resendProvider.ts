@@ -121,9 +121,9 @@ export class ResendProvider implements EmailProvider {
       const response = await client.emails.send({
         from: fromEmail,
         to,
-        subject: "Bid Dashboard — Resend test email",
+        subject: "Construction Dashboard — Resend test email",
         text:
-          "This is a test email from your Bid Dashboard.\n\n" +
+          "This is a test email from your Construction Dashboard.\n\n" +
           "If you received this, your Resend integration is configured correctly.\n\n" +
           "You can now send RFQ emails from the Subs tab on any bid.",
       });

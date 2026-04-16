@@ -378,6 +378,191 @@ Status: STRETCH — validate Phases 5A–5E first
   Scale detection: OCR title block + dimension annotation validation
   Commercial benchmark: Togal.AI ($300+/user/mo, 90–98% accuracy)
 
+#### Phase 5G: Submittal Intelligence Layer
+Estimated: 80–120 hours total (split across four sub-phases)
+Status: NOT STARTED — bridges Phase 5A (AI extraction) into H3 (register)
+
+The "moat feature" — turns the AI submittal extractions sitting in
+SpecSection.aiExtractions into a live, schedule-aware register. Procore
+charges thousands per project for this exact workflow.
+
+BACKLOG IDEA (not required for v1) — Division 01 Submittal Policy:
+  Section 01 33 00 (and 01 33 23, 01 77 00, 01 78 00) defines project-wide
+  submittal procedures: format, numbering scheme, review duration, copies,
+  resubmittal procedure, distribution requirements. A separate AI pass on
+  these sections could populate a BidSubmittalPolicy row whose defaults
+  feed reviewBufferDays (5G-2), distribution lists (5G-3), and workflow
+  defaults (5G-4). Skip until 5G-1 through 5G-3 are in real use — risk of
+  over-polishing before validating the basics.
+
+##### 5G-1 — Spec Section Auto-Linkage (~10 hrs)
+Bridge AI extractions → SubmittalItem records.
+  - New column: SubmittalItem.specSectionId (FK to SpecSection)
+  - New column: SubmittalItem.source ("ai_extraction" | "regex_seed" | "manual")
+  - New action: "Generate Submittal Register from Spec Analysis" button on
+    Submittals tab — reads every SpecSection.aiExtractions, creates one
+    SubmittalItem per extracted submittal
+  - Dedupe: skip if (csiNumber + type + similar description) already exists
+  - "View Spec" link on each submittal opens the per-section PDF (already
+    served at /api/bids/[id]/specbook/sections/[sectionId]/pdf)
+  - Same pattern unlocks Warranty Register from extracted warranty[] data
+
+##### 5G-2 — Schedule-Tied Due Dates (~30 hrs) — KILLER FEATURE
+Backwards math from required-on-site → submit-by date.
+  New SubmittalItem fields:
+    leadTimeDays         — from approval to delivery (mfr promise)
+    reviewBufferDays     — engineer/architect review (default 21 per A201)
+    resubmitBufferDays   — slack for one resubmission cycle (default 7)
+    linkedActivityId     — FK to ScheduleActivity (the install activity)
+    requiredOnSiteDate   — derived: linkedActivity.startDate − leadTimeDays
+    submitByDate         — derived: requiredOnSiteDate − reviewBuffer − resubmitBuffer
+
+  - Schedule recalc trigger fires submittal date recalc (working-day math
+    already exists in scheduleService.ts)
+  - Late submittal pushes linkedActivity.startDate ("ball in court" days)
+  - UI: dropdown on submittal form to pick the schedule activity it blocks
+  - This must ship alongside Phase 5C (Gantt UI) — both touch schedule recalc
+
+##### 5G-3.5 — Submittal Packages (~20 hrs)
+First-class container for grouping submittals — matches Procore's
+"Submittal Package" field on the import CSV.
+
+  New model: SubmittalPackage
+    packageNumber           "PKG-01", "PKG-02"
+    name                    "Concrete", "Electrical"
+    bidTradeId              optional FK (1:1 with trade in most cases)
+    status                  DRAFT | OPEN | CLOSED
+    responsibleContractor   package-level default
+    submittalManager        package-level default
+    defaultReviewers        Json — ["GC PM", "Architect"]
+    defaultDistribution     Json — ["Owner Rep", "Inspector"]
+    defaultWorkflowTemplate FK to SubmittalWorkflowTemplate (5G-4)
+
+  SubmittalItem gets new column: packageId (FK, nullable)
+  When item belongs to a package, package values become the form defaults
+  (overridable per item).
+
+  Auto-creation: when AI extraction runs (5G-1), one package is created
+  per trade that has extracted submittals. Estimator can rename/merge.
+
+  UI: Submittals tab groups by package with collapse/expand; bulk actions
+  per package (assign sub, set due dates, mark received).
+
+  Procore export: existing H3 CSV gains "Submittal Package" column —
+  one line of code, makes the export Procore-import-ready end-to-end.
+
+##### 5G-3.6 — Bulk-Edit Grid UI (~15 hrs)
+The "easier than Procore + easier than Excel" experience. Replaces the
+default Submittals tab with a package-grouped outline.
+
+  Layout:
+    - Top bar: [Generate from Spec Analysis] [Export Procore CSV] + filter chips
+    - Each package renders as collapsible header with progress pill (●●●○○ 60%)
+      and inline distribution preview ("GC PM, Architect, Structural Eng")
+    - Items inside each package render as a dense grid:
+        # | Title | Type | CSI | Sub | Due | Status
+    - Inline cell editing — click cell, edit, Tab to next cell
+    - No modal for routine edits; modal only for full item detail / attachments
+    - Keyboard: Tab / Shift+Tab between cells, Enter saves, J/K row nav
+    - Multi-row select (checkbox column + Shift+click range)
+    - Bulk actions on selection: assign sub, set due dates, mark received,
+      move between packages, delete
+
+  Filter chips (top of view):
+    Open · Overdue · Awaiting Review · CRITICAL · Mine
+    Click chip to scope view; chips are additive
+
+  Why this beats Procore:
+    - Procore requires per-item modal clicks; this is one-screen scan + edit
+    - Package as primary unit matches how estimators actually think
+    - AI prefills mean you approve, not data-enter
+    - Bulk operations are first-class (Procore charges extra for bulk edit)
+
+  Why this beats Excel:
+    - Real relationships (CSI, sub, schedule) preserved
+    - Status lifecycle automation (overdue flagging, reminders)
+    - Procore CSV export is one click, no manual reformatting
+
+  Stack notes:
+    - Native HTML table + contenteditable cells; no library dep
+    - Server actions for save-on-blur (no batch save needed)
+    - Optimistic UI for snappy feel
+
+##### 5G-3 — Templated Distribution Lists (~25 hrs)
+Per-trade routing rules so the form auto-fills.
+  New model: SubmittalDistributionTemplate
+    trade                 (e.g., Masonry)
+    responsibleContractor → BidTrade.awardedTo (auto from H2 Buyout)
+    submittalManager      → role/person at the awarded sub
+    reviewers             → [GC PM, Architect, Structural Engineer]
+    distribution          → [GC Super, Owner Rep, Inspector]
+
+  - When user picks a CSI section on a submittal, division → trade →
+    template auto-populates everyone
+  - Bulk-edit screen for managing templates per project
+  - Override per submittal allowed
+
+##### 5G-4 — Templated Workflows (~25 hrs) — DEFER
+Submittal type → review path defaults.
+  New model: SubmittalWorkflowTemplate
+    type=PRODUCT_DATA   → GC → Architect (10d) → return
+    type=SHOP_DRAWING   → GC → Architect → Engineer (15d) → return
+    type=SAMPLE         → GC → Architect (5d) → return → resubmit if needed
+    type=MOCKUP         → GC → Architect → Owner (mockup approval meeting)
+    type=LEED           → GC → LEED consultant → Architect
+
+  - Auto-populates default reviewers, review duration, resubmission allowance
+  - Override per submittal
+  - DEFER until Phases 5G-1 and 5G-2 are battle-tested in real workflow.
+    Workflow engines are easy to over-engineer.
+
+When this ships, it ABSORBS these bid-dashboard deferrals:
+  - H3: AI-driven submittal extraction (5G-1 replaces regex seeder, refines 5B)
+  - H3: Submittal attachments / file uploads (uses per-section PDFs from 5A)
+
+Recommended sequence:
+  5G-1   → ship right after Phase 5A AI analysis is verified (data bridge)
+  5G-3.5 → ship immediately after 5G-1 (package container — no packages = flat list)
+  5G-3.6 → ship immediately after 5G-3.5 (the grid UI is the real user value)
+  5G-2   → ship as part of Phase 5C scheduling (both touch recalc)
+  5G-3   → ship after 5C, once trade data settles (template distribution lists)
+  5G-4   → defer to Phase 5E or beyond (workflow templates)
+
+First deliverable worth shipping: 5G-1 + 5G-3.5 + 5G-3.6 as a bundle.
+  Together = ~45 hrs = spec-driven submittal register with package grouping
+  and bulk edit. That's the "easier than Procore + easier than Excel" MVP.
+  5G-2 / 5G-3 / 5G-4 layer on additional intelligence afterward.
+
+#### Phase 5H: Closeout Intelligence (SUGGESTIVE — future direction)
+Estimated: 80–120 hours
+Status: ASPIRATIONAL — pivot target after 5G + real closeout data exists
+
+AI works against INBOUND submittal PDFs (received from subs during
+construction) rather than outbound spec analysis. Requires post-award data
+flow that doesn't exist yet; re-evaluate once the first project has
+submittals actually being submitted.
+
+Potential sub-phases:
+  5H-1: Spec-compliance check — compare submitted cut sheets against the spec
+        paragraph that required them. Flag deviations pre-approval.
+  5H-2: Warranty auto-extraction from received warranty certificates (duration,
+        start date, manufacturer contact, exclusions).
+  5H-3: O&M auto-compilation — reads every approved submittal PDF, extracts
+        maintenance-relevant pages, assembles bound per-trade O&M book.
+  5H-4: Closeout package generator — per-trade PDF (cover + spec + cut sheets
+        + warranty + O&M) auto-assembled at substantial completion.
+
+Why it's deferred:
+  No inbound submittals exist yet (pre-award workflow only). Building 5H now
+  is building against a scenario we can't validate. First awarded project
+  that goes through closeout tells us the real pain points.
+
+Near-term alternative (ships today):
+  Warranty info extracted from the SPEC BOOK (which we already have via 5A
+  AI analysis) gives pre-award visibility. Spec tells us what warranty is
+  REQUIRED. Industry-standard tables fill in what's TYPICAL. Together they
+  inform bid pricing without needing inbound PDFs.
+
 ### ━━━ STREAM C: Cross-cutting (either repo) ━━━
 
 #### Database Migration: SQLite → PostgreSQL
@@ -486,3 +671,4 @@ reprioritize that module to Week 1.
 | 1.0 | 2026-04-12 | Initial — 35 modules through Auth Wall A |
 | 2.0 | 2026-04-12 | Added Phase 5 (6 sub-phases), Python sidecar, spec pipeline, scheduling, meeting intelligence, super briefing, drawing OCR, Postgres migration, deployment, costs |
 | 2.1 | 2026-04-12 | Two-repo strategy (bid-dashboard + construction-dashboard), three parallel streams (A: completion, B: expansion, C: cross-cutting), sync protocol, carried-forward deferrals with ABSORBED tracking, minor enhancements inventory, "never do" rules for repo discipline |
+| 2.2 | 2026-04-14 | Added Phase 5G — Submittal Intelligence Layer (4 sub-phases: spec auto-linkage, schedule-tied due dates, distribution templates, workflow templates). Bridges Phase 5A AI extractions into H3 register with backwards-from-required-on-site math |

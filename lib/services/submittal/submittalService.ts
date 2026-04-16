@@ -47,6 +47,11 @@ export type SubmittalRow = {
 
   // Derived at load time (avoids Date.now() in React render)
   isOverdue: boolean;
+
+  // Risk severity inherited from the linked SpecSection's AI analysis
+  // (CRITICAL | HIGH | MODERATE | LOW | INFO). Null if no analysis ran
+  // for the section, or the submittal is manual / not linked to a section.
+  severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW" | "INFO" | null;
 };
 
 export type SubmittalRollup = {
@@ -77,11 +82,25 @@ export async function loadSubmittalsForBid(
     where,
     include: {
       bidTrade: { include: { trade: true } },
-      specSection: { select: { id: true, csiNumber: true } },
+      specSection: { select: { id: true, csiNumber: true, aiExtractions: true } },
       responsibleSub: { select: { id: true, company: true } },
     },
     orderBy: [{ submittalNumber: "asc" }, { id: "asc" }],
   });
+
+  const VALID_SEVERITY = new Set(["CRITICAL", "HIGH", "MODERATE", "LOW", "INFO"]);
+  function severityFromSection(
+    aiExtractions: string | null | undefined
+  ): SubmittalRow["severity"] {
+    if (!aiExtractions) return null;
+    try {
+      const parsed = JSON.parse(aiExtractions) as { severity?: string };
+      const sev = (parsed.severity ?? "").toUpperCase();
+      return VALID_SEVERITY.has(sev) ? (sev as SubmittalRow["severity"]) : null;
+    } catch {
+      return null;
+    }
+  }
 
   const now = Date.now();
   const isTerminal = (s: string) => s === "APPROVED" || s === "APPROVED_AS_NOTED";
@@ -113,6 +132,7 @@ export async function loadSubmittalsForBid(
       it.requiredBy != null &&
       it.requiredBy.getTime() < now &&
       !isTerminal(it.status),
+    severity: severityFromSection(it.specSection?.aiExtractions),
   }));
 }
 

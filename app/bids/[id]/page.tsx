@@ -99,7 +99,7 @@ export default async function BidDetailPage({
       : [];
 
   return (
-    <div className="max-w-6xl mx-auto py-10 px-4">
+    <div className="max-w-screen-2xl py-10 px-6">
       {/* ── Header (full width) ── */}
       <div className="mb-6">
         <Link href="/bids" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">

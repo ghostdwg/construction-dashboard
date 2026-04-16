@@ -19,7 +19,8 @@ from fastapi.responses import JSONResponse
 
 from services.spec_parser import parse_spec_pdf
 from services.ai_extractor import extract_from_sections, EXTRACTION_TYPES
-from services.spec_intelligence import run_spec_intelligence
+from services.spec_intelligence import run_spec_intelligence, analyze_split_sections
+from services.spec_splitter import split_spec_book
 
 router = APIRouter()
 
@@ -400,3 +401,144 @@ async def intelligent_status(job_id: str):
         response["error"] = job["error"]
 
     return response
+
+
+# ── POST /parse/specs/split ──────────────────────────────────────────────────
+
+from pydantic import BaseModel
+
+
+class SplitRequest(BaseModel):
+    pdf_path: str
+    output_dir: str
+
+
+class AnalyzeSplitSectionsRequest(BaseModel):
+    sections: list[dict]  # [{ csi, title, pdf_path }]
+    callback_url: str | None = None   # POSTed with final result when job finishes
+    callback_token: str | None = None  # sent as X-Callback-Token header
+
+
+@router.post("/specs/analyze_split")
+async def analyze_split(request: AnalyzeSplitSectionsRequest):
+    """
+    Analyze already-split spec sections. Returns a job_id for polling.
+
+    Each section is expected to have: csi, title, pdf_path (from the splitter).
+    Skips Pass 1 identification and goes directly to per-section Claude analysis
+    using each section's own PDF as clean, isolated context.
+    """
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
+
+    if not request.sections:
+        raise HTTPException(400, "No sections provided")
+
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {
+        "status": "processing",
+        "progress": 0,
+        "total_sections": len(request.sections),
+        "sections_processed": 0,
+        "current_section": None,
+        "result": None,
+        "error": None,
+        "file_name": "split_sections",
+        "type": "analyze_split",
+    }
+
+    asyncio.create_task(_run_analyze_split(
+        job_id, request.sections, request.callback_url, request.callback_token
+    ))
+
+    return {"job_id": job_id, "status": "processing"}
+
+
+async def _fire_callback(url: str, token: str | None, payload: dict):
+    """POST the final job result to the caller. Best-effort — log and move on."""
+    import urllib.request
+    import json as _json
+    try:
+        data = _json.dumps(payload).encode()
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["X-Callback-Token"] = token
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: urllib.request.urlopen(req, timeout=30).read(),
+        )
+    except Exception as e:
+        print(f"[callback] failed to notify {url}: {e}")
+
+
+async def _run_analyze_split(
+    job_id: str,
+    sections: list[dict],
+    callback_url: str | None,
+    callback_token: str | None,
+):
+    """Background task: analyze each split section using its own PDF."""
+    try:
+        loop = asyncio.get_event_loop()
+
+        def on_progress(current: int, total: int, csi: str):
+            _jobs[job_id]["sections_processed"] = current
+            _jobs[job_id]["total_sections"] = total
+            _jobs[job_id]["current_section"] = csi
+            _jobs[job_id]["progress"] = round(current / total * 100, 1) if total > 0 else 0
+
+        result = await loop.run_in_executor(
+            None,
+            lambda: analyze_split_sections(sections, on_progress=on_progress),
+        )
+
+        _jobs[job_id]["result"] = result
+        _jobs[job_id]["status"] = "complete"
+        _jobs[job_id]["progress"] = 100
+
+        if callback_url:
+            await _fire_callback(callback_url, callback_token, {
+                "job_id": job_id,
+                "status": "complete",
+                "result": result,
+            })
+
+    except Exception as e:
+        _jobs[job_id]["status"] = "error"
+        _jobs[job_id]["error"] = str(e)
+        if callback_url:
+            await _fire_callback(callback_url, callback_token, {
+                "job_id": job_id,
+                "status": "error",
+                "error": str(e),
+            })
+
+
+@router.post("/specs/split")
+async def split_specs(request: SplitRequest):
+    """
+    Split a spec book PDF into per-section PDFs.
+
+    Accepts server-side paths (not uploads) because the spec book is already
+    saved on disk from the upload step. Much faster than re-uploading.
+
+    Returns list of {csi, title, pdf_path, filename, page_start, page_end,
+    page_count, text} — one entry per CSI section found.
+    """
+    if not os.path.exists(request.pdf_path):
+        raise HTTPException(404, f"PDF not found: {request.pdf_path}")
+
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: split_spec_book(request.pdf_path, request.output_dir),
+        )
+        return {
+            "sections": result,
+            "section_count": len(result),
+        }
+    except Exception as e:
+        raise HTTPException(422, f"Spec split failed: {str(e)}")

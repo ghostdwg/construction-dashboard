@@ -98,6 +98,7 @@ type SubmittalRow = {
   reviewer: string | null;
   notes: string | null;
   isOverdue: boolean;
+  severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW" | "INFO" | null;
 };
 
 type Rollup = {
@@ -107,11 +108,17 @@ type Rollup = {
   overdue: number;
 };
 
-type SeedResult = {
+type GenerateFromAiResult = {
   sectionsScanned: number;
-  sectionsWithSubmittals: number;
-  itemsCreated: number;
-  itemsSkipped: number;
+  sectionsWithExtractions: number;
+  submittalsFound: number;
+  created: number;
+  skipped: number;
+  skippedBoilerplate: number;
+  skippedProcedural: number;
+  deferredToCloseout: number;
+  bidTradesLinked: number;
+  previousAutoItemsRemoved: number;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -133,8 +140,18 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const [seeding, setSeeding] = useState(false);
-  const [seedBanner, setSeedBanner] = useState<SeedResult | null>(null);
+  // View group — client-side filter across type categories
+  type ViewGroup = "all" | "active" | "closeout";
+  const [view, setView] = useState<ViewGroup>("all");
+
+  const VIEW_TYPES: Record<ViewGroup, SubmittalType[] | null> = {
+    all: null,
+    active: ["PRODUCT_DATA", "SHOP_DRAWING", "SAMPLE", "MOCKUP", "OTHER"],
+    closeout: ["WARRANTY", "O_AND_M"],
+  };
+
+  const [generatingFromAi, setGeneratingFromAi] = useState(false);
+  const [aiBanner, setAiBanner] = useState<GenerateFromAiResult | null>(null);
   const [exporting, setExporting] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
@@ -172,23 +189,23 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     };
   }, [bidId, statusFilter, typeFilter, reloadTick]);
 
-  async function runSeed() {
-    setSeeding(true);
-    setSeedBanner(null);
+  async function runGenerateFromAi() {
+    setGeneratingFromAi(true);
+    setAiBanner(null);
     setError(null);
     try {
-      const res = await fetch(`/api/bids/${bidId}/submittals/seed`, { method: "POST" });
+      const res = await fetch(`/api/bids/${bidId}/submittals/generate-from-specs`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error ?? `HTTP ${res.status}`);
       }
-      const data = (await res.json()) as SeedResult;
-      setSeedBanner(data);
+      const data = (await res.json()) as GenerateFromAiResult;
+      setAiBanner(data);
       setReloadTick((t) => t + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setSeeding(false);
+      setGeneratingFromAi(false);
     }
   }
 
@@ -268,11 +285,12 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
         </div>
         <div className="flex gap-2 flex-wrap">
           <button
-            onClick={runSeed}
-            disabled={seeding}
-            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            onClick={runGenerateFromAi}
+            disabled={generatingFromAi}
+            className="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+            title="Regenerates the register from AI Spec Analysis. Replaces all auto-generated items; manual entries are preserved."
           >
-            {seeding ? "Scanning specs…" : "Seed from Specs"}
+            {generatingFromAi ? "Generating…" : "Generate from AI Analysis"}
           </button>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
@@ -297,12 +315,17 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
         </div>
       )}
 
-      {/* ── Seed result banner ── */}
-      {seedBanner && (
-        <div className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700 dark:border-green-900 dark:bg-green-900/30 dark:text-green-300">
-          Scanned {seedBanner.sectionsScanned} spec sections ({seedBanner.sectionsWithSubmittals} had submittal requirements).
-          Created <strong>{seedBanner.itemsCreated}</strong> new items
-          {seedBanner.itemsSkipped > 0 && `, skipped ${seedBanner.itemsSkipped} duplicates`}.
+      {/* ── AI generation result banner ── */}
+      {aiBanner && (
+        <div className="rounded-md border border-purple-200 bg-purple-50 px-4 py-2 text-sm text-purple-700 dark:border-purple-900 dark:bg-purple-900/30 dark:text-purple-300">
+          AI analysis read {aiBanner.sectionsWithExtractions} sections, found{" "}
+          <strong>{aiBanner.submittalsFound}</strong> requirements.
+          {aiBanner.previousAutoItemsRemoved > 0 && ` Replaced ${aiBanner.previousAutoItemsRemoved} prior auto-generated items.`}
+          {" "}Created <strong>{aiBanner.created}</strong> items
+          {aiBanner.skippedProcedural > 0 && `, skipped ${aiBanner.skippedProcedural} Div 00/01 (procedural)`}
+          {aiBanner.skippedBoilerplate > 0 && `, skipped ${aiBanner.skippedBoilerplate} generic boilerplate`}
+          {aiBanner.deferredToCloseout > 0 && `, deferred ${aiBanner.deferredToCloseout} warranty/O&M/LEED to closeout register`}
+          {aiBanner.bidTradesLinked > 0 && ` · ${aiBanner.bidTradesLinked} auto-linked to bid trades`}.
         </div>
       )}
 
@@ -332,6 +355,38 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
           }}
         />
       )}
+
+      {/* ── View chips (group by type) ── */}
+      <div className="flex gap-2 items-center flex-wrap">
+        {([
+          ["all", "All"],
+          ["active", "Active Review"],
+          ["closeout", "Closeout"],
+        ] as const).map(([key, label]) => {
+          const isActive = view === key;
+          const count = (() => {
+            if (!items) return null;
+            const types = VIEW_TYPES[key as ViewGroup];
+            return types === null
+              ? items.length
+              : items.filter((i) => types.includes(i.type as SubmittalType)).length;
+          })();
+          return (
+            <button
+              key={key}
+              onClick={() => setView(key as ViewGroup)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                isActive
+                  ? "bg-purple-600 text-white"
+                  : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              }`}
+            >
+              {label}
+              {count !== null && <span className="ml-1.5 opacity-70">({count})</span>}
+            </button>
+          );
+        })}
+      </div>
 
       {/* ── Filters ── */}
       <div className="flex gap-3 items-center flex-wrap">
@@ -379,12 +434,19 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
       </div>
 
       {/* ── Table ── */}
-      {items && items.length === 0 ? (
+      {(() => {
+        const allowedTypes = VIEW_TYPES[view];
+        const viewFiltered = items
+          ? allowedTypes === null
+            ? items
+            : items.filter((i) => allowedTypes.includes(i.type as SubmittalType))
+          : null;
+        return viewFiltered && viewFiltered.length === 0 ? (
         <section className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center dark:border-zinc-700 dark:bg-zinc-900">
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            {statusFilter || typeFilter
+            {statusFilter || typeFilter || view !== "all"
               ? "No submittals match the current filter."
-              : "No submittals yet. Click \"Seed from Specs\" to extract them from your spec book, or add one manually."}
+              : "No submittals yet. Click \"Generate from AI Analysis\" to extract them, or add one manually."}
           </p>
         </section>
       ) : (
@@ -392,6 +454,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-400">
+                <th className="px-4 py-2.5 w-20">Risk</th>
                 <th className="px-4 py-2.5 w-28">Number</th>
                 <th className="px-4 py-2.5">Title</th>
                 <th className="px-4 py-2.5 w-28">Type</th>
@@ -402,7 +465,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {items?.map((item) => (
+              {viewFiltered?.map((item) => (
                 <SubmittalTableRow
                   key={item.id}
                   item={item}
@@ -417,8 +480,43 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             </tbody>
           </table>
         </section>
-      )}
+      );
+      })()}
     </div>
+  );
+}
+
+// ── Severity Badge ─────────────────────────────────────────────────────────
+
+function SeverityBadge({
+  severity,
+}: {
+  severity: SubmittalRow["severity"];
+}) {
+  if (!severity) {
+    return <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>;
+  }
+  const styles: Record<NonNullable<SubmittalRow["severity"]>, string> = {
+    CRITICAL: "bg-red-600 text-white",
+    HIGH: "bg-orange-500 text-white",
+    MODERATE: "bg-amber-400 text-amber-900",
+    LOW: "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
+    INFO: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  };
+  const labels: Record<NonNullable<SubmittalRow["severity"]>, string> = {
+    CRITICAL: "CRIT",
+    HIGH: "HIGH",
+    MODERATE: "MOD",
+    LOW: "LOW",
+    INFO: "INFO",
+  };
+  return (
+    <span
+      className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${styles[severity]}`}
+      title={`Risk: ${severity}`}
+    >
+      {labels[severity]}
+    </span>
   );
 }
 
@@ -471,6 +569,9 @@ function SubmittalTableRow({
   return (
     <>
       <tr className={isOverdue ? "bg-red-50/40 dark:bg-red-900/10" : ""}>
+        <td className="px-4 py-2.5">
+          <SeverityBadge severity={item.severity} />
+        </td>
         <td className="px-4 py-2.5 font-mono text-xs text-zinc-700 dark:text-zinc-300">
           {item.submittalNumber ?? "—"}
         </td>
@@ -483,7 +584,12 @@ function SubmittalTableRow({
           )}
         </td>
         <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-300">
-          {TYPE_LABELS[item.type]}
+          <span>{TYPE_LABELS[item.type]}</span>
+          {(item.type === "WARRANTY" || item.type === "O_AND_M") && (
+            <span className="ml-1.5 inline-block rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+              CLOSEOUT
+            </span>
+          )}
         </td>
         <td className="px-4 py-2.5 text-xs text-zinc-600 dark:text-zinc-300">
           {item.responsibleSubName ?? (
@@ -519,7 +625,7 @@ function SubmittalTableRow({
       </tr>
       {expanded && (
         <tr className="bg-zinc-50 dark:bg-zinc-800/50">
-          <td colSpan={7} className="px-4 py-4">
+          <td colSpan={8} className="px-4 py-4">
             <SubmittalDetailEditor
               item={item}
               bidId={bidId}

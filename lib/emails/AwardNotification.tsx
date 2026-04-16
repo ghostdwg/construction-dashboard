@@ -103,7 +103,7 @@ export default function AwardNotification({
 
           <Section style={section}>
             <Text style={footer}>
-              This is an automated notification from Bid Dashboard. Reply
+              This is an automated notification from Construction Dashboard. Reply
               directly to this email to reach the estimator.
             </Text>
           </Section>

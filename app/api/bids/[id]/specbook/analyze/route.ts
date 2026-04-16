@@ -1,15 +1,18 @@
-import fs from "fs/promises";
 import { prisma } from "@/lib/prisma";
 
 // POST /api/bids/[id]/specbook/analyze
-// Submits the spec book to the sidecar for async AI analysis.
-// Returns a job_id. Frontend polls GET /api/bids/[id]/specbook/analyze/status?jobId=xxx
+// Submits already-split sections (from /specbook/split) to the sidecar for
+// per-section AI analysis. Each section is analyzed using its own PDF as
+// clean, isolated context (Procore-style).
+// Returns a job_id. Frontend polls GET /api/bids/[id]/specbook/analyze?jobId=xxx
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
+const APP_URL = process.env.APP_URL || "http://127.0.0.1:3001";
+const CALLBACK_TOKEN = process.env.SIDECAR_CALLBACK_TOKEN || "";
 
 export async function POST(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -19,36 +22,44 @@ export async function POST(
   const specBook = await prisma.specBook.findFirst({
     where: { bidId, status: "ready" },
     orderBy: { uploadedAt: "desc" },
+    include: {
+      sections: {
+        where: { pdfPath: { not: null } },
+        select: { id: true, csiNumber: true, csiTitle: true, pdfPath: true },
+      },
+    },
   });
 
   if (!specBook) {
     return Response.json({ error: "No spec book uploaded. Upload a spec book first." }, { status: 404 });
   }
 
-  let fileBuffer: Buffer;
-  try {
-    fileBuffer = await fs.readFile(specBook.filePath);
-  } catch {
-    return Response.json({ error: "Spec book file not found on disk. Re-upload." }, { status: 404 });
+  if (specBook.sections.length === 0) {
+    return Response.json(
+      { error: "No split sections found. Run 'Split into Sections' first." },
+      { status: 400 }
+    );
   }
 
   try {
-    const form = new FormData();
-    form.append(
-      "file",
-      new Blob([new Uint8Array(fileBuffer)], { type: "application/pdf" }),
-      specBook.fileName
-    );
-
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
 
-    // Submit async job to sidecar
-    const res = await fetch(`${SIDECAR_URL}/parse/specs/intelligent`, {
+    const sectionsPayload = specBook.sections.map((s) => ({
+      csi: s.csiNumber,
+      title: s.csiTitle,
+      pdf_path: s.pdfPath,
+    }));
+
+    const res = await fetch(`${SIDECAR_URL}/parse/specs/analyze_split`, {
       method: "POST",
-      body: form,
+      body: JSON.stringify({
+        sections: sectionsPayload,
+        callback_url: `${APP_URL}/api/bids/${bidId}/specbook/analyze/complete`,
+        callback_token: CALLBACK_TOKEN || undefined,
+      }),
       headers,
-      signal: AbortSignal.timeout(120_000), // File upload + job submission
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!res.ok) {
