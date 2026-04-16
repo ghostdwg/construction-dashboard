@@ -145,6 +145,7 @@ model Bid {
   submittalPackages   SubmittalPackage[]
   projectContacts     ProjectContact[]
   scheduleActivities  ScheduleActivity[]
+  schedules           Schedule[]
 }
 
 model BidSubmission {
@@ -839,6 +840,105 @@ model ScheduleActivity {
 
   @@index([bidId])
   @@index([bidId, sequence])
+}
+
+// ── Phase 5C — Schedule V2 ───────────────────────────────────────────────────
+//
+// New data model for the full-featured schedule editor. The old ScheduleActivity
+// (H4) is preserved until migration is complete (Phase 11+).
+//
+// weatherMode: BUFFER | CONTRACTUAL | TRACK_ONLY
+// activeLayers: JSON array of active layer keys, e.g. ["weather_a201","procurement"]
+//
+model Schedule {
+  id              String    @id @default(cuid())
+  bidId           Int
+  bid             Bid       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  name            String    @default("Baseline Schedule")
+  startDate       DateTime
+  isBaseline      Boolean   @default(false)
+  baselinedAt     DateTime?
+  weatherMode     String    @default("BUFFER")
+  weatherStation  String?
+  weatherBaseline String?   // JSON: { stationId, annualDays, monthlyDays[] }
+  activeLayers    String    @default("[]") // JSON: string[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  activities ScheduleActivityV2[]
+  versions   ScheduleVersion[]
+
+  @@index([bidId])
+}
+
+// Valid status values: not_started | in_progress | complete | on_hold
+// Valid weatherCode: WS-0 through WS-5 (impact tiers defined in Phase 5C docs)
+// outlineLevel: 1=phase summary, 2=category summary, 3=task
+model ScheduleActivityV2 {
+  id                 String    @id @default(cuid())
+  scheduleId         String
+  schedule           Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  activityCode       String
+  wbsId              String    @default("")
+  outlineLevel       Int       @default(3)
+  sortOrder          Int       @default(0)
+  name               String
+  duration           Int       @default(5)
+  isSummary          Boolean   @default(false)
+  isMilestone        Boolean   @default(false)
+  csiCode            String?
+  trade              String?
+  weatherCode        String    @default("WS-0")
+  requiresInspection Boolean   @default(false)
+  notes              String    @default("")
+  aiGenerated        Boolean   @default(false)
+  aiConfidence       String?
+  layerSource        String?
+  status             String    @default("not_started")
+  percentComplete    Float     @default(0)
+  actualStart        DateTime?
+  actualFinish       DateTime?
+  remainingDuration  Int?
+  delayReason        String?
+  startDate          DateTime?
+  finishDate         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  predecessors ScheduleDependency[] @relation("SuccessorActivity")
+  successors   ScheduleDependency[] @relation("PredecessorActivity")
+
+  @@index([scheduleId])
+  @@index([scheduleId, sortOrder])
+}
+
+// type: FS (Finish-to-Start) | SS (Start-to-Start) | FF (Finish-to-Finish) | SF (Start-to-Finish)
+// lag: positive = lag days, negative = lead days (working days)
+model ScheduleDependency {
+  id            String @id @default(cuid())
+  predecessorId String
+  successorId   String
+  type          String @default("FS")
+  lag           Int    @default(0)
+
+  predecessor ScheduleActivityV2 @relation("PredecessorActivity", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successor   ScheduleActivityV2 @relation("SuccessorActivity",   fields: [successorId],   references: [id], onDelete: Cascade)
+
+  @@unique([predecessorId, successorId, type])
+  @@index([successorId])
+}
+
+// Versioned snapshots: baseline, what-if, issued-for-review, etc.
+// snapshot is a JSON string of { activities, dependencies } at save time.
+model ScheduleVersion {
+  id          String   @id @default(cuid())
+  scheduleId  String
+  schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  versionName String
+  snapshot    String   // JSON
+  createdAt   DateTime @default(now())
+
+  @@index([scheduleId])
 }
 
 // Per-AI-call max_tokens overrides. If a row exists for a callKey, that value

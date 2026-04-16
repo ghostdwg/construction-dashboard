@@ -18,8 +18,11 @@
     "@prisma/adapter-libsql": "^7.6.0",
     "@prisma/client": "^7.6.0",
     "@react-email/components": "^1.0.12",
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.13.23",
     "bcryptjs": "^3.0.3",
     "exceljs": "^4.4.0",
+    "immer": "^11.1.4",
     "lucide-react": "^1.8.0",
     "mammoth": "^1.12.0",
     "next": "16.2.2",
@@ -29,8 +32,11 @@
     "prisma": "^7.6.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-hotkeys-hook": "^5.2.4",
     "recharts": "^3.8.1",
-    "resend": "^6.10.0"
+    "resend": "^6.10.0",
+    "xmlbuilder2": "^4.0.3",
+    "zustand": "^5.0.12"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"

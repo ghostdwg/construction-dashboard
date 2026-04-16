@@ -13,7 +13,12 @@
 //
 // Dates arrive as ISO strings from the server (with working-day math already
 // applied) so the UI never has to compute them.
+//
+// Phase 5C: The full Schedule Builder (V2 grid with TanStack Table, undo/redo,
+// predecessor string editing) lives at /bids/[id]/schedule. The banner below
+// links there.
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 // ── Types (mirror lib/services/schedule/scheduleService.ts) ────────────────
@@ -192,6 +197,22 @@ export default function ScheduleTab({ bidId }: { bidId: number }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* ── Phase 5C: Schedule Builder banner ── */}
+      <div className="flex items-center justify-between rounded-lg border border-blue-700/50 bg-blue-950/30 px-4 py-3">
+        <div>
+          <p className="text-sm font-medium text-blue-300">Schedule Builder (Phase 5C)</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Full editable grid with undo/redo, predecessor chains, and WBS hierarchy.
+          </p>
+        </div>
+        <Link
+          href={`/bids/${bidId}/schedule`}
+          className="rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium px-3 py-1.5 transition-colors whitespace-nowrap"
+        >
+          Open Schedule Builder →
+        </Link>
+      </div>
+
       {/* ── Header + Actions ── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>

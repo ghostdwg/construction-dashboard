@@ -106,6 +106,103 @@ SIDECAR_CALLBACK_TOKEN=dev-callback-token-change-in-prod
 
 The sidecar reads `ANTHROPIC_API_KEY` from the same `.env.local` at the repo root.
 
+## Schedule Builder (Phase 5C)
+
+The Schedule Builder is a full-page CPM scheduling tool accessible from any bid's Schedule tab → **Open Schedule Builder →** button, or directly at `/bids/[id]/schedule`.
+
+### What it produces
+
+A 9-phase commercial GC CPM schedule seeded from your bid's trade roster:
+
+| Phase | Coverage |
+|-------|----------|
+| 1.0 Preconstruction | NTP → permit → submittal register → long-lead kickoff |
+| 2.0 Procurement & Long Lead | Auto-created per long-lead trade (structural, HVAC, storefront, electrical gear) with fabrication lead times |
+| 3.0 Site Work | Mobilization → excavation → foundations → slab (includes footing, foundation wall, under-slab inspection milestones) |
+| 4.0 Structure | Structural delivery → erection → alignment verification |
+| 5.0 Building Envelope | Roof + wall panels → **Weather Tight milestone** → storefront/doors → sealants |
+| 6.0 Interior Framing & Rough-In | Metal stud → MEP rough-in (SS+lag overlaps) → **In-Wall Inspection** → drywall |
+| 7.0 Interior Finishes | Paint → ceiling → flooring → trim-out → **Final Paint** |
+| 8.0 Exterior Site | Grading → flatwork → paving (weather-flagged) → landscaping |
+| 9.0 Closeout | HVAC TAB → **Building Final Inspection** → punchlist → **Substantial Completion** → **Final Completion** |
+
+### How to use it
+
+**First time on a bid:**
+1. Open the bid → Schedule tab → click **Open Schedule Builder →**
+2. Click **Seed from Trades** in the toolbar — builds the full 9-phase template using your bid's trade roster
+3. The schedule populates with ~65 activities, all dependencies wired, and dates computed from your construction start date (set in Job Intake)
+
+**Editing activities:**
+- **Double-click** any cell to edit inline (name, duration, notes)
+- **Predecessors column** — type in MSP-style format: `P3080FS`, `P6020SS+2d`, `P6110FS-1d`, `P6070FF`
+  - Supported types: `FS` (default), `SS`, `FF`, `SF`
+  - Positive lag: `+Nd` — negative lag (lead time): `-Nd`
+  - Multiple predecessors: comma-separated — `P6030FS, P6050FS, P6060FS`
+- **Duration** — working days (Mon–Fri); milestones show `—` and cannot be edited
+- **Status** — dropdown: Not Started / In Progress / Complete / On Hold
+- Dates recompute automatically after every save (server-side CPM forward pass)
+
+**Keyboard shortcuts:**
+| Key | Action |
+|-----|--------|
+| Double-click | Enter edit mode |
+| Enter / Tab | Commit edit |
+| Escape | Cancel edit |
+| Ctrl+Z | Undo (50-step client-side history) |
+| Ctrl+Y / Ctrl+Shift+Z | Redo |
+
+**Adding / removing rows:**
+- **Add Activity** button (toolbar) — appends a new row at the end
+- **+ icon** on hover (row right side) — inserts a row below that activity
+- **Trash icon** on hover — deletes the activity and rewires dates
+
+**Collapse/expand phases:**
+- Click the ▶/▼ chevron on any phase summary row to collapse/expand all activities in that phase
+
+### Activity code system
+
+| Prefix | Meaning |
+|--------|---------|
+| `M1000` | Notice to Proceed milestone |
+| `P1010`–`P1050` | Phase 1 preconstruction activities |
+| `P20xx` | Phase 2 procurement (auto-named from long-lead trades) |
+| `P3010`–`P3180` | Phase 3 site work |
+| `M3085`, `M3105`, `M3155` | Inspection hold-point milestones |
+| `P4010`–`M4040` | Phase 4 structure |
+| `P5010`–`M5030` | Phase 5 envelope / Weather Tight |
+| `P6020`–`M6085` | Phase 6 framing + rough-in / In-Wall Inspection |
+| `P7010`–`P7110` | Phase 7 interior finishes |
+| `P8010`–`P8060` | Phase 8 exterior site |
+| `M9040`, `M9070`, `M9090` | Building Final Inspection / Substantial / Final Completion |
+| `Axxxx` | User-added activities (A1010, A1020, …) |
+
+Activity codes in the Predecessors column are the same codes shown in the **ID** column. Milestones (`M-`) and phase summaries (`P-000`) are read-only for duration.
+
+### Long-lead procurement detection
+
+Trades with the following CSI divisions automatically generate a Phase 2 procurement activity with the industry-standard total lead time (submittal + review + fabrication):
+
+| Division | Trade | Default Lead Time |
+|----------|-------|------------------|
+| 05 | Structural steel / PEMB | 52 working days |
+| 07 | Curtainwall / building panels | 45 working days |
+| 08 | Storefront / overhead doors | 37 working days |
+| 23 | RTU / HVAC equipment | 50 working days |
+| 26 | Switchgear / electrical gear | 40 working days |
+
+The procurement activity's finish date becomes a predecessor to the corresponding field installation activity (e.g., structural procurement → Structural Delivery → Structural Erection).
+
+### Scheduling spec compliance
+
+The Schedule Builder is designed to meet GC contract scheduling requirements (AIA A201 §3.10, CSI MasterFormat 01 32 16, CMAA standards):
+
+- CPM forward-pass date engine — all four dependency types (FS/SS/FF/SF) with positive and negative lag
+- Inspection hold-point milestones at code-required stages (footing, foundation wall, under-slab, in-wall, building final)
+- Weather-sensitive activity flags on paving and flatwork
+- Activity codes and WBS hierarchy exportable to MSPDI XML (MS Project) — *export coming Phase 5C*
+- Baseline schedule / version snapshot model in place — *UI coming Phase 5C*
+
 ## Spec Book Workflow (Phase 5A)
 
 The Documents tab on any bid supports a three-step spec pipeline:

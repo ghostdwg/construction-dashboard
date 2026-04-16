@@ -68,6 +68,23 @@ export const DIVISION_DURATION_DAYS: Record<string, number> = {
   "33": 12, // Utilities
 };
 
+// Long-lead procurement total durations (working days) by CSI division.
+// Represents submittal prep + review/approval + fabrication lead time.
+// Used by the V2 seeder to populate the Procurement phase.
+//
+//  05 Structural steel / PEMB  →  7 (sub) + 10 (review) + 35 (fab) = 52
+//  07 Curtainwall / panels     →  5 + 10 + 30 = 45
+//  08 Storefront / OH doors    →  7 +  0 + 30 = 37
+//  23 RTU / HVAC equipment     →  5 + 10 + 35 = 50
+//  26 Switchgear / gear        →  5 +  5 + 30 = 40
+export const LONG_LEAD_PROCUREMENT: Record<string, number> = {
+  "05": 52,
+  "07": 45,
+  "08": 37,
+  "23": 50,
+  "26": 40,
+};
+
 /**
  * Normalize any CSI code-ish string to the 2-digit division.
  * Returns null if no division can be extracted.
