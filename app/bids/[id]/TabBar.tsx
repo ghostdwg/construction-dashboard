@@ -20,13 +20,14 @@ import {
   FileCheck,
   CalendarDays,
   Mic,
+  FileDown,
   type LucideIcon,
 } from "lucide-react";
 
 type TabKey =
   | "overview" | "documents" | "trades" | "scope" | "subs"
   | "ai-review" | "questions" | "leveling" | "activity"
-  | "handoff" | "submittals" | "schedule" | "meetings";
+  | "handoff" | "submittals" | "schedule" | "meetings" | "briefing";
 
 type TabDef = { key: TabKey; label: string; icon: LucideIcon };
 
@@ -47,6 +48,7 @@ const POST_AWARD_TABS: TabDef[] = [
   { key: "submittals", label: "Submittals", icon: FileCheck },
   { key: "schedule", label: "Schedule", icon: CalendarDays },
   { key: "meetings", label: "Meetings", icon: Mic },
+  { key: "briefing", label: "Briefing", icon: FileDown },
 ];
 
 export default function TabBar({

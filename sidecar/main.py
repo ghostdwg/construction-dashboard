@@ -74,10 +74,12 @@ async def verify_api_key(request: Request, call_next):
 from routers.parse import router as parse_router  # noqa: E402
 from routers.drawings import router as drawings_router  # noqa: E402
 from routers.meetings import router as meetings_router  # noqa: E402
+from routers.briefing import router as briefing_router  # noqa: E402
 
 app.include_router(parse_router, prefix="/parse", tags=["Spec Parsing"])
 app.include_router(drawings_router, prefix="/parse", tags=["Drawing Analysis"])
 app.include_router(meetings_router, tags=["Meeting Intelligence"])
+app.include_router(briefing_router, tags=["Briefing"])
 
 
 # ── Health ───────────��──────────────────────────────────────────────────────
