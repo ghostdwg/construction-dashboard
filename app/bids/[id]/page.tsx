@@ -22,6 +22,7 @@ import ProjectContactsPanel from "./ProjectContactsPanel";
 import HandoffTab from "./HandoffTab";
 import SubmittalsTab from "./SubmittalsTab";
 import ScheduleTab from "./ScheduleTab";
+import MeetingsTab from "./MeetingsTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -267,6 +268,10 @@ export default async function BidDetailPage({
 
           {tab === "schedule" && (
             <ScheduleTab bidId={bid.id} />
+          )}
+
+          {tab === "meetings" && (
+            <MeetingsTab bidId={bid.id} />
           )}
         </div>
       </div>

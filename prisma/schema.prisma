@@ -147,6 +147,8 @@ model Bid {
   projectContacts             ProjectContact[]
   scheduleActivities  ScheduleActivity[]
   schedules           Schedule[]
+  meetings            Meeting[]
+  meetingActionItems  MeetingActionItem[]
 }
 
 model BidSubmission {
@@ -840,7 +842,8 @@ model ProjectContact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bid                 Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meetingParticipants MeetingParticipant[]
 
   @@index([bidId])
   @@index([bidId, role])
@@ -1031,4 +1034,96 @@ model AiUsageLog {
   @@index([callKey])
   @@index([createdAt])
   @@index([bidId])
+}
+
+// ── Phase 5D — Meeting Intelligence Pipeline ────────────────────────────────
+//
+// Three-model stack: Meeting → MeetingParticipant → MeetingActionItem
+//
+// meetingType values (validated in API):
+//   GENERAL | OAC | SUBCONTRACTOR | PRECONSTRUCTION | SAFETY | KICKOFF
+//
+// status values (FSM):
+//   PENDING → UPLOADING → TRANSCRIBING → ANALYZING → READY | FAILED
+//
+// transcriptionSource values:
+//   ASSEMBLYAI | WHISPERX | MANUAL
+
+model Meeting {
+  id                  Int       @id @default(autoincrement())
+  bidId               Int
+  title               String
+  meetingDate         DateTime
+  meetingType         String    @default("GENERAL")
+  location            String?
+  status              String    @default("PENDING")
+  audioFileName       String?
+  durationSeconds     Int?
+  transcriptionSource String?
+  transcriptionJobId  String?   // AssemblyAI transcript_id or WhisperX job id
+  rawTranscript       String?   // full JSON blob from transcription service
+  transcript          String?   // speaker-labeled formatted text for display + Claude
+  summary             String?   // Claude-generated 2-3 paragraph summary
+  keyDecisions        String    @default("[]")   // JSON: string[]
+  risks               String    @default("[]")   // JSON: { description, severity }[]
+  followUpItems       String    @default("[]")   // JSON: string[] (non-assigned open items)
+  uploadedAt          DateTime?
+  analyzedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  bid          Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  actionItems  MeetingActionItem[]
+  participants MeetingParticipant[]
+
+  @@index([bidId])
+  @@index([bidId, meetingDate])
+}
+
+// Persistent speaker roster per meeting. Speaker labels from diarization
+// (SPEAKER_A, SPEAKER_B) are resolved to real names by the user post-upload.
+// Optionally linked to a ProjectContact for cross-meeting context.
+model MeetingParticipant {
+  id               Int      @id @default(autoincrement())
+  meetingId        Int
+  name             String
+  role             String?
+  company          String?
+  speakerLabel     String?  // "SPEAKER_A" etc. from AssemblyAI diarization
+  projectContactId Int?
+
+  meeting        Meeting         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  projectContact ProjectContact? @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
+  actionItems    MeetingActionItem[]
+
+  @@index([meetingId])
+}
+
+// Action items extracted from meeting transcripts by Claude (and manually added).
+//
+// priority values: LOW | MEDIUM | HIGH | CRITICAL
+// status values:   OPEN | IN_PROGRESS | CLOSED | DEFERRED
+model MeetingActionItem {
+  id             Int       @id @default(autoincrement())
+  bidId          Int
+  meetingId      Int
+  description    String
+  assignedToId   Int?      // FK to MeetingParticipant
+  assignedToName String?   // denormalized — survives participant edits
+  dueDate        DateTime?
+  priority       String    @default("MEDIUM")
+  status         String    @default("OPEN")
+  sourceText     String?   // verbatim quote from transcript
+  closedAt       DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  bid        Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meeting    Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignedTo MeetingParticipant? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([bidId])
+  @@index([meetingId])
+  @@index([status])
 }

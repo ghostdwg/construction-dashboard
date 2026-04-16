@@ -73,9 +73,11 @@ async def verify_api_key(request: Request, call_next):
 
 from routers.parse import router as parse_router  # noqa: E402
 from routers.drawings import router as drawings_router  # noqa: E402
+from routers.meetings import router as meetings_router  # noqa: E402
 
 app.include_router(parse_router, prefix="/parse", tags=["Spec Parsing"])
 app.include_router(drawings_router, prefix="/parse", tags=["Drawing Analysis"])
+app.include_router(meetings_router, tags=["Meeting Intelligence"])
 
 
 # ── Health ───────────��──────────────────────────────────────────────────────
@@ -100,4 +102,5 @@ async def health():
         "memory_used_mb": round(mem.used / 1024 / 1024, 0) if mem else None,
         "memory_total_mb": round(mem.total / 1024 / 1024, 0) if mem else None,
         "anthropic_key_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "assemblyai_key_configured": bool(os.getenv("ASSEMBLYAI_API_KEY")),
     }

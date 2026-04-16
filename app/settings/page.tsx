@@ -9,6 +9,7 @@ import EmailSettingsCard from "./EmailSettingsCard";
 import EstimatorSettingsCard from "./EstimatorSettingsCard";
 import AiSettingsCard from "./AiSettingsCard";
 import AboutSettingsCard from "./AboutSettingsCard";
+import MeetingSettingsCard from "./MeetingSettingsCard";
 
 type SearchParams = Promise<{ section?: string }>;
 
@@ -16,6 +17,7 @@ const SECTIONS = [
   { key: "email", label: "Email Integration", description: "Resend API for RFQ emails" },
   { key: "estimator", label: "Estimator Profile", description: "Your name + reply-to" },
   { key: "ai", label: "AI Configuration", description: "API key, token budgets, usage, cost" },
+  { key: "meetings", label: "Meeting Intelligence", description: "AssemblyAI transcription key" },
   { key: "about", label: "About", description: "Build info + module reference" },
 ] as const;
 
@@ -86,6 +88,7 @@ export default async function SettingsPage({
           {active === "email" && <EmailSettingsCard />}
           {active === "estimator" && <EstimatorSettingsCard />}
           {active === "ai" && <AiSettingsCard />}
+          {active === "meetings" && <MeetingSettingsCard />}
           {active === "about" && <AboutSettingsCard />}
         </div>
       </div>

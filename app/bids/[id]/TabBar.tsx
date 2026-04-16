@@ -19,13 +19,14 @@ import {
   PackageCheck,
   FileCheck,
   CalendarDays,
+  Mic,
   type LucideIcon,
 } from "lucide-react";
 
 type TabKey =
   | "overview" | "documents" | "trades" | "scope" | "subs"
   | "ai-review" | "questions" | "leveling" | "activity"
-  | "handoff" | "submittals" | "schedule";
+  | "handoff" | "submittals" | "schedule" | "meetings";
 
 type TabDef = { key: TabKey; label: string; icon: LucideIcon };
 
@@ -45,6 +46,7 @@ const POST_AWARD_TABS: TabDef[] = [
   { key: "handoff", label: "Handoff", icon: PackageCheck },
   { key: "submittals", label: "Submittals", icon: FileCheck },
   { key: "schedule", label: "Schedule", icon: CalendarDays },
+  { key: "meetings", label: "Meetings", icon: Mic },
 ];
 
 export default function TabBar({
