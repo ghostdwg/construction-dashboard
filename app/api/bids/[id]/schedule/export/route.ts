@@ -78,7 +78,7 @@ export async function POST(
       );
     }
 
-    const csv = rows.join("\r\n") + "\r\n";
+    const csv = "\uFEFF" + rows.join("\r\n") + "\r\n";
     const dateStr = new Date().toISOString().slice(0, 10);
     const fileName = `Schedule_Bid${bidId}_${dateStr}.csv`;
 

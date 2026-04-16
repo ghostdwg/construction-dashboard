@@ -54,7 +54,7 @@ function csvEscape(value: string): string {
 }
 
 export async function GET() {
-  const csv = [
+  const csv = "\uFEFF" + [
     HEADERS.map(csvEscape).join(","),
     SAMPLE_ROW.map(csvEscape).join(","),
   ].join("\n");
