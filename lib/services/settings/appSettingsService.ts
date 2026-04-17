@@ -27,7 +27,7 @@ export type SettingDefinition = {
   key: string;
   label: string;
   description: string;
-  category: "email" | "ai" | "estimator";
+  category: "email" | "ai" | "estimator" | "procore";
   secret: boolean;
   envVar: string;
   placeholder?: string;
@@ -158,6 +158,35 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
     secret: true,
     envVar: "ANTHROPIC_API_KEY",
     placeholder: "sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx",
+  },
+  {
+    key: "PROCORE_CLIENT_ID",
+    label: "Procore Client ID",
+    description:
+      "OAuth client ID from your Procore Developer Portal app. Required for REST API push. Create a service account app at https://developers.procore.com",
+    category: "procore",
+    secret: false,
+    envVar: "PROCORE_CLIENT_ID",
+    placeholder: "abc123...",
+  },
+  {
+    key: "PROCORE_CLIENT_SECRET",
+    label: "Procore Client Secret",
+    description: "OAuth client secret for your Procore service account app. Stored as plaintext in SQLite — keep this server local.",
+    category: "procore",
+    secret: true,
+    envVar: "PROCORE_CLIENT_SECRET",
+    placeholder: "secret...",
+  },
+  {
+    key: "PROCORE_COMPANY_ID",
+    label: "Procore Company ID",
+    description:
+      "Your Procore account company ID (numeric). Found in Admin → Company Settings → General or in the URL when logged into Procore.",
+    category: "procore",
+    secret: false,
+    envVar: "PROCORE_COMPANY_ID",
+    placeholder: "1234567",
   },
 ];
 

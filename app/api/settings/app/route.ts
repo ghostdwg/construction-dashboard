@@ -20,9 +20,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const category = searchParams.get("category") as SettingDefinition["category"] | null;
 
-  if (!category || !["email", "ai", "estimator"].includes(category)) {
+  if (!category || !["email", "ai", "estimator", "procore"].includes(category)) {
     return Response.json(
-      { error: "category must be one of: email, ai, estimator" },
+      { error: "category must be one of: email, ai, estimator, procore" },
       { status: 400 }
     );
   }

@@ -125,6 +125,9 @@ model Bid {
   // JSON: Array<{ label: string; costCode: string; amount: number }>
   budgetGcLines         String?
 
+  // Tier F F2 — Procore REST API
+  procoreProjectId      String?
+
   bidTrades        BidTrade[]
   selections       BidInviteSelection[]
   exportBatches    ExportBatch[]
@@ -149,6 +152,7 @@ model Bid {
   schedules           Schedule[]
   meetings            Meeting[]
   meetingActionItems  MeetingActionItem[]
+  procorePushes       ProcorePush[]
 }
 
 model BidSubmission {
@@ -1126,4 +1130,30 @@ model MeetingActionItem {
   @@index([bidId])
   @@index([meetingId])
   @@index([status])
+}
+
+// ── Tier F F2 — Procore REST API push history ───────────────────────────────
+//
+// One row per push operation. Tracks created/updated/skipped counts and any
+// partial errors. Multiple rows per bid+pushType accumulate as history;
+// the UI shows the most recent row per type.
+//
+// pushType values: "vendors" | "contacts" | "submittals" | "budget"
+//
+// errors is a JSON array of short error strings (one per failed item, max 50).
+
+model ProcorePush {
+  id        Int      @id @default(autoincrement())
+  bidId     Int
+  pushType  String
+  pushedAt  DateTime @default(now())
+  created   Int      @default(0)
+  updated   Int      @default(0)
+  skipped   Int      @default(0)
+  errors    String?
+
+  bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([bidId])
+  @@index([bidId, pushType])
 }

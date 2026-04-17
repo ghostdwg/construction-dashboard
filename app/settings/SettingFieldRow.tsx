@@ -17,7 +17,7 @@ export type SettingItem = {
   key: string;
   label: string;
   description: string;
-  category: "email" | "ai" | "estimator";
+  category: "email" | "ai" | "estimator" | "procore";
   secret: boolean;
   envVar: string;
   placeholder: string | null;

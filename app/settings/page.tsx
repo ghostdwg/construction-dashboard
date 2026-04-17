@@ -10,6 +10,7 @@ import EstimatorSettingsCard from "./EstimatorSettingsCard";
 import AiSettingsCard from "./AiSettingsCard";
 import AboutSettingsCard from "./AboutSettingsCard";
 import MeetingSettingsCard from "./MeetingSettingsCard";
+import ProcoreSettingsCard from "./ProcoreSettingsCard";
 
 type SearchParams = Promise<{ section?: string }>;
 
@@ -18,6 +19,7 @@ const SECTIONS = [
   { key: "estimator", label: "Estimator Profile", description: "Your name + reply-to" },
   { key: "ai", label: "AI Configuration", description: "API key, token budgets, usage, cost" },
   { key: "meetings", label: "Meeting Intelligence", description: "AssemblyAI transcription key" },
+  { key: "procore", label: "Procore Integration", description: "Client ID, secret, company ID" },
   { key: "about", label: "About", description: "Build info + module reference" },
 ] as const;
 
@@ -89,6 +91,7 @@ export default async function SettingsPage({
           {active === "estimator" && <EstimatorSettingsCard />}
           {active === "ai" && <AiSettingsCard />}
           {active === "meetings" && <MeetingSettingsCard />}
+          {active === "procore" && <ProcoreSettingsCard />}
           {active === "about" && <AboutSettingsCard />}
         </div>
       </div>
