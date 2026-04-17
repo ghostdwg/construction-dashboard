@@ -22,12 +22,13 @@ import {
   Mic,
   FileDown,
   ArrowUpFromLine,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
 type TabKey =
   | "overview" | "documents" | "trades" | "scope" | "subs"
-  | "ai-review" | "questions" | "leveling" | "activity"
+  | "ai-review" | "questions" | "leveling" | "activity" | "warranties"
   | "handoff" | "submittals" | "schedule" | "meetings" | "briefing" | "procore";
 
 type TabDef = { key: TabKey; label: string; icon: LucideIcon };
@@ -39,6 +40,7 @@ const PURSUIT_TABS: TabDef[] = [
   { key: "subs", label: "Subs", icon: Users },
   { key: "scope", label: "Scope", icon: ClipboardList },
   { key: "ai-review", label: "AI Review", icon: Sparkles },
+  { key: "warranties", label: "Warranties", icon: ShieldCheck },
   { key: "questions", label: "Questions", icon: MessagesSquare },
   { key: "leveling", label: "Leveling", icon: Scale },
   { key: "activity", label: "Activity", icon: Activity },
