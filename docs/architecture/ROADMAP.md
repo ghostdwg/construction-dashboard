@@ -1,5 +1,5 @@
 # Roadmap — Construction Intelligence Platform
-# Version 2.4 — Last Updated: 2026-04-16
+# Version 2.5 — Last Updated: 2026-04-17
 # Repo: construction-dashboard (forked from bid-dashboard)
 # Parallel repo: bid-dashboard (active, still receiving updates)
 
@@ -187,7 +187,7 @@ Estimated: 5-8 sessions
 | Item | Description | Status |
 |------|-------------|--------|
 | F1 | CSV/XLSX export — vendor, budget, submittal, contact imports | ✅ COMPLETE |
-| F2 | REST API — OAuth 2.0, project/vendor/budget/submittal push | NOT STARTED |
+| F2 | REST API — OAuth 2.0, project/vendor/budget/submittal push | ✅ COMPLETE |
 | F3 | Bidirectional sync — webhooks, RFI sync | NOT STARTED |
 | F4 | Schedule push — Procore accepts MPP, XML, XER, PP | NOT STARTED |
 | F5 | Daily Log weather claim integration (§15.1.6 custom fields) | NOT STARTED |
@@ -676,3 +676,5 @@ reprioritize that module to Week 1.
 | 2.1 | 2026-04-12 | Two-repo strategy (bid-dashboard + construction-dashboard), three parallel streams (A: completion, B: expansion, C: cross-cutting), sync protocol, carried-forward deferrals with ABSORBED tracking, minor enhancements inventory, "never do" rules for repo discipline |
 | 2.2 | 2026-04-14 | Added Phase 5G — Submittal Intelligence Layer (4 sub-phases: spec auto-linkage, schedule-tied due dates, distribution templates, workflow templates). Bridges Phase 5A AI extractions into H3 register with backwards-from-required-on-site math |
 | 2.3 | 2026-04-16 | Updated all phase statuses to COMPLETE (5A–5G, F1). Added 5H near-term Training Register. Training Register extends sidecar ANALYZE_SYSTEM to extract training[] per section. |
+| 2.4 | 2026-04-16 | Phase 5H-3 (Inspections Register) and 5H-4 (Closeout Checklist) complete. All five Phase 5B extraction targets shipped. |
+| 2.5 | 2026-04-17 | Tier F F2 complete — Procore REST API push (OAuth 2.0, vendors, contacts, submittals, budget). ProcorePush model, project search + linking, Settings → Procore Integration card. |
