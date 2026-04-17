@@ -265,6 +265,15 @@ Return JSON:
   ],
   "warranty": [
     {{"duration": "...", "type": "MANUFACTURER|INSTALLER|SYSTEM", "scope": "..."}}
+  ],
+  "training": [
+    {{
+      "audience": "OWNER|MAINTENANCE|OPERATIONS|EMERGENCY|OTHER",
+      "topic": "Short topic label (e.g., BMS operation, fire alarm panel, elevator controls)",
+      "requirement": "Full training requirement as stated in the spec",
+      "duration": "e.g., 8 hours, 2 days — null if not specified",
+      "timing": "e.g., prior to substantial completion, within 30 days of occupancy — null if not specified"
+    }}
   ]
 }}
 

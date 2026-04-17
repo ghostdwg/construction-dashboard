@@ -113,7 +113,7 @@ schedule export (MSP XML + P6 XER), and PDF generation.
   H3 submittal CSV is the first shipped piece.
   Remaining: F1-F5 (see Stream A below).
 
-### Phase 5 — Construction Intelligence (NEW — construction-dashboard only)
+### Phase 5 — Construction Intelligence (construction-dashboard only)
   Python sidecar, spec intelligence, interactive scheduling,
   meeting analysis, superintendent briefing, drawing OCR.
 
@@ -186,7 +186,7 @@ Estimated: 5-8 sessions
 
 | Item | Description | Status |
 |------|-------------|--------|
-| F1 | CSV/XLSX export — vendor, budget, submittal, contact imports | NOT STARTED |
+| F1 | CSV/XLSX export — vendor, budget, submittal, contact imports | ✅ COMPLETE |
 | F2 | REST API — OAuth 2.0, project/vendor/budget/submittal push | NOT STARTED |
 | F3 | Bidirectional sync — webhooks, RFI sync | NOT STARTED |
 | F4 | Schedule push — Procore accepts MPP, XML, XER, PP | NOT STARTED |
@@ -245,7 +245,7 @@ in construction-dashboard and gets synced back. Don't build them separately.
 
 #### Phase 5A: Python Sidecar — Document Intelligence Foundation
 Estimated: 80–120 hours (Weeks 1–4)
-Status: NOT STARTED
+Status: ✅ COMPLETE
 
 FastAPI service at 127.0.0.1:8001, co-located under /sidecar.
 Foundation for all document intelligence, OCR, schedule export, PDF generation.
@@ -283,7 +283,7 @@ OCR for drawings:
 
 #### Phase 5B: Spec Intelligence Pipeline — Five Registers
 Estimated: 120–160 hours (Weeks 5–10)
-Status: NOT STARTED
+Status: ✅ COMPLETE (AI extraction pipeline + submittal generation; warranty/training registers via derived views)
 
 Reads spec once, routes every requirement to the right register.
 Upgrades H3's regex seeder to full AI-powered extraction.
@@ -306,7 +306,7 @@ When this ships, it ABSORBS these bid-dashboard deferrals:
 
 #### Phase 5C: Interactive Scheduling Module
 Estimated: 120–160 hours (Weeks 11–16)
-Status: NOT STARTED
+Status: ✅ COMPLETE (ScheduleV2, 9-phase CPM template, Gantt UI, MSP CSV export)
 
 In-browser Gantt with CPM, all 4 dep types, resource views,
 percentage-complete triggers. Replaces H4's table-only UI.
@@ -334,7 +334,7 @@ When this ships, it ABSORBS these bid-dashboard deferrals:
 
 #### Phase 5D: Meeting Intelligence Pipeline
 Estimated: 100–140 hours (Weeks 17–22)
-Status: NOT STARTED
+Status: ✅ COMPLETE (transcription, diarization, Claude analysis, action items)
 
 Transcription → diarization → Claude analysis → structured output.
 Settings toggle between cloud and local processing.
@@ -356,7 +356,7 @@ Hardware:
   Jabra Speak2 75 ($369) — job site trailers, portable
   Shure Stem Table ($999) — permanent installations, spatial separation
 
-#### Phase 5E: Superintendent Briefing — Field Deliverable
+#### Phase 5E: Superintendent Briefing — Field Deliverable ✅ COMPLETE
 Auto-assembled from all registers into a single PDF:
   - Schedule status (this week, behind, 2-week lookahead, critical path)
   - Active submittals (pending review, approaching deadlines)
@@ -380,7 +380,7 @@ Status: STRETCH — validate Phases 5A–5E first
 
 #### Phase 5G: Submittal Intelligence Layer
 Estimated: 80–120 hours total (split across four sub-phases)
-Status: NOT STARTED — bridges Phase 5A (AI extraction) into H3 (register)
+Status: ✅ 5G-1 through 5G-3.6 COMPLETE — bridges Phase 5A (AI extraction) into H3 (register)
 
 The "moat feature" — turns the AI submittal extractions sitting in
 SpecSection.aiExtractions into a live, schedule-aware register. Procore
@@ -395,7 +395,7 @@ BACKLOG IDEA (not required for v1) — Division 01 Submittal Policy:
   defaults (5G-4). Skip until 5G-1 through 5G-3 are in real use — risk of
   over-polishing before validating the basics.
 
-##### 5G-1 — Spec Section Auto-Linkage (~10 hrs)
+##### 5G-1 — Spec Section Auto-Linkage (~10 hrs) ✅ COMPLETE
 Bridge AI extractions → SubmittalItem records.
   - New column: SubmittalItem.specSectionId (FK to SpecSection)
   - New column: SubmittalItem.source ("ai_extraction" | "regex_seed" | "manual")
@@ -407,7 +407,7 @@ Bridge AI extractions → SubmittalItem records.
     served at /api/bids/[id]/specbook/sections/[sectionId]/pdf)
   - Same pattern unlocks Warranty Register from extracted warranty[] data
 
-##### 5G-2 — Schedule-Tied Due Dates (~30 hrs) — KILLER FEATURE
+##### 5G-2 — Schedule-Tied Due Dates (~30 hrs) ✅ COMPLETE
 Backwards math from required-on-site → submit-by date.
   New SubmittalItem fields:
     leadTimeDays         — from approval to delivery (mfr promise)
@@ -423,7 +423,7 @@ Backwards math from required-on-site → submit-by date.
   - UI: dropdown on submittal form to pick the schedule activity it blocks
   - This must ship alongside Phase 5C (Gantt UI) — both touch schedule recalc
 
-##### 5G-3.5 — Submittal Packages (~20 hrs)
+##### 5G-3.5 — Submittal Packages (~20 hrs) ✅ COMPLETE
 First-class container for grouping submittals — matches Procore's
 "Submittal Package" field on the import CSV.
 
@@ -451,7 +451,7 @@ First-class container for grouping submittals — matches Procore's
   Procore export: existing H3 CSV gains "Submittal Package" column —
   one line of code, makes the export Procore-import-ready end-to-end.
 
-##### 5G-3.6 — Bulk-Edit Grid UI (~15 hrs)
+##### 5G-3.6 — Bulk-Edit Grid UI (~15 hrs) ✅ COMPLETE
 The "easier than Procore + easier than Excel" experience. Replaces the
 default Submittals tab with a package-grouped outline.
 
@@ -488,7 +488,7 @@ default Submittals tab with a package-grouped outline.
     - Server actions for save-on-blur (no batch save needed)
     - Optimistic UI for snappy feel
 
-##### 5G-3 — Templated Distribution Lists (~25 hrs)
+##### 5G-3 — Templated Distribution Lists (~25 hrs) ✅ COMPLETE
 Per-trade routing rules so the form auto-fills.
   New model: SubmittalDistributionTemplate
     trade                 (e.g., Masonry)
@@ -533,7 +533,8 @@ First deliverable worth shipping: 5G-1 + 5G-3.5 + 5G-3.6 as a bundle.
   and bulk edit. That's the "easier than Procore + easier than Excel" MVP.
   5G-2 / 5G-3 / 5G-4 layer on additional intelligence afterward.
 
-#### Phase 5H: Closeout Intelligence (SUGGESTIVE — future direction)
+#### Phase 5H: Closeout Intelligence (ASPIRATIONAL — future direction)
+Near-term derived views shipped: Warranty Register (5H), Training Register (5H-2).
 Estimated: 80–120 hours
 Status: ASPIRATIONAL — pivot target after 5G + real closeout data exists
 
@@ -619,10 +620,12 @@ Docker Compose: Next.js (3000) + FastAPI sidecar (8001, internal) + PostgreSQL (
 ### Stream B (construction-dashboard) — 22-week build sequence
 | Weeks | Phase | Hours | Status |
 |-------|-------|-------|--------|
-| 1–4 | 5A: Python sidecar + spec parsing + Postgres | 80–120 | NOT STARTED |
-| 5–10 | 5B: Spec intelligence + five registers | 120–160 | NOT STARTED |
-| 11–16 | 5C: Scheduling module + DHTMLX + export | 120–160 | NOT STARTED |
-| 17–22 | 5D+5E: Meeting intelligence + super briefing | 100–140 | NOT STARTED |
+| 1–4 | 5A: Python sidecar + spec parsing + Postgres | 80–120 | ✅ COMPLETE |
+| 5–10 | 5B: Spec intelligence + five registers | 120–160 | ✅ COMPLETE |
+| 11–16 | 5C: Scheduling module + DHTMLX + export | 120–160 | ✅ COMPLETE |
+| 17–22 | 5D+5E: Meeting intelligence + super briefing | 100–140 | ✅ COMPLETE |
+| — | 5G-1 through 5G-3.6: Submittal Intelligence | 80–120 | ✅ COMPLETE |
+| — | 5H near-term: Warranty + Training Registers | — | ✅ COMPLETE |
 | 23+ | 5F: Drawing OCR + quantity takeoff | 160+ | STRETCH |
 
 Priority override: if a pain point is actively costing money on a live job,
@@ -672,3 +675,4 @@ reprioritize that module to Week 1.
 | 2.0 | 2026-04-12 | Added Phase 5 (6 sub-phases), Python sidecar, spec pipeline, scheduling, meeting intelligence, super briefing, drawing OCR, Postgres migration, deployment, costs |
 | 2.1 | 2026-04-12 | Two-repo strategy (bid-dashboard + construction-dashboard), three parallel streams (A: completion, B: expansion, C: cross-cutting), sync protocol, carried-forward deferrals with ABSORBED tracking, minor enhancements inventory, "never do" rules for repo discipline |
 | 2.2 | 2026-04-14 | Added Phase 5G — Submittal Intelligence Layer (4 sub-phases: spec auto-linkage, schedule-tied due dates, distribution templates, workflow templates). Bridges Phase 5A AI extractions into H3 register with backwards-from-required-on-site math |
+| 2.3 | 2026-04-16 | Updated all phase statuses to COMPLETE (5A–5G, F1). Added 5H near-term Training Register. Training Register extends sidecar ANALYZE_SYSTEM to extract training[] per section. |

@@ -26,6 +26,7 @@ import MeetingsTab from "./MeetingsTab";
 import BriefingTab from "./BriefingTab";
 import ProcoreTab from "./ProcoreTab";
 import WarrantiesTab from "./WarrantiesTab";
+import TrainingTab from "./TrainingTab";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -243,6 +244,10 @@ export default async function BidDetailPage({
 
           {tab === "warranties" && (
             <WarrantiesTab bidId={bid.id} />
+          )}
+
+          {tab === "training" && (
+            <TrainingTab bidId={bid.id} />
           )}
 
           {tab === "questions" && (
