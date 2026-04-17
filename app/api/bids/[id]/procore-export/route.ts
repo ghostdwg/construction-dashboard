@@ -23,7 +23,7 @@ export async function GET(
   });
   if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
 
-  const [inviteCount, awardedCount, tradeCount, submittalCount, contactCount] =
+  const [inviteCount, awardedCount, tradeCount, submittalCount, contactCount, scheduleActivityCount] =
     await Promise.all([
       // Unique invited subs
       prisma.bidInviteSelection.findMany({
@@ -45,6 +45,9 @@ export async function GET(
 
       // Project contacts
       prisma.projectContact.count({ where: { bidId } }),
+
+      // Schedule V2 activities
+      prisma.scheduleActivityV2.count({ where: { schedule: { bidId } } }),
     ]);
 
   // Deduplicated vendor count (invited ∪ awarded)
@@ -66,5 +69,6 @@ export async function GET(
     budgetGcLines: gcLineCount,
     submittals: submittalCount,
     contacts: contactCount,
+    scheduleActivities: scheduleActivityCount,
   });
 }

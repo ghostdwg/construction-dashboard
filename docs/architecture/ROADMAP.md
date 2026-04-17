@@ -1,5 +1,5 @@
 # Roadmap — Construction Intelligence Platform
-# Version 2.6 — Last Updated: 2026-04-17
+# Version 2.7 — Last Updated: 2026-04-17
 # Repo: construction-dashboard (forked from bid-dashboard)
 # Parallel repo: bid-dashboard (active, still receiving updates)
 
@@ -189,7 +189,7 @@ Estimated: 5-8 sessions
 | F1 | CSV/XLSX export — vendor, budget, submittal, contact imports | ✅ COMPLETE |
 | F2 | REST API — OAuth 2.0, project/vendor/budget/submittal push | ✅ COMPLETE |
 | F3 | Bidirectional sync — webhooks, RFI sync | ✅ COMPLETE |
-| F4 | Schedule push — Procore accepts MPP, XML, XER, PP | NOT STARTED |
+| F4 | Schedule push — Procore accepts MPP, XML, XER, PP | ✅ COMPLETE |
 | F5 | Daily Log weather claim integration (§15.1.6 custom fields) | NOT STARTED |
 
 Note: F4 and F5 benefit from Phase 5C (scheduling module) and the
@@ -679,3 +679,4 @@ reprioritize that module to Week 1.
 | 2.4 | 2026-04-16 | Phase 5H-3 (Inspections Register) and 5H-4 (Closeout Checklist) complete. All five Phase 5B extraction targets shipped. |
 | 2.5 | 2026-04-17 | Tier F F2 complete — Procore REST API push (OAuth 2.0, vendors, contacts, submittals, budget). ProcorePush model, project search + linking, Settings → Procore Integration card. |
 | 2.6 | 2026-04-17 | Tier F F3 complete — Bidirectional sync (RFI pull, submittal status sync, webhook receiver + registration). RfiItem + ProcoreWebhookEvent models, syncService, SyncCard + RfiList + WebhookPanel in ProcoreTab. |
+| 2.7 | 2026-04-17 | Tier F F4 complete — Schedule push (MSP XML 2007 generator, Procore schedule import API, XML download). mspXmlExport.ts, procorePostFormData multipart helper, scheduleService.ts, SchedulePushCard in ProcoreTab Step 4. |

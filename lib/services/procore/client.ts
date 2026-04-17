@@ -190,6 +190,20 @@ export async function procoreDelete<T>(path: string): Promise<T> {
   return handleResponse<T>(res, `DELETE ${path}`);
 }
 
+// Multipart file upload — do NOT set Content-Type; fetch adds the boundary automatically.
+export async function procorePostFormData<T>(path: string, formData: FormData): Promise<T> {
+  const token = await getToken();
+  const res = await fetch(`${PROCORE_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+    body: formData,
+  });
+  return handleResponse<T>(res, `POST ${path}`);
+}
+
 // ── Company-level helpers ──────────────────────────────────────────────────
 
 export async function getCompanyId(): Promise<string> {
