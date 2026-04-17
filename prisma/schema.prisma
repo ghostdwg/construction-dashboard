@@ -153,6 +153,7 @@ model Bid {
   meetings            Meeting[]
   meetingActionItems  MeetingActionItem[]
   procorePushes       ProcorePush[]
+  rfiItems            RfiItem[]
 }
 
 model BidSubmission {
@@ -1156,4 +1157,55 @@ model ProcorePush {
 
   @@index([bidId])
   @@index([bidId, pushType])
+}
+
+// ── Tier F F3 — RFI items pulled from Procore ───────────────────────────────
+//
+// One row per RFI in the linked Procore project. procoreRfiId is the Procore
+// numeric ID; the unique index prevents duplicate pulls on re-sync.
+// syncedAt tracks when this record was last pulled from Procore.
+
+model RfiItem {
+  id            Int       @id @default(autoincrement())
+  bidId         Int
+  procoreRfiId  Int?
+  number        String
+  title         String
+  question      String?
+  answer        String?
+  status        String    @default("open")
+  priority      String?
+  assigneeName  String?
+  dueDate       DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  syncedAt      DateTime?
+
+  bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@unique([bidId, procoreRfiId])
+  @@index([bidId])
+}
+
+// ── Tier F F3 — Procore webhook event log ───────────────────────────────────
+//
+// Stores incoming Procore webhook events. Unprocessed events (processed=false)
+// are handled by the webhook receiver after storing. The payload column holds
+// the raw JSON body for replay/debugging.
+
+model ProcoreWebhookEvent {
+  id           Int      @id @default(autoincrement())
+  receivedAt   DateTime @default(now())
+  eventType    String
+  resourceType String
+  resourceId   Int?
+  projectId    Int?
+  companyId    Int?
+  payload      String
+  processed    Boolean  @default(false)
+  processedAt  DateTime?
+  error        String?
+
+  @@index([resourceType, resourceId])
+  @@index([processed])
 }

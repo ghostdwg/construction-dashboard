@@ -188,6 +188,27 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
     envVar: "PROCORE_COMPANY_ID",
     placeholder: "1234567",
   },
+  // ── F3 — Webhook settings ────────────────────────────────────────────────
+  {
+    key: "PROCORE_WEBHOOK_URL",
+    label: "Webhook URL",
+    description:
+      "The public HTTPS URL where Procore will send real-time events (RFI creates, submittal updates). Must be accessible from the internet. Example: https://yourapp.com/api/procore/webhook",
+    category: "procore",
+    secret: false,
+    envVar: "PROCORE_WEBHOOK_URL",
+    placeholder: "https://yourapp.com/api/procore/webhook",
+  },
+  {
+    key: "PROCORE_WEBHOOK_SECRET",
+    label: "Webhook Secret",
+    description:
+      "A secret string sent by Procore with each webhook event so you can verify it came from Procore. Set this to any random value, then click Register Webhook in the Procore tab.",
+    category: "procore",
+    secret: true,
+    envVar: "PROCORE_WEBHOOK_SECRET",
+    placeholder: "your-random-secret",
+  },
 ];
 
 const KEYS_BY_CATEGORY = SETTING_DEFINITIONS.reduce(

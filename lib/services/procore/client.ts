@@ -181,6 +181,15 @@ async function handleResponse<T>(res: Response, context: string): Promise<T> {
   );
 }
 
+export async function procoreDelete<T>(path: string): Promise<T> {
+  const headers = await procoreHeaders();
+  const res = await fetch(`${PROCORE_BASE}${path}`, {
+    method: "DELETE",
+    headers,
+  });
+  return handleResponse<T>(res, `DELETE ${path}`);
+}
+
 // ── Company-level helpers ──────────────────────────────────────────────────
 
 export async function getCompanyId(): Promise<string> {
