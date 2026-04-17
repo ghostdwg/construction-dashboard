@@ -1,5 +1,5 @@
 # Roadmap — Construction Intelligence Platform
-# Version 2.1 — Last Updated: 2026-04-12
+# Version 2.4 — Last Updated: 2026-04-16
 # Repo: construction-dashboard (forked from bid-dashboard)
 # Parallel repo: bid-dashboard (active, still receiving updates)
 
@@ -283,7 +283,7 @@ OCR for drawings:
 
 #### Phase 5B: Spec Intelligence Pipeline — Five Registers
 Estimated: 120–160 hours (Weeks 5–10)
-Status: ✅ COMPLETE (AI extraction pipeline + submittal generation; warranty/training registers via derived views)
+Status: ✅ COMPLETE (AI extraction pipeline + submittal generation; all 5 derived view registers shipped)
 
 Reads spec once, routes every requirement to the right register.
 Upgrades H3's regex seeder to full AI-powered extraction.
@@ -534,7 +534,7 @@ First deliverable worth shipping: 5G-1 + 5G-3.5 + 5G-3.6 as a bundle.
   5G-2 / 5G-3 / 5G-4 layer on additional intelligence afterward.
 
 #### Phase 5H: Closeout Intelligence (ASPIRATIONAL — future direction)
-Near-term derived views shipped: Warranty Register (5H), Training Register (5H-2).
+Near-term derived views shipped: Warranty Register (5H), Training Register (5H-2), Inspections Register (5H-3), Closeout Checklist (5H-4).
 Estimated: 80–120 hours
 Status: ASPIRATIONAL — pivot target after 5G + real closeout data exists
 
@@ -625,7 +625,7 @@ Docker Compose: Next.js (3000) + FastAPI sidecar (8001, internal) + PostgreSQL (
 | 11–16 | 5C: Scheduling module + DHTMLX + export | 120–160 | ✅ COMPLETE |
 | 17–22 | 5D+5E: Meeting intelligence + super briefing | 100–140 | ✅ COMPLETE |
 | — | 5G-1 through 5G-3.6: Submittal Intelligence | 80–120 | ✅ COMPLETE |
-| — | 5H near-term: Warranty + Training Registers | — | ✅ COMPLETE |
+| — | 5H near-term: Warranty + Training + Inspections + Closeout | — | ✅ COMPLETE |
 | 23+ | 5F: Drawing OCR + quantity takeoff | 160+ | STRETCH |
 
 Priority override: if a pain point is actively costing money on a live job,

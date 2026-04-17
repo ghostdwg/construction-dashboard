@@ -274,6 +274,25 @@ Return JSON:
       "duration": "e.g., 8 hours, 2 days — null if not specified",
       "timing": "e.g., prior to substantial completion, within 30 days of occupancy — null if not specified"
     }}
+  ],
+  "inspections": [
+    {{
+      "type": "SPECIAL|THIRD_PARTY|OWNER_WITNESS|CONTRACTOR_QC|AHJ|OTHER",
+      "activity": "What is being inspected (e.g., concrete placement, high-strength bolt installation, spray fireproofing)",
+      "standard": "Reference standard or code section (e.g., ACI 318-19, ASTM A325, IBC §1705.3) — null if not specified",
+      "frequency": "e.g., continuous, periodic, each pour, once at completion — null if not specified",
+      "timing": "e.g., prior to concrete placement, before covering with gypsum board — null if not specified",
+      "who": "Who performs inspection (e.g., special inspector, independent testing lab, AHJ, owner's representative) — null if not specified",
+      "acceptance_criteria": "Pass/fail criteria or referenced table from the spec — null if not specified"
+    }}
+  ],
+  "closeout": [
+    {{
+      "type": "RECORD_DRAWINGS|ATTIC_STOCK|MANUALS|KEYS|CERTIFICATIONS|BALANCING|COMMISSIONING|FINAL_CLEAN|OTHER",
+      "description": "What must be delivered or completed at project closeout",
+      "quantity": "e.g., 3 sets, 2 copies, 10% extra material, 1 complete set of keys — null if not specified",
+      "timing": "e.g., at substantial completion, 30 days prior to turnover, with final pay application — null if not specified"
+    }}
   ]
 }}
 

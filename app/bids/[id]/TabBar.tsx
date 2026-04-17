@@ -12,6 +12,7 @@ import {
   Wrench,
   Users,
   ClipboardList,
+  ClipboardCheck,
   Sparkles,
   MessagesSquare,
   Scale,
@@ -24,12 +25,14 @@ import {
   ArrowUpFromLine,
   ShieldCheck,
   GraduationCap,
+  Archive,
   type LucideIcon,
 } from "lucide-react";
 
 type TabKey =
   | "overview" | "documents" | "trades" | "scope" | "subs"
-  | "ai-review" | "warranties" | "training" | "questions" | "leveling" | "activity"
+  | "ai-review" | "warranties" | "training" | "inspections" | "closeout"
+  | "questions" | "leveling" | "activity"
   | "handoff" | "submittals" | "schedule" | "meetings" | "briefing" | "procore";
 
 type TabDef = { key: TabKey; label: string; icon: LucideIcon };
@@ -43,6 +46,8 @@ const PURSUIT_TABS: TabDef[] = [
   { key: "ai-review", label: "AI Review", icon: Sparkles },
   { key: "warranties", label: "Warranties", icon: ShieldCheck },
   { key: "training", label: "Training", icon: GraduationCap },
+  { key: "inspections", label: "Inspections", icon: ClipboardCheck },
+  { key: "closeout", label: "Closeout", icon: Archive },
   { key: "questions", label: "Questions", icon: MessagesSquare },
   { key: "leveling", label: "Leveling", icon: Scale },
   { key: "activity", label: "Activity", icon: Activity },
