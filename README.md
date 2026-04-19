@@ -26,13 +26,14 @@ See [ROADMAP.md Section 4 — Completed Modules](docs/architecture/ROADMAP.md) f
 
 | Sub-Phase | Status | Description |
 |-----------|--------|-------------|
-| **5A** | IN PROGRESS | Python FastAPI sidecar — spec book splitting, per-section AI analysis, webhook-based job completion |
-| **5B** | QUEUED | Spec intelligence registers — submittals, warranties, training, closeout, testing |
-| **5C** | QUEUED | Interactive Gantt (DHTMLX) with CPM, 4 dep types, weather calendar, MSP/P6 export |
-| **5D** | QUEUED | Meeting intelligence — transcription, Claude action-item extraction |
-| **5E** | QUEUED | Superintendent field briefing — auto-assembled PDF from all registers |
-| **5F** | STRETCH | Drawing OCR, symbol detection, quantity takeoff |
-| **5G** | QUEUED | Submittal Intelligence Layer — bridges 5A AI extractions into H3, schedule-tied due dates, distribution + workflow templates |
+| **5A** | ✅ COMPLETE | Python FastAPI sidecar — spec book splitting, per-section AI analysis, webhook-based job completion |
+| **5B** | ✅ COMPLETE | Spec intelligence pipeline — AI extraction, CSI MasterFormat model, submittal generation from spec analysis |
+| **5C** | ✅ COMPLETE | CPM scheduling module — 9-phase template, full dependency engine, Gantt UI, AI Schedule Intelligence, MSP CSV export |
+| **5D** | ✅ COMPLETE | Meeting intelligence — transcription, diarization, Claude analysis, action items |
+| **5E** | ✅ COMPLETE | Superintendent field briefing — auto-assembled PDF from all registers via WeasyPrint |
+| **5F** | STRETCH | Drawing OCR, symbol detection, quantity takeoff (GPU hardware required) |
+| **5G** | ✅ COMPLETE | Submittal Intelligence Layer — 5G-1 through 5G-3.6 + drawing cross-reference for drawing-sourced submittal items |
+| **5H** | ✅ COMPLETE (near-term) | Warranty, training, inspections, closeout registers derived from spec AI extractions |
 
 ## Quick Start
 

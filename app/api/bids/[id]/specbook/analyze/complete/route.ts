@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { generateSubmittalsFromAiAnalysis } from "@/lib/services/submittal/generateFromAiAnalysis";
 
 // POST /api/bids/[id]/specbook/analyze/complete
 //
@@ -85,9 +86,21 @@ export async function POST(
     `sections saved, $${payload.result.total_cost}`
   );
 
+  // Auto-generate submittal register from the freshly saved AI extractions
+  let submittalsGenerated: number | null = null;
+  try {
+    const result = await generateSubmittalsFromAiAnalysis(bidId);
+    submittalsGenerated = result.created;
+    console.log(`[analyze/complete] auto-generated ${result.created} submittals for bid ${bidId}`);
+  } catch (err) {
+    // Don't fail the webhook — spec data is saved; submittals can be regenerated manually
+    console.error("[analyze/complete] submittal auto-generation failed:", err);
+  }
+
   return Response.json({
     saved: true,
     sectionsUpdated: updated,
+    submittalsGenerated,
     summary: payload.result.summary,
     totalCost: payload.result.total_cost,
   });

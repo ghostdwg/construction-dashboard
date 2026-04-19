@@ -38,7 +38,7 @@ SONNET_DIVISIONS = {
 }
 
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
-SONNET_MODEL = "claude-sonnet-4-20250514"
+SONNET_MODEL = "claude-sonnet-4-6"
 
 
 def _model_for_division(csi: str) -> str:
@@ -315,11 +315,13 @@ def _analyze_section(
     title: str,
     section_text: str,
     client: anthropic.Anthropic,
+    model_override: str | None = None,
 ) -> tuple[dict, dict]:
     """
-    Pass 2: Analyze a single spec section. Model is chosen by division complexity.
+    Pass 2: Analyze a single spec section. Model is chosen by division complexity
+    unless model_override is provided (used by tier selection).
     """
-    model = _model_for_division(csi)
+    model = model_override if model_override else _model_for_division(csi)
     model_label = "Sonnet" if model == SONNET_MODEL else "Haiku"
 
     if not section_text.strip():
@@ -386,6 +388,7 @@ def _analyze_section(
 def analyze_split_sections(
     sections: list[dict],
     on_progress: callable = None,
+    tier: int = 2,
 ) -> dict:
     """
     Analyze already-split spec sections. Each section has its own PDF file
@@ -431,7 +434,15 @@ def analyze_split_sections(
         if i > 0:
             _time.sleep(2)
 
-        analysis, usage = _analyze_section(csi, title, section_text, client)
+        # Tier override: 1 = all Haiku, 2 = auto-routed, 3 = all Sonnet
+        if tier == 1:
+            override_model = HAIKU_MODEL
+        elif tier == 3:
+            override_model = SONNET_MODEL
+        else:
+            override_model = None  # auto-route by division
+
+        analysis, usage = _analyze_section(csi, title, section_text, client, model_override=override_model)
 
         results.append({
             "csi": csi,
@@ -439,7 +450,7 @@ def analyze_split_sections(
             "pdf_path": pdf_path,
             "raw_text": section_text[:5000],
             "analysis": analysis,
-            "model_tier": "Sonnet" if _model_for_division(csi) == SONNET_MODEL else "Haiku",
+            "model_tier": "Sonnet" if usage["model"] == SONNET_MODEL else "Haiku",
         })
         usages.append({"csi": csi, **usage})
         total_cost += usage["cost"]

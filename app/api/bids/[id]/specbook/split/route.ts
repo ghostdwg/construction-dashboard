@@ -148,7 +148,10 @@ export async function POST(
       canonicalMatches: canonicalMap.size,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const raw = err instanceof Error ? err.message : String(err);
+    const message = raw === "fetch failed"
+      ? "Sidecar unavailable — make sure the Python service is running (`npm run dev:sidecar`)"
+      : raw;
     console.error("[specbook/split] error:", err);
     return Response.json({ error: message }, { status: 422 });
   }

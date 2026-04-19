@@ -106,7 +106,8 @@ export default function TradesTab({
   useEffect(() => {
     fetch("/api/trades")
       .then((r) => r.json())
-      .then(setAllTrades);
+      .then(setAllTrades)
+      .catch(console.error);
   }, []);
 
   // Load timeline

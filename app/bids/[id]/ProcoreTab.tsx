@@ -764,6 +764,7 @@ function RfiList({ bidId, refreshTick }: { bidId: number; refreshTick: number })
     fetch(`/api/bids/${bidId}/rfis`)
       .then((r) => r.json() as Promise<{ rfis: RfiItem[] }>)
       .then((d) => setRfis(d.rfis ?? []))
+      .catch(console.error)
       .finally(() => setLoading(false));
   }, [bidId, refreshTick]);
 

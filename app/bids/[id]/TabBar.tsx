@@ -1,145 +1,115 @@
 "use client";
 
-// UI Nav Refactor v2 — Modern compact sidebar
-//
-// Flat list, icon + label, no subtitles. Tighter spacing, subtle hover,
-// accent-bar active state. Matches Procore-style sidebar conventions.
-
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  HardHat,
   LayoutDashboard,
-  FileText,
-  Wrench,
-  Users,
-  ClipboardList,
-  ClipboardCheck,
-  Sparkles,
-  MessagesSquare,
-  Scale,
-  Activity,
+  Target,
   PackageCheck,
-  FileCheck,
-  CalendarDays,
-  Mic,
-  FileDown,
-  ArrowUpFromLine,
-  ShieldCheck,
-  GraduationCap,
-  Archive,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
-
-type TabKey =
-  | "overview" | "documents" | "trades" | "scope" | "subs"
-  | "ai-review" | "warranties" | "training" | "inspections" | "closeout"
-  | "questions" | "leveling" | "activity"
-  | "handoff" | "submittals" | "schedule" | "meetings" | "briefing" | "procore";
-
-type TabDef = { key: TabKey; label: string; icon: LucideIcon };
-
-const PURSUIT_TABS: TabDef[] = [
-  { key: "overview", label: "Overview", icon: LayoutDashboard },
-  { key: "documents", label: "Documents", icon: FileText },
-  { key: "trades", label: "Trades", icon: Wrench },
-  { key: "subs", label: "Subs", icon: Users },
-  { key: "scope", label: "Scope", icon: ClipboardList },
-  { key: "ai-review", label: "AI Review", icon: Sparkles },
-  { key: "warranties", label: "Warranties", icon: ShieldCheck },
-  { key: "training", label: "Training", icon: GraduationCap },
-  { key: "inspections", label: "Inspections", icon: ClipboardCheck },
-  { key: "closeout", label: "Closeout", icon: Archive },
-  { key: "questions", label: "Questions", icon: MessagesSquare },
-  { key: "leveling", label: "Leveling", icon: Scale },
-  { key: "activity", label: "Activity", icon: Activity },
-];
-
-const POST_AWARD_TABS: TabDef[] = [
-  { key: "handoff", label: "Handoff", icon: PackageCheck },
-  { key: "submittals", label: "Submittals", icon: FileCheck },
-  { key: "schedule", label: "Schedule", icon: CalendarDays },
-  { key: "meetings", label: "Meetings", icon: Mic },
-  { key: "briefing", label: "Briefing", icon: FileDown },
-  { key: "procore", label: "Procore", icon: ArrowUpFromLine },
-];
+import {
+  type TabKey,
+  PURSUIT_KEYS,
+  POST_AWARD_KEYS,
+  CONSTRUCTION_KEYS,
+} from "./tabConfig";
 
 export default function TabBar({
   bidId,
   bidStatus,
+  workflowType = "BID",
 }: {
   bidId: number;
   bidStatus?: string;
+  workflowType?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const active = (searchParams.get("tab") ?? "overview") as TabKey;
-  const isAwarded = bidStatus === "awarded";
+  const isProject = workflowType === "PROJECT";
+  const isPostAward = bidStatus === "awarded" || isProject;
 
   function go(tab: TabKey) {
     router.replace(`/bids/${bidId}?tab=${tab}`);
   }
 
   return (
-    <nav className="flex flex-col gap-0.5 min-w-[200px]">
-      {/* ── Pursuit phase ── */}
-      <SectionHeader label="Pursuit" active={!isAwarded} />
-      {PURSUIT_TABS.map((t) => (
-        <SidebarItem
-          key={t.key}
-          tab={t}
-          active={active === t.key}
-          muted={isAwarded}
-          onClick={() => go(t.key)}
-        />
-      ))}
+    <nav className="flex flex-col min-w-[180px]">
+      {/* ── Logo / Brand ── */}
+      <Link
+        href="/bids"
+        className="flex items-center gap-2.5 px-2.5 py-3 mb-1 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition-colors"
+      >
+        <HardHat className="h-5 w-5 text-emerald-600 shrink-0" />
+        <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">
+          Construction
+        </span>
+      </Link>
 
-      {/* ── Post-Award phase ── */}
-      <div className="mt-4" />
-      <SectionHeader label="Post-Award" active={isAwarded} />
-      {POST_AWARD_TABS.map((t) => (
-        <SidebarItem
-          key={t.key}
-          tab={t}
-          active={active === t.key}
-          muted={false}
-          onClick={() => go(t.key)}
+      <div className="h-px bg-zinc-200 dark:bg-zinc-700 mb-2" />
+
+      {/* ── Overview ── */}
+      <HubItem
+        icon={LayoutDashboard}
+        label="Overview"
+        active={active === "overview"}
+        onClick={() => go("overview")}
+      />
+
+      <div className="mt-1" />
+
+      {/* ── Pursuit hub — hidden for standalone projects ── */}
+      {!isProject && (
+        <HubItem
+          icon={Target}
+          label="Pursuit"
+          active={PURSUIT_KEYS.has(active)}
+          muted={isPostAward}
+          dot={!isPostAward}
+          onClick={() => go("documents")}
         />
-      ))}
+      )}
+
+      {/* ── Post-Award hub ── */}
+      <HubItem
+        icon={PackageCheck}
+        label="Post-Award"
+        active={POST_AWARD_KEYS.has(active)}
+        dot={isPostAward && !CONSTRUCTION_KEYS.has(active)}
+        onClick={() => go("handoff")}
+      />
+
+      {/* ── Construction hub ── */}
+      <HubItem
+        icon={Building2}
+        label="Construction"
+        active={CONSTRUCTION_KEYS.has(active)}
+        onClick={() => go("warranties")}
+      />
     </nav>
   );
 }
 
-function SectionHeader({
+function HubItem({
+  icon: Icon,
   label,
   active,
-}: {
-  label: string;
-  active: boolean;
-}) {
-  return (
-    <p className="px-3 pt-2 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 flex items-center gap-1.5">
-      {label}
-      {active && (
-        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-      )}
-    </p>
-  );
-}
-
-function SidebarItem({
-  tab,
-  active,
-  muted,
+  muted = false,
+  dot = false,
   onClick,
 }: {
-  tab: TabDef;
+  icon: LucideIcon;
+  label: string;
   active: boolean;
-  muted: boolean;
+  muted?: boolean;
+  dot?: boolean;
   onClick: () => void;
 }) {
-  const Icon = tab.icon;
-
   const base =
-    "group relative w-full flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors";
+    "group relative w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors";
   const state = active
     ? "bg-zinc-100 text-zinc-900 font-medium dark:bg-zinc-800 dark:text-zinc-100"
     : muted
@@ -148,7 +118,6 @@ function SidebarItem({
 
   return (
     <button onClick={onClick} className={`${base} ${state}`}>
-      {/* Active accent bar on the left edge */}
       {active && (
         <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-emerald-500" />
       )}
@@ -159,7 +128,10 @@ function SidebarItem({
             : "text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
         }`}
       />
-      <span className="truncate">{tab.label}</span>
+      <span className="truncate">{label}</span>
+      {dot && (
+        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+      )}
     </button>
   );
 }

@@ -628,21 +628,61 @@ export async function seedScheduleV2(bidId: number, force = false): Promise<Seed
   });
   result.tradesScanned = bidTrades.length;
 
-  if (!existingCodes.has("P1000")) {
-    // ── Build procurement rows from long-lead BidTrades ─────────────────────
-    const procRows: TemplateRow[] = [];
-    let procIdx = 0;
+  // ── Prefer spec sections as the source of truth for what's in the project ─
+  // When a spec book with analyzed sections exists, use it to drive procurement
+  // activity creation (which divisions are present + canonical titles).
+  // Falls back to BidTrades when no spec book exists yet.
+  const specBook = await prisma.specBook.findFirst({
+    where: { bidId, status: "ready" },
+    orderBy: { uploadedAt: "desc" },
+    include: {
+      sections: {
+        select: { csiNumber: true, csiCanonicalTitle: true, csiTitle: true },
+      },
+    },
+  });
+
+  // Build a division → canonical title map from spec sections
+  const specDivTitles = new Map<string, string>();
+  for (const s of specBook?.sections ?? []) {
+    const div = csiDivision(s.csiNumber);
+    if (div && !specDivTitles.has(div)) {
+      specDivTitles.set(div, s.csiCanonicalTitle ?? s.csiTitle);
+    }
+  }
+
+  // Determine which long-lead divisions are in this project:
+  //   - spec-sourced when available (more accurate)
+  //   - BidTrades fallback when no spec book
+  const useSpecSource = specDivTitles.size > 0;
+  const longLeadDivs: Array<{ div: string; name: string }> = [];
+
+  if (useSpecSource) {
+    for (const [div, title] of specDivTitles.entries()) {
+      if (!LONG_LEAD_PROCUREMENT[div]) continue;
+      longLeadDivs.push({ div, name: title });
+    }
+  } else {
     for (const bt of bidTrades) {
       const div = csiDivision(bt.trade.csiCode);
       if (!div || !LONG_LEAD_PROCUREMENT[div]) continue;
+      longLeadDivs.push({ div, name: bt.trade.name });
+    }
+  }
+
+  if (!existingCodes.has("P1000")) {
+    // ── Build procurement rows from long-lead divisions ──────────────────────
+    const procRows: TemplateRow[] = [];
+    let procIdx = 0;
+    for (const { div, name } of longLeadDivs) {
       procIdx++;
       procRows.push({
         code: `P20${String(procIdx).padStart(2, "0")}`,
-        name: `Procurement — ${bt.trade.name}`,
+        name: `Procurement — ${name}`,
         dur: LONG_LEAD_PROCUREMENT[div],
         lvl: 2,
         csiDiv: div,
-        trade: bt.trade.name,
+        trade: name,
         deps: [{ code: "P1050" }],
       });
     }

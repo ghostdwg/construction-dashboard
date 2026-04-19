@@ -96,9 +96,16 @@ export default async function BidsPage() {
                 return (
                   <tr key={bid.id}>
                     <td className="px-4 py-2.5">
-                      <Link href={`/bids/${bid.id}`} className="font-medium text-zinc-800 hover:underline dark:text-zinc-100">
-                        {bid.projectName}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/bids/${bid.id}`} className="font-medium text-zinc-800 hover:underline dark:text-zinc-100">
+                          {bid.projectName}
+                        </Link>
+                        {bid.workflowType === "PROJECT" && (
+                          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 uppercase tracking-wide">
+                            Project
+                          </span>
+                        )}
+                      </div>
                       {bid.location && (
                         <div className="text-xs text-zinc-400 dark:text-zinc-500">{bid.location}</div>
                       )}

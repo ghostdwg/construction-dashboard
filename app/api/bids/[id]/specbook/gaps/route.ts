@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
+function tryParseJson(raw: string | null): unknown {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 // GET /api/bids/[id]/specbook/gaps
 // Returns the most recent SpecBook and sections split into three states:
 //   covered       — tradeId set (trade is on bid)
@@ -94,7 +99,7 @@ export async function GET(
     matchedTradeId: s.matchedTradeId,
     matchedTrade: s.matchedTrade,
     source: s.source,
-    aiExtractions: s.aiExtractions ? JSON.parse(s.aiExtractions) : null,
+    aiExtractions: tryParseJson(s.aiExtractions),
     pdfFileName: s.pdfFileName,
     pageStart: s.pageStart,
     pageEnd: s.pageEnd,
@@ -105,11 +110,9 @@ export async function GET(
   // AI analysis summary
   const severityCounts: Record<string, number> = {};
   for (const s of analyzedSections) {
-    try {
-      const ai = JSON.parse(s.aiExtractions!);
-      const sev = (ai.severity || "INFO").toUpperCase();
-      severityCounts[sev] = (severityCounts[sev] || 0) + 1;
-    } catch { /* skip */ }
+    const ai = tryParseJson(s.aiExtractions) as Record<string, unknown> | null;
+    const sev = ((ai?.severity as string) || "INFO").toUpperCase();
+    severityCounts[sev] = (severityCounts[sev] || 0) + 1;
   }
 
   return Response.json({

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { FileText, Layers, BookOpen, Trash2 } from "lucide-react";
+import DocAnalyzePanel, { type RunOpts } from "./DocAnalyzePanel";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -810,6 +812,299 @@ function UnknownSection({
   );
 }
 
+// ── Drawing Analysis Results ──────────────────────────────────────────────────
+
+function DrawingAnalysisResults({ result }: { result: Record<string, unknown> }) {
+  const meta = result._meta as { tier?: number; model?: string; pagesAnalyzed?: number; totalPages?: number } | undefined;
+  const disciplines = result.disciplines as Record<string, { scopeSummary?: string; notableItems?: string[]; bidRisks?: string[] }> | undefined;
+  const flags = result.bidFlags as string[] | undefined;
+  const special = result.specialSystems as string[] | undefined;
+  const rfis = result.rfiCandidates as string[] | undefined;
+  const coordination = result.coordinationNotes as string[] | undefined;
+
+  return (
+    <div className="flex flex-col gap-4 text-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="font-medium text-zinc-800 dark:text-zinc-100">
+          {result.projectDescription as string}
+        </p>
+        {meta && (
+          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0 ml-3">
+            {meta.pagesAnalyzed}/{meta.totalPages} pages · {meta.model}
+          </span>
+        )}
+      </div>
+
+      {/* Bid flags */}
+      {flags && flags.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1.5">Bid Flags</p>
+          <ul className="flex flex-col gap-1">
+            {flags.map((f, i) => (
+              <li key={i} className="flex gap-2 text-xs text-zinc-600 dark:text-zinc-300">
+                <span className="text-amber-500 shrink-0">▲</span>{f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Disciplines */}
+      {disciplines && Object.keys(disciplines).length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-2 uppercase tracking-wide">By Discipline</p>
+          <div className="flex flex-col gap-3">
+            {Object.entries(disciplines).map(([disc, data]) => (
+              <div key={disc} className="rounded-md border border-zinc-100 dark:border-zinc-800 p-3">
+                <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200 mb-1">{disc}</p>
+                {data.scopeSummary && (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">{data.scopeSummary}</p>
+                )}
+                {data.bidRisks && data.bidRisks.length > 0 && (
+                  <ul className="flex flex-col gap-0.5">
+                    {data.bidRisks.map((r, i) => (
+                      <li key={i} className="text-xs text-amber-600 dark:text-amber-400">⚠ {r}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Special systems */}
+      {special && special.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">Special Systems</p>
+          <div className="flex flex-wrap gap-1.5">
+            {special.map((s, i) => (
+              <span key={i} className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{s}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Coordination + RFIs */}
+      {(coordination?.length || rfis?.length) ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {coordination && coordination.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">Coordination</p>
+              <ul className="flex flex-col gap-1">
+                {coordination.map((c, i) => (
+                  <li key={i} className="text-xs text-zinc-500 dark:text-zinc-400">• {c}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {rfis && rfis.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wide">RFI Candidates</p>
+              <ul className="flex flex-col gap-1">
+                {rfis.map((r, i) => (
+                  <li key={i} className="text-xs text-zinc-500 dark:text-zinc-400">• {r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ── Document inventory ────────────────────────────────────────────────────────
+
+function StatusIcon({ status }: { status: string }) {
+  if (status === "ready")
+    return <span className="text-emerald-500 font-bold text-xs">✓</span>;
+  if (status === "processing")
+    return <span className="text-amber-500 text-xs animate-pulse">●</span>;
+  return <span className="text-red-400 text-xs">✗</span>;
+}
+
+function DocumentInventory({
+  specData,
+  drawingData,
+  addendums,
+  onDeleteSpec,
+  onDeleteDrawing,
+}: {
+  specData: SpecData | null;
+  drawingData: DrawingData | null;
+  addendums: AddendumRow[];
+  onDeleteSpec: (id: number) => Promise<void>;
+  onDeleteDrawing: (id: number) => Promise<void>;
+}) {
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const uploads = drawingData?.uploads ?? [];
+  const fullset = uploads.find((u) => u.discipline === "FULLSET");
+  const disciplineUploads = uploads.filter((u) => u.discipline !== "FULLSET");
+  const hasAnything =
+    specData?.specBook ||
+    uploads.length > 0 ||
+    addendums.length > 0;
+
+  if (!hasAnything) return null;
+
+  function fmtDate(str: string) {
+    return new Date(str).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  async function handleDelete(
+    id: number,
+    label: string,
+    handler: (id: number) => Promise<void>
+  ) {
+    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    setDeletingId(id);
+    try {
+      await handler(id);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function DeleteBtn({
+    id,
+    label,
+    handler,
+  }: {
+    id: number;
+    label: string;
+    handler: (id: number) => Promise<void>;
+  }) {
+    return (
+      <button
+        onClick={() => handleDelete(id, label, handler)}
+        disabled={deletingId === id}
+        title={`Delete ${label}`}
+        className="shrink-0 rounded p-1 text-zinc-300 hover:text-red-400 hover:bg-red-50 dark:text-zinc-600 dark:hover:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-40 transition-colors"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="px-4 py-2.5 border-b border-zinc-100 dark:border-zinc-800">
+        <h3 className="text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
+          Documents on File
+        </h3>
+      </div>
+
+      <div className="divide-y divide-zinc-50 dark:divide-zinc-800/60">
+        {/* Spec Book */}
+        {specData?.specBook && (
+          <div className="px-4 py-2.5 flex items-center gap-3">
+            <FileText className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300 w-32 shrink-0">
+              Spec Book
+            </span>
+            <StatusIcon status={specData.specBook.status} />
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate flex-1 min-w-0">
+              {specData.specBook.fileName}
+            </span>
+            {specData.total > 0 && (
+              <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0 whitespace-nowrap">
+                {specData.total} sections
+              </span>
+            )}
+            <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0 whitespace-nowrap">
+              {fmtDate(specData.specBook.uploadedAt)}
+            </span>
+            <DeleteBtn
+              id={specData.specBook.id}
+              label={specData.specBook.fileName}
+              handler={onDeleteSpec}
+            />
+          </div>
+        )}
+
+        {/* Drawings — fullset */}
+        {fullset && (
+          <div className="px-4 py-2.5 flex items-center gap-3">
+            <Layers className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300 w-32 shrink-0">
+              Drawings · Full Set
+            </span>
+            <StatusIcon status={fullset.status} />
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate flex-1 min-w-0">
+              {fullset.fileName}
+            </span>
+            {fullset.sheetCount > 0 && (
+              <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0 whitespace-nowrap">
+                {fullset.sheetCount} sheets
+              </span>
+            )}
+            <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0 whitespace-nowrap">
+              {fmtDate(fullset.uploadedAt)}
+            </span>
+            <DeleteBtn id={fullset.id} label={fullset.fileName} handler={onDeleteDrawing} />
+          </div>
+        )}
+
+        {/* Drawings — per discipline */}
+        {disciplineUploads.map((u, i) => (
+          <div key={u.id} className="px-4 py-2 flex items-center gap-3 pl-10">
+            {i === 0 && !fullset && (
+              <Layers className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600 shrink-0 -ml-6" />
+            )}
+            {(i > 0 || fullset) && (
+              <span className="text-[10px] text-zinc-300 dark:text-zinc-600 shrink-0 -ml-6 w-3.5 text-center">
+                ↳
+              </span>
+            )}
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300 w-32 shrink-0">
+              {DISCIPLINE_OPTIONS.find((d) => d.value === u.discipline)?.label ?? u.discipline}
+            </span>
+            <StatusIcon status={u.status} />
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate flex-1 min-w-0">
+              {u.fileName}
+            </span>
+            {u.sheetCount > 0 && (
+              <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0 whitespace-nowrap">
+                {u.sheetCount} sheets
+              </span>
+            )}
+            <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0 whitespace-nowrap">
+              {fmtDate(u.uploadedAt)}
+            </span>
+            <DeleteBtn id={u.id} label={u.fileName} handler={onDeleteDrawing} />
+          </div>
+        ))}
+
+        {/* Addendums */}
+        {addendums.length > 0 && (
+          <div className="px-4 py-2.5 flex items-start gap-3">
+            <BookOpen className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300 w-32 shrink-0">
+              Addendums
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {addendums.map((a) => (
+                <span
+                  key={a.id}
+                  className="rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-600 dark:text-zinc-400"
+                >
+                  A{a.addendumNumber}
+                  {a.addendumDate
+                    ? ` · ${fmtDate(a.addendumDate)}`
+                    : ""}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function DocumentsTab({ bidId }: { bidId: number }) {
@@ -825,6 +1120,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
   const [specSplitError, setSpecSplitError] = useState<string | null>(null);
   const [specSplitResult, setSpecSplitResult] = useState<{ sectionCount: number } | null>(null);
 
+  const [specAnalysisTier, setSpecAnalysisTier] = useState<1 | 2 | 3>(2);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
@@ -842,6 +1138,11 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
   const [splitResult, setSplitResult] = useState<SplitResult | null>(null);
   const [splitting, setSplitting] = useState(false);
   const [disciplineUploading, setDisciplineUploading] = useState<string | null>(null);
+
+  // Drawing AI analysis
+  const [drawingAnalyzing, setDrawingAnalyzing] = useState(false);
+  const [drawingAnalyzeError, setDrawingAnalyzeError] = useState<string | null>(null);
+  const [drawingAnalysisResult, setDrawingAnalysisResult] = useState<Record<string, unknown> | null>(null);
 
   const [specRematching, setSpecRematching] = useState(false);
   const [addingIds, setAddingIds] = useState<Set<number>>(new Set());
@@ -900,6 +1201,69 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       .catch(() => {});
   }, [bidId, loadAddendums]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Delete spec book ──────────────────────────────────────────────────────
+
+  async function handleDeleteSpec(uploadId: number) {
+    const res = await fetch(`/api/bids/${bidId}/specbook/${uploadId}`, { method: "DELETE" });
+    if (res.ok) {
+      setSpecData(null);
+    }
+  }
+
+  // ── Delete drawing upload ──────────────────────────────────────────────────
+
+  async function handleDeleteDrawing(uploadId: number) {
+    const res = await fetch(`/api/bids/${bidId}/drawings/${uploadId}`, { method: "DELETE" });
+    if (res.ok) {
+      setDrawingData(await safeJson<DrawingData>(await fetch(`/api/bids/${bidId}/drawings/gaps`)));
+    }
+  }
+
+  // ── Drawing AI analysis ────────────────────────────────────────────────────
+
+  async function handleDrawingAnalyze({ tier, model }: RunOpts) {
+    setDrawingAnalyzing(true);
+    setDrawingAnalyzeError(null);
+    setDrawingAnalysisResult(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/drawings/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier, model }),
+      });
+      const text = await res.text();
+      if (!text) {
+        setDrawingAnalyzeError(
+          res.ok
+            ? "No response from server"
+            : `Server error ${res.status} — check that the sidecar is running`
+        );
+        return;
+      }
+      let result: Record<string, unknown>;
+      try {
+        result = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        setDrawingAnalyzeError(`Server error ${res.status} — unexpected response format`);
+        return;
+      }
+      if (!res.ok) {
+        setDrawingAnalyzeError((result.error as string) ?? "Analysis failed");
+      } else {
+        setDrawingAnalysisResult(result);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Analysis failed";
+      setDrawingAnalyzeError(
+        msg === "fetch failed"
+          ? "Sidecar unavailable — make sure the Python service is running (`npm run dev:sidecar`)"
+          : msg
+      );
+    } finally {
+      setDrawingAnalyzing(false);
+    }
+  }
+
   // ── Spec book upload ───────────────────────────────────────────────────────
 
   async function handleSpecUpload(file: File) {
@@ -957,7 +1321,11 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
     try {
       // Step 1: Submit the job
-      const submitRes = await fetch(`/api/bids/${bidId}/specbook/analyze`, { method: "POST" });
+      const submitRes = await fetch(`/api/bids/${bidId}/specbook/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier: specAnalysisTier }),
+      });
       const submitData = await submitRes.json();
       if (!submitRes.ok) {
         setAnalyzeError(submitData.error ?? "Failed to start analysis");
@@ -983,7 +1351,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
           return true;
         }
 
-        if (data.status === "error") {
+        if (data.status === "error" || !res.ok) {
           setAnalyzeError(data.error ?? "Analysis failed");
           return true;
         }
@@ -1239,9 +1607,23 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
     (specData?.coveredCount ?? 0) + (drawingData?.coveredCount ?? 0);
   const totalMissing = allMissing.length;
   const hasResults = specData?.specBook || drawingData?.drawingUpload;
+  const hasSplitSections = [
+    ...(specData?.covered ?? []),
+    ...(specData?.missing ?? []),
+    ...(specData?.unknown ?? []),
+  ].some((s) => s.hasPdf);
 
   return (
     <div className="flex flex-col gap-6">
+
+      {/* ── Documents on File inventory ── */}
+      <DocumentInventory
+        specData={specData}
+        drawingData={drawingData}
+        addendums={addendums}
+        onDeleteSpec={handleDeleteSpec}
+        onDeleteDrawing={handleDeleteDrawing}
+      />
 
       {/* ── Spec Book Upload + AI Analysis ── */}
       <div className="flex gap-4">
@@ -1300,19 +1682,52 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       {/* AI Analysis button — appears after spec book is uploaded */}
       {specData?.specBook?.status === "ready" && (
         <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
               <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                 AI Spec Analysis
               </h3>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                Reads every CSI section · flags pain points, gaps, submittals · ~$3–5
+                Reads every CSI section · flags pain points, gaps, submittals
               </p>
+              {!hasSplitSections && !analyzing && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  Run &ldquo;Split into Sections&rdquo; first to enable AI analysis.
+                </p>
+              )}
+
+              {/* Tier picker */}
+              {!analyzing && (
+                <div className="flex gap-1.5 mt-3">
+                  {([
+                    { id: 1 as const, label: "Quick Scan",   sub: "All Haiku · ~$0.50–1",   title: "Fast overview — all sections analyzed with Haiku" },
+                    { id: 2 as const, label: "Balanced",     sub: "Auto-routed · ~$3–5",     title: "MEP + structural → Sonnet, all others → Haiku" },
+                    { id: 3 as const, label: "Deep Review",  sub: "All Sonnet · ~$10–15",    title: "Maximum depth — every section with Sonnet" },
+                  ] as const).map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setSpecAnalysisTier(t.id)}
+                      title={t.title}
+                      className={`flex-1 rounded-md border px-2 py-1.5 text-left transition-colors ${
+                        specAnalysisTier === t.id
+                          ? "border-violet-400 bg-violet-50 dark:border-violet-600 dark:bg-violet-900/30"
+                          : "border-zinc-200 bg-zinc-50 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-800/50 dark:hover:border-zinc-600"
+                      }`}
+                    >
+                      <div className={`text-[11px] font-semibold leading-tight ${specAnalysisTier === t.id ? "text-violet-800 dark:text-violet-200" : "text-zinc-700 dark:text-zinc-300"}`}>
+                        {t.label}
+                      </div>
+                      <div className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5 select-none">{t.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <button
               onClick={runAiAnalysis}
-              disabled={analyzing}
-              className="rounded-md bg-violet-600 px-4 py-2 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+              disabled={analyzing || !hasSplitSections}
+              title={!hasSplitSections ? "Run 'Split into Sections' first" : undefined}
+              className="rounded-md bg-violet-600 px-4 py-2 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-50 shrink-0 self-start"
             >
               {analyzing ? "Analyzing…" : "Run AI Analysis"}
             </button>
@@ -1338,8 +1753,12 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                   style={{ width: `${Math.max(analyzeProgress, 2)}%` }}
                 />
               </div>
-              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">
-                MEP + structural → Sonnet · all others → Haiku
+              <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1 select-none">
+                {specAnalysisTier === 1
+                  ? "All sections → Haiku"
+                  : specAnalysisTier === 3
+                  ? "All sections → Sonnet"
+                  : "MEP + structural → Sonnet · all others → Haiku"}
               </p>
             </div>
           )}
@@ -1517,6 +1936,22 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
           Drawing sheet index processing failed. Re-upload to try again.
         </div>
+      )}
+
+      {/* ── Drawing AI Analysis ── */}
+      {(drawingData?.drawingUpload || (drawingData?.uploads && drawingData.uploads.length > 0)) && (
+        <DocAnalyzePanel
+          pageCount={splitResult?.total_pages ?? 0}
+          onRun={handleDrawingAnalyze}
+          running={drawingAnalyzing}
+          progressLabel="Sending drawings to Claude…"
+          error={drawingAnalyzeError}
+          runLabel="Analyze Drawings"
+        >
+          {drawingAnalysisResult && (
+            <DrawingAnalysisResults result={drawingAnalysisResult} />
+          )}
+        </DocAnalyzePanel>
       )}
 
       {/* ── Summary bar ── */}

@@ -166,6 +166,27 @@ type GenerateResult = {
   previousAutoItemsRemoved: number;
 };
 
+type GenerateAiResponse = {
+  specResult: GenerateResult;
+  jobId: string | null;
+};
+
+type DrawingPollResult = {
+  status: string;
+  progress: number;
+  drawingItemsCreated?: number;
+  specCoverageGaps?: string[];
+  projectSummary?: string;
+  costUsd?: number;
+  error?: string;
+};
+
+type SpecMeta = {
+  analyzedSectionCount: number;
+  hasSpecBook: boolean;
+  hasDrawings: boolean;
+};
+
 type FilterChip = "all" | "open" | "overdue" | "critical";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -215,8 +236,11 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     itemId: number;
     field: "status" | "requiredBy";
   } | null>(null);
-  const [generatingFromAi, setGeneratingFromAi] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genJobId, setGenJobId] = useState<string | null>(null);
   const [aiBanner, setAiBanner] = useState<GenerateResult | null>(null);
+  const [drawingResult, setDrawingResult] = useState<DrawingPollResult | null>(null);
+  const [specMeta, setSpecMeta] = useState<SpecMeta | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAddPackageForm, setShowAddPackageForm] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -257,27 +281,64 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     };
   }, [bidId, reloadTick]);
 
+  // Preflight check — tells the UI whether AI generation is ready to run
+  useEffect(() => {
+    fetch(`/api/bids/${bidId}/submittals/generate-ai`)
+      .then((r) => r.json())
+      .then((d: SpecMeta) => setSpecMeta(d))
+      .catch(() => {/* non-critical */});
+  }, [bidId]);
+
   const reload = () => setReloadTick((t) => t + 1);
 
   async function runGenerateFromAi() {
-    setGeneratingFromAi(true);
+    setGenerating(true);
     setAiBanner(null);
+    setDrawingResult(null);
+    setGenJobId(null);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/bids/${bidId}/submittals/generate-from-specs`,
-        { method: "POST" }
-      );
+      const res = await fetch(`/api/bids/${bidId}/submittals/generate-ai`, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as GenerateResult;
-      setAiBanner(data);
+      const data = (await res.json()) as GenerateAiResponse;
+      setAiBanner(data.specResult);
       reload();
+      if (data.jobId) {
+        setGenJobId(data.jobId);
+        // generating stays true — polling effect will clear it
+      } else {
+        setGenerating(false);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setGeneratingFromAi(false);
+      setGenerating(false);
     }
   }
+
+  // Poll for drawing cross-reference job
+  useEffect(() => {
+    if (!genJobId || !generating) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/bids/${bidId}/submittals/generate-ai?jobId=${genJobId}`
+        );
+        const data = (await res.json()) as DrawingPollResult;
+        if (data.status === "complete" || data.status === "error") {
+          setGenerating(false);
+          clearInterval(interval);
+          if (data.status === "complete") {
+            setDrawingResult(data);
+            reload();
+          }
+          if (data.error) setError(data.error);
+        }
+      } catch {
+        // transient — keep polling
+      }
+    }, 2_500);
+    return () => clearInterval(interval);
+  }, [bidId, genJobId, generating]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function runExport() {
     setExporting(true);
@@ -424,11 +485,15 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={runGenerateFromAi}
-            disabled={generatingFromAi}
+            disabled={generating}
             className="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-            title="Regenerates register from AI Spec Analysis. Replaces auto-generated items; manual entries preserved."
+            title="Generates register from spec analysis. When drawing analysis exists, also cross-references drawing scope."
           >
-            {generatingFromAi ? "Generating…" : "Generate from AI"}
+            {genJobId && generating
+              ? "Syncing drawings…"
+              : generating
+              ? "Generating…"
+              : "Generate from AI"}
           </button>
           <button
             onClick={() => setShowTemplates(!showTemplates)}
@@ -469,6 +534,13 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
           {error}
         </div>
       )}
+      {specMeta && specMeta.analyzedSectionCount === 0 && !aiBanner && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
+          {specMeta.hasSpecBook
+            ? "Spec book uploaded but not yet analyzed — go to Documents \u2192 AI Analyze, then return here to generate the register."
+            : "No spec book uploaded yet. Add one in the Documents tab to enable AI generation."}
+        </div>
+      )}
       {aiBanner && (
         <div className="rounded-md border border-purple-200 bg-purple-50 px-4 py-2 text-sm text-purple-700 dark:border-purple-900 dark:bg-purple-900/30 dark:text-purple-300">
           AI read {aiBanner.sectionsWithExtractions} sections, found{" "}
@@ -484,6 +556,17 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             `, ${aiBanner.deferredToCloseout} deferred to closeout`}
           {aiBanner.bidTradesLinked > 0 &&
             ` · ${aiBanner.bidTradesLinked} linked to trades`}.
+          {genJobId && generating && (
+            <span className="ml-2 opacity-70">Cross-referencing drawings…</span>
+          )}
+          {drawingResult?.drawingItemsCreated != null && drawingResult.drawingItemsCreated > 0 && (
+            <span className="ml-2">
+              +<strong>{drawingResult.drawingItemsCreated}</strong> drawing-sourced additions.
+            </span>
+          )}
+          {drawingResult?.drawingItemsCreated === 0 && (
+            <span className="ml-2 opacity-60">Drawing scope fully covered by specs.</span>
+          )}
         </div>
       )}
 

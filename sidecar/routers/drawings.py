@@ -2,12 +2,14 @@
 Drawing document router — /parse/drawings/*
 
 Endpoints:
-  POST /parse/drawings/split — Analyze a fullset PDF and group pages by discipline
+  POST /parse/drawings/split   — Analyze a fullset PDF and group pages by discipline
+  POST /parse/drawings/analyze — Claude Vision analysis (tier 1/2/3)
 """
 
 import os
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from pydantic import BaseModel
 
 from services.drawing_splitter import split_drawing_set
 
@@ -36,6 +38,36 @@ async def _save_upload(upload: UploadFile) -> str:
     finally:
         tmp.close()
     return tmp.name
+
+
+class AnalyzeRequest(BaseModel):
+    file_path: str
+    tier: int
+    model: str
+
+
+@router.post("/drawings/analyze")
+async def analyze_drawing(body: AnalyzeRequest):
+    """
+    Run Claude Vision analysis on a drawing PDF.
+
+    file_path — absolute path to the PDF on the server filesystem
+    tier      — 1 (Quick Scan) | 2 (Scope Brief) | 3 (Full Intelligence)
+    model     — haiku | sonnet | opus
+    """
+    from services.drawing_intelligence import analyze_drawings
+
+    if not os.path.exists(body.file_path):
+        raise HTTPException(404, f"File not found: {body.file_path}")
+    if body.tier not in (1, 2, 3):
+        raise HTTPException(400, "tier must be 1, 2, or 3")
+    if body.model not in ("haiku", "sonnet", "opus"):
+        raise HTTPException(400, "model must be haiku, sonnet, or opus")
+
+    try:
+        return analyze_drawings(body.file_path, body.tier, body.model)
+    except Exception as e:
+        raise HTTPException(422, f"Analysis failed: {str(e)}")
 
 
 @router.post("/drawings/split")

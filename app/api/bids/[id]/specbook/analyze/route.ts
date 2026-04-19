@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { generateSubmittalsFromAiAnalysis } from "@/lib/services/submittal/generateFromAiAnalysis";
 
 // POST /api/bids/[id]/specbook/analyze
 // Submits already-split sections (from /specbook/split) to the sidecar for
@@ -12,12 +13,15 @@ const APP_URL = process.env.APP_URL || "http://127.0.0.1:3001";
 const CALLBACK_TOKEN = process.env.SIDECAR_CALLBACK_TOKEN || "";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const body = await request.json().catch(() => ({})) as { tier?: number };
+  const tier = [1, 2, 3].includes(body.tier ?? 0) ? body.tier! : 2;
 
   const specBook = await prisma.specBook.findFirst({
     where: { bidId, status: "ready" },
@@ -55,6 +59,7 @@ export async function POST(
       method: "POST",
       body: JSON.stringify({
         sections: sectionsPayload,
+        tier,
         callback_url: `${APP_URL}/api/bids/${bidId}/specbook/analyze/complete`,
         callback_token: CALLBACK_TOKEN || undefined,
       }),
@@ -77,7 +82,10 @@ export async function POST(
       status: "processing",
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const raw = err instanceof Error ? err.message : String(err);
+    const message = raw === "fetch failed"
+      ? "Sidecar unavailable — make sure the Python service is running (`npm run dev:sidecar`)"
+      : raw;
     console.error("[specbook/analyze] error:", err);
     return Response.json({ error: message }, { status: 422 });
   }
@@ -184,6 +192,14 @@ export async function GET(
           `${job.result.section_count} sections, ${updated} updated, ${created} created, ` +
           `$${job.result.total_cost}`
         );
+
+        // Auto-generate submittal register from freshly saved AI extractions
+        try {
+          const genResult = await generateSubmittalsFromAiAnalysis(bidId);
+          console.log(`[specbook/analyze] auto-generated ${genResult.created} submittals for bid ${bidId}`);
+        } catch (genErr) {
+          console.error("[specbook/analyze] submittal auto-generation failed:", genErr);
+        }
       }
 
       return Response.json({

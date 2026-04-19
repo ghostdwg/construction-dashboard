@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-12
+# Last Updated: 2026-04-19
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -16,16 +16,18 @@
 
 ## Repository Status
 
-- **35 modules complete** — platform is functionally complete for a solo estimator
-- Last shipped: Auth Wall Level A (email/password login + route protection) on 2026-04-12
+- **All planned phases complete** — 35 base modules + full Phase 5 construction intelligence stack
+- Last shipped: Drawing cross-reference for submittal generation (Phase 5G extension) on 2026-04-18
 - Tier E (Post-Award Handoff): **COMPLETE** — all 8 modules (H1-H8) shipped
+- Phase 5A–5H: **COMPLETE** — Python sidecar, spec AI pipeline, CPM scheduling, meeting intelligence, super briefing, submittal intelligence (5G-1 through 5G-3.6 + drawing cross-reference), near-term closeout registers
 - Operations (SET1, SET1+, Auth Wall Level A): **COMPLETE**
 - UI Nav Refactor (two-level sidebar): **COMPLETE**
 - Remaining work:
-  - Tier F (Procore Integration Bridge) — F1 CSV/XLSX, F2 REST API, F3 sync — LOW priority
+  - Phase 5F: Drawing OCR + Quantity Takeoff — STRETCH (GPU hardware required)
+  - Phase 5G-4: Submittal Workflow Templates — DEFERRED
+  - Tier F F5: Daily Log weather claim integration — NOT STARTED
   - Auth Wall Level B+C (multi-tenancy + role-based access) — DEFERRED until second user
-  - ~10 minor enhancements deferred from shipped modules (see ROADMAP.md)
-- Parallel repo: ghostdwg/construction-dashboard for Phase 5 expansion
+  - ~10 minor enhancements (see ROADMAP.md A4)
 
 ## Architecture — Three Wings + Lifecycle
 
@@ -86,9 +88,22 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **Module SET1+** | **Email provider abstraction — Resend + Generic SMTP (Gmail/Outlook/Yahoo/iCloud/Fastmail/Custom)** | **✅ Complete** |
 | **UI Nav Refactor** | **Two-level sidebar with pursuit/post-award grouping** | **✅ Complete** |
 | **Auth Wall A** | **Email/password login, JWT sessions, route protection, AUTH_DISABLED bypass** | **✅ Complete** |
+| **Phase 5A** | **Python FastAPI sidecar — spec splitting, per-section AI analysis, webhook jobs** | **✅ Complete** |
+| **Phase 5B** | **Spec intelligence pipeline — CSI MasterFormat model, AI extraction, submittal generation** | **✅ Complete** |
+| **Phase 5C** | **CPM scheduling — 9-phase template, full dependency engine, Gantt UI, MSP CSV export, AI Schedule Intelligence** | **✅ Complete** |
+| **Phase 5D** | **Meeting intelligence — transcription, diarization, Claude analysis, action items** | **✅ Complete** |
+| **Phase 5E** | **Superintendent briefing — auto-assembled PDF field report via WeasyPrint** | **✅ Complete** |
+| **Phase 5G-1** | **SubmittalItem.specSectionId auto-linkage from AI extractions** | **✅ Complete** |
+| **Phase 5G-2** | **Schedule-tied due dates — backward math from install activity** | **✅ Complete** |
+| **Phase 5G-3** | **Distribution templates, routing panel** | **✅ Complete** |
+| **Phase 5G-3.5** | **SubmittalPackage model, package-grouped register** | **✅ Complete** |
+| **Phase 5G-3.6** | **Bulk-edit grid UI with inline editing** | **✅ Complete** |
+| **Phase 5G-Extension** | **Drawing cross-reference — drawing-sourced submittal items via sidecar AI** | **✅ Complete** |
+| **Phase 5H near-term** | **Warranty, training, inspections, closeout registers from aiExtractions** | **✅ Complete** |
 | **Queued** | **Future expansion** | **🔜 Planned** |
-| Tier F (F1-F3) | Procore Integration Bridge (CSV exports partially shipped) | 🔜 Queued |
-| Phase 5G | Submittal Intelligence Layer (4 sub-phases — bridges 5A AI extractions into H3 register, schedule-tied due dates) | 🔜 Queued |
+| Tier F F5 | Daily Log weather claim integration | 🔜 Not Started |
+| Phase 5F | Drawing OCR + Quantity Takeoff | 🔜 Stretch |
+| Phase 5G-4 | Submittal Workflow Templates | 🔜 Deferred |
 | Auth Wall B+C | Multi-tenancy + role-based access | 🔜 Deferred |
 
 ## What Is Built
@@ -177,6 +192,20 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - H4 recalculateSchedule: walks activities in sequence order, uses Bid.constructionStartDate as the anchor, resolves start = latest finish across predecessor IDs (defaults to anchor if no predecessors or stale chain), computes finish = addWorkingDays(start, duration - 1). All math is Mon-Fri working-day only (no holidays). Writes Bid.projectDurationDays with the total working-day span. Called automatically from: (1) seedScheduleActivities, (2) any updateScheduleActivity that changes duration/sequence/predecessor, (3) deleteScheduleActivity, (4) createScheduleActivity (manual add), (5) PATCH /api/bids/[id] when constructionStartDate changes.
 - H4 MSP CSV export at POST /api/bids/[id]/schedule/export — column format matches Microsoft Project's default CSV import mapping (ID, Task Name, Duration, Start, Finish, Predecessors, Resource Names, Notes). Duration emitted as "Nd" (MSP recognizes this as working days). Dates as MM/DD/YYYY (US default). Milestones emit 0d duration with their name prefixed by ◆.
 - H4 JobIntakePanel extension: constructionStartDate field added to Project Profile section (between Stories and Site & Constraints), rendered via new DateField helper. PATCH /api/bids/[id] accepts and persists the field; if it changes, the route calls recalculateSchedule (non-fatal on error) so all activity dates re-hydrate from the new anchor.
+
+## Phase 5 — Construction Intelligence Stack
+
+- **Python FastAPI sidecar at :8001** — PyMuPDF4LLM spec splitting, tiered Claude analysis (Sonnet for complex divisions, Haiku for others), WeasyPrint PDF generation; `npm run dev:all` starts both servers
+- **SpecBook + SpecSection models** — `SpecBook.status` (uploading/splitting/analyzing/ready/error), `SpecSection.csiNumber/csiTitle/rawText/aiExtractions/canonicalTitle`; `SpecSectionPdf` stores per-section PDF blob
+- **CsiMasterformat table** — ~3,995 Level 3 MasterFormat 2020 codes; seeded from XLSX via `prisma/seed/seedCsiMasterformat.ts`; used for title canonicalization
+- **DrawingUpload model** — `analysisJson` (discipline breakdown), `analysisStatus` (pending/analyzing/ready/error); drawing intelligence via `sidecar/services/drawing_intelligence.py`
+- **SubmittalItem.source** — `"ai_extraction"` | `"regex_seed"` | `"manual"` | `"drawing_analysis"`; drawing-sourced items come from POST `/api/bids/[id]/submittals/generate-ai` two-phase flow
+- **SubmittalItem.specSectionId** — FK auto-linked during AI extraction (5G-1); `linkedActivityId` FK to ScheduleActivity for schedule-tied due dates (5G-2)
+- **SubmittalPackage model** — container for grouped submittals; packageNumber, name, bidTradeId, status (DRAFT/OPEN/CLOSED), defaultReviewers, defaultDistribution; SubmittalItem.packageId FK
+- **SubmittalDistributionTemplate model** — per-trade routing rules; auto-populates reviewers + distribution when CSI section picked on a submittal
+- **ScheduleV2** — `ScheduleActivityV2` with 9-phase CPM template, all 4 dep types (FS/SS/FF/SF), positive/negative lag; `scheduleV2Service.ts` for seed, recalc, and AI intelligence; GET `/api/bids/[id]/schedule-v2/generate` for preflight metadata
+- **Submittal generate-ai preflight** — GET `/api/bids/[id]/submittals/generate-ai` (no jobId) returns `{ analyzedSectionCount, hasSpecBook, hasDrawings }` for UI dependency hint; empty spec guard prevents misleading drawing cross-reference when no AI analysis has run
+- **Warranty / Training / Inspections / Closeout registers** — near-term 5H derived views seeded from `SpecSection.aiExtractions`
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

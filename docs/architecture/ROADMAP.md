@@ -1,5 +1,5 @@
 # Roadmap — Construction Intelligence Platform
-# Version 2.7 — Last Updated: 2026-04-17
+# Version 2.8 — Last Updated: 2026-04-19
 # Repo: construction-dashboard (forked from bid-dashboard)
 # Parallel repo: bid-dashboard (active, still receiving updates)
 
@@ -501,6 +501,19 @@ Per-trade routing rules so the form auto-fills.
     template auto-populates everyone
   - Bulk-edit screen for managing templates per project
   - Override per submittal allowed
+
+##### 5G-Extension — Drawing Cross-Reference (~8 hrs) ✅ COMPLETE
+Identifies submittal requirements visible in drawings that have no spec section coverage.
+  - POST `/api/bids/[id]/submittals/generate-ai` — two-phase: (1) spec-only generation
+    (local, synchronous), (2) drawing cross-reference job submitted to sidecar (async)
+  - GET `/api/bids/[id]/submittals/generate-ai` — preflight metadata endpoint returns
+    `{ analyzedSectionCount, hasSpecBook, hasDrawings }` for UI dependency check
+  - Sidecar `submittal_intelligence.py` — cross-references covered CSI sections against
+    drawing `analysisJson`; returns drawing-only submittal gaps (max 25 items)
+  - Guard: if `specSections.length === 0`, skips drawing phase entirely (empty list
+    would cause Claude to flag all drawing scope as "uncovered" — misleading result)
+  - Drawing-sourced items stored with `source: "drawing_analysis"` on `SubmittalItem`
+  - UI: dependency hint banner on Submittals tab when no analyzed sections exist
 
 ##### 5G-4 — Templated Workflows (~25 hrs) — DEFER
 Submittal type → review path defaults.

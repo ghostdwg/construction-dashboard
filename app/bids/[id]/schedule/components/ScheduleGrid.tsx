@@ -20,8 +20,9 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Plus, Trash2, RefreshCw, Loader2, ChevronRight, ChevronDown } from "lucide-react";
+import { Plus, Trash2, Loader2, ChevronRight, ChevronDown } from "lucide-react";
 import { useScheduleStore } from "../store/useScheduleStore";
+import ScheduleIntelligencePanel from "./ScheduleIntelligencePanel";
 import {
   formatPredecessors,
   parsePredecessorString,
@@ -141,7 +142,6 @@ export default function ScheduleGrid({ bidId }: { bidId: number }) {
   const { schedule, activities, deps, load, setActivities, snapshot, undo, redo, setSaving } =
     useScheduleStore();
   const [loading, setLoading] = useState(true);
-  const [seeding, setSeeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -245,29 +245,8 @@ export default function ScheduleGrid({ bidId }: { bidId: number }) {
     [bidId, snapshot, setActivities, deps]
   );
 
-  // ── Seed from trades ──────────────────────────────────────────────────────
-
-  const seedFromTrades = useCallback(async () => {
-    let force = false;
-    if (activities.length > 0) {
-      const ok = window.confirm(
-        "This will wipe the current schedule and rebuild the 9-phase template from your trade roster. Continue?"
-      );
-      if (!ok) return;
-      force = true;
-    }
-    setSeeding(true);
-    try {
-      const url = `/api/bids/${bidId}/schedule-v2/seed${force ? "?force=true" : ""}`;
-      const res = await fetch(url, { method: "POST" });
-      const data = await res.json();
-      if (data.schedule) load(data.schedule, data.activities, data.deps);
-    } catch (e) {
-      console.error("seed error", e);
-    } finally {
-      setSeeding(false);
-    }
-  }, [bidId, activities.length, load]);
+  // ── Reload (used by ScheduleIntelligencePanel after seeding/generation) ──
+  const reload = useCallback(() => loadSchedule(), [loadSchedule]);
 
   // ── Column definitions ────────────────────────────────────────────────────
 
@@ -512,6 +491,9 @@ export default function ScheduleGrid({ bidId }: { bidId: number }) {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Schedule Intelligence Panel */}
+      <ScheduleIntelligencePanel bidId={bidId} onReload={reload} />
+
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700 bg-slate-900 flex-shrink-0">
         <button
@@ -520,18 +502,6 @@ export default function ScheduleGrid({ bidId }: { bidId: number }) {
         >
           <Plus className="w-3.5 h-3.5" />
           Add Activity
-        </button>
-        <button
-          className="flex items-center gap-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-2.5 py-1.5 rounded transition-colors disabled:opacity-50"
-          onClick={seedFromTrades}
-          disabled={seeding}
-        >
-          {seeding ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="w-3.5 h-3.5" />
-          )}
-          Seed from Trades
         </button>
         {schedule && (
           <span className="text-xs text-slate-500 ml-2">
@@ -606,15 +576,10 @@ export default function ScheduleGrid({ bidId }: { bidId: number }) {
 
         {activities.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-            <p className="mb-3">No activities yet.</p>
-            <button
-              className="flex items-center gap-1.5 text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 rounded"
-              onClick={seedFromTrades}
-              disabled={seeding}
-            >
-              {seeding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              Seed from Trades
-            </button>
+            <p className="text-sm mb-1">No activities yet.</p>
+            <p className="text-xs opacity-60">
+              Use &ldquo;Build Skeleton&rdquo; or &ldquo;AI Schedule Intelligence&rdquo; above to get started.
+            </p>
           </div>
         )}
       </div>

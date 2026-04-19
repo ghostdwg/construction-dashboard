@@ -415,6 +415,7 @@ class SplitRequest(BaseModel):
 
 class AnalyzeSplitSectionsRequest(BaseModel):
     sections: list[dict]  # [{ csi, title, pdf_path }]
+    tier: int = 2          # 1=all Haiku, 2=auto-routed, 3=all Sonnet
     callback_url: str | None = None   # POSTed with final result when job finishes
     callback_token: str | None = None  # sent as X-Callback-Token header
 
@@ -448,7 +449,7 @@ async def analyze_split(request: AnalyzeSplitSectionsRequest):
     }
 
     asyncio.create_task(_run_analyze_split(
-        job_id, request.sections, request.callback_url, request.callback_token
+        job_id, request.sections, request.tier, request.callback_url, request.callback_token
     ))
 
     return {"job_id": job_id, "status": "processing"}
@@ -476,6 +477,7 @@ async def _fire_callback(url: str, token: str | None, payload: dict):
 async def _run_analyze_split(
     job_id: str,
     sections: list[dict],
+    tier: int,
     callback_url: str | None,
     callback_token: str | None,
 ):
@@ -491,7 +493,7 @@ async def _run_analyze_split(
 
         result = await loop.run_in_executor(
             None,
-            lambda: analyze_split_sections(sections, on_progress=on_progress),
+            lambda: analyze_split_sections(sections, on_progress=on_progress, tier=tier),
         )
 
         _jobs[job_id]["result"] = result
@@ -542,3 +544,231 @@ async def split_specs(request: SplitRequest):
         }
     except Exception as e:
         raise HTTPException(422, f"Spec split failed: {str(e)}")
+
+
+# ── POST /parse/drawings/analyze ─────────────────────────────────────────────
+
+class AnalyzeDrawingsRequest(BaseModel):
+    file_path: str
+    tier: int = 2       # 1=Quick Scan, 2=Scope Brief, 3=Full Intelligence
+    model: str = "sonnet"  # "haiku" | "sonnet" | "opus"
+
+
+@router.post("/drawings/analyze")
+async def analyze_drawings_endpoint(request: AnalyzeDrawingsRequest):
+    """
+    Analyze a drawing PDF with Claude Vision.
+
+    Accepts a server-side file path (drawing is already saved from the upload step).
+    Runs synchronously in a thread pool — can take 30–120s for large sets.
+
+    Returns structured analysis matching the DrawingAnalysisResults UI schema.
+    """
+    from services.drawing_intelligence import analyze_drawings
+
+    if not os.path.exists(request.file_path):
+        raise HTTPException(404, f"Drawing file not found: {request.file_path}")
+
+    if request.tier not in (1, 2, 3):
+        raise HTTPException(400, "tier must be 1, 2, or 3")
+
+    if request.model not in ("haiku", "sonnet", "opus"):
+        raise HTTPException(400, "model must be haiku, sonnet, or opus")
+
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: analyze_drawings(
+                pdf_path=request.file_path,
+                tier=request.tier,
+                model=request.model,
+            ),
+        )
+        return JSONResponse(content=result)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(422, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Drawing analysis failed: {str(e)}")
+
+
+# ── POST /parse/schedule/generate ────────────────────────────────────────────
+# ── GET  /parse/schedule/status/{job_id} ─────────────────────────────────────
+#
+# Async schedule intelligence job. Accepts spec sections + drawing analysis,
+# returns a job_id. Poll status endpoint for result.
+
+class ScheduleGenerateRequest(BaseModel):
+    spec_sections: list[dict]       # [{csi, title, canonical_title?, ai_extractions?}]
+    drawing_analysis: dict | None = None
+    model: str = "sonnet"           # "sonnet" | "opus46" | "opus47"
+
+
+@router.post("/schedule/generate")
+async def schedule_generate(request: ScheduleGenerateRequest):
+    """
+    Kick off AI schedule intelligence. Returns a job_id for polling.
+
+    The sidecar sends spec sections + drawing analysis to Claude, which
+    returns targeted modifications to apply over the 9-phase CPM skeleton.
+    """
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
+
+    if not request.spec_sections:
+        raise HTTPException(400, "spec_sections is required")
+
+    if request.model not in ("sonnet", "opus46", "opus47"):
+        raise HTTPException(400, "model must be sonnet, opus46, or opus47")
+
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {
+        "status": "processing",
+        "progress": 0,
+        "result": None,
+        "error": None,
+        "type": "schedule_generate",
+    }
+
+    asyncio.create_task(
+        _run_schedule_generate(
+            job_id,
+            request.spec_sections,
+            request.drawing_analysis,
+            request.model,
+        )
+    )
+
+    return {"job_id": job_id, "status": "processing"}
+
+
+async def _run_schedule_generate(
+    job_id: str,
+    spec_sections: list[dict],
+    drawing_analysis: dict | None,
+    model: str,
+):
+    """Background task: call Claude and store result."""
+    try:
+        from services.schedule_intelligence import generate_schedule_intelligence
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: generate_schedule_intelligence(spec_sections, drawing_analysis, model),
+        )
+        _jobs[job_id]["result"] = result
+        _jobs[job_id]["status"] = "complete"
+        _jobs[job_id]["progress"] = 100
+    except Exception as e:
+        _jobs[job_id]["status"] = "error"
+        _jobs[job_id]["error"] = str(e)
+
+
+@router.get("/schedule/status/{job_id}")
+async def schedule_status(job_id: str):
+    """Poll an AI schedule generation job."""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+
+    response: dict = {
+        "job_id": job_id,
+        "status": job["status"],
+        "progress": job["progress"],
+    }
+    if job["status"] == "complete":
+        response["result"] = job["result"]
+    elif job["status"] == "error":
+        response["error"] = job["error"]
+    return response
+
+
+# ── POST /parse/submittals/generate ──────────────────────────────────────────
+# ── GET  /parse/submittals/status/{job_id} ───────────────────────────────────
+#
+# Async drawing cross-reference job. Accepts covered spec sections + drawing
+# analysis, asks Claude to identify drawing-sourced scope gaps, returns a
+# job_id. Poll status endpoint for result.
+
+class SubmittalGenerateRequest(BaseModel):
+    spec_sections: list[dict]        # [{csi, title}] — already-covered sections
+    drawing_analysis: dict           # parsed DrawingUpload.analysisJson
+    model: str = "sonnet"
+
+
+@router.post("/submittals/generate")
+async def submittals_generate(request: SubmittalGenerateRequest):
+    """
+    Kick off drawing cross-reference for submittal gap analysis.
+    Returns a job_id for polling.
+    """
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
+
+    if not request.drawing_analysis:
+        raise HTTPException(400, "drawing_analysis is required")
+
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {
+        "status": "processing",
+        "progress": 0,
+        "result": None,
+        "error": None,
+        "type": "submittals_generate",
+    }
+
+    asyncio.create_task(
+        _run_submittals_generate(
+            job_id,
+            request.spec_sections,
+            request.drawing_analysis,
+            request.model,
+        )
+    )
+
+    return {"job_id": job_id, "status": "processing"}
+
+
+async def _run_submittals_generate(
+    job_id: str,
+    spec_sections: list[dict],
+    drawing_analysis: dict,
+    model: str,
+):
+    """Background task: cross-reference spec coverage against drawing analysis."""
+    try:
+        from services.submittal_intelligence import generate_submittal_intelligence
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: generate_submittal_intelligence(spec_sections, drawing_analysis, model),
+        )
+        _jobs[job_id]["result"] = result
+        _jobs[job_id]["status"] = "complete"
+        _jobs[job_id]["progress"] = 100
+    except Exception as e:
+        _jobs[job_id]["status"] = "error"
+        _jobs[job_id]["error"] = str(e)
+
+
+@router.get("/submittals/status/{job_id}")
+async def submittals_status(job_id: str):
+    """Poll a submittal drawing cross-reference job."""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+
+    response: dict = {
+        "job_id": job_id,
+        "status": job["status"],
+        "progress": job["progress"],
+    }
+    if job["status"] == "complete":
+        response["result"] = job["result"]
+    elif job["status"] == "error":
+        response["error"] = job["error"]
+    return response

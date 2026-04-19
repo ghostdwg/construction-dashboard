@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
-from weasyprint import HTML
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 
@@ -64,5 +63,13 @@ def generate_superintendent_briefing(data: dict) -> bytes:
         actionItems=data.get("actionItems", []),
         riskFlags=data.get("riskFlags", []),
     )
+
+    try:
+        from weasyprint import HTML
+    except OSError as exc:
+        raise RuntimeError(
+            "WeasyPrint requires GTK system libraries which are not installed. "
+            "See https://doc.courtbouillon.org/weasyprint/stable/first_steps.html"
+        ) from exc
 
     return HTML(string=html_content, base_url=str(TEMPLATE_DIR)).write_pdf()

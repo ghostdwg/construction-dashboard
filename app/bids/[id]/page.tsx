@@ -19,6 +19,7 @@ import SubmissionPanel from "./SubmissionPanel";
 import EditableDueDate from "./EditableDueDate";
 import JobIntakePanel from "./JobIntakePanel";
 import ProjectContactsPanel from "./ProjectContactsPanel";
+import SubTabBar from "./SubTabBar";
 import HandoffTab from "./HandoffTab";
 import SubmittalsTab from "./SubmittalsTab";
 import ScheduleTab from "./ScheduleTab";
@@ -127,11 +128,13 @@ export default async function BidDetailPage({
       <div className="grid grid-cols-1 md:grid-cols-[210px_1fr] gap-6">
         {/* Sidebar */}
         <Suspense fallback={<div className="min-w-[210px]" />}>
-          <TabBar bidId={bid.id} bidStatus={bid.status} />
+          <TabBar bidId={bid.id} bidStatus={bid.status} workflowType={bid.workflowType} />
         </Suspense>
 
         {/* Content */}
         <div className="min-w-0">
+          <SubTabBar tab={tab} bidId={bid.id} workflowType={bid.workflowType} />
+
           {tab === "overview" && (
             <div className="flex flex-col gap-6">
               <section className="grid grid-cols-2 gap-4">

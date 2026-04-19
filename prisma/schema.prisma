@@ -90,7 +90,8 @@ model Bid {
   location    String?
   description String?
   scope       String    @default("")
-  status      String    @default("draft")
+  status        String    @default("draft")
+  workflowType  String    @default("BID")   // "BID" | "PROJECT"
   projectType ProjectType @default(PRIVATE)
   dueDate             DateTime?
   complianceChecklist String?
@@ -628,6 +629,13 @@ model DrawingUpload {
   // Discipline tag: FULLSET | GENERAL | CIVIL | ARCH | STRUCT | MECH | ELEC | PLUMB | INTERIOR | FP
   // Validated in API, not enum for SQLite friendliness.
   discipline String   @default("FULLSET")
+
+  // AI analysis fields
+  analysisStatus      String?   // "processing" | "ready" | "error"
+  analysisTier        Int?      // 1 | 2 | 3
+  analysisModel       String?   // "haiku" | "sonnet" | "opus"
+  analysisJson        String?   // JSON result blob
+  analysisGeneratedAt DateTime?
 
   bid    Bid            @relation(fields: [bidId], references: [id])
   sheets DrawingSheet[]
