@@ -28,7 +28,7 @@ export interface CreateJobParams {
   bidId?: number;
   relatedId?: string;
   inputSummary?: string;
-  triggerSource?: "user" | "automation" | "webhook";
+  triggerSource?: "user" | "automation" | "webhook" | "upload";
 }
 
 // ── Write path ─────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@ import path from "path";
 import { prisma } from "@/lib/prisma";
 import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
-import { generateBidIntelligenceBrief } from "@/lib/services/ai/generateBidIntelligenceBrief";
+import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -188,8 +188,8 @@ export async function POST(
     generateBidIntelligence(bidId).catch((err) =>
       console.error("[specbook/upload] background intelligence generation failed:", err)
     );
-    generateBidIntelligenceBrief(bidId, "specbook_upload").catch((err) =>
-      console.error("[specbook/upload] background brief generation failed:", err)
+    triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
+      console.error("[specbook/upload] background brief refresh failed:", err)
     );
 
     return Response.json(

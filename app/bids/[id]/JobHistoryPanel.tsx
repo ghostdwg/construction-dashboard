@@ -36,6 +36,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   user:       "USER",
   automation: "AUTO",
   webhook:    "WEBHOOK",
+  upload:     "UPLOAD",
 };
 
 // Left border accent colors per status — signal green is STATE only

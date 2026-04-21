@@ -7,7 +7,7 @@ import {
   DISCIPLINE_TRADE_NAMES,
 } from "@/lib/documents/drawingParser";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
-import { generateBidIntelligenceBrief } from "@/lib/services/ai/generateBidIntelligenceBrief";
+import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -183,8 +183,8 @@ export async function POST(
       generateBidIntelligence(bidId).catch((err) =>
         console.error("[drawings/upload] background intelligence generation failed:", err)
       );
-      generateBidIntelligenceBrief(bidId, "drawings_upload").catch((err) =>
-        console.error("[drawings/upload] background brief generation failed:", err)
+      triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
+        console.error("[drawings/upload] background brief refresh failed:", err)
       );
 
       return Response.json(
@@ -245,8 +245,8 @@ export async function POST(
     generateBidIntelligence(bidId).catch((err) =>
       console.error("[drawings/upload] background intelligence generation failed:", err)
     );
-    generateBidIntelligenceBrief(bidId, "drawings_upload").catch((err) =>
-      console.error("[drawings/upload] background brief generation failed:", err)
+    triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
+      console.error("[drawings/upload] background brief refresh failed:", err)
     );
 
     return Response.json(

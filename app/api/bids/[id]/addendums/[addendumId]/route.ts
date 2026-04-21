@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { generateBidIntelligenceBrief } from "@/lib/services/ai/generateBidIntelligenceBrief";
+import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
 
 // DELETE /api/bids/[id]/addendums/[addendumId]
 // Deletes the addendum record, marks brief stale, fires regeneration.
@@ -30,8 +30,8 @@ export async function DELETE(
     data: { isStale: true },
   });
 
-  generateBidIntelligenceBrief(bidId, "addendum_delete").catch((err) =>
-    console.error("[addendums/delete] background brief generation failed:", err)
+  triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
+    console.error("[addendums/delete] background brief refresh failed:", err)
   );
 
   return Response.json({ deleted: true });

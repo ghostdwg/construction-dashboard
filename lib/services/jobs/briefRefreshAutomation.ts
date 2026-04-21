@@ -43,7 +43,7 @@ export class TriggerError extends Error {
 
 export async function triggerBriefRefresh(
   bidId: number,
-  opts?: { triggerSource?: "user" | "automation" }
+  opts?: { triggerSource?: "user" | "automation" | "upload" }
 ): Promise<TriggerOutcome> {
   const triggerSource = opts?.triggerSource ?? "user";
 
