@@ -12,7 +12,8 @@ import { prisma } from "@/lib/prisma";
 export type JobType =
   | "spec_analysis"
   | "drawing_analysis"
-  | "meeting_transcription";
+  | "meeting_transcription"
+  | "brief_refresh";
 
 export type JobStatus =
   | "queued"

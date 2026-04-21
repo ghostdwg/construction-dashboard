@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-25 (GWX-006)
+# Last Updated: 2026-04-25 (GWX-AUTO-001)
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -94,6 +94,7 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **GWX-005** | **First automation-triggered durable job — `triggerSpecAnalysis` service, `findActiveJobForBid` duplicate guard, `POST /api/automation/spec-analysis` admin-only trigger endpoint** | **✅ Complete** |
 | **GWX-006** | **Audit metadata for automation writes — `SubmittalItem.sourceJobId` FK to `BackgroundJob`; stamped by `generateSubmittalsFromAiAnalysis` when called from the sidecar webhook; automation vs manual writes now distinguishable and queryable** | **✅ Complete** |
 | **GWX-007** | **Morning summary panel — `GET /api/bids/[id]/jobs` + `JobHistoryPanel` on Overview tab; shows job type, trigger source, status, timing, result/error; auto-opens on failures or automation runs** | **✅ Complete** |
+| **GWX-AUTO-001** | **Durable automation trigger for brief refresh — `triggerBriefRefresh` service (inline Claude call, no sidecar), `POST /api/automation/brief-refresh` admin-only endpoint; duplicate guard via activeSlot; `"brief_refresh"` added to JobType** | **✅ Complete** |
 | **Phase 5A** | **Python FastAPI sidecar — spec splitting, per-section AI analysis, webhook jobs** | **✅ Complete** |
 | **Phase 5B** | **Spec intelligence pipeline — CSI MasterFormat model, AI extraction, submittal generation** | **✅ Complete** |
 | **Phase 5C** | **CPM scheduling — 9-phase template, full dependency engine, Gantt UI, MSP CSV export, AI Schedule Intelligence** | **✅ Complete** |

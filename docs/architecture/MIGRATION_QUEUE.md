@@ -155,6 +155,19 @@ None yet.
   - `app/bids/[id]/JobHistoryPanel.tsx`: full restyling to GroundworX overnight jobs surface rules — left-border accent per status (emerald=complete, red=failed, blue=running, zinc=queued/cancelled), all labels in 10–11px font-mono uppercase, panel header uses 9px mono section label style, status counts (active/failed) are mono color chips rather than colored pills
 - No route changes, no schema changes, no internal model renames
 
+### GWX-AUTO-001
+- Status: `done`
+- Owner: `Claude`
+- Title: Durable automation trigger for intelligence brief refresh
+- Completed: 2026-04-25
+- What changed:
+  - `lib/services/jobs/backgroundJobService.ts`: `"brief_refresh"` added to `JobType` union
+  - `lib/services/jobs/briefRefreshAutomation.ts`: new shared service — `triggerBriefRefresh(bidId, opts)` encapsulates the full brief refresh trigger path (bid existence check → advisory duplicate guard → atomic createJob → startJob → inline `generateBidIntelligenceBrief` call → completeJob / failJob). Returns typed `TriggerOutcome` (`triggered | skipped`); throws `TriggerError` on hard failures with an `httpStatus` field for the caller.
+  - `app/api/automation/brief-refresh/route.ts`: new admin-only endpoint — `POST /api/automation/brief-refresh { bidId }`. Checks `isAdminAuthorized()`, calls `triggerBriefRefresh` with `triggerSource: "automation"`. Returns `{ status: "triggered" | "skipped", ... }`. Blocks until generation completes (~30–60s) — no sidecar, Claude is called inline.
+- Architecture note: brief generation calls Claude directly (no sidecar callback path). The automation trigger runs the full generation synchronously and marks the BackgroundJob complete/failed before returning. This differs from spec_analysis which hands off to the sidecar and returns immediately. Morning review panel surfaces the job via the existing `GET /api/bids/[id]/jobs` endpoint — no changes needed there.
+- Duplicate guard: advisory `findActiveJobForBid` + atomic `@@unique([bidId, jobType, activeSlot])` constraint — same pattern as spec_analysis
+- No schema migration required — `BackgroundJob` already exists; `"brief_refresh"` stored as a string in `jobType` column
+
 ### GWX-007
 - Status: `done`
 - Owner: `Claude`
