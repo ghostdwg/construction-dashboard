@@ -4,7 +4,9 @@
 // that handles its own data fetching + mutations. Sections are URL-driven via
 // ?section= so links can deep-link.
 
+import { redirect } from "next/navigation";
 import Link from "next/link";
+import { isAdminAuthorized } from "@/lib/auth";
 import EmailSettingsCard from "./EmailSettingsCard";
 import EstimatorSettingsCard from "./EstimatorSettingsCard";
 import AiSettingsCard from "./AiSettingsCard";
@@ -34,6 +36,11 @@ export default async function SettingsPage({
 }: {
   searchParams: SearchParams;
 }) {
+  const adminCheck = await isAdminAuthorized();
+  if (!adminCheck.authorized) {
+    redirect(adminCheck.status === 401 ? "/login" : "/");
+  }
+
   const { section } = await searchParams;
   const active: SectionKey = isValidSection(section) ? section : "email";
 

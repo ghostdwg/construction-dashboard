@@ -13,6 +13,12 @@
 // for any value that might be UI-configurable.
 
 import { prisma } from "@/lib/prisma";
+import {
+  decryptSetting,
+  encryptSetting,
+  isEncrypted,
+  keyConfigured,
+} from "./crypto";
 
 // ── Setting key catalog ─────────────────────────────────────────────────────
 //
@@ -252,9 +258,39 @@ function writeCache(value: Map<string, string> | null): void {
 async function loadCache(): Promise<Map<string, string>> {
   const existing = readCache();
   if (existing) return existing;
+
   const rows = await prisma.appSetting.findMany();
-  const fresh = new Map(rows.map((r) => [r.key, r.value]));
+  const fresh = new Map<string, string>();
+  const toReencrypt: Array<{ key: string; plaintext: string }> = [];
+
+  for (const r of rows) {
+    const def = getSettingDefinition(r.key);
+    if (def?.secret) {
+      if (isEncrypted(r.value)) {
+        // Decrypt — throws on bad key/tampered ciphertext (fail loudly, never return garbage)
+        fresh.set(r.key, decryptSetting(r.value));
+      } else {
+        // Legacy plaintext secret — serve as-is; queue for transparent re-encryption
+        fresh.set(r.key, r.value);
+        if (keyConfigured()) {
+          toReencrypt.push({ key: r.key, plaintext: r.value });
+        }
+      }
+    } else {
+      fresh.set(r.key, r.value);
+    }
+  }
+
   writeCache(fresh);
+
+  // Transparently migrate any legacy plaintext secrets to encrypted form (best-effort)
+  for (const { key, plaintext } of toReencrypt) {
+    const encrypted = encryptSetting(plaintext);
+    await prisma.appSetting
+      .update({ where: { key }, data: { value: encrypted } })
+      .catch(() => {});
+  }
+
   return fresh;
 }
 
@@ -330,10 +366,30 @@ export async function setSetting(
   if (value === null || value === "") {
     await prisma.appSetting.delete({ where: { key } }).catch(() => {});
   } else {
+    let stored: string;
+    if (def.secret) {
+      if (!keyConfigured()) {
+        // Fail closed — do not silently persist a plaintext secret.
+        // AUTH_DISABLED=true is the accepted solo-dev bypass: no real secrets
+        // are expected in that mode and encryption infra may not be set up.
+        if (process.env.AUTH_DISABLED !== "true") {
+          throw new Error(
+            `Cannot save secret setting '${key}': SETTINGS_ENCRYPTION_KEY is not configured. ` +
+              "Add SETTINGS_ENCRYPTION_KEY to your environment before saving credentials. " +
+              "Run: openssl rand -hex 32"
+          );
+        }
+        stored = value; // AUTH_DISABLED dev bypass — plaintext allowed
+      } else {
+        stored = encryptSetting(value);
+      }
+    } else {
+      stored = value;
+    }
     await prisma.appSetting.upsert({
       where: { key },
-      create: { key, value },
-      update: { value },
+      create: { key, value: stored },
+      update: { value: stored },
     });
   }
   clearAppSettingsCache();

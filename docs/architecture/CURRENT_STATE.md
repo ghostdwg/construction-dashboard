@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-19
+# Last Updated: 2026-04-24
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -88,6 +88,10 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **Module SET1+** | **Email provider abstraction — Resend + Generic SMTP (Gmail/Outlook/Yahoo/iCloud/Fastmail/Custom)** | **✅ Complete** |
 | **UI Nav Refactor** | **Two-level sidebar with pursuit/post-award grouping** | **✅ Complete** |
 | **Auth Wall A** | **Email/password login, JWT sessions, route protection, AUTH_DISABLED bypass** | **✅ Complete** |
+| **GWX-002** | **Admin-only settings enforcement — proxy redirect + API 401/403 guards on all /settings routes** | **✅ Complete** |
+| **GWX-003** | **Durable background job model — BackgroundJob schema, service layer, spec analysis flow wired** | **✅ Complete** |
+| **GWX-004** | **Encrypted provider credentials — AES-256-GCM at rest for all secret AppSettings; transparent decrypt on read; lazy migration of legacy plaintext rows** | **✅ Complete** |
+| **GWX-005** | **First automation-triggered durable job — `triggerSpecAnalysis` service, `findActiveJobForBid` duplicate guard, `POST /api/automation/spec-analysis` admin-only trigger endpoint** | **✅ Complete** |
 | **Phase 5A** | **Python FastAPI sidecar — spec splitting, per-section AI analysis, webhook jobs** | **✅ Complete** |
 | **Phase 5B** | **Spec intelligence pipeline — CSI MasterFormat model, AI extraction, submittal generation** | **✅ Complete** |
 | **Phase 5C** | **CPM scheduling — 9-phase template, full dependency engine, Gantt UI, MSP CSV export, AI Schedule Intelligence** | **✅ Complete** |
@@ -206,6 +210,18 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - **ScheduleV2** — `ScheduleActivityV2` with 9-phase CPM template, all 4 dep types (FS/SS/FF/SF), positive/negative lag; `scheduleV2Service.ts` for seed, recalc, and AI intelligence; GET `/api/bids/[id]/schedule-v2/generate` for preflight metadata
 - **Submittal generate-ai preflight** — GET `/api/bids/[id]/submittals/generate-ai` (no jobId) returns `{ analyzedSectionCount, hasSpecBook, hasDrawings }` for UI dependency hint; empty spec guard prevents misleading drawing cross-reference when no AI analysis has run
 - **Warranty / Training / Inspections / Closeout registers** — near-term 5H derived views seeded from `SpecSection.aiExtractions`
+
+## Durable Background Job System (GWX-003 / GWX-005 / GWX-005.1–005.4)
+
+- **BackgroundJob model** — added in migration `20260421022733_add_background_job`. Fields: `id` (cuid), `jobType`, `status` (queued/running/complete/failed/cancelled), `bidId`, `relatedId`, `externalJobId`, `inputSummary`, `resultSummary`, `artifactType`, `errorMessage`, `createdAt`, `startedAt`, `completedAt`, `retryCount`, `triggerSource`. Indexed by `bidId`, `(jobType, status)`, `(status, createdAt)`, and `externalJobId`.
+- **`BackgroundJob.activeSlot`** (GWX-005.1 / GWX-005.4) — nullable integer (`DEFAULT 1`). Active jobs hold `activeSlot = 1`; terminal jobs (`complete`/`failed`/`cancelled`) clear it to `NULL`. A `@@unique([bidId, jobType, activeSlot])` index enforces at-most-one active job per `(bidId, jobType)` at the DB level. SQLite treats `NULL` as distinct in unique indexes so terminal rows never conflict. Clean migration: `20260424000001_background_job_active_slot`.
+- **`lib/services/jobs/backgroundJobService.ts`** — service layer: `createJob`, `startJob`, `completeJob` (clears `activeSlot`), `failJob` (clears `activeSlot`), `getJob`, `findJobByExternalId`, `findActiveJobForBid`, `listJobsForBid`.
+- **`lib/services/jobs/specAnalysisAutomation.ts`** (GWX-005) — shared trigger service: `triggerSpecAnalysis(bidId, opts)`. Advisory `findActiveJobForBid` fast-path + atomic `P2002` duplicate guard. Returns typed `TriggerOutcome`. Shared by the manual UI route and the automation endpoint.
+- **`GET /api/jobs/[id]`** — DB-only job status endpoint; works after sidecar restart.
+- **`POST /api/automation/spec-analysis`** (GWX-005) — admin-only internal trigger. Accepts `{ bidId, tier? }`, checks `isAdminAuthorized()`, calls `triggerSpecAnalysis` with `triggerSource: "automation"`. No browser required for the job to complete — sidecar fires the existing webhook.
+- **Spec analysis flow** — `POST /api/bids/[id]/specbook/analyze` delegates to `triggerSpecAnalysis` (user trigger). `POST /api/bids/[id]/specbook/analyze/complete` (sidecar callback) is the sole authoritative completion writer.
+- **Sidecar unchanged** — in-memory `_jobs` dict still drives live progress polling. DB record is the authoritative durability layer; the two coexist.
+- **Migration baseline (GWX-005.4)** — migration history is clean: 58 migrations, no edited applied files, no checksum drift. `prisma migrate status` → "Database schema is up to date!" Fresh-DB replay runs `20260421022733_add_background_job` (table, no `activeSlot`) then `20260424000001_background_job_active_slot` (ADD COLUMN + backfill + unique index). For new environments: run `prisma migrate deploy` — no manual `migrate resolve` needed.
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

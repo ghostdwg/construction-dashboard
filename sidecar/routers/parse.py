@@ -455,6 +455,30 @@ async def analyze_split(request: AnalyzeSplitSectionsRequest):
     return {"job_id": job_id, "status": "processing"}
 
 
+@router.get("/specs/analyze_split/status/{job_id}")
+async def analyze_split_status(job_id: str):
+    """Poll progress of an analyze_split job."""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+
+    response = {
+        "job_id": job_id,
+        "status": job["status"],
+        "progress": job["progress"],
+        "total_sections": job["total_sections"],
+        "sections_processed": job["sections_processed"],
+        "current_section": job.get("current_section"),
+    }
+
+    if job["status"] == "complete":
+        response["result"] = job["result"]
+    elif job["status"] == "error":
+        response["error"] = job["error"]
+
+    return response
+
+
 async def _fire_callback(url: str, token: str | None, payload: dict):
     """POST the final job result to the caller. Best-effort — log and move on."""
     import urllib.request

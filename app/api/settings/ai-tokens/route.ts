@@ -1,3 +1,4 @@
+import { isAdminAuthorized } from "@/lib/auth";
 import {
   AI_CALL_DEFINITIONS,
   CallKey,
@@ -10,6 +11,10 @@ import {
 // Returns all AI call configurations with current effective values + cost estimates
 // for each preset.
 export async function GET() {
+  const adminCheck = await isAdminAuthorized();
+  if (!adminCheck.authorized) {
+    return Response.json({ error: adminCheck.error }, { status: adminCheck.status });
+  }
   const configs = await getAllCallConfigs();
 
   const enriched = configs.map(({ key, definition, currentMaxTokens, isOverridden }) => {
@@ -45,6 +50,11 @@ export async function GET() {
 // Body: { callKey: string, maxTokens: number | null }
 // maxTokens=null clears the override and reverts to the hardcoded default.
 export async function PATCH(request: Request) {
+  const adminCheck = await isAdminAuthorized();
+  if (!adminCheck.authorized) {
+    return Response.json({ error: adminCheck.error }, { status: adminCheck.status });
+  }
+
   let body: { callKey?: string; maxTokens?: number | null };
   try {
     body = await request.json();

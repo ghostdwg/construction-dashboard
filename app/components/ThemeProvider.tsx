@@ -17,8 +17,8 @@ type ThemeContextValue = {
   toggleTheme: () => void;
 };
 
-const STORAGE_KEY = "bid-dashboard-theme";
-const CHANGE_EVENT = "bid-dashboard-theme-change";
+const STORAGE_KEY = "construction-dashboard-theme";
+const CHANGE_EVENT = "construction-dashboard-theme-change";
 const DEFAULT_THEME: Theme = "dark";
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);

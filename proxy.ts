@@ -12,9 +12,6 @@ export default auth((req) => {
 
   const { pathname } = req.nextUrl;
 
-  // Already authenticated — proceed
-  if (req.auth) return;
-
   // Public routes that don't require auth
   const isPublic =
     pathname === "/login" ||
@@ -25,9 +22,22 @@ export default auth((req) => {
   if (isPublic) return;
 
   // Unauthenticated + protected route → redirect to login
-  const loginUrl = new URL("/login", req.nextUrl.origin);
-  loginUrl.searchParams.set("callbackUrl", pathname);
-  return Response.redirect(loginUrl);
+  if (!req.auth) {
+    const loginUrl = new URL("/login", req.nextUrl.origin);
+    loginUrl.searchParams.set("callbackUrl", pathname);
+    return Response.redirect(loginUrl);
+  }
+
+  // Authenticated — enforce admin-only for settings pages (not API routes;
+  // those return 401/403 JSON from their own handlers).
+  const isSettingsPage =
+    pathname.startsWith("/settings") && !pathname.startsWith("/api/");
+  if (isSettingsPage) {
+    const role = (req.auth.user as { role?: string })?.role;
+    if (role !== "admin") {
+      return Response.redirect(new URL("/", req.nextUrl.origin));
+    }
+  }
 });
 
 export const config = {

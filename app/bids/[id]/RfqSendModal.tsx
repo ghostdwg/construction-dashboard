@@ -27,8 +27,8 @@ type Props = {
 };
 
 // localStorage keys for "remember last used"
-const LS_NAME = "bid-dashboard-estimator-name";
-const LS_EMAIL = "bid-dashboard-estimator-email";
+const LS_NAME = "construction-dashboard-estimator-name";
+const LS_EMAIL = "construction-dashboard-estimator-email";
 
 export default function RfqSendModal({
   bidId,

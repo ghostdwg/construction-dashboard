@@ -155,6 +155,7 @@ model Bid {
   meetingActionItems  MeetingActionItem[]
   procorePushes       ProcorePush[]
   rfiItems            RfiItem[]
+  backgroundJobs      BackgroundJob[]
 }
 
 model BidSubmission {
@@ -1014,10 +1015,11 @@ model AiTokenConfig {
 // the user can change from the /settings UI without restarting the dev server.
 //
 // Conventions:
-// - Secret values (e.g. API keys) are stored as-is. SQLite is local-only and
-//   the .env.local pattern stores secrets in plaintext on the same disk
-//   anyway, so the security boundary is the file system, not the column.
-// - Service code reads via getSetting(key) which falls back to process.env.
+// - Secret values (keys marked secret:true in SETTING_DEFINITIONS) are encrypted
+//   at rest using AES-256-GCM when SETTINGS_ENCRYPTION_KEY is set in the env.
+//   Stored format: "enc:v1:<iv_hex>:<auth_tag_hex>:<ciphertext_hex>"
+// - Without SETTINGS_ENCRYPTION_KEY, secrets are stored plaintext (same as before).
+// - Service code reads via getSetting(key) — decryption is transparent.
 // - The UI masks secret values to last-4 display.
 model AppSetting {
   id        Int      @id @default(autoincrement())
@@ -1193,6 +1195,66 @@ model RfiItem {
 
   @@unique([bidId, procoreRfiId])
   @@index([bidId])
+}
+
+// ── GWX-003 — Durable Background Job Record ─────────────────────────────────
+//
+// One row per background/async work unit. Replaces process-memory job state as
+// the authoritative source of truth for overnight work and long-running analysis.
+//
+// jobType values: "spec_analysis" | "drawing_analysis" | "meeting_transcription"
+//
+// status FSM: queued → running → complete | failed | cancelled
+//
+// externalJobId — the sidecar's in-memory job_id for active polling while the
+//   sidecar is alive. Stored here so it survives the browser being closed.
+//
+// triggerSource: "user" | "automation" | "webhook"
+model BackgroundJob {
+  id            String    @id @default(cuid())
+  jobType       String
+  status        String    @default("queued")
+
+  // Context — which bid/document this job is about
+  bidId         Int?
+  relatedId     String?   // specBookId, drawingUploadId, meetingId as string
+
+  // Sidecar reference — external job_id for progress polling while sidecar lives
+  externalJobId String?
+
+  // Input metadata (lightweight summary, not full payload)
+  inputSummary  String?   // e.g. "32 sections, tier 2"
+
+  // Result metadata (set on complete)
+  resultSummary String?   // e.g. "32 sections saved, $1.42"
+  artifactType  String?   // "spec_sections" | "drawing_sheets" etc.
+
+  // Error detail (set on failed)
+  errorMessage  String?
+
+  // Lifecycle timestamps
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  // Operational metadata
+  retryCount    Int       @default(0)
+  triggerSource String    @default("user")
+
+  // GWX-005.1 — Atomic duplicate prevention
+  // Active (queued/running) jobs hold activeSlot=1; terminal jobs clear it to null.
+  // The @@unique below enforces at most one active job per (bidId, jobType) at the
+  // DB level. SQLite treats NULLs as distinct in unique indexes, so terminal rows
+  // (activeSlot=null) never conflict with each other.
+  activeSlot    Int?      @default(1)
+
+  bid Bid? @relation(fields: [bidId], references: [id], onDelete: SetNull)
+
+  @@unique([bidId, jobType, activeSlot])
+  @@index([bidId])
+  @@index([jobType, status])
+  @@index([status, createdAt])
+  @@index([externalJobId])
 }
 
 // ── Tier F F3 — Procore webhook event log ───────────────────────────────────

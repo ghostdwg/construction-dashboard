@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { generateSubmittalsFromAiAnalysis } from "@/lib/services/submittal/generateFromAiAnalysis";
+import {
+  findJobByExternalId,
+  completeJob,
+  failJob,
+} from "@/lib/services/jobs/backgroundJobService";
 
 // POST /api/bids/[id]/specbook/analyze/complete
 //
@@ -47,6 +52,11 @@ export async function POST(
 
   if (payload.status === "error" || !payload.result) {
     console.error(`[analyze/complete] job ${payload.job_id} failed: ${payload.error}`);
+    // Best-effort: close the DB job record as failed
+    const dbJob = await findJobByExternalId(payload.job_id, bidId).catch(() => null);
+    if (dbJob) {
+      await failJob(dbJob.id, payload.error ?? "sidecar reported error").catch(() => {});
+    }
     return Response.json({ saved: false, error: payload.error ?? "job failed" });
   }
 
@@ -95,6 +105,21 @@ export async function POST(
   } catch (err) {
     // Don't fail the webhook — spec data is saved; submittals can be regenerated manually
     console.error("[analyze/complete] submittal auto-generation failed:", err);
+  }
+
+  // Close the durable DB job record (best-effort — webhook must not fail over this)
+  const dbJob = await findJobByExternalId(payload.job_id, bidId).catch(() => null);
+  if (dbJob) {
+    const resultSummary = [
+      `${payload.result.section_count} sections saved`,
+      `$${payload.result.total_cost.toFixed(4)}`,
+      submittalsGenerated != null ? `${submittalsGenerated} submittals generated` : null,
+    ].filter(Boolean).join(", ");
+
+    await completeJob(dbJob.id, {
+      resultSummary,
+      artifactType: "spec_sections",
+    }).catch(() => {});
   }
 
   return Response.json({

@@ -70,3 +70,29 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
 });
+
+// ── Admin authorization helper ─────────────────────────────────────────────
+//
+// Call at the top of any admin-only route handler or server component.
+// Respects the AUTH_DISABLED solo-dev bypass — when set, all callers are
+// treated as admin so dev mode keeps working without a real login.
+//
+// Returns { authorized: true } or { authorized: false, status, error }
+// so callers can return the appropriate Response without knowing the details.
+
+export async function isAdminAuthorized(): Promise<
+  | { authorized: true }
+  | { authorized: false; status: 401 | 403; error: string }
+> {
+  if (process.env.AUTH_DISABLED === "true") return { authorized: true };
+
+  const session = await auth();
+  if (!session?.user) {
+    return { authorized: false, status: 401, error: "Authentication required" };
+  }
+  const role = (session.user as { role?: string }).role;
+  if (role !== "admin") {
+    return { authorized: false, status: 403, error: "Admin access required" };
+  }
+  return { authorized: true };
+}

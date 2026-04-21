@@ -4,6 +4,14 @@
 
 ---
 
+## COMMIT AUTHORSHIP
+All commits must end with:
+```
+Co-Authored-By: NeuroGlitch AI Engine <ai@neuroglitch.dev>
+```
+
+---
+
 ## CONSTRAINTS
 
 ### Never Do

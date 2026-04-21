@@ -12,9 +12,14 @@
 //   { ok: true,  mode: "send", provider: "resend"|"smtp", messageId: string|null }
 //   { ok: false, error: string }
 
+import { isAdminAuthorized } from "@/lib/auth";
 import { getActiveEmailProvider } from "@/lib/services/email/getActiveProvider";
 
 export async function POST(request: Request) {
+  const adminCheck = await isAdminAuthorized();
+  if (!adminCheck.authorized) {
+    return Response.json({ error: adminCheck.error }, { status: adminCheck.status });
+  }
   let body: { to?: string };
   try {
     body = (await request.json().catch(() => ({}))) as { to?: string };

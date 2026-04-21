@@ -10,6 +10,7 @@
 //
 // POST accepts an arbitrary inputText for ad-hoc estimation.
 
+import { isAdminAuthorized } from "@/lib/auth";
 import { forecastCallCost } from "@/lib/services/ai/tokenEstimator";
 import { AI_CALL_DEFINITIONS, type CallKey } from "@/lib/services/ai/aiTokenConfig";
 import { assembleBriefPrompt } from "@/lib/services/ai/assembleBriefPrompt";
@@ -20,6 +21,11 @@ function isValidCallKey(s: string): s is CallKey {
 }
 
 export async function GET(request: Request) {
+  const adminCheck = await isAdminAuthorized();
+  if (!adminCheck.authorized) {
+    return Response.json({ error: adminCheck.error }, { status: adminCheck.status });
+  }
+
   const { searchParams } = new URL(request.url);
   const callKey = searchParams.get("callKey");
   const bidIdRaw = searchParams.get("bidId");
@@ -62,6 +68,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const adminCheck = await isAdminAuthorized();
+  if (!adminCheck.authorized) {
+    return Response.json({ error: adminCheck.error }, { status: adminCheck.status });
+  }
+
   let body: { callKey?: string; inputText?: string; overrideMaxTokens?: number };
   try {
     body = (await request.json()) as typeof body;

@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 const themeBootstrapScript = `
 (function() {
   try {
-    var stored = localStorage.getItem('bid-dashboard-theme');
+    var stored = localStorage.getItem('construction-dashboard-theme');
     var theme = (stored === 'light' || stored === 'dark') ? stored : 'dark';
     var html = document.documentElement;
     html.classList.remove('light', 'dark');

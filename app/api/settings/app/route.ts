@@ -9,6 +9,7 @@
 // PATCH body: { key: string, value: string | null }
 // value=null clears the DB override (falls back to env if available).
 
+import { isAdminAuthorized } from "@/lib/auth";
 import {
   loadSettingsByCategory,
   setSetting,
@@ -17,6 +18,10 @@ import {
 } from "@/lib/services/settings/appSettingsService";
 
 export async function GET(request: Request) {
+  const adminCheck = await isAdminAuthorized();
+  if (!adminCheck.authorized) {
+    return Response.json({ error: adminCheck.error }, { status: adminCheck.status });
+  }
   const { searchParams } = new URL(request.url);
   const category = searchParams.get("category") as SettingDefinition["category"] | null;
 
@@ -38,6 +43,11 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const adminCheck = await isAdminAuthorized();
+  if (!adminCheck.authorized) {
+    return Response.json({ error: adminCheck.error }, { status: adminCheck.status });
+  }
+
   let body: { key?: string; value?: string | null };
   try {
     body = (await request.json()) as { key?: string; value?: string | null };
