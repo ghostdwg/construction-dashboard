@@ -141,6 +141,20 @@ None yet.
   - automation-triggered writes can be distinguished from manual writes
   - basic audit trail is queryable
 
+### GWX-INTEGRATE-001
+- Status: `done`
+- Owner: `Claude`
+- Title: Integrate existing capabilities into a coherent GroundworX operating surface
+- Completed: 2026-04-24
+- What changed:
+  - `app/layout.tsx`: metadata title → "GroundworX", description → "Construction Intelligence Platform"; global nav brand → "GroundworX" with emerald X accent; "Bids" nav link → "Projects" (route unchanged, user-facing copy only)
+  - `app/bids/[id]/TabBar.tsx`: brand mark → "GroundworX" (no icon); hub items organized under mono uppercase section dividers — PURSUE / DELIVER / CLOSEOUT; removed decorative icon coloring (emerald left-border accent is now the only active state indicator, per GroundworX signal-color rule)
+  - `app/bids/[id]/tabConfig.ts`: all subtab display labels updated to uppercase mono — DOCS, TRADES, SUBS, SCOPE, INTELLIGENCE, QUESTIONS, LEVELING, ACTIVITY, HANDOFF, SUBMITTALS, SCHEDULE, MEETINGS, BRIEFING, PROCORE, WARRANTIES, TRAINING, INSPECTIONS, CLOSEOUT. Tab key values unchanged.
+  - `app/bids/[id]/SubTabBar.tsx`: tab buttons now use `text-[11px] font-mono tracking-wide` for the mono label treatment; tighter resting contrast (zinc-400/zinc-500 rather than zinc-500/zinc-400)
+  - `app/bids/[id]/page.tsx`: compact project state strip added at top of Overview section (bid status + projectType + workflowType chips, 9px mono uppercase); Intelligence Brief section header replaced with "Glint Intelligence" divider (surfaces the Glint AI assistant name per TARGET_STATE.md)
+  - `app/bids/[id]/JobHistoryPanel.tsx`: full restyling to GroundworX overnight jobs surface rules — left-border accent per status (emerald=complete, red=failed, blue=running, zinc=queued/cancelled), all labels in 10–11px font-mono uppercase, panel header uses 9px mono section label style, status counts (active/failed) are mono color chips rather than colored pills
+- No route changes, no schema changes, no internal model renames
+
 ### GWX-007
 - Status: `done`
 - Owner: `Claude`

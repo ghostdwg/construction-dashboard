@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  HardHat,
   LayoutDashboard,
   Target,
   PackageCheck,
@@ -38,14 +37,13 @@ export default function TabBar({
 
   return (
     <nav className="flex flex-col min-w-[180px]">
-      {/* ── Logo / Brand ── */}
+      {/* ── Brand ── */}
       <Link
         href="/bids"
-        className="flex items-center gap-2.5 px-2.5 py-3 mb-1 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition-colors"
+        className="flex items-center px-2.5 py-3 mb-1 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition-colors"
       >
-        <HardHat className="h-5 w-5 text-emerald-600 shrink-0" />
-        <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">
-          Construction
+        <span className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+          Groundwor<span className="text-emerald-500">X</span>
         </span>
       </Link>
 
@@ -59,21 +57,23 @@ export default function TabBar({
         onClick={() => go("overview")}
       />
 
-      <div className="mt-1" />
-
-      {/* ── Pursuit hub — hidden for standalone projects ── */}
+      {/* ── Pursue — hidden for standalone projects ── */}
       {!isProject && (
-        <HubItem
-          icon={Target}
-          label="Pursuit"
-          active={PURSUIT_KEYS.has(active)}
-          muted={isPostAward}
-          dot={!isPostAward}
-          onClick={() => go("documents")}
-        />
+        <>
+          <NavSection label="PURSUE" />
+          <HubItem
+            icon={Target}
+            label="Pursuit"
+            active={PURSUIT_KEYS.has(active)}
+            muted={isPostAward}
+            dot={!isPostAward}
+            onClick={() => go("documents")}
+          />
+        </>
       )}
 
-      {/* ── Post-Award hub ── */}
+      {/* ── Deliver ── */}
+      <NavSection label="DELIVER" />
       <HubItem
         icon={PackageCheck}
         label="Post-Award"
@@ -82,7 +82,8 @@ export default function TabBar({
         onClick={() => go("handoff")}
       />
 
-      {/* ── Construction hub ── */}
+      {/* ── Closeout ── */}
+      <NavSection label="CLOSEOUT" />
       <HubItem
         icon={Building2}
         label="Construction"
@@ -90,6 +91,16 @@ export default function TabBar({
         onClick={() => go("warranties")}
       />
     </nav>
+  );
+}
+
+function NavSection({ label }: { label: string }) {
+  return (
+    <div className="px-2.5 pt-3 pb-0.5">
+      <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-zinc-400 dark:text-zinc-500 select-none">
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -121,13 +132,7 @@ function HubItem({
       {active && (
         <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-emerald-500" />
       )}
-      <Icon
-        className={`h-4 w-4 shrink-0 ${
-          active
-            ? "text-emerald-600 dark:text-emerald-400"
-            : "text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
-        }`}
-      />
+      <Icon className="h-4 w-4 shrink-0 text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300" />
       <span className="truncate">{label}</span>
       {dot && (
         <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />

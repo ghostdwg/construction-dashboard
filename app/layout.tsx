@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Construction Dashboard",
-  description: "Preconstruction Intelligence System",
+  title: "GroundworX",
+  description: "Construction Intelligence Platform",
 };
 
 // Inline script that runs before React hydrates. Reads the persisted theme
@@ -61,13 +61,13 @@ export default function RootLayout({
             <nav className="border-b border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
               <div className="max-w-6xl mx-auto px-4 flex items-center gap-6 h-12">
                 <span className="font-semibold text-sm tracking-tight text-gray-900 dark:text-zinc-100">
-                  Construction Dashboard
+                  Groundwor<span className="text-emerald-500">X</span>
                 </span>
                 <Link
                   href="/bids"
                   className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
                 >
-                  Bids
+                  Projects
                 </Link>
                 <Link
                   href="/subcontractors"

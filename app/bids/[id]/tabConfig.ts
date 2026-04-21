@@ -19,28 +19,28 @@ export const CONSTRUCTION_KEYS = new Set<TabKey>([
 ]);
 
 export const PURSUIT_SUBTABS: { key: TabKey; label: string }[] = [
-  { key: "documents",  label: "Documents"  },
-  { key: "trades",     label: "Trades"     },
-  { key: "subs",       label: "Subs"       },
-  { key: "scope",      label: "Scope"      },
-  { key: "ai-review",  label: "AI Review"  },
-  { key: "questions",  label: "Questions"  },
-  { key: "leveling",   label: "Leveling"   },
-  { key: "activity",   label: "Activity"   },
+  { key: "documents",  label: "DOCS"         },
+  { key: "trades",     label: "TRADES"       },
+  { key: "subs",       label: "SUBS"         },
+  { key: "scope",      label: "SCOPE"        },
+  { key: "ai-review",  label: "INTELLIGENCE" },
+  { key: "questions",  label: "QUESTIONS"    },
+  { key: "leveling",   label: "LEVELING"     },
+  { key: "activity",   label: "ACTIVITY"     },
 ];
 
 export const POST_AWARD_SUBTABS: { key: TabKey; label: string }[] = [
-  { key: "handoff",    label: "Handoff"    },
-  { key: "submittals", label: "Submittals" },
-  { key: "schedule",   label: "Schedule"   },
-  { key: "meetings",   label: "Meetings"   },
-  { key: "briefing",   label: "Briefing"   },
-  { key: "procore",    label: "Procore"    },
+  { key: "handoff",    label: "HANDOFF"    },
+  { key: "submittals", label: "SUBMITTALS" },
+  { key: "schedule",   label: "SCHEDULE"   },
+  { key: "meetings",   label: "MEETINGS"   },
+  { key: "briefing",   label: "BRIEFING"   },
+  { key: "procore",    label: "PROCORE"    },
 ];
 
 export const CONSTRUCTION_SUBTABS: { key: TabKey; label: string }[] = [
-  { key: "warranties",  label: "Warranties"  },
-  { key: "training",    label: "Training"    },
-  { key: "inspections", label: "Inspections" },
-  { key: "closeout",    label: "Closeout"    },
+  { key: "warranties",  label: "WARRANTIES"  },
+  { key: "training",    label: "TRAINING"    },
+  { key: "inspections", label: "INSPECTIONS" },
+  { key: "closeout",    label: "CLOSEOUT"    },
 ];

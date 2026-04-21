@@ -41,10 +41,10 @@ export default function SubTabBar({
         <button
           key={t.key}
           onClick={() => go(t.key)}
-          className={`shrink-0 px-3.5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+          className={`shrink-0 px-3.5 py-2 text-[11px] font-mono tracking-wide border-b-2 -mb-px transition-colors ${
             active === t.key
               ? "border-emerald-500 text-zinc-900 dark:text-zinc-100"
-              : "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+              : "border-transparent text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
           }`}
         >
           {t.label}

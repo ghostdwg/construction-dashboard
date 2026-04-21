@@ -138,6 +138,26 @@ export default async function BidDetailPage({
 
           {tab === "overview" && (
             <div className="flex flex-col gap-6">
+              {/* ── Project state strip ── */}
+              <div className="flex items-center gap-2 flex-wrap -mb-2">
+                <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-zinc-400 dark:text-zinc-500 select-none">
+                  Status
+                </span>
+                <span className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-600 dark:text-zinc-300">
+                  {bid.status}
+                </span>
+                {bid.projectType && (
+                  <span className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-400 dark:text-zinc-500">
+                    {bid.projectType}
+                  </span>
+                )}
+                {bid.workflowType && bid.workflowType !== "BID" && (
+                  <span className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-400 dark:text-zinc-500">
+                    {bid.workflowType}
+                  </span>
+                )}
+              </div>
+
               <section className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1 dark:text-zinc-500">
@@ -221,7 +241,12 @@ export default async function BidDetailPage({
               </section>
 
               <section>
-                <h2 className="text-sm font-semibold text-zinc-800 mb-3 dark:text-zinc-100">Project Intelligence Brief</h2>
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-zinc-400 dark:text-zinc-500 select-none whitespace-nowrap">
+                    Glint Intelligence
+                  </span>
+                  <div className="flex-1 h-px bg-zinc-100 dark:bg-zinc-800" />
+                </div>
                 <IntelligenceBrief bidId={bid.id} />
               </section>
 
