@@ -528,8 +528,10 @@ function MeetingDetailPanel({
     });
     setAnalyzing(false);
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({ error: "Analysis failed" }));
       alert(err.error ?? "Analysis failed");
+      onReload(); // reset ANALYZING → READY in UI
+      return;
     }
     onReload();
     setActiveSection("analysis");

@@ -1364,15 +1364,21 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
         return false;
       };
 
-      // Poll every 3 seconds
+      // Poll every 3 seconds — cap at 150 polls (7.5 min) to prevent infinite hang
       let done = false;
-      while (!done) {
+      let polls = 0;
+      const MAX_POLLS = 150;
+      while (!done && polls < MAX_POLLS) {
+        polls++;
         await new Promise((r) => setTimeout(r, 3000));
         try {
           done = await poll();
         } catch {
           // Network hiccup — keep trying
         }
+      }
+      if (!done) {
+        setAnalyzeError("Analysis timed out — the sidecar may be unavailable. Reload the page to retry.");
       }
     } catch (e) {
       setAnalyzeError(e instanceof Error ? e.message : "Analysis failed");

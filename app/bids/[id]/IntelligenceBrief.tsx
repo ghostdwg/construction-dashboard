@@ -152,6 +152,8 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         setRegenError((err as { error?: string }).error ?? "Regeneration failed");
+        // 409 = another refresh already running — reload to pick up generating state + poll
+        if (res.status === 409) loadBrief();
         return;
       }
       loadBrief();
@@ -178,6 +180,7 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         setGenerateError((err as { error?: string }).error ?? "Generation failed");
+        if (res.status === 409) loadBrief();
         return;
       }
       loadBrief();
