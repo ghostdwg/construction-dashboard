@@ -31,6 +31,7 @@ import TrainingTab from "./TrainingTab";
 import InspectionsTab from "./InspectionsTab";
 import CloseoutTab from "./CloseoutTab";
 import JobHistoryPanel from "./JobHistoryPanel";
+import MeetingActionsPanel from "./MeetingActionsPanel";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -238,6 +239,10 @@ export default async function BidDetailPage({
 
               <section>
                 <ComplianceWidget bidId={bid.id} />
+              </section>
+
+              <section>
+                <MeetingActionsPanel bidId={bid.id} />
               </section>
 
               <section>
