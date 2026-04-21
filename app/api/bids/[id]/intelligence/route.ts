@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { generateBidIntelligenceBrief } from "@/lib/services/ai/generateBidIntelligenceBrief";
+import {
+  triggerBriefRefresh,
+  TriggerError,
+} from "@/lib/services/jobs/briefRefreshAutomation";
 
 // GET /api/bids/[id]/intelligence
 // Returns the current BidIntelligenceBrief or { brief: null }.
@@ -19,7 +22,9 @@ export async function GET(
 }
 
 // POST /api/bids/[id]/intelligence
-// Manually triggers brief regeneration.
+// Manually triggers brief regeneration via the shared durable brief-refresh path.
+// Reuses triggerBriefRefresh() so manual and automation runs share the same
+// duplicate guard, BackgroundJob record, and completion tracking.
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -28,20 +33,21 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
-  const bid = await prisma.bid.findUnique({ where: { id: bidId }, select: { id: true } });
-  if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return Response.json(
-      { error: "ANTHROPIC_API_KEY is not set — AI generation unavailable" },
-      { status: 503 }
-    );
-  }
-
   try {
-    const { status, sourceContext } = await generateBidIntelligenceBrief(bidId, "manual");
-    return Response.json({ success: true, status, sourceContext });
+    const outcome = await triggerBriefRefresh(bidId, { triggerSource: "user" });
+
+    if (outcome.status === "skipped") {
+      return Response.json(
+        { error: "A brief refresh is already in progress", reason: outcome.reason },
+        { status: 409 }
+      );
+    }
+
+    return Response.json({ success: true, status: outcome.briefStatus });
   } catch (err) {
+    if (err instanceof TriggerError) {
+      return Response.json({ error: err.message }, { status: err.httpStatus });
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.error("[POST /intelligence] error:", err);
     return Response.json({ error: message }, { status: 500 });

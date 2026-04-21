@@ -155,6 +155,15 @@ None yet.
   - `app/bids/[id]/JobHistoryPanel.tsx`: full restyling to GroundworX overnight jobs surface rules — left-border accent per status (emerald=complete, red=failed, blue=running, zinc=queued/cancelled), all labels in 10–11px font-mono uppercase, panel header uses 9px mono section label style, status counts (active/failed) are mono color chips rather than colored pills
 - No route changes, no schema changes, no internal model renames
 
+### GWX-AUTO-001A
+- Status: `done`
+- Owner: `Claude`
+- Title: Unify manual and automation brief refresh behind one durable job path
+- Completed: 2026-04-25
+- What changed:
+  - `app/api/bids/[id]/intelligence/route.ts`: POST handler refactored — replaces direct `generateBidIntelligenceBrief(bidId, "manual")` call with `triggerBriefRefresh(bidId, { triggerSource: "user" })`. Redundant bid-existence check and `process.env.ANTHROPIC_API_KEY` guard removed (both handled inside `triggerBriefRefresh`/`generateBidIntelligenceBrief`). Skipped outcome returns 409. TriggerError maps to its `httpStatus`. Response shape: `{ success: true, status: briefStatus }` (was `{ success: true, status, sourceContext }` — `sourceContext` is already persisted and returned by the GET).
+- Behavior: manual and automation brief refreshes are now identical in path, duplicate guard, job creation, and history visibility. The only difference is `triggerSource: "user"` vs `"automation"` in the BackgroundJob record.
+
 ### GWX-AUTO-001
 - Status: `done`
 - Owner: `Claude`
