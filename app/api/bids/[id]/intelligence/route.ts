@@ -48,12 +48,14 @@ export async function POST(
       select: { sourceContext: true },
     });
     const rawCtx = persisted?.sourceContext;
-    const sourceContext =
-      rawCtx != null
-        ? typeof rawCtx === "string"
-          ? JSON.parse(rawCtx)
-          : rawCtx
-        : null;
+    let sourceContext: unknown = null;
+    if (rawCtx != null) {
+      try {
+        sourceContext = typeof rawCtx === "string" ? JSON.parse(rawCtx) : rawCtx;
+      } catch {
+        sourceContext = null;
+      }
+    }
     return Response.json({ success: true, status: outcome.briefStatus, sourceContext });
   } catch (err) {
     if (err instanceof TriggerError) {

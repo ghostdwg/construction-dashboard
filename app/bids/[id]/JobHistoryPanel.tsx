@@ -28,6 +28,8 @@ const JOB_TYPE_LABELS: Record<string, string> = {
   spec_analysis:        "SPEC ANALYSIS",
   drawing_analysis:     "DRAWING ANALYSIS",
   meeting_transcription:"MEETING TRANSCRIPTION",
+  brief_refresh:        "BRIEF REFRESH",
+  submittal_generation: "SUBMITTAL GENERATION",
 };
 
 const TRIGGER_LABELS: Record<string, string> = {

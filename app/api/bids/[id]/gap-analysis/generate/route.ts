@@ -350,14 +350,14 @@ export async function POST(
   const bid = await prisma.bid.findUnique({ where: { id: bidId }, select: { id: true } });
   if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
 
-  if (
-    process.env.GAP_STUB_MODE !== "true" &&
-    !process.env.ANTHROPIC_API_KEY
-  ) {
-    return Response.json(
-      { error: "ANTHROPIC_API_KEY is not set — AI generation unavailable" },
-      { status: 503 }
-    );
+  if (process.env.GAP_STUB_MODE !== "true") {
+    const hasKey = !!(await getSetting("ANTHROPIC_API_KEY"));
+    if (!hasKey) {
+      return Response.json(
+        { error: "ANTHROPIC_API_KEY is not set — configure it in /settings → AI Configuration" },
+        { status: 503 }
+      );
+    }
   }
 
   let tradeIdFilter: number | undefined;
