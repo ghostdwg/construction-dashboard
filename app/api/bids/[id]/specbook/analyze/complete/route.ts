@@ -96,10 +96,19 @@ export async function POST(
     `sections saved, $${payload.result.total_cost}`
   );
 
-  // Auto-generate submittal register from the freshly saved AI extractions
+  // Resolve the durable job record early so we can stamp sourceJobId on
+  // the SubmittalItems created below (GWX-006 audit attribution).
+  const dbJob = await findJobByExternalId(payload.job_id, bidId).catch(() => null);
+
+  // Auto-generate submittal register from the freshly saved AI extractions.
+  // sourceJobId links each item back to the BackgroundJob that created it —
+  // combined with BackgroundJob.triggerSource this makes automation writes
+  // distinguishable from manual writes in the DB.
   let submittalsGenerated: number | null = null;
   try {
-    const result = await generateSubmittalsFromAiAnalysis(bidId);
+    const result = await generateSubmittalsFromAiAnalysis(bidId, {
+      sourceJobId: dbJob?.id,
+    });
     submittalsGenerated = result.created;
     console.log(`[analyze/complete] auto-generated ${result.created} submittals for bid ${bidId}`);
   } catch (err) {
@@ -108,7 +117,6 @@ export async function POST(
   }
 
   // Close the durable DB job record (best-effort — webhook must not fail over this)
-  const dbJob = await findJobByExternalId(payload.job_id, bidId).catch(() => null);
   if (dbJob) {
     const resultSummary = [
       `${payload.result.section_count} sections saved`,

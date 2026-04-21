@@ -779,6 +779,11 @@ model SubmittalItem {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // GWX-006 — Audit attribution: which BackgroundJob created this item.
+  // Null for manually-created items. Set by generateSubmittalsFromAiAnalysis
+  // when called from the sidecar webhook callback.
+  sourceJobId      String?
+
   // Phase 5G-2 — Schedule-tied due dates
   // Backward math: submitByDate = linkedActivity.startDate - leadTimeDays - reviewBufferDays - resubmitBufferDays
   linkedActivityId    String?   // FK to ScheduleActivityV2
@@ -794,12 +799,14 @@ model SubmittalItem {
   responsibleSub Subcontractor?    @relation(fields: [responsibleSubId], references: [id])
   package        SubmittalPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
   linkedActivity ScheduleActivityV2? @relation(fields: [linkedActivityId], references: [id], onDelete: SetNull)
+  sourceJob      BackgroundJob?    @relation(fields: [sourceJobId], references: [id], onDelete: SetNull)
 
   @@index([bidId])
   @@index([specSectionId])
   @@index([status])
   @@index([packageId])
   @@index([linkedActivityId])
+  @@index([sourceJobId])
 }
 
 // Phase 5G-3 — Per-trade submittal routing template
@@ -1248,7 +1255,8 @@ model BackgroundJob {
   // (activeSlot=null) never conflict with each other.
   activeSlot    Int?      @default(1)
 
-  bid Bid? @relation(fields: [bidId], references: [id], onDelete: SetNull)
+  bid            Bid?           @relation(fields: [bidId], references: [id], onDelete: SetNull)
+  submittalItems SubmittalItem[]
 
   @@unique([bidId, jobType, activeSlot])
   @@index([bidId])

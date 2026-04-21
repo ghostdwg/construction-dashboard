@@ -139,7 +139,8 @@ export type GenerateResult = {
 const PROCEDURAL_DIVISIONS = new Set(["00", "01"]);
 
 export async function generateSubmittalsFromAiAnalysis(
-  bidId: number
+  bidId: number,
+  opts?: { sourceJobId?: string }
 ): Promise<GenerateResult> {
   // AI is now the source of truth for the submittal register. Wipe any
   // prior auto-generated items (both AI and regex seed) so we don't
@@ -366,7 +367,7 @@ export async function generateSubmittalsFromAiAnalysis(
   const itemsToCreate: {
     bidId: number; bidTradeId: number | null; packageId: number | null;
     specSectionId: number; type: string; title: string; description: string;
-    source: string; status: string; notes: string | null;
+    source: string; status: string; notes: string | null; sourceJobId: string | null;
   }[] = [];
 
   for (const bucket of buckets.values()) {
@@ -390,6 +391,7 @@ export async function generateSubmittalsFromAiAnalysis(
       source: "ai_extraction",
       status: "PENDING",
       notes: bucket.engineerReview ? "Engineer review required" : null,
+      sourceJobId: opts?.sourceJobId ?? null,
     });
     if (bucket.bidTradeId) bidTradesLinked++;
   }

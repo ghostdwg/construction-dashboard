@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-24 (GWX-INTEGRATE-001)
+# Last Updated: 2026-04-25 (GWX-006)
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -92,6 +92,7 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **GWX-003** | **Durable background job model — BackgroundJob schema, service layer, spec analysis flow wired** | **✅ Complete** |
 | **GWX-004** | **Encrypted provider credentials — AES-256-GCM at rest for all secret AppSettings; transparent decrypt on read; lazy migration of legacy plaintext rows** | **✅ Complete** |
 | **GWX-005** | **First automation-triggered durable job — `triggerSpecAnalysis` service, `findActiveJobForBid` duplicate guard, `POST /api/automation/spec-analysis` admin-only trigger endpoint** | **✅ Complete** |
+| **GWX-006** | **Audit metadata for automation writes — `SubmittalItem.sourceJobId` FK to `BackgroundJob`; stamped by `generateSubmittalsFromAiAnalysis` when called from the sidecar webhook; automation vs manual writes now distinguishable and queryable** | **✅ Complete** |
 | **GWX-007** | **Morning summary panel — `GET /api/bids/[id]/jobs` + `JobHistoryPanel` on Overview tab; shows job type, trigger source, status, timing, result/error; auto-opens on failures or automation runs** | **✅ Complete** |
 | **Phase 5A** | **Python FastAPI sidecar — spec splitting, per-section AI analysis, webhook jobs** | **✅ Complete** |
 | **Phase 5B** | **Spec intelligence pipeline — CSI MasterFormat model, AI extraction, submittal generation** | **✅ Complete** |

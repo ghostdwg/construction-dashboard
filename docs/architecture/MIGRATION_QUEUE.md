@@ -127,19 +127,19 @@ None yet.
 - Existing DBs: `activeSlot` already present; marked applied without re-running; no data loss
 
 ### GWX-006
-- Status: `ready`
+- Status: `done`
 - Owner: `Claude`
 - Title: Add audit metadata for automation-triggered writes
-- Goal: make unattended changes reviewable and attributable
-- Allowed files:
-  - `prisma/schema.prisma`
-  - relevant write services
-  - relevant API routes
-- Forbidden files:
-  - major UI work
-- Definition of done:
-  - automation-triggered writes can be distinguished from manual writes
-  - basic audit trail is queryable
+- Completed: 2026-04-25
+- What changed:
+  - `prisma/schema.prisma`: `SubmittalItem.sourceJobId String?` — nullable FK to `BackgroundJob.id` (OnDelete: SetNull); `BackgroundJob.submittalItems SubmittalItem[]` back-relation; `@@index([sourceJobId])` on SubmittalItem
+  - `prisma/migrations/20260425000001_submittal_item_source_job_id/migration.sql`: RedefineTables migration (SQLite requires rebuild to add FK column); existing rows get `sourceJobId = NULL` (correct — they predate this column)
+  - `lib/services/submittal/generateFromAiAnalysis.ts`: `generateSubmittalsFromAiAnalysis(bidId, opts?)` now accepts `opts.sourceJobId?: string`; every item in `itemsToCreate` is stamped with `sourceJobId` from `opts` (null for manual/UI-triggered calls)
+  - `app/api/bids/[id]/specbook/analyze/complete/route.ts`: `findJobByExternalId` call moved above the `generateSubmittalsFromAiAnalysis` call so `dbJob.id` is available; `dbJob?.id` passed as `sourceJobId` to `generateSubmittalsFromAiAnalysis`
+- Attribution pattern: `SubmittalItem.sourceJobId` → `BackgroundJob.id` → `BackgroundJob.triggerSource` (`"user"` | `"automation"` | `"webhook"`) + `BackgroundJob.createdAt`. Automation-triggered vs manual writes are now distinguishable at the DB level via a join on `sourceJobId`.
+- Reuse: `sourceJobId` is the canonical attribution field. Future automation flows (brief refresh, submittal generation from drawings) should pass their `backgroundJobId` to their respective write services using the same pattern.
+- Migration state: 59 migrations, no checksum drift, `prisma migrate status` → "Database schema is up to date!"
+- TypeScript: clean (`tsc --noEmit` → no output)
 
 ### GWX-INTEGRATE-001
 - Status: `done`
