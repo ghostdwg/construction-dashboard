@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-21 (GWX-AUTO-002)
+# Last Updated: 2026-04-21 (GWX-INTEGRATE-004)
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -109,6 +109,7 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **Phase 5G-3.6** | **Bulk-edit grid UI with inline editing** | **✅ Complete** |
 | **Phase 5G-Extension** | **Drawing cross-reference — drawing-sourced submittal items via sidecar AI** | **✅ Complete** |
 | **Phase 5H near-term** | **Warranty, training, inspections, closeout registers from aiExtractions** | **✅ Complete** |
+| **GWX-INTEGRATE-004** | **Meeting action items surfaced on Overview — MeetingActionsPanel + GET /api/bids/[id]/action-items aggregates open items cross-meeting; panel self-hides when empty, shows overdue/priority badges, inline Done button, links to Meetings tab** | **✅ Complete** |
 | **Queued** | **Future expansion** | **🔜 Planned** |
 | Tier F F5 | Daily Log weather claim integration | 🔜 Not Started |
 | Phase 5F | Drawing OCR + Quantity Takeoff | 🔜 Stretch |
