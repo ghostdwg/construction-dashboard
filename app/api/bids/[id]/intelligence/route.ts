@@ -43,7 +43,18 @@ export async function POST(
       );
     }
 
-    return Response.json({ success: true, status: outcome.briefStatus });
+    const persisted = await prisma.bidIntelligenceBrief.findUnique({
+      where: { bidId },
+      select: { sourceContext: true },
+    });
+    const rawCtx = persisted?.sourceContext;
+    const sourceContext =
+      rawCtx != null
+        ? typeof rawCtx === "string"
+          ? JSON.parse(rawCtx)
+          : rawCtx
+        : null;
+    return Response.json({ success: true, status: outcome.briefStatus, sourceContext });
   } catch (err) {
     if (err instanceof TriggerError) {
       return Response.json({ error: err.message }, { status: err.httpStatus });
