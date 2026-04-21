@@ -13,7 +13,8 @@ export type JobType =
   | "spec_analysis"
   | "drawing_analysis"
   | "meeting_transcription"
-  | "brief_refresh";
+  | "brief_refresh"
+  | "submittal_generation";
 
 export type JobStatus =
   | "queued"

@@ -155,6 +155,21 @@ None yet.
   - `app/bids/[id]/JobHistoryPanel.tsx`: full restyling to GroundworX overnight jobs surface rules — left-border accent per status (emerald=complete, red=failed, blue=running, zinc=queued/cancelled), all labels in 10–11px font-mono uppercase, panel header uses 9px mono section label style, status counts (active/failed) are mono color chips rather than colored pills
 - No route changes, no schema changes, no internal model renames
 
+### GWX-AUTO-002
+- Status: `done`
+- Owner: `Claude`
+- Title: Durable automation trigger for submittal generation
+- Completed: 2026-04-21
+- What changed:
+  - `lib/services/jobs/backgroundJobService.ts`: `"submittal_generation"` added to `JobType` union
+  - `lib/services/jobs/submittalGenerationAutomation.ts`: new shared service — `triggerSubmittalGeneration(bidId, opts)` encapsulates the full submittal generation trigger path (advisory duplicate guard → SpecBook existence check → analyzed section count check → atomic createJob → startJob → inline `generateSubmittalsFromAiAnalysis` call → completeJob / failJob). Returns typed `TriggerOutcome` (`triggered | skipped`); throws `TriggerError` on hard failures with `httpStatus`.
+  - `app/api/automation/submittal-generation/route.ts`: new admin-only endpoint — `POST /api/automation/submittal-generation { bidId }`. Checks `isAdminAuthorized()`, calls `triggerSubmittalGeneration` with `triggerSource: "automation"`. Returns `{ status: "triggered", backgroundJobId, result: GenerateResult }` or `{ status: "skipped", reason }`. Blocks until generation completes (synchronous, in-process).
+- Scope: Phase 1 only (spec-based generation from `generateSubmittalsFromAiAnalysis`). Phase 2 (drawing cross-reference) requires the sidecar and browser-side polling — not included.
+- Prerequisites enforced: (1) SpecBook with `status: "ready"` must exist; (2) at least one SpecSection with `aiExtractions: { not: null }` must exist (spec analysis must have run). Errors are 404 and 400 respectively.
+- Duplicate guard: advisory `findActiveJobForBid` + atomic `@@unique([bidId, jobType, activeSlot])` constraint — same pattern as spec_analysis and brief_refresh
+- Source attribution: passes `sourceJobId: dbJob.id` to `generateSubmittalsFromAiAnalysis` so all created SubmittalItems are stamped with the BackgroundJob id (GWX-006 pattern)
+- No schema migration required — `BackgroundJob` already exists; `"submittal_generation"` stored as a string in `jobType` column
+
 ### GWX-AUTO-001A
 - Status: `done`
 - Owner: `Claude`
