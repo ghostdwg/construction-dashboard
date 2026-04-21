@@ -101,6 +101,16 @@ None yet.
 - Title: Restore immutable migration history (analysis only)
 - Note: concluded that the migration chain could not be made pristine AND replay-safe without editing at least one applied migration. Recommended the GWX-005.4 baseline strategy.
 
+### GWX-005.5
+- Status: `done`
+- Owner: `Claude`
+- Title: Existing-database repair runbook for activeSlot baseline replacement
+- Completed: 2026-04-24
+- What changed:
+  - `docs/architecture/CURRENT_STATE.md`: added "Existing-Database Repair Runbook (GWX-005.5)" section under the Durable Background Job System block — step-by-step SQL commands, a DB-state decision table, and an explicit note that repair is manual and environment-by-environment
+- Scope: documentation only — no schema changes, no runtime changes
+- Runbook covers: how to detect whether a DB needs repair (query `_prisma_migrations` for `%active_slot%` rows), how to remove the two deleted migration records via `prisma db execute`, how to mark the replacement migration applied via `prisma migrate resolve --applied`, and what `prisma migrate status` should report afterward
+
 ### GWX-005.4
 - Status: `done`
 - Owner: `Claude`
@@ -132,19 +142,15 @@ None yet.
   - basic audit trail is queryable
 
 ### GWX-007
-- Status: `ready`
+- Status: `done`
 - Owner: `Claude`
-- Title: Introduce a morning summary artifact for durable jobs
-- Goal: shift overnight work from hidden background behavior to explicit review output
-- Allowed files:
-  - job/task services
-  - reporting helpers
-  - minimal UI or API surface for summary retrieval
-- Forbidden files:
-  - unrelated workflow logic
-- Definition of done:
-  - overnight job results can be summarized in one place
-  - failures and review-needed items are visible
+- Title: Morning summary panel for durable overnight jobs
+- Completed: 2026-04-24
+- What changed:
+  - `app/api/bids/[id]/jobs/route.ts`: new `GET /api/bids/[id]/jobs` endpoint — calls `listJobsForBid(bidId, 20)`, returns `{ jobs: [...] }`. Reads from durable DB state; no sidecar dependency.
+  - `app/bids/[id]/JobHistoryPanel.tsx`: new client component. Fetches the jobs endpoint, renders a collapsible panel on the Overview tab. Each row shows: status badge (color-coded), job type (human-readable label), trigger source (User / Automation / Webhook), duration (if terminal), created timestamp, and result or error summary. Auto-opens if any job is failed or automation-triggered (morning review signal). Renders nothing if no jobs exist for the bid.
+  - `app/bids/[id]/page.tsx`: added `JobHistoryPanel` import and mounted it at the bottom of the Overview tab section (after Intelligence Brief).
+- Runtime: no schema changes, no sidecar changes, no new service methods — reuses `listJobsForBid` from `backgroundJobService.ts`
 
 ---
 

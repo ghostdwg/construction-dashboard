@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-24
+# Last Updated: 2026-04-24 (GWX-005.5)
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -92,6 +92,7 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **GWX-003** | **Durable background job model — BackgroundJob schema, service layer, spec analysis flow wired** | **✅ Complete** |
 | **GWX-004** | **Encrypted provider credentials — AES-256-GCM at rest for all secret AppSettings; transparent decrypt on read; lazy migration of legacy plaintext rows** | **✅ Complete** |
 | **GWX-005** | **First automation-triggered durable job — `triggerSpecAnalysis` service, `findActiveJobForBid` duplicate guard, `POST /api/automation/spec-analysis` admin-only trigger endpoint** | **✅ Complete** |
+| **GWX-007** | **Morning summary panel — `GET /api/bids/[id]/jobs` + `JobHistoryPanel` on Overview tab; shows job type, trigger source, status, timing, result/error; auto-opens on failures or automation runs** | **✅ Complete** |
 | **Phase 5A** | **Python FastAPI sidecar — spec splitting, per-section AI analysis, webhook jobs** | **✅ Complete** |
 | **Phase 5B** | **Spec intelligence pipeline — CSI MasterFormat model, AI extraction, submittal generation** | **✅ Complete** |
 | **Phase 5C** | **CPM scheduling — 9-phase template, full dependency engine, Gantt UI, MSP CSV export, AI Schedule Intelligence** | **✅ Complete** |
@@ -222,6 +223,86 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - **Spec analysis flow** — `POST /api/bids/[id]/specbook/analyze` delegates to `triggerSpecAnalysis` (user trigger). `POST /api/bids/[id]/specbook/analyze/complete` (sidecar callback) is the sole authoritative completion writer.
 - **Sidecar unchanged** — in-memory `_jobs` dict still drives live progress polling. DB record is the authoritative durability layer; the two coexist.
 - **Migration baseline (GWX-005.4)** — migration history is clean: 58 migrations, no edited applied files, no checksum drift. `prisma migrate status` → "Database schema is up to date!" Fresh-DB replay runs `20260421022733_add_background_job` (table, no `activeSlot`) then `20260424000001_background_job_active_slot` (ADD COLUMN + backfill + unique index). For new environments: run `prisma migrate deploy` — no manual `migrate resolve` needed.
+
+### Existing-Database Repair Runbook (GWX-005.5)
+
+GWX-005.4 deleted two migrations from the filesystem and replaced them with a single clean one. Any database that was migrated before GWX-005.4 may still have `_prisma_migrations` rows for the deleted migrations. Those databases need a one-time manual repair. This is not self-healing — `prisma migrate deploy` will not fix it automatically.
+
+**Affected migrations (deleted from filesystem):**
+- `20260421031417_background_job_active_slot`
+- `20260423000001_background_job_active_slot`
+
+**Replacement migration (must be marked applied):**
+- `20260424000001_background_job_active_slot`
+
+---
+
+#### Step 1 — Identify whether a DB needs repair
+
+Run the following and examine the output:
+
+```bash
+echo "SELECT migration_name, finished_at FROM _prisma_migrations WHERE migration_name LIKE '%active_slot%' ORDER BY started_at;" | npx prisma db execute --stdin
+```
+
+Interpret the results:
+
+| Rows present | Meaning | Action needed |
+|---|---|---|
+| `20260424000001` only | Already repaired or fresh DB | None |
+| `20260421031417` and/or `20260423000001`, no `20260424000001` | Needs repair | Follow steps 2–4 |
+| All three | Partial repair (shouldn't happen, but possible) | Delete old rows + verify new row per steps 2–3 |
+
+---
+
+#### Step 2 — Remove the deleted migrations from DB history
+
+Run both DELETEs. If a row doesn't exist, the DELETE is a no-op — that's fine.
+
+```bash
+echo "DELETE FROM _prisma_migrations WHERE migration_name = '20260421031417_background_job_active_slot';" | npx prisma db execute --stdin
+
+echo "DELETE FROM _prisma_migrations WHERE migration_name = '20260423000001_background_job_active_slot';" | npx prisma db execute --stdin
+```
+
+Expected output for each: `Script executed successfully.`
+
+---
+
+#### Step 3 — Mark the replacement migration as applied
+
+The schema changes (`activeSlot` column + unique index) are already present in the DB — this step only records the new migration name so Prisma knows the history is complete. It does **not** re-run any SQL.
+
+```bash
+npx prisma migrate resolve --applied 20260424000001_background_job_active_slot
+```
+
+Expected output: `Migration marked as applied.`
+
+---
+
+#### Step 4 — Verify
+
+```bash
+npx prisma migrate status
+```
+
+Expected output: all 58 migrations listed, ending with `20260424000001_background_job_active_slot`, and the final line: `Database schema is up to date!`
+
+If any migration is listed as "failed" or "not applied," stop and investigate before proceeding.
+
+---
+
+#### DB state summary
+
+| DB state | `activeSlot` column present | `_prisma_migrations` | Action |
+|---|---|---|---|
+| Fresh DB (never migrated) | Added by `20260424000001` | Only `20260424000001` recorded | None — `prisma migrate deploy` handles it |
+| Dev DB after GWX-005.4 | Yes (was there before) | Already repaired — `migrate resolve` was run | None |
+| Other existing DB, not yet repaired | Yes (was added by deleted migrations) | Has old names, missing `20260424000001` | Run steps 2–4 above |
+| Other existing DB, partially repaired | Yes | Mix of old/new rows | Delete old rows, verify new row per steps 2–3 |
+
+**Scope:** This repair is manual and environment-by-environment. There is no automated migration that performs it. It must be run once on each existing database that pre-dates GWX-005.4.
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

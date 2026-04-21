@@ -30,6 +30,7 @@ import WarrantiesTab from "./WarrantiesTab";
 import TrainingTab from "./TrainingTab";
 import InspectionsTab from "./InspectionsTab";
 import CloseoutTab from "./CloseoutTab";
+import JobHistoryPanel from "./JobHistoryPanel";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -222,6 +223,10 @@ export default async function BidDetailPage({
               <section>
                 <h2 className="text-sm font-semibold text-zinc-800 mb-3 dark:text-zinc-100">Project Intelligence Brief</h2>
                 <IntelligenceBrief bidId={bid.id} />
+              </section>
+
+              <section>
+                <JobHistoryPanel bidId={bid.id} />
               </section>
             </div>
           )}
