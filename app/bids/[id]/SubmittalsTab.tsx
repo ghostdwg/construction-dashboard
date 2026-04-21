@@ -470,6 +470,8 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     onEdited: reload,
   };
 
+  const canGenerate = (specMeta?.analyzedSectionCount ?? 0) > 0;
+
   return (
     <div className="flex flex-col gap-5">
       {/* ── Header + Actions ── */}
@@ -485,9 +487,15 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={runGenerateFromAi}
-            disabled={generating}
-            className="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-            title="Generates register from spec analysis. When drawing analysis exists, also cross-references drawing scope."
+            disabled={generating || !canGenerate}
+            className="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={
+              !canGenerate
+                ? specMeta?.hasSpecBook
+                  ? "Spec book needs to be analyzed first — go to Documents → AI Analyze"
+                  : "Upload a spec book in the Documents tab first"
+                : "Generates register from spec analysis. When drawing analysis exists, also cross-references drawing scope."
+            }
           >
             {genJobId && generating
               ? "Syncing drawings…"
@@ -534,11 +542,58 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
           {error}
         </div>
       )}
-      {specMeta && specMeta.analyzedSectionCount === 0 && !aiBanner && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300">
-          {specMeta.hasSpecBook
-            ? "Spec book uploaded but not yet analyzed — go to Documents \u2192 AI Analyze, then return here to generate the register."
-            : "No spec book uploaded yet. Add one in the Documents tab to enable AI generation."}
+      {specMeta && !aiBanner && (
+        <div className="rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900/50">
+          <p className="text-[10px] font-mono uppercase tracking-wide text-zinc-400 mb-2 dark:text-zinc-500">
+            AI Generation
+          </p>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-xs">
+              <span className={specMeta.hasSpecBook ? "text-emerald-500" : "text-red-400"}>
+                {specMeta.hasSpecBook ? "✓" : "✗"}
+              </span>
+              <span className={specMeta.hasSpecBook ? "text-zinc-600 dark:text-zinc-300" : "text-red-600 dark:text-red-400"}>
+                Spec book
+                {!specMeta.hasSpecBook && (
+                  <span className="text-zinc-400 dark:text-zinc-500"> — upload one in the Documents tab</span>
+                )}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className={
+                specMeta.analyzedSectionCount > 0
+                  ? "text-emerald-500"
+                  : specMeta.hasSpecBook
+                  ? "text-amber-500"
+                  : "text-zinc-300 dark:text-zinc-600"
+              }>
+                {specMeta.analyzedSectionCount > 0 ? "✓" : "–"}
+              </span>
+              <span className={
+                specMeta.analyzedSectionCount > 0
+                  ? "text-zinc-600 dark:text-zinc-300"
+                  : specMeta.hasSpecBook
+                  ? "text-amber-700 dark:text-amber-400"
+                  : "text-zinc-400 dark:text-zinc-600"
+              }>
+                Spec analysis
+                {specMeta.analyzedSectionCount > 0 ? (
+                  <span className="text-zinc-400 dark:text-zinc-500"> — {specMeta.analyzedSectionCount} sections ready</span>
+                ) : specMeta.hasSpecBook ? (
+                  <span> — go to Documents → AI Analyze</span>
+                ) : null}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className={specMeta.hasDrawings ? "text-emerald-500" : "text-zinc-300 dark:text-zinc-600"}>
+                {specMeta.hasDrawings ? "✓" : "–"}
+              </span>
+              <span className="text-zinc-400 dark:text-zinc-500">
+                Drawing cross-reference
+                {specMeta.hasDrawings ? " — will run" : " — optional, upload drawings to enable"}
+              </span>
+            </div>
+          </div>
         </div>
       )}
       {aiBanner && (
