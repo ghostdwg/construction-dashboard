@@ -184,8 +184,8 @@ function SidebarItem({
       style={
         active
           ? {
-              background: "linear-gradient(180deg,rgba(0,255,100,0.08),rgba(0,255,100,0.04))",
-              borderColor: "rgba(0,255,100,0.18)",
+              background: "rgba(255,255,255,0.03)",
+              borderColor: "transparent",
               color: "var(--text)",
               boxShadow: "inset 2px 0 0 var(--signal)",
             }
@@ -200,7 +200,7 @@ function SidebarItem({
         <span className="text-[13px] font-[600] tracking-[-0.01em] truncate">{label}</span>
         <span
           className="text-[10px] truncate"
-          style={{ color: active ? "rgba(0,255,100,0.5)" : "var(--text-dim)" }}
+          style={{ color: "var(--text-dim)" }}
         >
           {sub}
         </span>

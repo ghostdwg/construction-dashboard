@@ -43,21 +43,33 @@ export default function StatusButton({
       <button
         onClick={() => setOpen((o) => !o)}
         disabled={loading}
-        className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm capitalize hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-600 dark:hover:bg-zinc-800"
+        className="font-mono text-[10px] uppercase tracking-[0.06em] px-3 py-1.5 rounded transition-colors disabled:opacity-40"
+        style={{
+          border: "1px solid var(--line-strong)",
+          color: "var(--text-soft)",
+          background: open ? "rgba(255,255,255,0.05)" : "transparent",
+        }}
       >
-        {loading ? "Saving…" : `Status: ${current}`} ▾
+        {loading ? "Saving…" : "Change ▾"}
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-20 mt-1 w-40 rounded-md border border-zinc-200 bg-white shadow-md py-1 dark:border-zinc-700 dark:bg-zinc-900">
+          <div
+            className="absolute right-0 z-20 mt-1 w-36 rounded-[var(--radius)] border border-[var(--line-strong)] py-1 overflow-hidden"
+            style={{ background: "var(--panel-3)", boxShadow: "var(--shadow)" }}
+          >
             {STATUSES.map((s) => (
               <button
                 key={s}
                 onClick={() => setStatus(s)}
-                className={`w-full text-left px-4 py-2 text-sm capitalize hover:bg-zinc-50 ${
-                  s === current ? "font-semibold text-black" : "text-zinc-600"
-                }`}
+                className="w-full text-left px-4 py-2 font-mono text-[10px] uppercase tracking-[0.06em] transition-colors"
+                style={{
+                  color: s === current ? "var(--signal-soft)" : "var(--text-soft)",
+                  background: "transparent",
+                }}
+                onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)")}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "transparent")}
               >
                 {s}
               </button>

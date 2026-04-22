@@ -1,9 +1,6 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
-import TabBar from "./TabBar";
-import StatusButton from "./StatusButton";
+import ProjectContextBar from "./ProjectContextBar";
 import TradesTab from "./TradesTab";
 import SubsTab from "./SubsTab";
 import ScopeTab from "./ScopeTab";
@@ -19,7 +16,6 @@ import SubmissionPanel from "./SubmissionPanel";
 import EditableDueDate from "./EditableDueDate";
 import JobIntakePanel from "./JobIntakePanel";
 import ProjectContactsPanel from "./ProjectContactsPanel";
-import SubTabBar from "./SubTabBar";
 import HandoffTab from "./HandoffTab";
 import SubmittalsTab from "./SubmittalsTab";
 import ScheduleTab from "./ScheduleTab";
@@ -32,6 +28,8 @@ import InspectionsTab from "./InspectionsTab";
 import CloseoutTab from "./CloseoutTab";
 import JobHistoryPanel from "./JobHistoryPanel";
 import MeetingActionsPanel from "./MeetingActionsPanel";
+
+export const dynamic = "force-dynamic";
 
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
@@ -69,13 +67,10 @@ export default async function BidDetailPage({
 
   if (!bid) notFound();
 
-  // Leveling tab: subs with estimate-worthy RFQ status + any existing uploads
   const levelingSubs =
     tab === "leveling"
       ? bid.selections
-          .filter((s) =>
-            ["received", "reviewing", "accepted"].includes(s.rfqStatus)
-          )
+          .filter((s) => ["received", "reviewing", "accepted"].includes(s.rfqStatus))
           .map((s) => ({
             id: s.subcontractor.id,
             company: s.subcontractor.company,
@@ -109,37 +104,21 @@ export default async function BidDetailPage({
       : [];
 
   return (
-    <div className="max-w-screen-2xl py-10 px-6">
-      {/* ── Header (full width) ── */}
-      <div className="mb-6">
-        <Link href="/bids" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">
-          ← Bids
-        </Link>
-        <div className="flex items-start justify-between mt-2">
-          <div>
-            <h1 className="text-2xl font-semibold">{bid.projectName}</h1>
-            {bid.location && (
-              <p className="text-sm text-zinc-500 mt-0.5 dark:text-zinc-400">{bid.location}</p>
-            )}
-          </div>
-          <StatusButton bidId={bid.id} current={bid.status} />
-        </div>
-      </div>
+    <div className="flex flex-col min-h-full">
+      <ProjectContextBar
+        bidId={bid.id}
+        bidName={bid.projectName}
+        location={bid.location ?? null}
+        status={bid.status}
+        workflowType={bid.workflowType ?? "BID"}
+        activeTab={tab}
+      />
 
-      {/* ── Sidebar + Content grid ── */}
-      <div className="grid grid-cols-1 md:grid-cols-[210px_1fr] gap-6">
-        {/* Sidebar */}
-        <Suspense fallback={<div className="min-w-[210px]" />}>
-          <TabBar bidId={bid.id} bidStatus={bid.status} workflowType={bid.workflowType} />
-        </Suspense>
+      <div className="px-6 py-6 min-w-0 flex-1">
 
-        {/* Content */}
-        <div className="min-w-0">
-          <SubTabBar tab={tab} bidId={bid.id} workflowType={bid.workflowType} />
 
           {tab === "overview" && (
             <div className="flex flex-col gap-6">
-              {/* ── Project state strip ── */}
               <div className="flex items-center gap-2 flex-wrap -mb-2">
                 <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-zinc-400 dark:text-zinc-500 select-none">
                   Status
@@ -261,9 +240,7 @@ export default async function BidDetailPage({
             </div>
           )}
 
-          {tab === "trades" && (
-            <TradesTab bidId={bid.id} bidTrades={bid.bidTrades} />
-          )}
+          {tab === "trades" && <TradesTab bidId={bid.id} bidTrades={bid.bidTrades} />}
 
           {tab === "subs" && (
             <SubsTab
@@ -274,74 +251,24 @@ export default async function BidDetailPage({
             />
           )}
 
-          {tab === "scope" && (
-            <ScopeTab bidId={bid.id} />
-          )}
-
-          {tab === "ai-review" && (
-            <AiReviewTab bidId={bid.id} />
-          )}
-
-          {tab === "warranties" && (
-            <WarrantiesTab bidId={bid.id} />
-          )}
-
-          {tab === "training" && (
-            <TrainingTab bidId={bid.id} />
-          )}
-
-          {tab === "inspections" && (
-            <InspectionsTab bidId={bid.id} />
-          )}
-
-          {tab === "closeout" && (
-            <CloseoutTab bidId={bid.id} />
-          )}
-
-          {tab === "questions" && (
-            <QuestionsTab bidId={bid.id} />
-          )}
-
+          {tab === "scope" && <ScopeTab bidId={bid.id} />}
+          {tab === "ai-review" && <AiReviewTab bidId={bid.id} />}
+          {tab === "questions" && <QuestionsTab bidId={bid.id} />}
           {tab === "leveling" && (
-            <LevelingTab
-              bidId={bid.id}
-              subs={levelingSubs}
-              initialUploads={estimateUploads}
-            />
+            <LevelingTab bidId={bid.id} subs={levelingSubs} initialUploads={estimateUploads} />
           )}
-
-          {tab === "activity" && (
-            <ActivityTab bidId={bid.id} />
-          )}
-
-          {tab === "documents" && (
-            <DocumentsTab bidId={bid.id} />
-          )}
-
-          {tab === "handoff" && (
-            <HandoffTab bidId={bid.id} />
-          )}
-
-          {tab === "submittals" && (
-            <SubmittalsTab bidId={bid.id} />
-          )}
-
-          {tab === "schedule" && (
-            <ScheduleTab bidId={bid.id} />
-          )}
-
-          {tab === "meetings" && (
-            <MeetingsTab bidId={bid.id} />
-          )}
-
-          {tab === "briefing" && (
-            <BriefingTab bidId={bid.id} />
-          )}
-
-          {tab === "procore" && (
-            <ProcoreTab bidId={bid.id} />
-          )}
-        </div>
+          {tab === "activity" && <ActivityTab bidId={bid.id} />}
+          {tab === "documents" && <DocumentsTab bidId={bid.id} />}
+          {tab === "handoff" && <HandoffTab bidId={bid.id} />}
+          {tab === "submittals" && <SubmittalsTab bidId={bid.id} />}
+          {tab === "schedule" && <ScheduleTab bidId={bid.id} />}
+          {tab === "meetings" && <MeetingsTab bidId={bid.id} />}
+          {tab === "briefing" && <BriefingTab bidId={bid.id} />}
+          {tab === "procore" && <ProcoreTab bidId={bid.id} />}
+          {tab === "warranties" && <WarrantiesTab bidId={bid.id} />}
+          {tab === "training" && <TrainingTab bidId={bid.id} />}
+          {tab === "inspections" && <InspectionsTab bidId={bid.id} />}
+          {tab === "closeout" && <CloseoutTab bidId={bid.id} />}
       </div>
     </div>
   );
