@@ -17,6 +17,8 @@ type SidebarCounts = {
   projects: number;
   activeJobs: number;
   newSignals: number;
+  openSubmittals: number;
+  openActionItems: number;
 };
 
 const STATUS_PHASE: Record<string, string> = {
@@ -83,20 +85,18 @@ export default function AppSidebar({
         dim
       />
       <SidebarItem
-        href="#"
+        href="/submittals"
         label="Submittals"
         sub="register + due dates"
-        meta="soon"
-        active={false}
-        dim
+        meta={counts.openSubmittals > 0 ? String(counts.openSubmittals) : "—"}
+        active={isActive("/submittals")}
       />
       <SidebarItem
-        href="#"
+        href="/meetings"
         label="Meetings"
         sub="action items + follow-up"
-        meta="soon"
-        active={false}
-        dim
+        meta={counts.openActionItems > 0 ? String(counts.openActionItems) : "—"}
+        active={isActive("/meetings")}
       />
 
       {/* ── system ────────────────────────────────────────────────────── */}

@@ -32,7 +32,7 @@ export default async function RootLayout({
 
   // ── Sidebar data ──────────────────────────────────────────────────────────
   const oneDayAgo = new Date(Date.now() - 86_400_000);
-  const [bidCount, activeJob, activeBid, newSignals] = await Promise.all([
+  const [bidCount, activeJob, activeBid, newSignals, globalOpenSubmittals, globalOpenActionItems] = await Promise.all([
     prisma.bid.count(),
     prisma.backgroundJob.count({ where: { status: { in: ["queued", "running"] } } }),
     prisma.bid.findFirst({
@@ -47,6 +47,8 @@ export default async function RootLayout({
       },
     }),
     prisma.marketSignal.count({ where: { leadId: null, createdAt: { gte: oneDayAgo } } }),
+    prisma.submittalItem.count({ where: { status: { notIn: ["APPROVED", "APPROVED_AS_NOTED", "REJECTED"] } } }),
+    prisma.meetingActionItem.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
   ]);
 
   // Submittal + brief data for the active project card
@@ -141,7 +143,7 @@ export default async function RootLayout({
             {/* ── Below topbar: sidebar + main ────────────────────────── */}
             <div className="flex flex-1 min-h-0">
               <AppSidebar
-                counts={{ projects: bidCount, activeJobs: activeJob, newSignals }}
+                counts={{ projects: bidCount, activeJobs: activeJob, newSignals, openSubmittals: globalOpenSubmittals, openActionItems: globalOpenActionItems }}
                 activeProject={activeProject}
               />
               <main className="flex-1 min-w-0 overflow-y-auto">
