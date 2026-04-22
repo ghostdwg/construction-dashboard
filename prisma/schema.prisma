@@ -156,6 +156,7 @@ model Bid {
   procorePushes       ProcorePush[]
   rfiItems            RfiItem[]
   backgroundJobs      BackgroundJob[]
+  marketLeads         MarketLead[]
 }
 
 model BidSubmission {
@@ -1286,4 +1287,98 @@ model ProcoreWebhookEvent {
 
   @@index([resourceType, resourceId])
   @@index([processed])
+}
+
+// ── Phase 2 — Market Intelligence Desk ──────────────────────────────────────
+//
+// Three-model stack: MarketLead ← MarketSignal, RelationshipEdge (standalone)
+//
+// MarketLead: a detected or manually-entered opportunity worth tracking.
+//   leadType: PERMIT | MEETING_MINUTE | PLAN_ROOM | LAND_ACQUISITION | BROKER | RELATIONSHIP | MANUAL
+//   status:   NEW | REVIEWING | QUALIFIED | PURSUING | ARCHIVED | DISMISSED
+//   confidence: LOW | MEDIUM | HIGH
+model MarketLead {
+  id              String    @id @default(cuid())
+  title           String
+  leadType        String    @default("MANUAL")
+  source          String?   // "beeline" | "city_hall" | "blue_book" | "county_records" | "manual"
+  sourceUrl       String?
+  status          String    @default("NEW")
+  confidence      String    @default("MEDIUM")
+  aiScore         Int?      // 0–100 overall signal strength
+  location        String?
+  jurisdiction    String?   // city or county
+  projectType     String?   // building use / type
+  estimatedValue  Float?
+  rawText         String?   // original scraped content
+  aiSummary       String?   // Claude-generated one-paragraph brief
+  aiInsights      String?   // JSON: { strengths: string[], risks: string[], angle: string }
+  detectedAt      DateTime  @default(now())
+  promotedToBidId Int?      // set when user promotes this lead to an active pursuit
+  promotedAt      DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  signals     MarketSignal[]
+  promotedBid Bid?           @relation(fields: [promotedToBidId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([leadType])
+  @@index([detectedAt])
+  @@index([promotedToBidId])
+}
+
+// MarketSignal: a raw piece of market evidence (permit filing, plan room posting,
+// meeting minute entry, land transaction, broker listing). Many signals can
+// reference one lead, or exist unassigned (leadId = null).
+//
+// signalType: PERMIT | MEETING_MINUTE | PLAN_ROOM_JOB | PLAN_ROOM_VIEW |
+//             LAND_ACQUISITION | BROKER_LISTING | ARCHITECT_PROJECT | MANUAL
+model MarketSignal {
+  id               String    @id @default(cuid())
+  leadId           String?
+  signalType       String
+  source           String?
+  sourceUrl        String?
+  sourceDate       DateTime?
+  headline         String
+  rawText          String?
+  metadata         String?   // JSON: source-specific fields (permit no., parcel id, etc.)
+  aiRelevanceScore Int?      // 0–100
+  createdAt        DateTime  @default(now())
+
+  lead MarketLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([signalType])
+  @@index([createdAt])
+}
+
+// RelationshipEdge: architect↔GC, owner↔GC, developer↔GC associations derived
+// from past projects, permit history, and market scrapes.
+//
+// fromType / toType: GC | ARCHITECT | OWNER | DEVELOPER | ENGINEER | BROKER
+// relationshipType:  DESIGNED | BUILT | PARTNERED | COMPETING | OWNED
+model RelationshipEdge {
+  id               String    @id @default(cuid())
+  fromType         String
+  fromName         String
+  toType           String
+  toName           String
+  relationshipType String
+  projectName      String?
+  projectValue     Float?
+  projectYear      Int?
+  location         String?
+  source           String?
+  sourceUrl        String?
+  confidence       String    @default("MEDIUM")
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([fromName])
+  @@index([toName])
+  @@index([relationshipType])
 }

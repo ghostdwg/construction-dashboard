@@ -1,20 +1,24 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Barlow, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";
-import ThemeToggle from "./components/ThemeToggle";
 import AuthProvider from "./components/AuthProvider";
 import UserNav from "./components/UserNav";
+import AppSidebar from "./components/AppSidebar";
+import { prisma } from "@/lib/prisma";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const barlow = Barlow({
+  variable: "--font-barlow",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-ibm-plex-mono",
   subsets: ["latin"],
+  weight: ["400", "500"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -22,82 +26,129 @@ export const metadata: Metadata = {
   description: "Construction Intelligence Platform",
 };
 
-// Inline script that runs before React hydrates. Reads the persisted theme
-// preference and adds the matching class to <html> immediately, so the user
-// never sees a flash of the wrong theme on first paint.
-const themeBootstrapScript = `
-(function() {
-  try {
-    var stored = localStorage.getItem('construction-dashboard-theme');
-    var theme = (stored === 'light' || stored === 'dark') ? stored : 'dark';
-    var html = document.documentElement;
-    html.classList.remove('light', 'dark');
-    html.classList.add(theme);
-    html.style.colorScheme = theme;
-  } catch (e) {
-    document.documentElement.classList.add('dark');
-    document.documentElement.style.colorScheme = 'dark';
-  }
-})();
-`;
-
-export default function RootLayout({
+export default async function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
+
+  // ── Sidebar data ──────────────────────────────────────────────────────────
+  const oneDayAgo = new Date(Date.now() - 86_400_000);
+  const [bidCount, activeJob, activeBid, newSignals] = await Promise.all([
+    prisma.bid.count(),
+    prisma.backgroundJob.count({ where: { status: { in: ["queued", "running"] } } }),
+    prisma.bid.findFirst({
+      where: { OR: [{ workflowType: "PROJECT" }, { status: "awarded" }] },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        projectName: true,
+        location: true,
+        workflowType: true,
+        status: true,
+      },
+    }),
+    prisma.marketSignal.count({ where: { leadId: null, createdAt: { gte: oneDayAgo } } }),
+  ]);
+
+  // Submittal + brief data for the active project card
+  const [openSubmittals, hasBrief] = activeBid
+    ? await Promise.all([
+        prisma.submittalItem.count({
+          where: {
+            bidId: activeBid.id,
+            status: { in: ["PENDING", "REQUESTED", "RECEIVED", "UNDER_REVIEW"] },
+          },
+        }),
+        prisma.bidIntelligenceBrief.findFirst({
+          where: { bidId: activeBid.id },
+          select: { id: true },
+        }).then(Boolean),
+      ])
+    : [0, false];
+
+  const activeProject = activeBid
+    ? {
+        id:             activeBid.id,
+        projectName:    activeBid.projectName,
+        location:       activeBid.location,
+        workflowType:   activeBid.workflowType,
+        status:         activeBid.status,
+        openSubmittals,
+        hasBrief,
+      }
+    : null;
+
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${barlow.variable} ${ibmPlexMono.variable} dark h-full antialiased`}
       suppressHydrationWarning
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
-      </head>
-      <body className="min-h-full flex flex-col bg-white text-gray-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <body className="min-h-full flex flex-col">
         <AuthProvider>
           <ThemeProvider>
-            <nav className="border-b border-gray-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="max-w-6xl mx-auto px-4 flex items-center gap-6 h-12">
-                <span className="font-semibold text-sm tracking-tight text-gray-900 dark:text-zinc-100">
-                  Groundwor<span className="text-emerald-500">X</span>
-                </span>
-                <Link
-                  href="/bids"
-                  className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+
+            {/* ── Topbar ──────────────────────────────────────────────── */}
+            <header
+              className="sticky top-0 z-50 flex items-center justify-between px-[22px] h-[62px] border-b shrink-0"
+              style={{
+                borderColor: "var(--line)",
+                background: "rgba(8,10,13,0.88)",
+                backdropFilter: "blur(16px)",
+              }}
+            >
+              {/* Brand */}
+              <div className="flex items-center gap-3.5">
+                <div className="flex items-center gap-3">
+                  <span
+                    className="select-none"
+                    style={{ fontWeight: 900, fontSize: "20px", letterSpacing: "-0.05em", color: "var(--text)" }}
+                  >
+                    NEURO
+                  </span>
+                  <div
+                    style={{
+                      width: "2px", height: "22px",
+                      background: "var(--signal)",
+                      boxShadow: "0 0 14px rgba(0,255,100,0.35)",
+                    }}
+                  />
+                  <span
+                    className="select-none"
+                    style={{ fontWeight: 900, fontSize: "20px", letterSpacing: "-0.05em", color: "rgba(255,255,255,0.18)" }}
+                  >
+                    GLITCH
+                  </span>
+                </div>
+                <div
+                  style={{
+                    paddingLeft: "14px",
+                    borderLeft: "1px solid var(--line)",
+                    fontSize: "16px", fontWeight: 700,
+                    letterSpacing: "-0.03em",
+                    color: "rgba(255,255,255,0.78)",
+                  }}
                 >
-                  Projects
-                </Link>
-                <Link
-                  href="/subcontractors"
-                  className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-                >
-                  Subcontractors
-                </Link>
-                <Link
-                  href="/outreach"
-                  className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-                >
-                  Outreach
-                </Link>
-                <Link
-                  href="/reports"
-                  className="text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-                >
-                  Reports
-                </Link>
-                <Link
-                  href="/settings"
-                  className="ml-auto text-sm text-gray-600 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-                >
-                  Settings
-                </Link>
-                <UserNav />
-                <ThemeToggle />
+                  Groundwor<span style={{ color: "var(--signal)" }}>X</span>
+                </div>
               </div>
-            </nav>
-            {children}
+
+              {/* Right — user */}
+              <div className="flex items-center gap-3">
+                <UserNav />
+              </div>
+            </header>
+
+            {/* ── Below topbar: sidebar + main ────────────────────────── */}
+            <div className="flex flex-1 min-h-0">
+              <AppSidebar
+                counts={{ projects: bidCount, activeJobs: activeJob, newSignals }}
+                activeProject={activeProject}
+              />
+              <main className="flex-1 min-w-0 overflow-y-auto">
+                {children}
+              </main>
+            </div>
+
           </ThemeProvider>
         </AuthProvider>
       </body>
