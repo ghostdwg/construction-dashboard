@@ -92,10 +92,17 @@ export default function AppSidebar({
         active={isActive("/submittals")}
       />
       <SidebarItem
+        href="/tasks"
+        label="Tasks"
+        sub="action items + manual tasks"
+        meta={counts.openActionItems > 0 ? String(counts.openActionItems) : "—"}
+        active={isActive("/tasks")}
+      />
+      <SidebarItem
         href="/meetings"
         label="Meetings"
-        sub="action items + follow-up"
-        meta={counts.openActionItems > 0 ? String(counts.openActionItems) : "—"}
+        sub="cross-project meeting log"
+        meta="—"
         active={isActive("/meetings")}
       />
 

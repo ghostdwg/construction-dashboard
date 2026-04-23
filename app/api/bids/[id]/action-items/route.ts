@@ -47,9 +47,9 @@ export async function GET(
     actionItems: sorted.map((item) => ({
       id: item.id,
       meetingId: item.meetingId,
-      meetingTitle: item.meeting.title,
-      meetingType: item.meeting.meetingType,
-      meetingDate: item.meeting.meetingDate.toISOString(),
+      meetingTitle: item.meeting?.title ?? null,
+      meetingType: item.meeting?.meetingType ?? null,
+      meetingDate: item.meeting?.meetingDate?.toISOString() ?? null,
       description: item.description,
       assignedToName: item.assignedToName,
       dueDate: item.dueDate?.toISOString() ?? null,

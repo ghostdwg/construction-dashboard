@@ -1151,7 +1151,8 @@ model MeetingParticipant {
 model MeetingActionItem {
   id             Int       @id @default(autoincrement())
   bidId          Int
-  meetingId      Int
+  meetingId      Int?      // null for manually created tasks
+  source         String    @default("meeting")  // "meeting" | "manual"
   description    String
   assignedToId   Int?      // FK to MeetingParticipant
   assignedToName String?   // denormalized — survives participant edits
@@ -1166,13 +1167,14 @@ model MeetingActionItem {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  bid        Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  meeting    Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  assignedTo MeetingParticipant? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  bid        Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meeting    Meeting?             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignedTo MeetingParticipant?  @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
 
   @@index([bidId])
   @@index([meetingId])
   @@index([status])
+  @@index([source])
 }
 
 // ── Tier F F2 — Procore REST API push history ───────────────────────────────
