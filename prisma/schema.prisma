@@ -724,15 +724,27 @@ model SubmittalPackage {
   defaultReviewers        String?   // JSON array: ["GC PM", "Architect"]
   defaultDistribution     String?   // JSON array: ["Owner Rep", "Inspector"]
 
+  // Orchestrator — timing defaults inherited by items lacking individual overrides
+  defaultLeadTimeDays       Int?
+  defaultReviewBufferDays   Int?
+  defaultResubmitBufferDays Int?
+
+  // Orchestrator — schedule linkage + risk + export readiness
+  linkedActivityId  String?
+  riskStatus        String   @default("NONE")   // NONE | AT_RISK | BLOCKED
+  readyForExport    Boolean  @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bid      Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  bidTrade BidTrade?       @relation(fields: [bidTradeId], references: [id])
-  items    SubmittalItem[]
+  bid             Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidTrade        BidTrade?            @relation(fields: [bidTradeId], references: [id])
+  linkedActivity  ScheduleActivityV2?  @relation(fields: [linkedActivityId], references: [id], onDelete: SetNull)
+  items           SubmittalItem[]
 
   @@unique([bidId, packageNumber])
   @@index([bidId])
+  @@index([linkedActivityId])
 }
 
 // Module CSI1 — Canonical CSI MasterFormat 2020 reference
@@ -970,9 +982,10 @@ model ScheduleActivityV2 {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  predecessors ScheduleDependency[] @relation("SuccessorActivity")
-  successors   ScheduleDependency[] @relation("PredecessorActivity")
-  submittals   SubmittalItem[]
+  predecessors       ScheduleDependency[] @relation("SuccessorActivity")
+  successors         ScheduleDependency[] @relation("PredecessorActivity")
+  submittals         SubmittalItem[]
+  submittalPackages  SubmittalPackage[]
 
   @@index([scheduleId])
   @@index([scheduleId, sortOrder])
@@ -1086,10 +1099,16 @@ model Meeting {
   transcriptionJobId  String?   // AssemblyAI transcript_id or WhisperX job id
   rawTranscript       String?   // full JSON blob from transcription service
   transcript          String?   // speaker-labeled formatted text for display + Claude
-  summary             String?   // Claude-generated 2-3 paragraph summary
-  keyDecisions        String    @default("[]")   // JSON: string[]
-  risks               String    @default("[]")   // JSON: { description, severity }[]
-  followUpItems       String    @default("[]")   // JSON: string[] (non-assigned open items)
+  summary             String?   // Claude-generated 2-3 sentence overview (§3)
+  keyDecisions        String    @default("[]")   // JSON: string[]                       (§4)
+  risks               String    @default("[]")   // JSON: { description, severity }[]    (legacy)
+  followUpItems       String    @default("[]")   // JSON: string[]                       (legacy)
+  // ── 8-section analysis output fields ──────────────────────────────────────
+  openIssues          String    @default("[]")   // JSON: MeetingOpenIssue[]             (§6)
+  redFlags            String    @default("[]")   // JSON: MeetingRedFlag[]               (§7)
+  reviewStatus        String    @default("DRAFT") // "DRAFT" | "IN_REVIEW" | "PUBLISHED"
+  publishedAt         DateTime?
+  analysisVersion     Int       @default(0)      // increments on each re-analysis
   uploadedAt          DateTime?
   analyzedAt          DateTime?
   createdAt           DateTime  @default(now())
@@ -1112,7 +1131,10 @@ model MeetingParticipant {
   name             String
   role             String?
   company          String?
-  speakerLabel     String?  // "SPEAKER_A" etc. from AssemblyAI diarization
+  speakerLabel     String?  // "SPEAKER_A" / "ROOM_SPK_1" from diarization
+  speakerType      String?  // "REMOTE" | "IN_ROOM" | "UNKNOWN"
+  confidence       Float?   // 0.0–1.0 identity confidence from AI inference
+  isGcTeam         Boolean  @default(false) // GC team member — drives §8 bold + filter
   projectContactId Int?
 
   meeting        Meeting         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
@@ -1136,7 +1158,9 @@ model MeetingActionItem {
   dueDate        DateTime?
   priority       String    @default("MEDIUM")
   status         String    @default("OPEN")
-  sourceText     String?   // verbatim quote from transcript
+  sourceText     String?   // paraphrased evidence excerpt from transcript
+  isGcTask       Boolean   @default(false) // GC team task — populates §8
+  carriedFromDate String?  // ISO date of meeting where this first appeared
   closedAt       DateTime?
   notes          String?
   createdAt      DateTime  @default(now())

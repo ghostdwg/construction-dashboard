@@ -131,6 +131,23 @@ export const AI_CALL_DEFINITIONS = {
     },
     recommended: "standard",
   },
+  "meeting-analysis": {
+    label: "Meeting Intelligence Analysis",
+    description:
+      "Extracts 8-section structured analysis from a meeting transcript: participants, overview, decisions, action items, open issues, red flags, and GC-only action items. Transcript size drives input token usage — longer meetings need extended output.",
+    model: "claude-sonnet-4-6",
+    typicalInputTokens: 25000,
+    defaultMaxTokens: 8192,
+    minTokens: 4096,
+    maxAllowedTokens: 16000,
+    presets: {
+      minimal: 4096,
+      standard: 8192,
+      extended: 12000,
+      maximum: 16000,
+    },
+    recommended: "standard",
+  },
 } as const satisfies Record<string, CallDefinition>;
 
 export type CallKey = keyof typeof AI_CALL_DEFINITIONS;

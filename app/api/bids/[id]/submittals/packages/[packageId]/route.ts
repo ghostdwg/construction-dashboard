@@ -41,6 +41,10 @@ export async function PATCH(
     status?: string;
     responsibleContractor?: string | null;
     submittalManager?: string | null;
+    linkedActivityId?: string | null;
+    defaultLeadTimeDays?: number | null;
+    defaultReviewBufferDays?: number | null;
+    defaultResubmitBufferDays?: number | null;
   };
 
   const data: Record<string, unknown> = {};
@@ -50,6 +54,14 @@ export async function PATCH(
     data.responsibleContractor = body.responsibleContractor;
   if ("submittalManager" in body)
     data.submittalManager = body.submittalManager;
+  if ("linkedActivityId" in body)
+    data.linkedActivityId = body.linkedActivityId ?? null;
+  if ("defaultLeadTimeDays" in body)
+    data.defaultLeadTimeDays = typeof body.defaultLeadTimeDays === "number" ? body.defaultLeadTimeDays : null;
+  if ("defaultReviewBufferDays" in body)
+    data.defaultReviewBufferDays = typeof body.defaultReviewBufferDays === "number" ? body.defaultReviewBufferDays : null;
+  if ("defaultResubmitBufferDays" in body)
+    data.defaultResubmitBufferDays = typeof body.defaultResubmitBufferDays === "number" ? body.defaultResubmitBufferDays : null;
 
   await prisma.submittalPackage.update({ where: { id: pkgId }, data });
   return Response.json({ ok: true });

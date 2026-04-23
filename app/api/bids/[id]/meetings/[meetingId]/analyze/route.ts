@@ -1,143 +1,149 @@
 // POST /api/bids/[id]/meetings/[meetingId]/analyze
 //
-// Sends the meeting transcript to the sidecar for Claude analysis.
-// Saves the resulting summary, action items, decisions, risks, and
-// follow-up items to the database. Idempotent — re-running replaces
-// prior AI-generated action items (manual items are preserved).
+// Runs the 8-section meeting intelligence analysis against the stored
+// transcript using the Claude API directly.
+//
+// Body (all optional):
+//   transcript  — override the stored transcript (manual paste)
+//   mode        — "full" | "actions_only" | "flags_only"  (default: "full")
+//
+// Prior open items are fetched automatically from the most recent prior
+// analyzed meeting on the same project — no manual paste required.
+//
+// Returns:
+//   { ok, analysisVersion, participantsResolved, actionItemsCreated,
+//     decisionsFound, openIssuesFound, redFlagsFound }
 
+import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
-
-const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
-const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
-
-type ExtractedActionItem = {
-  description?: string;
-  assignedTo?: string;
-  dueDate?: string | null;
-  priority?: string;
-  sourceText?: string;
-};
-
-type ExtractedRisk = {
-  description?: string;
-  severity?: string;
-};
-
-const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
-
-function normalizePriority(raw: string | undefined): string {
-  const p = (raw ?? "MEDIUM").toUpperCase();
-  return VALID_PRIORITIES.has(p) ? p : "MEDIUM";
-}
+import { getSetting } from "@/lib/services/settings/appSettingsService";
+import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
+import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import {
+  buildAnalysisPrompt,
+  getPriorOpenItems,
+  parseMeetingAnalysis,
+  writeMeetingAnalysis,
+} from "@/lib/meeting-analysis";
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string; meetingId: string }> }
+  { params }: { params: Promise<{ id: string; meetingId: string }> },
 ) {
   const { id, meetingId } = await params;
   const bidId = parseInt(id, 10);
-  const mId = parseInt(meetingId, 10);
+  const mId   = parseInt(meetingId, 10);
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
 
-  const meeting = await prisma.meeting.findFirst({
-    where: { id: mId, bidId },
-    select: { id: true, title: true, meetingType: true, transcript: true, bid: { select: { projectName: true } } },
-  });
-  if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
-  if (!meeting.transcript?.trim())
-    return Response.json({ error: "No transcript — upload audio or enter transcript manually" }, { status: 400 });
-
-  // Optionally accept transcript override in body (for manual paste)
-  const body = await request.json().catch(() => ({})) as { transcript?: string };
-  const transcriptText = body.transcript?.trim() || meeting.transcript;
-
-  await prisma.meeting.update({
-    where: { id: mId },
-    data: { status: "ANALYZING" },
-  });
-
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
-
-  try {
-    const res = await fetch(`${SIDECAR_URL}/meetings/analyze`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        transcript: transcriptText,
-        meetingTitle: meeting.title,
-        meetingType: meeting.meetingType,
-        projectName: meeting.bid.projectName,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Sidecar error" }));
-      await prisma.meeting.update({ where: { id: mId }, data: { status: "READY" } });
-      return Response.json({ error: err.detail ?? "Analysis failed" }, { status: 502 });
-    }
-
-    const data = (await res.json()) as {
-      summary?: string;
-      actionItems?: ExtractedActionItem[];
-      keyDecisions?: string[];
-      risks?: ExtractedRisk[];
-      followUpItems?: string[];
-    };
-
-    // Wipe prior AI-generated action items; keep manual ones
-    await prisma.meetingActionItem.deleteMany({
-      where: { meetingId: mId, sourceText: { not: null } },
-    });
-
-    const newItems = (data.actionItems ?? []).filter(
-      (a) => a.description?.trim()
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey)
+    return Response.json(
+      { error: "ANTHROPIC_API_KEY not configured — set it in /settings → AI Configuration" },
+      { status: 503 },
     );
 
-    await prisma.$transaction(async (tx) => {
-      await tx.meeting.update({
-        where: { id: mId },
-        data: {
-          status: "READY",
-          summary: data.summary ?? null,
-          keyDecisions: JSON.stringify(data.keyDecisions ?? []),
-          risks: JSON.stringify(
-            (data.risks ?? []).map((r) => ({
-              description: r.description ?? "",
-              severity: (r.severity ?? "MEDIUM").toUpperCase(),
-            }))
-          ),
-          followUpItems: JSON.stringify(data.followUpItems ?? []),
-          analyzedAt: new Date(),
-        },
-      });
+  // Load meeting + project context
+  const meeting = await prisma.meeting.findFirst({
+    where: { id: mId, bidId },
+    select: {
+      id: true,
+      title: true,
+      meetingType: true,
+      transcript: true,
+      analysisVersion: true,
+      bid: { select: { projectName: true } },
+      participants: {
+        select: { name: true, role: true, company: true, speakerLabel: true, isGcTeam: true },
+      },
+    },
+  });
+  if (!meeting) return Response.json({ error: "Meeting not found" }, { status: 404 });
 
-      if (newItems.length > 0) {
-        await tx.meetingActionItem.createMany({
-          data: newItems.map((item) => ({
-            bidId,
-            meetingId: mId,
-            description: item.description!.trim(),
-            assignedToName: item.assignedTo?.trim() || null,
-            dueDate: item.dueDate ? new Date(item.dueDate) : null,
-            priority: normalizePriority(item.priority),
-            status: "OPEN",
-            sourceText: item.sourceText?.slice(0, 500) || null,
-          })),
-        });
-      }
+  const body = await request.json().catch(() => ({})) as {
+    transcript?: string;
+    mode?: "full" | "actions_only" | "flags_only";
+  };
+
+  const transcriptText = body.transcript?.trim() || meeting.transcript?.trim();
+  if (!transcriptText)
+    return Response.json(
+      { error: "No transcript — upload audio or paste transcript before analyzing" },
+      { status: 400 },
+    );
+
+  const mode = body.mode ?? "full";
+
+  // Build speaker roster string from resolved participants
+  const speakerRoster = meeting.participants.length
+    ? meeting.participants
+        .map(p => `${p.speakerLabel ?? "?"} → ${p.name}${p.role ? ` (${p.role})` : ""}${p.company ? `, ${p.company}` : ""}`)
+        .join("\n")
+    : "";
+
+  // GC team member names for §8 tagging
+  const gcTeamMembers = meeting.participants
+    .filter(p => p.isGcTeam)
+    .map(p => p.name);
+
+  // Auto-fetch prior open items — no manual paste needed
+  const priorOpenItems = await getPriorOpenItems(mId, bidId);
+
+  await prisma.meeting.update({ where: { id: mId }, data: { status: "ANALYZING" } });
+
+  try {
+    const prompt = buildAnalysisPrompt({
+      transcript: transcriptText,
+      projectName: meeting.bid.projectName,
+      speakerRoster,
+      gcTeamMembers,
+      priorOpenItems,
+      mode,
+    });
+
+    const client = new Anthropic({ apiKey });
+    const maxTokens = await getMaxTokens("meeting-analysis");
+
+    const message = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: maxTokens,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    await logAiUsage({
+      callKey: "meeting-analysis",
+      model: "claude-sonnet-4-6",
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      bidId,
+    });
+
+    const textBlock = message.content.find(b => b.type === "text");
+    if (!textBlock || textBlock.type !== "text")
+      throw new Error("Claude returned no text content");
+
+    const analysis = parseMeetingAnalysis(textBlock.text);
+
+    await writeMeetingAnalysis(mId, bidId, analysis);
+
+    await prisma.meeting.update({
+      where: { id: mId },
+      data: { status: "READY" },
     });
 
     return Response.json({
       ok: true,
-      summary: data.summary,
-      actionItemsCreated: newItems.length,
-      decisionsFound: (data.keyDecisions ?? []).length,
-      risksFound: (data.risks ?? []).length,
+      analysisVersion: meeting.analysisVersion + 1,
+      participantsResolved: analysis.section2.length,
+      actionItemsCreated: analysis.section5.length,
+      decisionsFound: analysis.section4.length,
+      openIssuesFound: analysis.section6.length,
+      redFlagsFound: analysis.section7.length,
     });
   } catch (err) {
     await prisma.meeting.update({ where: { id: mId }, data: { status: "READY" } });
-    return Response.json({ error: String(err) }, { status: 502 });
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[POST /analyze] error:", err);
+    return Response.json({ error: message }, { status: 500 });
   }
 }

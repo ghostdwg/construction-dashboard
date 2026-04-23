@@ -32,7 +32,7 @@ const ITEM_SELECT = {
   type: true,
   status: true,
   requiredBy: true,
-  specSection: { select: { csiNumber: true, aiExtractions: true } },
+  specSection: { select: { csiNumber: true, csiTitle: true, csiCanonicalTitle: true, aiExtractions: true } },
   responsibleSubId: true,
   responsibleSub: { select: { id: true, company: true } },
   reviewer: true,
@@ -55,7 +55,7 @@ type DbItem = {
   type: string;
   status: string;
   requiredBy: Date | null;
-  specSection: { csiNumber: string; aiExtractions: string | null } | null;
+  specSection: { csiNumber: string; csiTitle: string; csiCanonicalTitle: string | null; aiExtractions: string | null } | null;
   responsibleSubId: number | null;
   responsibleSub: { id: number; company: string } | null;
   reviewer: string | null;
@@ -82,6 +82,7 @@ function mapItem(it: DbItem, now: number) {
     status: it.status,
     requiredBy: it.requiredBy?.toISOString() ?? null,
     specSectionNumber: it.specSection?.csiNumber ?? null,
+    specSectionTitle: it.specSection?.csiCanonicalTitle ?? it.specSection?.csiTitle ?? null,
     responsibleSubId: it.responsibleSubId,
     responsibleSubName: it.responsibleSub?.company ?? null,
     reviewer: it.reviewer,
@@ -156,6 +157,13 @@ export async function GET(
       status: pkg.status,
       responsibleContractor: pkg.responsibleContractor,
       submittalManager: pkg.submittalManager,
+      // Orchestrator fields
+      linkedActivityId: pkg.linkedActivityId,
+      riskStatus: pkg.riskStatus,
+      readyForExport: pkg.readyForExport,
+      defaultLeadTimeDays: pkg.defaultLeadTimeDays,
+      defaultReviewBufferDays: pkg.defaultReviewBufferDays,
+      defaultResubmitBufferDays: pkg.defaultResubmitBufferDays,
       total,
       approved,
       overdue,

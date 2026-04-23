@@ -19,7 +19,6 @@ import {
   ChevronRight,
   Check,
   Clock,
-  AlertTriangle,
   Loader2,
   Trash2,
   FileText,
@@ -62,6 +61,9 @@ type Participant = {
   company: string | null;
   speakerLabel: string | null;
   projectContactId: number | null;
+  confidence: number | null;
+  isGcTeam: boolean;
+  speakerType: string | null;
 };
 
 type ActionItem = {
@@ -76,7 +78,20 @@ type ActionItem = {
   sourceText: string | null;
   closedAt: string | null;
   notes: string | null;
+  isGcTask: boolean;
+  carriedFromDate: string | null;
   createdAt: string;
+};
+
+type MeetingOpenIssue = {
+  text: string;
+  reason: string;
+  carriedFrom: string | null;
+};
+
+type MeetingRedFlag = {
+  tag: string;
+  description: string;
 };
 
 type MeetingDetail = {
@@ -93,8 +108,10 @@ type MeetingDetail = {
   transcript: string | null;
   summary: string | null;
   keyDecisions: string[];
-  risks: { description: string; severity: string }[];
-  followUpItems: string[];
+  openIssues: MeetingOpenIssue[];
+  redFlags: MeetingRedFlag[];
+  analysisVersion: number;
+  reviewStatus: string;
   uploadedAt: string | null;
   analyzedAt: string | null;
   participants: Participant[];
@@ -152,22 +169,59 @@ function isActive(status: MeetingStatus) {
   return status === "UPLOADING" || status === "TRANSCRIBING" || status === "ANALYZING";
 }
 
+const RED_FLAG_CONFIG: Record<string, { bg: string; text: string }> = {
+  DELAY:      { bg: "bg-amber-100 dark:bg-amber-900/30",   text: "text-amber-700 dark:text-amber-300" },
+  COST:       { bg: "bg-yellow-100 dark:bg-yellow-900/30", text: "text-yellow-700 dark:text-yellow-300" },
+  RISK:       { bg: "bg-orange-100 dark:bg-orange-900/30", text: "text-orange-700 dark:text-orange-300" },
+  DISPUTE:    { bg: "bg-red-100 dark:bg-red-900/30",       text: "text-red-700 dark:text-red-400" },
+  SAFETY:     { bg: "bg-red-200 dark:bg-red-900/40",       text: "text-red-800 dark:text-red-300" },
+  COMPLIANCE: { bg: "bg-blue-100 dark:bg-blue-900/30",     text: "text-blue-700 dark:text-blue-300" },
+};
+
+function confidenceDotClass(conf: number | null): string {
+  if (conf === null || conf < 0.5) return "bg-red-400";
+  if (conf < 0.75) return "bg-amber-400";
+  return "bg-emerald-400";
+}
+
+function fmtShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function MeetingsTab({ bidId }: { bidId: number }) {
   const [meetings, setMeetings] = useState<MeetingSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [view, setView] = useState<"meetings" | "actions">("meetings");
 
   const loadMeetings = useCallback(async () => {
-    const res = await fetch(`/api/bids/${bidId}/meetings`);
-    if (res.ok) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/meetings`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
       const data = await res.json();
       setMeetings(data.meetings);
+      setLoadError(null);
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        setLoadError("Meetings load timed out");
+      } else {
+        setLoadError(e instanceof Error ? e.message : "Failed to load meetings");
+      }
+    } finally {
+      clearTimeout(timeout);
+      setLoading(false);
     }
-    setLoading(false);
   }, [bidId]);
 
   useEffect(() => { loadMeetings(); }, [loadMeetings]);
@@ -229,11 +283,23 @@ export default function MeetingsTab({ bidId }: { bidId: number }) {
         </div>
       )}
 
-      {!loading && view === "actions" && (
+      {!loading && loadError && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between gap-3 dark:border-red-900/60 dark:bg-red-900/20">
+          <p className="text-sm text-red-700 dark:text-red-300">Failed to load meetings: {loadError}</p>
+          <button
+            onClick={loadMeetings}
+            className="shrink-0 rounded border border-red-300 bg-white px-3 py-1.5 text-xs text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-900/20"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!loading && !loadError && view === "actions" && (
         <AllActionItemsView bidId={bidId} meetings={meetings} onReload={loadMeetings} />
       )}
 
-      {!loading && view === "meetings" && meetings.length === 0 && (
+      {!loading && !loadError && view === "meetings" && meetings.length === 0 && (
         <div className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 py-12 text-center">
           <Mic className="h-8 w-8 mx-auto text-zinc-300 dark:text-zinc-600 mb-3" />
           <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">No meetings yet</p>
@@ -243,7 +309,7 @@ export default function MeetingsTab({ bidId }: { bidId: number }) {
         </div>
       )}
 
-      {!loading && view === "meetings" && meetings.map((m) => (
+      {!loading && !loadError && view === "meetings" && meetings.map((m) => (
         <MeetingRow
           key={m.id}
           meeting={m}
@@ -273,19 +339,28 @@ function AddMeetingForm({
   const [type, setType] = useState<MeetingType>("GENERAL");
   const [location, setLocation] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   async function save() {
     if (!title.trim()) return;
     setSaving(true);
-    const res = await fetch(`/api/bids/${bidId}/meetings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, meetingDate: date, meetingType: type, location }),
-    });
-    setSaving(false);
-    if (res.ok) {
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/meetings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, meetingDate: date, meetingType: type, location }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
       const data = await res.json();
       onSaved(data.id);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Failed to create meeting");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -334,6 +409,9 @@ function AddMeetingForm({
           />
         </div>
       </div>
+      {saveError && (
+        <p className="text-xs text-red-600 dark:text-red-400">{saveError}</p>
+      )}
       <div className="flex gap-2 justify-end">
         <button
           onClick={onCancel}
@@ -370,15 +448,20 @@ function MeetingRow({
 }) {
   const [detail, setDetail] = useState<MeetingDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const statusCfg = STATUS_CONFIG[meeting.status];
 
   useEffect(() => {
     if (!expanded) return;
     setLoadingDetail(true);
+    setDetailError(null);
     fetch(`/api/bids/${bidId}/meetings/${meeting.id}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<MeetingDetail>;
+      })
       .then((d) => { setDetail(d); setLoadingDetail(false); })
-      .catch(() => setLoadingDetail(false));
+      .catch((e: Error) => { setDetailError(e.message); setLoadingDetail(false); });
   }, [expanded, bidId, meeting.id]);
 
   async function deleteMeeting() {
@@ -441,17 +524,26 @@ function MeetingRow({
               <Loader2 className="h-4 w-4 animate-spin" /> Loading…
             </div>
           )}
-          {!loadingDetail && detail && (
+          {!loadingDetail && detailError && (
+            <p className="text-sm text-red-600 dark:text-red-400 py-3">
+              Failed to load meeting detail: {detailError}
+            </p>
+          )}
+          {!loadingDetail && detail && !detailError && (
             <MeetingDetailPanel
               bidId={bidId}
               detail={detail}
               onReload={() => {
                 onReload();
                 setLoadingDetail(true);
+                setDetailError(null);
                 fetch(`/api/bids/${bidId}/meetings/${detail.id}`)
-                  .then((r) => r.json())
+                  .then((r) => {
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    return r.json() as Promise<MeetingDetail>;
+                  })
                   .then((d) => { setDetail(d); setLoadingDetail(false); })
-                  .catch(() => setLoadingDetail(false));
+                  .catch((e: Error) => { setDetailError(e.message); setLoadingDetail(false); });
               }}
             />
           )}
@@ -690,22 +782,44 @@ function MeetingDetailPanel({
           )}
 
           {detail.summary && (
-            <div className="space-y-4">
+            <div className="space-y-5">
+
+              {/* §2 Participants */}
+              {detail.participants.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {detail.participants.map((p) => (
+                    <span
+                      key={p.id}
+                      className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
+                    >
+                      <span className={`h-2 w-2 rounded-full shrink-0 ${confidenceDotClass(p.confidence)}`} />
+                      <span className="text-zinc-800 dark:text-zinc-200">{p.name}</span>
+                      {p.role && <span className="text-zinc-400 dark:text-zinc-500">{p.role}</span>}
+                      {p.isGcTeam && (
+                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">GC</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* §3 Overview */}
               <div>
                 <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-1.5">
-                  Summary
+                  Overview
                 </p>
-                <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed">
                   {detail.summary}
                 </p>
               </div>
 
+              {/* §4 Key Decisions */}
               {detail.keyDecisions.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-1.5">
                     Key Decisions
                   </p>
-                  <ul className="space-y-1">
+                  <ul className="space-y-1.5">
                     {detail.keyDecisions.map((d, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300">
                         <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
@@ -716,49 +830,114 @@ function MeetingDetailPanel({
                 </div>
               )}
 
-              {detail.risks.length > 0 && (
+              {/* §7 Red Flags */}
+              {detail.redFlags.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-2">
+                    Red Flags
+                  </p>
+                  <div className="space-y-2">
+                    {detail.redFlags.map((f, i) => {
+                      const cfg = RED_FLAG_CONFIG[f.tag] ?? RED_FLAG_CONFIG.RISK;
+                      return (
+                        <div key={i} className={`flex items-start gap-2.5 px-3 py-2 rounded ${cfg.bg}`}>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border border-current shrink-0 ${cfg.text}`}>
+                            {f.tag}
+                          </span>
+                          <span className={`text-xs leading-relaxed ${cfg.text}`}>{f.description}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* §6 Open Issues */}
+              {detail.openIssues.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-1.5">
-                    Risks Identified
+                    Open Issues
                   </p>
-                  <ul className="space-y-1.5">
-                    {detail.risks.map((r, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <AlertTriangle className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${
-                          r.severity === "CRITICAL" ? "text-red-500" :
-                          r.severity === "HIGH" ? "text-orange-500" : "text-amber-500"
-                        }`} />
-                        <span className="text-zinc-700 dark:text-zinc-300">{r.description}</span>
-                        <span className={`text-[10px] font-medium ml-auto shrink-0 ${
-                          r.severity === "CRITICAL" ? "text-red-500" :
-                          r.severity === "HIGH" ? "text-orange-500" : "text-amber-500"
-                        }`}>{r.severity}</span>
+                  <ul className="space-y-2">
+                    {detail.openIssues.map((iss, i) => (
+                      <li
+                        key={i}
+                        className="rounded border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm bg-white dark:bg-zinc-900"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-zinc-900 dark:text-zinc-100">{iss.text}</span>
+                          {iss.carriedFrom && (
+                            <span className="shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 whitespace-nowrap">
+                              carried {fmtShortDate(iss.carriedFrom)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{iss.reason}</p>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {detail.followUpItems.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-1.5">
-                    Follow-up Items
-                  </p>
-                  <ul className="space-y-1">
-                    {detail.followUpItems.map((f, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-                        <Clock className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
-                        {f}
-                      </li>
-                    ))}
+              {/* §8 GC-only action items */}
+              {detail.actionItems.some((a) => a.isGcTask && a.status !== "CLOSED") && (
+                <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">
+                      GC Action Items
+                    </p>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-500">
+                      {detail.actionItems.filter((a) => a.isGcTask && a.status !== "CLOSED").length} open
+                    </span>
+                  </div>
+                  <ul className="space-y-2">
+                    {detail.actionItems
+                      .filter((a) => a.isGcTask && a.status !== "CLOSED")
+                      .map((item) => (
+                        <li key={item.id} className="flex items-start gap-2">
+                          <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 mt-2 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                              {item.description}
+                            </span>
+                            <div className="flex items-center gap-2 mt-0.5 text-xs text-zinc-500 dark:text-zinc-400 flex-wrap">
+                              {item.assignedToName && <span>→ {item.assignedToName}</span>}
+                              {item.dueDate && (
+                                <span className="flex items-center gap-0.5">
+                                  <Clock className="h-3 w-3" />
+                                  {fmtShortDate(item.dueDate)}
+                                </span>
+                              )}
+                              {item.carriedFromDate && (
+                                <span className="text-amber-600 dark:text-amber-400">
+                                  carried {fmtShortDate(item.carriedFromDate)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
                   </ul>
                 </div>
               )}
 
-              <div className="flex items-center justify-between pt-1">
-                <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                  Analyzed {detail.analyzedAt ? fmtDate(detail.analyzedAt) : ""}
-                </p>
+              {/* Footer */}
+              <div className="flex items-center justify-between pt-1 border-t border-zinc-100 dark:border-zinc-800">
+                <div className="flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+                  <span>v{detail.analysisVersion}</span>
+                  <span>·</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    detail.reviewStatus === "PUBLISHED"
+                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      : detail.reviewStatus === "IN_REVIEW"
+                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                      : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                  }`}>
+                    {detail.reviewStatus}
+                  </span>
+                  <span>·</span>
+                  <span>Analyzed {detail.analyzedAt ? fmtDate(detail.analyzedAt) : "—"}</span>
+                </div>
                 <button
                   onClick={runAnalysis}
                   disabled={analyzing}
