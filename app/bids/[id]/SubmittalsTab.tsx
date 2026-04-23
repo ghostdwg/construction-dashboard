@@ -93,6 +93,7 @@ type PackageItemRow = {
   status: string;
   requiredBy: string | null;
   specSectionNumber: string | null;
+  specSectionTitle: string | null;
   responsibleSubId: number | null;
   responsibleSubName: string | null;
   reviewer: string | null;
@@ -139,6 +140,13 @@ type PackageRow = {
   status: string;
   responsibleContractor: string | null;
   submittalManager: string | null;
+  // Orchestrator fields
+  linkedActivityId: string | null;
+  riskStatus: string;
+  readyForExport: boolean;
+  defaultLeadTimeDays: number | null;
+  defaultReviewBufferDays: number | null;
+  defaultResubmitBufferDays: number | null;
   total: number;
   approved: number;
   overdue: number;
@@ -246,10 +254,17 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  const [showProcurement, setShowProcurement] = useState(false);
+  const [orchestrating, setOrchestrating] = useState(false);
+  const [orchResult, setOrchResult] = useState<{
+    packagesProcessed: number; itemsUpdated: number; linked: number;
+    atRisk: number; blocked: number; readyForExport: number; warnings: string[];
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     setLoading(true);
     (async () => {
       try {
@@ -269,15 +284,20 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
         setError(null);
       } catch (e) {
         if (cancelled) return;
-        if ((e as Error).name === "AbortError") return;
+        if ((e as Error).name === "AbortError") {
+          setError("Submittals load timed out");
+          return;
+        }
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         if (!cancelled) setLoading(false);
+        clearTimeout(timeout);
       }
     })();
     return () => {
       cancelled = true;
       controller.abort();
+      clearTimeout(timeout);
     };
   }, [bidId, reloadTick]);
 
@@ -408,6 +428,27 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     }
   }
 
+  async function runOrchestrate() {
+    setOrchestrating(true);
+    setOrchResult(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/procurement/orchestrate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoLink: true }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as typeof orchResult;
+      setOrchResult(data);
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOrchestrating(false);
+    }
+  }
+
   async function renamePackage(pkgId: number, name: string) {
     try {
       const res = await fetch(
@@ -527,6 +568,24 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             {showAddForm ? "Cancel" : "+ Item"}
           </button>
           <button
+            onClick={() => setShowProcurement(!showProcurement)}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+              showProcurement
+                ? "border-orange-400 bg-orange-50 text-orange-700 dark:border-orange-600 dark:bg-orange-900/30 dark:text-orange-300"
+                : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+          >
+            Procurement
+          </button>
+          <button
+            onClick={runOrchestrate}
+            disabled={orchestrating || packages.length === 0}
+            className="rounded-md border border-orange-300 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50 dark:border-orange-700 dark:bg-orange-900/20 dark:text-orange-300 dark:hover:bg-orange-900/40"
+            title="Links packages to schedule activities and computes backward submit-by dates"
+          >
+            {orchestrating ? "Orchestrating…" : "Orchestrate"}
+          </button>
+          <button
             onClick={runExport}
             disabled={exporting || totalItems === 0}
             className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
@@ -623,6 +682,103 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             <span className="ml-2 opacity-60">Drawing scope fully covered by specs.</span>
           )}
         </div>
+      )}
+
+      {/* ── Orchestrate result banner ── */}
+      {orchResult && (
+        <div className="rounded-md border border-orange-200 bg-orange-50 px-4 py-2 text-sm text-orange-700 dark:border-orange-800 dark:bg-orange-900/20 dark:text-orange-300">
+          Orchestrated {orchResult.packagesProcessed} packages · {orchResult.itemsUpdated} items updated
+          {orchResult.linked > 0 && ` · ${orchResult.linked} newly linked to schedule`}
+          {orchResult.blocked > 0 && ` · `}
+          {orchResult.blocked > 0 && <strong>{orchResult.blocked} blocked</strong>}
+          {orchResult.atRisk > 0 && ` · ${orchResult.atRisk} at risk`}
+          {orchResult.readyForExport > 0 && ` · ${orchResult.readyForExport} ready for export`}
+          {orchResult.warnings.map((w, i) => (
+            <span key={i} className="block mt-1 text-orange-500 dark:text-orange-400">{w}</span>
+          ))}
+        </div>
+      )}
+
+      {/* ── Procurement Control panel ── */}
+      {showProcurement && (
+        <section className="rounded-lg border border-orange-200 bg-orange-50/40 dark:border-orange-900/60 dark:bg-orange-950/20 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-orange-200 dark:border-orange-900/60">
+            <div>
+              <p className="text-xs font-semibold text-orange-800 dark:text-orange-300">Procurement Control</p>
+              <p className="text-[11px] text-orange-600 dark:text-orange-500 mt-0.5">
+                Schedule linkage · backward date math · export readiness
+              </p>
+            </div>
+            <div className="flex gap-2 items-center">
+              {(() => {
+                const blocked = packages.filter(p => p.riskStatus === "BLOCKED").length;
+                const atRisk = packages.filter(p => p.riskStatus === "AT_RISK").length;
+                const ready = packages.filter(p => p.readyForExport).length;
+                const unlinked = packages.filter(p => !p.linkedActivityId).length;
+                return (
+                  <div className="flex gap-3 text-[11px] font-mono">
+                    {blocked > 0 && <span className="text-red-600 dark:text-red-400">{blocked} blocked</span>}
+                    {atRisk > 0 && <span className="text-amber-600 dark:text-amber-400">{atRisk} at risk</span>}
+                    {unlinked > 0 && <span className="text-zinc-500 dark:text-zinc-400">{unlinked} unlinked</span>}
+                    <span className="text-emerald-600 dark:text-emerald-400">{ready} ready</span>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4">
+            {packages.map(pkg => {
+              const openCount = pkg.items.filter(i => i.status !== "APPROVED" && i.status !== "APPROVED_AS_NOTED").length;
+              const nearestSBD = pkg.items
+                .map(i => i.submitByDate)
+                .filter((d): d is string => d !== null)
+                .sort()[0] ?? null;
+              const riskColor = pkg.riskStatus === "BLOCKED"
+                ? "border-red-300 dark:border-red-800 bg-red-50/60 dark:bg-red-950/30"
+                : pkg.riskStatus === "AT_RISK"
+                ? "border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20"
+                : "border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900";
+              const riskBadge = pkg.riskStatus === "BLOCKED"
+                ? <span className="text-[10px] font-mono font-semibold text-red-600 dark:text-red-400">BLOCKED</span>
+                : pkg.riskStatus === "AT_RISK"
+                ? <span className="text-[10px] font-mono font-semibold text-amber-600 dark:text-amber-400">AT RISK</span>
+                : <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">ON TRACK</span>;
+              return (
+                <div key={pkg.id} className={`rounded-md border p-3 flex flex-col gap-2 ${riskColor}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">{pkg.packageNumber}</p>
+                      <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 leading-tight">{pkg.name}</p>
+                    </div>
+                    {riskBadge}
+                  </div>
+                  <div className="flex flex-col gap-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                    <span>{openCount} open / {pkg.total} total</span>
+                    {nearestSBD && (
+                      <span>
+                        submit by{" "}
+                        <span className={new Date(nearestSBD) < new Date() ? "text-red-500 font-semibold" : "text-zinc-700 dark:text-zinc-300"}>
+                          {new Date(nearestSBD).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
+                      </span>
+                    )}
+                    {!pkg.linkedActivityId && (
+                      <span className="text-zinc-400 dark:text-zinc-500 italic">not linked to schedule</span>
+                    )}
+                  </div>
+                  {pkg.readyForExport && (
+                    <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">✓ ready for export</span>
+                  )}
+                </div>
+              );
+            })}
+            {packages.length === 0 && (
+              <p className="text-sm text-zinc-400 dark:text-zinc-500 col-span-3 text-center py-4">
+                No packages. Create packages and run Orchestrate to compute procurement dates.
+              </p>
+            )}
+          </div>
+        </section>
       )}
 
       {/* ── Distribution Routing Templates panel ── */}
@@ -987,7 +1143,7 @@ function SubmittalGridRow({
           </div>
           {item.specSectionNumber && (
             <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">
-              Spec {item.specSectionNumber}
+              {item.specSectionNumber}{item.specSectionTitle ? ` — ${item.specSectionTitle}` : ""}
             </div>
           )}
           {item.tradeName && (

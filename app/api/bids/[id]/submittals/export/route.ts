@@ -86,6 +86,7 @@ export async function POST(
       "Received From",
       "Type",
       "Status",
+      "Submit By Date",
       "Required On-Site Date",
       "Description",
     ];
@@ -98,12 +99,13 @@ export async function POST(
           item.submittalNumber,
           item.title,
           item.specSectionNumber,
-          item.responsibleSubName, // Responsible Contractor
-          "", // Submittal Manager — GC assigns later
-          "", // Received From — populated after submittal comes in
+          item.responsibleSubName,
+          "",
+          "",
           TYPE_TO_PROCORE[item.type] ?? "Other",
           STATUS_TO_PROCORE[item.status] ?? "Draft",
-          fmtIsoDate(item.requiredBy),
+          fmtIsoDate(item.submitByDate),
+          fmtIsoDate(item.requiredOnSiteDate),
           item.description,
         ])
       );
