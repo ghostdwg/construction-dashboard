@@ -209,6 +209,42 @@ async def analyze_meeting(body: AnalyzeRequest):
         raise HTTPException(status_code=500, detail=f"Analysis error: {e}")
 
 
+# ── Hybrid merge ─────────────────────────────────────────────────────────────
+
+class MergeHybridRequest(BaseModel):
+    rawTranscriptJson: str   # JSON string from GPU worker (has "segments")
+    vttContent: str          # Teams VTT text
+    timeOffsetSeconds: float = 0.0  # offset to align audio timestamps with VTT
+
+
+@router.post("/meetings/merge-hybrid")
+async def merge_hybrid_transcript(body: MergeHybridRequest):
+    """
+    Merge a WhisperX diarization result with a Teams VTT transcript.
+
+    Uses the VTT's named speakers (online participants) to label
+    diarized speaker clusters. Remaining clusters are in-room speakers
+    and returned as SPEAKER_N for the user to name.
+
+    Returns: { ok, transcript, participants, clusters, durationSeconds }
+    """
+    if not body.rawTranscriptJson.strip():
+        raise HTTPException(status_code=400, detail="rawTranscriptJson is required")
+    if not body.vttContent.strip():
+        raise HTTPException(status_code=400, detail="vttContent is required")
+
+    try:
+        from services.transcript_merger import merge_hybrid
+        result = merge_hybrid(
+            raw_transcript_json=body.rawTranscriptJson,
+            vtt_content=body.vttContent,
+            time_offset=body.timeOffsetSeconds,
+        )
+        return {"ok": True, **result}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Merge failed: {exc}")
+
+
 # ── PDF Export ────────────────────────────────────────────────────────────────
 
 @router.post("/meetings/export-pdf")

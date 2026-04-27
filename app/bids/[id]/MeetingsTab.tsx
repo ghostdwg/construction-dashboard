@@ -33,7 +33,7 @@ import {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MeetingType = "GENERAL" | "OAC" | "SUBCONTRACTOR" | "PRECONSTRUCTION" | "SAFETY" | "KICKOFF";
-type MeetingStatus = "PENDING" | "UPLOADING" | "TRANSCRIBING" | "ANALYZING" | "READY" | "FAILED";
+type MeetingStatus = "PENDING" | "UPLOADING" | "TRANSCRIBING" | "AWAITING_NAMES" | "ANALYZING" | "READY" | "FAILED";
 type ActionStatus = "OPEN" | "IN_PROGRESS" | "CLOSED" | "DEFERRED";
 type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
@@ -95,6 +95,19 @@ type MeetingRedFlag = {
   description: string;
 };
 
+type SpeakerCluster = {
+  id:           string;
+  type:         "REMOTE" | "IN_ROOM";
+  resolvedName: string | null;
+  totalSeconds: number;
+  segmentCount: number;
+};
+
+type SpeakerMappingData = {
+  clusters: SpeakerCluster[];
+  mapping:  Record<string, string>;
+};
+
 type MeetingDetail = {
   id: number;
   title: string;
@@ -107,6 +120,8 @@ type MeetingDetail = {
   transcriptionSource: string | null;
   transcriptionJobId: string | null;
   transcript: string | null;
+  processingMode: string | null;
+  speakerMapping: string | null;
   summary: string | null;
   keyDecisions: string[];
   openIssues: MeetingOpenIssue[];
@@ -131,12 +146,13 @@ const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
 };
 
 const STATUS_CONFIG: Record<MeetingStatus, { label: string; color: string }> = {
-  PENDING:      { label: "Pending",      color: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" },
-  UPLOADING:    { label: "Uploading…",   color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
-  TRANSCRIBING: { label: "Transcribing", color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
-  ANALYZING:    { label: "Analyzing",    color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },
-  READY:        { label: "Ready",        color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
-  FAILED:       { label: "Failed",       color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
+  PENDING:        { label: "Pending",         color: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" },
+  UPLOADING:      { label: "Uploading…",      color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
+  TRANSCRIBING:   { label: "Transcribing",    color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  AWAITING_NAMES: { label: "Name Speakers",   color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
+  ANALYZING:      { label: "Analyzing",       color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },
+  READY:          { label: "Ready",           color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  FAILED:         { label: "Failed",          color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
 };
 
 const PRIORITY_CONFIG: Record<Priority, { label: string; color: string }> = {
@@ -167,7 +183,20 @@ function fmtDate(iso: string): string {
 }
 
 function isActive(status: MeetingStatus) {
-  return status === "UPLOADING" || status === "TRANSCRIBING" || status === "ANALYZING";
+  return (
+    status === "UPLOADING" ||
+    status === "TRANSCRIBING" ||
+    status === "ANALYZING"
+  );
+}
+
+function parseSpeakerMapping(raw: string | null): SpeakerMappingData | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as SpeakerMappingData;
+  } catch {
+    return null;
+  }
 }
 
 const RED_FLAG_CONFIG: Record<string, { bg: string; text: string }> = {
@@ -557,6 +586,139 @@ function MeetingRow({
   );
 }
 
+// ── Speaker Naming Panel ──────────────────────────────────────────────────────
+
+function SpeakerNamingPanel({
+  bidId,
+  meetingId,
+  speakerMappingData,
+  onDone,
+}: {
+  bidId: number;
+  meetingId: number;
+  speakerMappingData: SpeakerMappingData;
+  onDone: () => void;
+}) {
+  const inRoomClusters = speakerMappingData.clusters.filter((c) => c.type === "IN_ROOM");
+  const remoteClusters = speakerMappingData.clusters.filter((c) => c.type === "REMOTE");
+
+  const [names, setNames] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const c of inRoomClusters) init[c.id] = speakerMappingData.mapping[c.id] ?? "";
+    return init;
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function fmtSecs(s: number) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  }
+
+  async function confirm() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/meetings/${meetingId}/speaker-mapping`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ mapping: names }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        setError((err as { error?: string }).error ?? "Failed");
+        return;
+      }
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-800 dark:bg-violet-900/20">
+        <p className="text-sm font-medium text-violet-800 dark:text-violet-200">
+          Teams Hybrid — Identify In-Room Speakers
+        </p>
+        <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">
+          Online participants were identified from the Teams transcript.
+          Name the in-room speakers detected by diarization, then confirm.
+        </p>
+      </div>
+
+      {remoteClusters.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+            Online (from Teams VTT)
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {remoteClusters.map((c) => (
+              <span
+                key={c.id}
+                className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
+                {c.resolvedName ?? c.id}
+                <span className="text-[10px] text-emerald-500">· {fmtSecs(c.totalSeconds)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {inRoomClusters.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+            In-Room Speakers — {inRoomClusters.length} cluster{inRoomClusters.length !== 1 ? "s" : ""} detected
+          </p>
+          {inRoomClusters.map((c) => (
+            <div key={c.id} className="flex items-center gap-3">
+              <div className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 w-20 shrink-0">
+                <span className="block">{c.id}</span>
+                <span className="block text-zinc-400 dark:text-zinc-500">
+                  {fmtSecs(c.totalSeconds)} · {c.segmentCount} seg
+                </span>
+              </div>
+              <input
+                type="text"
+                value={names[c.id] ?? ""}
+                onChange={(e) => setNames((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                placeholder="Full name"
+                className="flex-1 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={confirm}
+          disabled={saving}
+          className="flex items-center gap-1.5 text-xs px-4 py-2 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40"
+        >
+          {saving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Check className="h-3.5 w-3.5" /> Confirm &amp; Continue</>}
+        </button>
+        <button
+          onClick={onDone}
+          disabled={saving}
+          className="text-xs px-3 py-2 rounded border border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-400"
+        >
+          Skip (keep SPEAKER_N labels)
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Meeting Detail Panel ──────────────────────────────────────────────────────
 
 function MeetingDetailPanel({
@@ -577,7 +739,12 @@ function MeetingDetailPanel({
   const [manualTranscript, setManualTranscript] = useState(detail.transcript ?? "");
   const [savingTranscript, setSavingTranscript] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [hybridMode, setHybridMode] = useState(false);
+  const [hybridVttFile, setHybridVttFile] = useState<File | null>(null);
+  const [hybridAudioFile, setHybridAudioFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hybridVttRef = useRef<HTMLInputElement>(null);
+  const hybridAudioRef = useRef<HTMLInputElement>(null);
 
   // Poll if actively processing
   useEffect(() => {
@@ -601,6 +768,31 @@ function MeetingDetailPanel({
       setUploadError(data.error ?? "Upload failed");
     } else if (data.manual) {
       setUploadError("AssemblyAI not configured — enter transcript manually below.");
+    }
+    onReload();
+  }
+
+  async function uploadHybrid() {
+    if (!hybridVttFile || !hybridAudioFile) {
+      setUploadError("Both a VTT file and a recording file are required.");
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    const fd = new FormData();
+    fd.append("vtt",   hybridVttFile);
+    fd.append("audio", hybridAudioFile);
+    const res = await fetch(`/api/bids/${bidId}/meetings/${detail.id}/upload-hybrid`, {
+      method: "POST",
+      body:   fd,
+    });
+    setUploading(false);
+    const data = await res.json();
+    if (!res.ok) {
+      setUploadError((data as { error?: string }).error ?? "Upload failed");
+    } else {
+      setHybridVttFile(null);
+      setHybridAudioFile(null);
     }
     onReload();
   }
@@ -664,8 +856,12 @@ function MeetingDetailPanel({
       {isActive(detail.status as MeetingStatus) && (
         <div className="flex items-center gap-2 px-3 py-2 rounded bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300">
           <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-          {detail.status === "UPLOADING" && "Uploading audio to AssemblyAI…"}
-          {detail.status === "TRANSCRIBING" && "Transcribing audio — this takes 1-5 minutes…"}
+          {detail.status === "UPLOADING" && "Uploading audio…"}
+          {detail.status === "TRANSCRIBING" && (
+            detail.processingMode === "HYBRID"
+              ? "Diarizing recording on GPU — this takes a few minutes…"
+              : "Transcribing audio — this takes 1-5 minutes…"
+          )}
           {detail.status === "ANALYZING" && "Running Claude analysis on transcript…"}
         </div>
       )}
@@ -689,49 +885,153 @@ function MeetingDetailPanel({
         ))}
       </div>
 
+      {/* ── Speaker Naming (AWAITING_NAMES) ── */}
+      {detail.status === "AWAITING_NAMES" && (() => {
+        const smd = parseSpeakerMapping(detail.speakerMapping ?? null);
+        return smd ? (
+          <SpeakerNamingPanel
+            bidId={bidId}
+            meetingId={detail.id}
+            speakerMappingData={smd}
+            onDone={onReload}
+          />
+        ) : (
+          <p className="text-sm text-zinc-500">Loading speaker data…</p>
+        );
+      })()}
+
       {/* ── Transcript ── */}
-      {activeSection === "transcript" && (
+      {activeSection === "transcript" && detail.status !== "AWAITING_NAMES" && (
         <div className="space-y-3">
           {(detail.status === "PENDING" || detail.status === "FAILED") && (
             <div className="space-y-2">
-              {/* Upload option */}
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="flex flex-col items-center gap-2 py-8 border-2 border-dashed border-zinc-300 dark:border-zinc-600 rounded-lg cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-500 transition-colors"
-              >
-                <Upload className="h-6 w-6 text-zinc-400" />
-                <div className="text-center">
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Upload audio, video, or transcript</p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">MP3, M4A, WAV, MP4, WEBM · max 500 MB</p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">TXT, VTT, SRT · loaded directly as transcript</p>
-                  <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
-                    Audio/video requires AssemblyAI API key in sidecar/.env
-                  </p>
-                </div>
+              {/* Mode toggle */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setHybridMode(false)}
+                  className={`text-xs px-3 py-1 rounded border transition-colors ${
+                    !hybridMode
+                      ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                      : "border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-400"
+                  }`}
+                >
+                  Audio / VTT
+                </button>
+                <button
+                  onClick={() => setHybridMode(true)}
+                  className={`text-xs px-3 py-1 rounded border transition-colors ${
+                    hybridMode
+                      ? "border-violet-600 bg-violet-600 text-white"
+                      : "border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-400"
+                  }`}
+                >
+                  Teams Hybrid (VTT + Recording)
+                </button>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="audio/*,video/mp4,video/webm,.txt,.vtt,.srt"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  if (file.type.startsWith("text/") || /\.(txt|vtt|srt)$/i.test(file.name)) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                      setManualTranscript((ev.target?.result as string) ?? "");
-                    };
-                    reader.readAsText(file);
-                  } else {
-                    uploadAudio(file);
-                  }
-                }}
-              />
-              {uploadError && (
+
+              {/* Hybrid upload form */}
+              {hybridMode && (
+                <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-4 dark:border-violet-800 dark:bg-violet-900/10 space-y-3">
+                  <p className="text-xs text-violet-700 dark:text-violet-300">
+                    Upload the Teams VTT transcript (names online participants) and the meeting
+                    recording. The GPU worker diarizes in-room speakers automatically.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                        Teams VTT transcript
+                      </label>
+                      <button
+                        onClick={() => hybridVttRef.current?.click()}
+                        className="w-full text-left text-xs px-3 py-2 rounded border border-zinc-300 bg-white hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 truncate"
+                      >
+                        {hybridVttFile ? hybridVttFile.name : "Choose .vtt file…"}
+                      </button>
+                      <input
+                        ref={hybridVttRef}
+                        type="file"
+                        accept=".vtt"
+                        className="hidden"
+                        onChange={(e) => setHybridVttFile(e.target.files?.[0] ?? null)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                        Meeting recording
+                      </label>
+                      <button
+                        onClick={() => hybridAudioRef.current?.click()}
+                        className="w-full text-left text-xs px-3 py-2 rounded border border-zinc-300 bg-white hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 truncate"
+                      >
+                        {hybridAudioFile ? hybridAudioFile.name : "Choose audio/video…"}
+                      </button>
+                      <input
+                        ref={hybridAudioRef}
+                        type="file"
+                        accept="audio/*,video/mp4,video/webm"
+                        className="hidden"
+                        onChange={(e) => setHybridAudioFile(e.target.files?.[0] ?? null)}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={uploadHybrid}
+                    disabled={uploading || !hybridVttFile || !hybridAudioFile}
+                    className="flex items-center gap-1.5 text-xs px-4 py-2 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40"
+                  >
+                    {uploading
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading…</>
+                      : <><Upload className="h-3.5 w-3.5" /> Start Hybrid Processing</>
+                    }
+                  </button>
+                </div>
+              )}
+
+              {/* Standard upload option */}
+              {!hybridMode && (
+                <>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center gap-2 py-8 border-2 border-dashed border-zinc-300 dark:border-zinc-600 rounded-lg cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-500 transition-colors"
+                  >
+                    <Upload className="h-6 w-6 text-zinc-400" />
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Upload audio, video, or transcript</p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">MP3, M4A, WAV, MP4, WEBM · max 500 MB</p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">TXT, VTT, SRT · loaded directly as transcript</p>
+                      <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
+                        Audio/video requires GPU worker (WHISPERX_URL) or AssemblyAI
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*,video/mp4,video/webm,.txt,.vtt,.srt"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.type.startsWith("text/") || /\.(txt|vtt|srt)$/i.test(file.name)) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          setManualTranscript((ev.target?.result as string) ?? "");
+                        };
+                        reader.readAsText(file);
+                      } else {
+                        uploadAudio(file);
+                      }
+                    }}
+                  />
+                  {uploadError && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 px-1">{uploadError}</p>
+                  )}
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500 text-center">— or —</p>
+                </>
+              )}
+              {hybridMode && uploadError && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 px-1">{uploadError}</p>
               )}
-              <p className="text-xs text-zinc-400 dark:text-zinc-500 text-center">— or —</p>
             </div>
           )}
 

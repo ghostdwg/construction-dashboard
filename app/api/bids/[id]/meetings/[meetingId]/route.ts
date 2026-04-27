@@ -15,7 +15,7 @@ const VALID_TYPES = new Set([
   "GENERAL", "OAC", "SUBCONTRACTOR", "PRECONSTRUCTION", "SAFETY", "KICKOFF",
 ]);
 const VALID_STATUSES = new Set([
-  "PENDING", "UPLOADING", "TRANSCRIBING", "ANALYZING", "READY", "FAILED",
+  "PENDING", "UPLOADING", "TRANSCRIBING", "AWAITING_NAMES", "ANALYZING", "READY", "FAILED",
 ]);
 
 const safeArr = (raw: string | null): unknown[] => {
@@ -72,6 +72,8 @@ export async function GET(
     redFlags: safeArr(meeting.redFlags),
     analysisVersion: meeting.analysisVersion,
     reviewStatus: meeting.reviewStatus,
+    processingMode: meeting.processingMode,
+    speakerMapping: meeting.speakerMapping ?? null,
     uploadedAt: meeting.uploadedAt?.toISOString() ?? null,
     analyzedAt: meeting.analyzedAt?.toISOString() ?? null,
     createdAt: meeting.createdAt.toISOString(),

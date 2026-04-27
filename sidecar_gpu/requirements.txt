@@ -1,0 +1,21 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.18
+
+# WhisperX — install AFTER torch+cuda (see SETUP below)
+# pip install whisperx
+# whisperx pulls: faster-whisper, transformers, torch (if not present)
+
+# Pyannote speaker diarization
+# pip install pyannote.audio
+# Requires: HUGGINGFACE_TOKEN + accepting model terms at
+#   https://huggingface.co/pyannote/speaker-diarization-3.1
+
+# ── SETUP ORDER (Windows + CUDA 12.x) ─────────────────────────────────────
+# 1. Install CUDA Toolkit 12.x from https://developer.nvidia.com/cuda-downloads
+# 2. pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# 3. pip install whisperx
+# 4. pip install pyannote.audio
+# 5. pip install fastapi uvicorn[standard] python-dotenv python-multipart
+# 6. winget install --id=Gyan.FFmpeg   (ffmpeg required by whisperx for audio decode)

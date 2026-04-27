@@ -1087,7 +1087,13 @@ model AiUsageLog {
 //   PENDING → UPLOADING → TRANSCRIBING → ANALYZING → READY | FAILED
 //
 // transcriptionSource values:
-//   ASSEMBLYAI | WHISPERX | MANUAL
+//   ASSEMBLYAI | WHISPERX | MANUAL | HYBRID
+//
+// processingMode values:
+//   AUTO | MANUAL | VTT_ONLY | AUDIO_ONLY | HYBRID
+//
+// status values (hybrid adds AWAITING_NAMES between TRANSCRIBING and READY):
+//   PENDING | UPLOADING | TRANSCRIBING | AWAITING_NAMES | ANALYZING | READY | FAILED
 
 model Meeting {
   id                  Int       @id @default(autoincrement())
@@ -1103,6 +1109,9 @@ model Meeting {
   transcriptionJobId  String?   // AssemblyAI transcript_id or WhisperX job id
   rawTranscript       String?   // full JSON blob from transcription service
   transcript          String?   // speaker-labeled formatted text for display + Claude
+  processingMode      String    @default("AUTO")  // AUTO | MANUAL | VTT_ONLY | AUDIO_ONLY | HYBRID
+  speakerMapping      String?   // JSON: { clusters: [...], mapping: {} } — populated after diarization
+  vttContent          String?   // Teams VTT text stored during HYBRID processing; cleared after merge
   summary             String?   // Claude-generated 2-3 sentence overview (§3)
   keyDecisions        String    @default("[]")   // JSON: string[]                       (§4)
   risks               String    @default("[]")   // JSON: { description, severity }[]    (legacy)
