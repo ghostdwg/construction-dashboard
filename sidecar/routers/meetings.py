@@ -18,6 +18,7 @@ from services.meeting_intelligence import (
     submit_assemblyai_job,
     poll_assemblyai_status,
     analyze_meeting_transcript,
+    analyze_meeting_with_context,
 )
 
 router = APIRouter()
@@ -97,30 +98,71 @@ async def get_transcription_status(job_id: str):
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
 
+class OpenRfi(BaseModel):
+    number: str
+    title: str
+    status: str = "open"
+    dueDate: str | None = None
+
+
+class OverdueSubmittal(BaseModel):
+    specSection: str = ""
+    title: str
+    dueDate: str
+
+
+class OpenTask(BaseModel):
+    assignedTo: str = "Unassigned"
+    description: str
+    dueDate: str | None = None
+
+
+class MeetingContext(BaseModel):
+    speakerRoster: str = ""
+    gcTeamMembers: list[str] = []
+    priorOpenItems: str = "none"
+    openRfis: list[OpenRfi] = []
+    overdueSubmittals: list[OverdueSubmittal] = []
+    openTasks: list[OpenTask] = []
+
+
 class AnalyzeRequest(BaseModel):
     transcript: str
     meetingTitle: str
     meetingType: str = "GENERAL"
     projectName: str = ""
+    mode: str = "full"
+    context: MeetingContext = MeetingContext()
 
 
 @router.post("/meetings/analyze")
 async def analyze_meeting(body: AnalyzeRequest):
     """
-    Send meeting transcript to Claude for structured intelligence extraction.
+    Context-injected 8-section meeting analysis.
+
+    Accepts optional project context (open RFIs, overdue submittals, open
+    action items, speaker roster, prior open issues) and runs the full
+    8-section structured analysis through Claude.
 
     Returns:
-      { ok, summary, actionItems, keyDecisions, risks, followUpItems, tokensUsed }
+      { ok, analysis, tokensUsed }
+      where analysis is the raw 8-section JSON object for the caller to parse.
     """
     if not body.transcript.strip():
         raise HTTPException(status_code=400, detail="transcript is required")
 
+    ctx = body.context
     try:
-        result = await analyze_meeting_transcript(
+        result = await analyze_meeting_with_context(
             transcript=body.transcript,
-            meeting_title=body.meetingTitle,
-            meeting_type=body.meetingType,
             project_name=body.projectName,
+            speaker_roster=ctx.speakerRoster,
+            gc_team_members=ctx.gcTeamMembers,
+            prior_open_items=ctx.priorOpenItems,
+            open_rfis=[r.model_dump() for r in ctx.openRfis],
+            overdue_submittals=[s.model_dump() for s in ctx.overdueSubmittals],
+            open_tasks=[t.model_dump() for t in ctx.openTasks],
+            mode=body.mode,
         )
         return {"ok": True, **result}
     except ValueError as e:

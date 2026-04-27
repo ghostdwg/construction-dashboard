@@ -190,6 +190,104 @@ async def poll_assemblyai_status(transcript_id: str) -> dict:
     }
 
 
+# ── Prompt builder ────────────────────────────────────────────────────────────
+
+def build_analysis_prompt(
+    transcript: str,
+    project_name: str,
+    speaker_roster: str = "",
+    gc_team_members: Optional[list] = None,
+    prior_open_items: str = "none",
+    open_rfis: Optional[list] = None,
+    overdue_submittals: Optional[list] = None,
+    open_tasks: Optional[list] = None,
+    mode: str = "full",
+) -> str:
+    """
+    Build the full 8-section meeting analysis prompt with injected project context.
+    Mirrors lib/meeting-analysis.ts buildAnalysisPrompt.
+    """
+    gc_team_members = gc_team_members or []
+    open_rfis = open_rfis or []
+    overdue_submittals = overdue_submittals or []
+    open_tasks = open_tasks or []
+
+    if mode == "actions_only":
+        sections = "sections 5 and 8 only"
+    elif mode == "flags_only":
+        sections = "section 7 only"
+    else:
+        sections = "all 8 sections"
+
+    gc_team_line = (
+        f"GC team members (mark isGcTeam: true): {', '.join(gc_team_members)}"
+        if gc_team_members
+        else "GC team members: not specified — use role and company context to infer"
+    )
+
+    # Project context block
+    context_lines: list[str] = []
+    if open_rfis:
+        context_lines.append(f"Open RFIs ({len(open_rfis)}):")
+        for rfi in open_rfis[:15]:
+            due = f" (due {rfi.get('dueDate')})" if rfi.get("dueDate") else ""
+            context_lines.append(
+                f"  - RFI #{rfi.get('number', '?')}: {rfi.get('title', '')} "
+                f"[{rfi.get('status', 'open')}]{due}"
+            )
+    if overdue_submittals:
+        context_lines.append(f"\nOverdue Submittals ({len(overdue_submittals)}):")
+        for sub in overdue_submittals[:15]:
+            spec = f"{sub.get('specSection', '')} " if sub.get("specSection") else ""
+            context_lines.append(f"  - {spec}{sub.get('title', '')} (was due {sub.get('dueDate', '')})")
+    if open_tasks:
+        context_lines.append(f"\nOpen Action Items ({len(open_tasks)}):")
+        for task in open_tasks[:20]:
+            due = f" [due {task.get('dueDate')}]" if task.get("dueDate") else ""
+            assignee = task.get("assignedTo") or "Unassigned"
+            context_lines.append(f"  - {assignee}: {task.get('description', '')}{due}")
+
+    project_context_block = "\n".join(context_lines) if context_lines else "none"
+
+    return f"""You are a construction project meeting analyst for a commercial GC.
+
+Analyze the transcript below and return a JSON object containing {sections}.
+Return ONLY valid JSON — no markdown fences, no commentary outside the JSON.
+
+The JSON must match this exact schema:
+{{
+  "section1": {{ "date": "YYYY-MM-DD", "projectName": "string", "durationMinutes": number | null }},
+  "section2": [{{"speakerId": "string", "name": "string", "role": "string", "company": "string|null", "confidence": "HIGH|MEDIUM|LOW", "isGcTeam": boolean, "speakerType": "REMOTE|IN_ROOM|UNKNOWN"}}],
+  "section3": "2-3 sentence overview string",
+  "section4": ["decision string", ...],
+  "section5": [{{"person": "string", "task": "string", "dueDate": "YYYY-MM-DD|null", "isGcTask": boolean, "carriedFromDate": "YYYY-MM-DD|null", "evidenceText": "string|null"}}],
+  "section6": [{{"text": "string", "reason": "string", "carriedFrom": "YYYY-MM-DD|null"}}],
+  "section7": [{{"tag": "DELAY|COST|RISK|DISPUTE|SAFETY|COMPLIANCE", "description": "string"}}],
+  "section8": [same shape as section5, GC tasks only]
+}}
+
+Rules:
+- Ignore all [UNKNOWN] speaker lines
+- Ignore filler lines (Yeah. / Okay. / Right. / Sure. / Uh-huh.)
+- Do not quote transcript text verbatim — paraphrase everything in evidenceText
+- Do not invent content — use "[unclear]" for ambiguous items
+- section8 is a filtered subset of section5 where isGcTask is true
+- Items in section4 must NOT appear in section6
+- Flag items carried from prior meetings with the originating date in carriedFromDate / carriedFrom
+- When a meeting discussion references an open RFI or overdue submittal from the context below, note it in the relevant section
+
+{gc_team_line}
+
+Speaker roster: {speaker_roster or "not provided"}
+Prior open items (section 6 from last meeting): {prior_open_items or "none"}
+
+Project context (cross-reference meeting discussions against live project state):
+{project_context_block}
+
+Transcript:
+{transcript}"""
+
+
 # ── Claude Analysis ───────────────────────────────────────────────────────────
 
 async def analyze_meeting_transcript(
@@ -199,7 +297,8 @@ async def analyze_meeting_transcript(
     project_name: str,
 ) -> dict:
     """
-    Send meeting transcript to Claude for structured intelligence extraction.
+    Legacy simple wrapper — transcript + basic metadata only.
+    Used by standalone sidecar calls without project context.
 
     Returns:
       { summary, actionItems, keyDecisions, risks, followUpItems, tokensUsed }
@@ -236,6 +335,62 @@ async def analyze_meeting_transcript(
         "keyDecisions": result.get("keyDecisions", []),
         "risks": result.get("risks", []),
         "followUpItems": result.get("followUpItems", []),
+        "tokensUsed": {
+            "input": response.usage.input_tokens,
+            "output": response.usage.output_tokens,
+        },
+    }
+
+
+async def analyze_meeting_with_context(
+    transcript: str,
+    project_name: str,
+    speaker_roster: str = "",
+    gc_team_members: Optional[list] = None,
+    prior_open_items: str = "none",
+    open_rfis: Optional[list] = None,
+    overdue_submittals: Optional[list] = None,
+    open_tasks: Optional[list] = None,
+    mode: str = "full",
+) -> dict:
+    """
+    Context-injected 8-section meeting analysis.
+
+    Builds a full project-aware prompt (open RFIs, overdue submittals,
+    open action items, prior open issues, speaker roster) and returns
+    the raw 8-section Claude JSON object for the Next.js route to parse
+    and persist.
+
+    Returns:
+      { analysis: dict (8-section object), tokensUsed: { input, output } }
+    """
+    if not ANTHROPIC_API_KEY:
+        raise ValueError("ANTHROPIC_API_KEY not configured in sidecar/.env")
+
+    prompt = build_analysis_prompt(
+        transcript=transcript,
+        project_name=project_name,
+        speaker_roster=speaker_roster,
+        gc_team_members=gc_team_members,
+        prior_open_items=prior_open_items,
+        open_rfis=open_rfis,
+        overdue_submittals=overdue_submittals,
+        open_tasks=open_tasks,
+        mode=mode,
+    )
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    content = response.content[0].text
+    analysis = _extract_json(content)
+
+    return {
+        "analysis": analysis,
         "tokensUsed": {
             "input": response.usage.input_tokens,
             "output": response.usage.output_tokens,

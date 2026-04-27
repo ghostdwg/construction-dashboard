@@ -1,30 +1,29 @@
 // POST /api/bids/[id]/meetings/[meetingId]/analyze
 //
-// Runs the 8-section meeting intelligence analysis against the stored
-// transcript using the Claude API directly.
+// Runs the 8-section meeting intelligence analysis by routing through
+// the Python sidecar at :8001/meetings/analyze, which injects live project
+// context (open RFIs, overdue submittals, open action items) before calling
+// Claude — giving the model visibility into the current project state.
 //
 // Body (all optional):
 //   transcript  — override the stored transcript (manual paste)
 //   mode        — "full" | "actions_only" | "flags_only"  (default: "full")
 //
-// Prior open items are fetched automatically from the most recent prior
-// analyzed meeting on the same project — no manual paste required.
-//
 // Returns:
 //   { ok, analysisVersion, participantsResolved, actionItemsCreated,
 //     decisionsFound, openIssuesFound, redFlagsFound }
 
-import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
-import { getSetting } from "@/lib/services/settings/appSettingsService";
-import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
 import {
-  buildAnalysisPrompt,
+  getProjectContext,
   getPriorOpenItems,
   parseMeetingAnalysis,
   writeMeetingAnalysis,
 } from "@/lib/meeting-analysis";
+
+const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
+const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
 
 export async function POST(
   request: Request,
@@ -35,13 +34,6 @@ export async function POST(
   const mId   = parseInt(meetingId, 10);
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
-
-  const apiKey = await getSetting("ANTHROPIC_API_KEY");
-  if (!apiKey)
-    return Response.json(
-      { error: "ANTHROPIC_API_KEY not configured — set it in /settings → AI Configuration" },
-      { status: 503 },
-    );
 
   // Load meeting + project context
   const meeting = await prisma.meeting.findFirst({
@@ -74,55 +66,75 @@ export async function POST(
 
   const mode = body.mode ?? "full";
 
-  // Build speaker roster string from resolved participants
   const speakerRoster = meeting.participants.length
     ? meeting.participants
         .map(p => `${p.speakerLabel ?? "?"} → ${p.name}${p.role ? ` (${p.role})` : ""}${p.company ? `, ${p.company}` : ""}`)
         .join("\n")
     : "";
 
-  // GC team member names for §8 tagging
   const gcTeamMembers = meeting.participants
     .filter(p => p.isGcTeam)
     .map(p => p.name);
 
-  // Auto-fetch prior open items — no manual paste needed
-  const priorOpenItems = await getPriorOpenItems(mId, bidId);
+  // Gather prior open items + live project context in parallel
+  const [priorOpenItems, projectContext] = await Promise.all([
+    getPriorOpenItems(mId, bidId),
+    getProjectContext(bidId),
+  ]);
 
   await prisma.meeting.update({ where: { id: mId }, data: { status: "ANALYZING" } });
 
   try {
-    const prompt = buildAnalysisPrompt({
-      transcript: transcriptText,
-      projectName: meeting.bid.projectName,
-      speakerRoster,
-      gcTeamMembers,
-      priorOpenItems,
-      mode,
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
+
+    const sidecarRes = await fetch(`${SIDECAR_URL}/meetings/analyze`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        transcript: transcriptText,
+        meetingTitle: meeting.title,
+        meetingType: meeting.meetingType,
+        projectName: meeting.bid.projectName,
+        mode,
+        context: {
+          speakerRoster,
+          gcTeamMembers,
+          priorOpenItems,
+          openRfis: projectContext.openRfis,
+          overdueSubmittals: projectContext.overdueSubmittals,
+          openTasks: projectContext.openTasks,
+        },
+      }),
     });
 
-    const client = new Anthropic({ apiKey });
-    const maxTokens = await getMaxTokens("meeting-analysis");
+    if (!sidecarRes.ok) {
+      const errText = await sidecarRes.text().catch(() => `HTTP ${sidecarRes.status}`);
+      throw new Error(
+        sidecarRes.status === 503 || sidecarRes.status === 0
+          ? "Sidecar unavailable — make sure the Python service is running (`npm run dev:sidecar`)"
+          : `Sidecar error ${sidecarRes.status}: ${errText}`,
+      );
+    }
 
-    const message = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const sidecarData = await sidecarRes.json() as {
+      ok: boolean;
+      analysis: unknown;
+      tokensUsed: { input: number; output: number };
+    };
+
+    if (!sidecarData.ok || !sidecarData.analysis)
+      throw new Error("Sidecar returned unexpected response shape");
 
     await logAiUsage({
       callKey: "meeting-analysis",
       model: "claude-sonnet-4-6",
-      inputTokens: message.usage.input_tokens,
-      outputTokens: message.usage.output_tokens,
+      inputTokens: sidecarData.tokensUsed.input,
+      outputTokens: sidecarData.tokensUsed.output,
       bidId,
     });
 
-    const textBlock = message.content.find(b => b.type === "text");
-    if (!textBlock || textBlock.type !== "text")
-      throw new Error("Claude returned no text content");
-
-    const analysis = parseMeetingAnalysis(textBlock.text);
+    const analysis = parseMeetingAnalysis(JSON.stringify(sidecarData.analysis));
 
     await writeMeetingAnalysis(mId, bidId, analysis);
 

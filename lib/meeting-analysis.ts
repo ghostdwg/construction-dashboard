@@ -60,6 +60,74 @@ export type MeetingAnalysis = {
   section8: AnalysisActionItem[];           // GC-only subset of §5
 };
 
+// ── Project context assembly ──────────────────────────────────────────────────
+//
+// Gathers live project state that the sidecar injects into the Claude prompt
+// so Claude can cross-reference meeting discussions against open RFIs,
+// overdue submittals, and unresolved action items.
+
+export type ProjectContextPayload = {
+  openRfis: Array<{ number: string; title: string; status: string; dueDate: string | null }>;
+  overdueSubmittals: Array<{ specSection: string; title: string; dueDate: string }>;
+  openTasks: Array<{ assignedTo: string; description: string; dueDate: string | null }>;
+};
+
+export async function getProjectContext(bidId: number): Promise<ProjectContextPayload> {
+  const now = new Date();
+
+  const [rfis, submittals, tasks] = await Promise.all([
+    prisma.rfiItem.findMany({
+      where: { bidId, status: { not: "closed" } },
+      select: { number: true, title: true, status: true, dueDate: true },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    prisma.submittalItem.findMany({
+      where: {
+        bidId,
+        status: { notIn: ["APPROVED", "CLOSED"] },
+        OR: [
+          { requiredBy: { lt: now } },
+          { submitByDate: { lt: now } },
+        ],
+      },
+      select: {
+        title: true,
+        requiredBy: true,
+        submitByDate: true,
+        specSection: { select: { csiNumber: true } },
+      },
+      orderBy: { submitByDate: "asc" },
+      take: 20,
+    }),
+    prisma.meetingActionItem.findMany({
+      where: { bidId, status: "OPEN" },
+      select: { assignedToName: true, description: true, dueDate: true },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+  ]);
+
+  return {
+    openRfis: rfis.map((r) => ({
+      number: r.number,
+      title: r.title,
+      status: r.status,
+      dueDate: r.dueDate ? r.dueDate.toISOString().split("T")[0] : null,
+    })),
+    overdueSubmittals: submittals.map((s) => ({
+      specSection: s.specSection?.csiNumber ?? "",
+      title: s.title,
+      dueDate: (s.submitByDate ?? s.requiredBy)!.toISOString().split("T")[0],
+    })),
+    openTasks: tasks.map((t) => ({
+      assignedTo: t.assignedToName ?? "Unassigned",
+      description: t.description,
+      dueDate: t.dueDate ? t.dueDate.toISOString().split("T")[0] : null,
+    })),
+  };
+}
+
 // ── Prior open items auto-fetch ───────────────────────────────────────────────
 //
 // Looks up the most recent prior analyzed meeting on the same project,
