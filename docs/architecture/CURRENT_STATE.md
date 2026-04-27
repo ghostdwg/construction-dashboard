@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-21 (GWX-INTEGRATE-004)
+# Last Updated: 2026-04-26 (Production readiness session)
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -17,17 +17,22 @@
 ## Repository Status
 
 - **All planned phases complete** — 35 base modules + full Phase 5 construction intelligence stack
-- Last shipped: Drawing cross-reference for submittal generation (Phase 5G extension) on 2026-04-18
+- Last shipped: Production readiness + Auth B infrastructure (2026-04-26)
 - Tier E (Post-Award Handoff): **COMPLETE** — all 8 modules (H1-H8) shipped
 - Phase 5A–5H: **COMPLETE** — Python sidecar, spec AI pipeline, CPM scheduling, meeting intelligence, super briefing, submittal intelligence (5G-1 through 5G-3.6 + drawing cross-reference), near-term closeout registers
 - Operations (SET1, SET1+, Auth Wall Level A): **COMPLETE**
 - UI Nav Refactor (two-level sidebar): **COMPLETE**
+- Auth Wall Level B (infrastructure): **READY** — lib/auth-helpers.ts, admin user API, create-user script; enforcement deferred until second user exists
+- GitHub Actions CI: **LIVE** — type check + build on push to main
+- PostgreSQL migration: **DOCUMENTED** — runbook at docs/architecture/POSTGRES_MIGRATION.md; prisma.config.ts is the switch point (Prisma 7)
 - Remaining work:
   - Phase 5F: Drawing OCR + Quantity Takeoff — STRETCH (GPU hardware required)
   - Phase 5G-4: Submittal Workflow Templates — DEFERRED
   - Tier F F5: Daily Log weather claim integration — NOT STARTED
-  - Auth Wall Level B+C (multi-tenancy + role-based access) — DEFERRED until second user
-  - ~10 minor enhancements (see ROADMAP.md A4)
+  - Auth Wall Level B enforcement — deferred until second user exists (infrastructure is ready)
+  - Auth Wall Level C (RBAC fine-grained) — DEFERRED
+  - Production deploy to neuroglitch.ai — next milestone (DigitalOcean, see POSTGRES_MIGRATION.md)
+  - ~8 minor enhancements (see ROADMAP.md A4)
 
 ## Architecture — Three Wings + Lifecycle
 
@@ -110,6 +115,16 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **Phase 5G-Extension** | **Drawing cross-reference — drawing-sourced submittal items via sidecar AI** | **✅ Complete** |
 | **Phase 5H near-term** | **Warranty, training, inspections, closeout registers from aiExtractions** | **✅ Complete** |
 | **GWX-INTEGRATE-004** | **Meeting action items surfaced on Overview — MeetingActionsPanel + GET /api/bids/[id]/action-items aggregates open items cross-meeting; panel self-hides when empty, shows overdue/priority badges, inline Done button, links to Meetings tab** | **✅ Complete** |
+| **UX-001** | **Quick-jump links on bids list — status-aware action buttons per row (SUBS/LEVELING/HANDOFF/SUBMITTALS based on bid status and workflowType)** | **✅ Complete** |
+| **UX-002** | **ProjectStatusStrip on Overview — 4-tile stat strip (due days, sub responses, leveling uploads, Glint briefing state) with color-coded urgency signals** | **✅ Complete** |
+| **UX-003** | **Sidebar active-project health card — 5 MiniStat tiles (due, responses, leveling, briefing, submittals) wired from server-side counts in layout.tsx** | **✅ Complete** |
+| **SET1-EXT** | **Per-bid AI usage ledger — loadUsageForBid() + GET /api/bids/[id]/ai-usage + AiBidUsageCard on Overview tab** | **✅ Complete** |
+| **H2-EXT** | **originalBidAmount auto-seeded from parsedTotal at BuyoutItem creation** | **✅ Complete** |
+| **AUTH-B-INFRA** | **Auth B infrastructure — lib/auth-helpers.ts (getUser, requireUser, bidScopeFilter, assertBidAccess), GET+POST /api/admin/users, scripts/create-user.ts; enforcement deferred until second user** | **✅ Complete** |
+| **CI-001** | **GitHub Actions CI — type check + build on push/PR to main (.github/workflows/ci.yml)** | **✅ Complete** |
+| **CODEX-WORKFLOW** | **CODEX.md session brief — shared context for Claude+Codex parallel workflow** | **✅ Complete** |
+| **DOCS-POSTGRES** | **PostgreSQL migration runbook — docs/architecture/POSTGRES_MIGRATION.md; Prisma 7 prisma.config.ts switch protocol** | **✅ Complete** |
+| **DOCS-AUTH-B** | **Auth B design doc — role matrix, enforcement sweep, createdById backfill, implementation sequence** | **✅ Complete** |
 | **Queued** | **Future expansion** | **🔜 Planned** |
 | Tier F F5 | Daily Log weather claim integration | 🔜 Not Started |
 | Phase 5F | Drawing OCR + Quantity Takeoff | 🔜 Stretch |
