@@ -1,8 +1,9 @@
 """
-Phase 5E — Superintendent Briefing PDF Generator
+Phase 5E — Superintendent Initial Assessment PDF Generator
 
-Renders a US Letter PDF briefing from assembled project data using
-Jinja2 templating and WeasyPrint for PDF output.
+Renders a US Letter PDF from assembled project data using Jinja2 + WeasyPrint.
+Document is framed as a one-time onboarding brief for the superintendent,
+not a recurring status report.
 """
 
 from datetime import datetime, timezone
@@ -14,7 +15,6 @@ TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 
 
 def _date_fmt(value) -> str:
-    """Convert ISO datetime string to MM/DD/YY format. Returns '—' for None/empty."""
     if not value:
         return "—"
     try:
@@ -27,16 +27,24 @@ def _date_fmt(value) -> str:
 
 def generate_superintendent_briefing(data: dict) -> bytes:
     """
-    Render the superintendent briefing HTML template and convert to PDF bytes.
+    Render the superintendent initial assessment and convert to PDF bytes.
 
     Expected keys in `data`:
-      bid            — object with projectName, location
-      asOfDate       — ISO datetime string (defaults to now)
-      lookaheadDays  — int (default 14)
-      schedule       — { thisWeek: [...], overdue: [...], lookahead: [...] }
-      submittals     — list of submittal objects
-      actionItems    — list of action item objects
-      riskFlags      — list of strings
+      bid           — { projectName, location }
+      asOfDate      — ISO datetime string
+      lookaheadDays — int
+      riskFlags     — list[str]  (from intelligence brief)
+      specFlags     — list[{ csiNumber, csiTitle, flag, sectionSeverity }]
+      inspections   — list[{ type, activity, standard, frequency, timing, who,
+                             acceptance_criteria, csiNumber, csiTitle, sectionSeverity }]
+      warranties    — list[{ duration, type, scope, csiNumber, csiTitle }]
+      trainings     — list[{ audience, topic, requirement, duration, timing,
+                             csiNumber, csiTitle }]
+      closeouts     — list[{ type, description, quantity, timing,
+                             csiNumber, csiTitle, sectionSeverity }]
+      schedule      — { thisWeek, overdue, lookahead }
+      submittals    — list of submittal objects
+      actionItems   — list of action item objects
     """
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATE_DIR)),
@@ -54,14 +62,16 @@ def generate_superintendent_briefing(data: dict) -> bytes:
         bid=data.get("bid", {}),
         as_of_date_fmt=as_of.strftime("%B %d, %Y"),
         generated_at_fmt=generated_at.strftime("%B %d, %Y %I:%M %p UTC"),
-        lookahead_days=data.get("lookaheadDays", 14),
-        schedule=data.get(
-            "schedule",
-            {"thisWeek": [], "overdue": [], "lookahead": []},
-        ),
+        lookahead_days=data.get("lookaheadDays", 30),
+        risk_flags=data.get("riskFlags", []),
+        spec_flags=data.get("specFlags", []),
+        inspections=data.get("inspections", []),
+        warranties=data.get("warranties", []),
+        trainings=data.get("trainings", []),
+        closeouts=data.get("closeouts", []),
+        schedule=data.get("schedule", {"thisWeek": [], "overdue": [], "lookahead": []}),
         submittals=data.get("submittals", []),
         actionItems=data.get("actionItems", []),
-        riskFlags=data.get("riskFlags", []),
     )
 
     try:
