@@ -106,13 +106,6 @@ export default function AppSidebar({
         meta={counts.openActionItems > 0 ? String(counts.openActionItems) : "—"}
         active={isActive("/tasks")}
       />
-      <SidebarItem
-        href="/meetings"
-        label="Meetings"
-        sub="cross-project action items"
-        meta="—"
-        active={isActive("/meetings")}
-      />
 
       {/* ── system ────────────────────────────────────────────────────── */}
       <SectionLabel label="system" />
