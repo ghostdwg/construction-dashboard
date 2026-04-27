@@ -4,6 +4,8 @@ generator client {
 
 datasource db {
   provider = "sqlite"
+  // URL is configured in prisma.config.ts (Prisma 7 — not in schema.prisma)
+  // To switch to PostgreSQL: see docs/architecture/POSTGRES_MIGRATION.md
 }
 
 // ── Auth Wall (Auth.js v5 + Prisma Adapter) ─────────────────────────────────
