@@ -421,6 +421,7 @@ async def analyze_meeting_with_context(
     overdue_submittals: Optional[list] = None,
     open_tasks: Optional[list] = None,
     mode: str = "full",
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     Context-injected 8-section meeting analysis.
@@ -430,11 +431,17 @@ async def analyze_meeting_with_context(
     the raw 8-section Claude JSON object for the Next.js route to parse
     and persist.
 
+    api_key: caller-supplied key takes precedence over ANTHROPIC_API_KEY env var,
+    allowing the Next.js route to pass the key stored in app settings.
+
     Returns:
       { analysis: dict (8-section object), tokensUsed: { input, output } }
     """
-    if not ANTHROPIC_API_KEY:
-        raise ValueError("ANTHROPIC_API_KEY not configured in sidecar/.env")
+    effective_key = api_key or ANTHROPIC_API_KEY
+    if not effective_key:
+        raise ValueError(
+            "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
 
     prompt = build_analysis_prompt(
         transcript=transcript,
@@ -448,7 +455,7 @@ async def analyze_meeting_with_context(
         mode=mode,
     )
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=effective_key)
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,

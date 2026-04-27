@@ -14,6 +14,7 @@
 //     decisionsFound, openIssuesFound, redFlagsFound }
 
 import { prisma } from "@/lib/prisma";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
 import {
   getProjectContext,
@@ -51,6 +52,13 @@ export async function POST(
     },
   });
   if (!meeting) return Response.json({ error: "Meeting not found" }, { status: 404 });
+
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey)
+    return Response.json(
+      { error: "ANTHROPIC_API_KEY not configured — set it in /settings → AI Configuration" },
+      { status: 503 },
+    );
 
   const body = await request.json().catch(() => ({})) as {
     transcript?: string;
@@ -97,6 +105,7 @@ export async function POST(
         meetingType: meeting.meetingType,
         projectName: meeting.bid.projectName,
         mode,
+        apiKey,
         context: {
           speakerRoster,
           gcTeamMembers,

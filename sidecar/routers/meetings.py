@@ -165,6 +165,7 @@ class AnalyzeRequest(BaseModel):
     projectName: str = ""
     mode: str = "full"
     context: MeetingContext = MeetingContext()
+    apiKey: str = ""  # caller-supplied key overrides ANTHROPIC_API_KEY env var
 
 
 @router.post("/meetings/analyze")
@@ -195,6 +196,7 @@ async def analyze_meeting(body: AnalyzeRequest):
             overdue_submittals=[s.model_dump() for s in ctx.overdueSubmittals],
             open_tasks=[t.model_dump() for t in ctx.openTasks],
             mode=body.mode,
+            api_key=body.apiKey or None,
         )
         return {"ok": True, **result}
     except ValueError as e:
