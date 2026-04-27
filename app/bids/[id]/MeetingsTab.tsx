@@ -472,10 +472,13 @@ function MeetingRow({
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900 overflow-hidden">
-      {/* Summary row */}
-      <button
+      {/* Summary row — div not button so the delete button inside is valid HTML */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-left"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onToggle(); }}
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/60 text-left cursor-pointer"
       >
         {expanded
           ? <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400" />
@@ -514,7 +517,7 @@ function MeetingRow({
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
-      </button>
+      </div>
 
       {/* Expanded detail */}
       {expanded && (

@@ -14,9 +14,12 @@ from pydantic import BaseModel
 from services.meeting_intelligence import (
     ASSEMBLYAI_API_KEY,
     ANTHROPIC_API_KEY,
+    WHISPERX_URL,
     upload_audio_to_assemblyai,
     submit_assemblyai_job,
     poll_assemblyai_status,
+    submit_whisperx_job,
+    poll_whisperx_status,
     analyze_meeting_transcript,
     analyze_meeting_with_context,
 )
@@ -33,6 +36,7 @@ async def meetings_config():
     """Return which meeting intelligence sources are available."""
     return {
         "assemblyai_configured": bool(ASSEMBLYAI_API_KEY),
+        "whisperx_configured": bool(WHISPERX_URL),
         "analysis_configured": bool(ANTHROPIC_API_KEY),
         "manual_supported": True,
     }
@@ -43,25 +47,45 @@ async def meetings_config():
 @router.post("/meetings/transcribe")
 async def start_transcription(audio: UploadFile = File(...)):
     """
-    Upload audio file, push to AssemblyAI CDN, and submit transcription job
-    with speaker diarization.
+    Upload audio file and start transcription with speaker diarization.
+
+    Routes to GPU PC (WhisperX + pyannote) when WHISPERX_URL is configured,
+    falls back to AssemblyAI automatically. If neither is available, returns
+    400 so the caller can prompt for manual transcript entry.
 
     Returns: { ok, transcriptionJobId, source }
+    Job IDs are prefixed: "WHISPERX:{id}" or "AAI:{id}" so the status
+    endpoint knows which service to poll.
     """
-    if not ASSEMBLYAI_API_KEY:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "AssemblyAI not configured. "
-                "Add ASSEMBLYAI_API_KEY to sidecar/.env and restart."
-            ),
-        )
-
     audio_bytes = await audio.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise HTTPException(status_code=413, detail="Audio file too large (max 500 MB)")
     if len(audio_bytes) == 0:
         raise HTTPException(status_code=400, detail="Empty audio file")
+
+    filename = audio.filename or "audio.wav"
+
+    # ── Try GPU PC first ──────────────────────────────────────────────────────
+    if WHISPERX_URL:
+        try:
+            raw_job_id = await submit_whisperx_job(audio_bytes, filename)
+            return {
+                "ok": True,
+                "transcriptionJobId": f"WHISPERX:{raw_job_id}",
+                "source": "WHISPERX",
+            }
+        except Exception as e:
+            print(f"[sidecar] WhisperX unavailable ({e}), falling back to AssemblyAI")
+
+    # ── Fallback: AssemblyAI ──────────────────────────────────────────────────
+    if not ASSEMBLYAI_API_KEY:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No transcription service available. "
+                "Configure WHISPERX_URL (GPU PC) or ASSEMBLYAI_API_KEY in sidecar/.env."
+            ),
+        )
 
     try:
         upload_url = await upload_audio_to_assemblyai(audio_bytes)
@@ -71,29 +95,37 @@ async def start_transcription(audio: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AssemblyAI error: {e}")
 
-    return {"ok": True, "transcriptionJobId": job_id, "source": "ASSEMBLYAI"}
+    return {"ok": True, "transcriptionJobId": f"AAI:{job_id}", "source": "ASSEMBLYAI"}
 
 
-@router.get("/meetings/transcribe/status/{job_id}")
+@router.get("/meetings/transcribe/status/{job_id:path}")
 async def get_transcription_status(job_id: str):
     """
-    Poll AssemblyAI for transcription status.
+    Poll transcription status. Job ID prefix determines which service to query:
+      WHISPERX:{id} → GPU PC WhisperX service
+      AAI:{id}      → AssemblyAI
 
     Returns one of:
       { status: "processing" }
       { status: "completed", transcript, rawTranscript, durationSeconds, participants }
       { status: "error", error }
     """
-    if not ASSEMBLYAI_API_KEY:
-        raise HTTPException(status_code=400, detail="AssemblyAI not configured")
-
     try:
-        result = await poll_assemblyai_status(job_id)
+        if job_id.startswith("WHISPERX:"):
+            raw_id = job_id[len("WHISPERX:"):]
+            result = await poll_whisperx_status(raw_id)
+        elif job_id.startswith("AAI:"):
+            raw_id = job_id[len("AAI:"):]
+            result = await poll_assemblyai_status(raw_id)
+        else:
+            # Legacy IDs without prefix — assume AssemblyAI
+            result = await poll_assemblyai_status(job_id)
+
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AssemblyAI error: {e}")
+        raise HTTPException(status_code=502, detail=f"Transcription service error: {e}")
 
 
 # ── Analysis ──────────────────────────────────────────────────────────────────

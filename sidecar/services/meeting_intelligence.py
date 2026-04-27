@@ -24,6 +24,11 @@ ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ASSEMBLYAI_BASE = "https://api.assemblyai.com"
 
+# GPU PC WhisperX service — set WHISPERX_URL in sidecar/.env to enable
+# Example: WHISPERX_URL=http://100.x.x.x:8002  (Tailscale IP)
+WHISPERX_URL = os.getenv("WHISPERX_URL", "")
+WHISPERX_API_KEY = os.getenv("WHISPERX_API_KEY", "")
+
 _analysis_rules: Optional[str] = None
 
 
@@ -188,6 +193,70 @@ async def poll_assemblyai_status(transcript_id: str) -> dict:
         "durationSeconds": int(data.get("audio_duration") or 0),
         "participants": list(participants.values()),
     }
+
+
+# ── WhisperX GPU PC ──────────────────────────────────────────────────────────
+
+async def submit_whisperx_job(audio_bytes: bytes, filename: str = "audio.wav") -> str:
+    """
+    Upload audio to the GPU PC WhisperX service and return the job ID.
+    Raises ValueError if WHISPERX_URL is not configured.
+    Raises httpx.HTTPError on network/service failure — caller catches and falls back.
+    """
+    if not WHISPERX_URL:
+        raise ValueError("WHISPERX_URL not configured")
+
+    headers = {}
+    if WHISPERX_API_KEY:
+        headers["X-API-Key"] = WHISPERX_API_KEY
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            f"{WHISPERX_URL}/transcribe",
+            headers=headers,
+            files={"audio": (filename, audio_bytes)},
+        )
+        resp.raise_for_status()
+        return resp.json()["jobId"]
+
+
+async def poll_whisperx_status(job_id: str) -> dict:
+    """
+    Poll the GPU PC WhisperX service for job status.
+
+    Returns one of:
+      { "status": "processing" }
+      { "status": "completed", "transcript", "rawTranscript",
+        "durationSeconds", "participants" }
+      { "status": "error", "error": str }
+    """
+    if not WHISPERX_URL:
+        return {"status": "error", "error": "WHISPERX_URL not configured"}
+
+    headers = {}
+    if WHISPERX_API_KEY:
+        headers["X-API-Key"] = WHISPERX_API_KEY
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{WHISPERX_URL}/status/{job_id}",
+            headers=headers,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    wx_status = data.get("status")
+    if wx_status == "completed":
+        return {
+            "status": "completed",
+            "transcript": data.get("transcript", ""),
+            "rawTranscript": data.get("rawTranscript", ""),
+            "durationSeconds": data.get("durationSeconds", 0),
+            "participants": data.get("participants", []),
+        }
+    if wx_status == "error":
+        return {"status": "error", "error": data.get("error", "WhisperX error")}
+    return {"status": "processing"}
 
 
 # ── Prompt builder ────────────────────────────────────────────────────────────
