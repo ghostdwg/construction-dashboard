@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // ── Job type display metadata ─────────────────────────────────────────────────
 const JOB_META: Record<string, { label: string; owner: string }> = {
@@ -266,10 +267,8 @@ export default async function HomePage() {
       where: { status: { in: ["OPEN", "IN_PROGRESS"] } },
     }),
 
-    // AI provider configured
-    prisma.appSetting.findFirst({
-      where: { key: { contains: "anthropic" } },
-    }),
+    // AI provider configured — checks DB first, falls back to ANTHROPIC_API_KEY env var
+    getSetting("ANTHROPIC_API_KEY"),
 
     // Active project intelligence brief for Glint rail
     prisma.bidIntelligenceBrief.findFirst({
@@ -306,6 +305,13 @@ export default async function HomePage() {
     // Procurement — at-risk packages
     prisma.submittalPackage.count({ where: { riskStatus: "AT_RISK" } }),
   ]);
+
+  // ── Sidecar health (non-blocking, short timeout) ──────────────────────────
+  const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
+  const sidecarOnline = await fetch(`${SIDECAR_URL}/health`, {
+    method: "GET",
+    signal: AbortSignal.timeout(1500),
+  }).then(r => r.ok).catch(() => false);
 
   // ── Derived metrics ────────────────────────────────────────────────────────
   const sortedJobs = [...recentJobs].sort(
@@ -498,6 +504,11 @@ export default async function HomePage() {
           <div className="w-px h-3" style={{ background: "var(--line)" }} />
           <span className="font-mono text-[9px] uppercase tracking-[0.08em]" style={{ color: providerKey ? "var(--signal-soft)" : "#ff968f" }}>
             {providerKey ? "• glint online" : "• glint degraded"}
+          </span>
+
+          <div className="w-px h-3" style={{ background: "var(--line)" }} />
+          <span className="font-mono text-[9px] uppercase tracking-[0.08em]" style={{ color: sidecarOnline ? "var(--signal-soft)" : "var(--text-dim)" }}>
+            {sidecarOnline ? "• sidecar online" : "• sidecar offline"}
           </span>
 
           {failedJobs.length > 0 && (
@@ -941,7 +952,8 @@ export default async function HomePage() {
             </div>
             <div className="px-4">
               {([
-                { label: "AI Provider",      value: providerKey ? "connected" : "not configured",                          signal: !!providerKey                              },
+                { label: "AI Provider",      value: providerKey ? "connected" : "not configured — go to /settings",      signal: !!providerKey                              },
+                { label: "Sidecar",          value: sidecarOnline ? "online" : "offline — run npm run dev:sidecar",        signal: sidecarOnline,  href: "/settings"             },
                 { label: "Active Jobs",      value: runningJobs.length > 0 ? `${runningJobs.length} running` : "idle",     signal: runningJobs.length > 0                     },
                 { label: "Open Submittals",  value: `${totalSubmittalsOpen} across all projects`,                          signal: false,  href: "/submittals"                },
                 { label: "Action Items",     value: totalOpenActionItems > 0 ? `${totalOpenActionItems} open` : "clear",   signal: totalOpenActionItems === 0, href: "/meetings" },
