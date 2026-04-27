@@ -15,6 +15,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
+import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
 import {
   getProjectContext,
@@ -84,10 +85,11 @@ export async function POST(
     .filter(p => p.isGcTeam)
     .map(p => p.name);
 
-  // Gather prior open items + live project context in parallel
-  const [priorOpenItems, projectContext] = await Promise.all([
+  // Gather prior open items + live project context + token budget in parallel
+  const [priorOpenItems, projectContext, maxTokens] = await Promise.all([
     getPriorOpenItems(mId, bidId),
     getProjectContext(bidId),
+    getMaxTokens("meeting-analysis"),
   ]);
 
   await prisma.meeting.update({ where: { id: mId }, data: { status: "ANALYZING" } });
@@ -106,6 +108,7 @@ export async function POST(
         projectName: meeting.bid.projectName,
         mode,
         apiKey,
+        maxTokens,
         context: {
           speakerRoster,
           gcTeamMembers,

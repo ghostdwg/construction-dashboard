@@ -165,7 +165,8 @@ class AnalyzeRequest(BaseModel):
     projectName: str = ""
     mode: str = "full"
     context: MeetingContext = MeetingContext()
-    apiKey: str = ""  # caller-supplied key overrides ANTHROPIC_API_KEY env var
+    apiKey: str = ""      # caller-supplied key overrides ANTHROPIC_API_KEY env var
+    maxTokens: int = 8192  # output token budget — default raised for long transcripts
 
 
 @router.post("/meetings/analyze")
@@ -197,6 +198,7 @@ async def analyze_meeting(body: AnalyzeRequest):
             open_tasks=[t.model_dump() for t in ctx.openTasks],
             mode=body.mode,
             api_key=body.apiKey or None,
+            max_tokens=body.maxTokens,
         )
         return {"ok": True, **result}
     except ValueError as e:

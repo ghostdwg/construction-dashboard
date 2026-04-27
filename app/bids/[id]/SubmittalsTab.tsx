@@ -91,6 +91,7 @@ type PackageItemRow = {
   title: string;
   type: string;
   status: string;
+  reviewRound: number;
   requiredBy: string | null;
   specSectionNumber: string | null;
   specSectionTitle: string | null;
@@ -204,6 +205,40 @@ function fmtDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+function isItemOverdue(requiredBy: string | null, status: string): boolean {
+  return requiredBy != null && new Date(requiredBy).getTime() < Date.now() && !isTerminal(status);
+}
+
+function normalizeItem(item: PackageItemRow): PackageItemRow {
+  return {
+    ...item,
+    reviewRound: item.reviewRound ?? 1,
+  };
+}
+
+function computePackageCounts(pkg: PackageRow): PackageRow {
+  return {
+    ...pkg,
+    total: pkg.items.length,
+    approved: pkg.items.filter((i) => isTerminal(i.status)).length,
+    overdue: pkg.items.filter((i) => isItemOverdue(i.requiredBy, i.status)).length,
+  };
+}
+
+function computeRollup(
+  packages: PackageRow[],
+  unassigned: PackageItemRow[]
+): ApiRollup {
+  const allItems = [...packages.flatMap((pkg) => pkg.items), ...unassigned];
+  return {
+    total: allItems.length,
+    open: allItems.filter((i) => !isTerminal(i.status)).length,
+    approved: allItems.filter((i) => isTerminal(i.status)).length,
+    overdue: allItems.filter((i) => i.isOverdue).length,
+    critical: allItems.filter((i) => i.severity === "CRITICAL").length,
+  };
+}
+
 function toInputDate(iso: string | null): string {
   if (!iso) return "";
   return iso.slice(0, 10);
@@ -225,8 +260,10 @@ type SharedItemProps = {
     cell: { itemId: number; field: "status" | "requiredBy" } | null
   ) => void;
   onPatch: (itemId: number, patch: Record<string, unknown>) => Promise<void>;
+  onBumpReviewRound: (itemId: number) => Promise<void>;
   onDelete: (itemId: number) => void;
   onEdited: () => void;
+  bumpingRoundId: number | null;
 };
 
 // ── Main component ─────────────────────────────────────────────────────────
@@ -256,6 +293,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
   const [reloadTick, setReloadTick] = useState(0);
   const [showProcurement, setShowProcurement] = useState(false);
   const [orchestrating, setOrchestrating] = useState(false);
+  const [bumpingRoundId, setBumpingRoundId] = useState<number | null>(null);
   const [orchResult, setOrchResult] = useState<{
     packagesProcessed: number; itemsUpdated: number; linked: number;
     atRisk: number; blocked: number; readyForExport: number; warnings: string[];
@@ -278,9 +316,48 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
           rollup: ApiRollup;
         };
         if (cancelled) return;
-        setPackages(data.packages);
-        setUnassigned(data.unassigned);
-        setRollup(data.rollup);
+        const allItems = [
+          ...data.packages.flatMap((pkg) => pkg.items),
+          ...data.unassigned,
+        ];
+        const reviewRounds = new Map(
+          await Promise.all(
+            allItems.map(async (item) => {
+              try {
+                const roundRes = await fetch(
+                  `/api/bids/${bidId}/scope/${item.id}/review-round`,
+                  { signal: controller.signal }
+                );
+                if (!roundRes.ok) return [item.id, 1] as const;
+                const roundData = (await roundRes.json()) as { reviewRound?: number };
+                return [item.id, roundData.reviewRound ?? 1] as const;
+              } catch {
+                return [item.id, 1] as const;
+              }
+            })
+          )
+        );
+        if (cancelled) return;
+        const normalizedPackages = data.packages.map((pkg) =>
+          computePackageCounts({
+            ...pkg,
+            items: pkg.items.map((item) =>
+              normalizeItem({
+                ...item,
+                reviewRound: reviewRounds.get(item.id) ?? 1,
+              })
+            ),
+          })
+        );
+        const normalizedUnassigned = data.unassigned.map((item) =>
+          normalizeItem({
+            ...item,
+            reviewRound: reviewRounds.get(item.id) ?? 1,
+          })
+        );
+        setPackages(normalizedPackages);
+        setUnassigned(normalizedUnassigned);
+        setRollup(computeRollup(normalizedPackages, normalizedUnassigned));
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -310,6 +387,27 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
   }, [bidId]);
 
   const reload = () => setReloadTick((t) => t + 1);
+
+  function updateItemInLocalState(
+    itemId: number,
+    updater: (item: PackageItemRow) => PackageItemRow
+  ) {
+    const nextPackages = packages.map((pkg) =>
+      computePackageCounts({
+        ...pkg,
+        items: pkg.items.map((item) =>
+          item.id === itemId ? normalizeItem(updater(item)) : item
+        ),
+      })
+    );
+    const nextUnassigned = unassigned.map((item) =>
+      item.id === itemId ? normalizeItem(updater(item)) : item
+    );
+
+    setPackages(nextPackages);
+    setUnassigned(nextUnassigned);
+    setRollup(computeRollup(nextPackages, nextUnassigned));
+  }
 
   async function runGenerateFromAi() {
     setGenerating(true);
@@ -399,6 +497,34 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
       throw new Error(err.error ?? `HTTP ${res.status}`);
     }
     reload();
+  }
+
+  async function bumpReviewRound(itemId: number) {
+    setBumpingRoundId(itemId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/scope/${itemId}/review-round`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "increment" }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { ok: true; reviewRound: number };
+      updateItemInLocalState(itemId, (item) => ({
+        ...item,
+        reviewRound: data.reviewRound,
+        status: "PENDING",
+        isOverdue: isItemOverdue(item.requiredBy, "PENDING"),
+      }));
+      setEditingCell((current) => (current?.itemId === itemId ? null : current));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBumpingRoundId(null);
+    }
   }
 
   async function deleteItem(itemId: number) {
@@ -507,8 +633,10 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
         setError(e instanceof Error ? e.message : String(e));
       }
     },
+    onBumpReviewRound: bumpReviewRound,
     onDelete: deleteItem,
     onEdited: reload,
+    bumpingRoundId,
   };
 
   const canGenerate = (specMeta?.analyzedSectionCount ?? 0) > 0;
@@ -1111,8 +1239,10 @@ function SubmittalGridRow({
   onToggleExpand,
   onEditCell,
   onPatch,
+  onBumpReviewRound,
   onDelete,
   onEdited,
+  bumpingRoundId,
 }: { item: PackageItemRow } & SharedItemProps) {
   const isExpanded = expandedId === item.id;
   const editing = editingCell?.itemId === item.id ? editingCell.field : null;
@@ -1240,16 +1370,33 @@ function SubmittalGridRow({
               ))}
             </select>
           ) : (
-            <button
-              onClick={() =>
-                onEditCell({ itemId: item.id, field: "status" })
-              }
-              className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                STATUS_STYLES[item.status as SubmittalStatus] ?? ""
-              }`}
-            >
-              {STATUS_LABELS[item.status as SubmittalStatus] ?? item.status}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() =>
+                  onEditCell({ itemId: item.id, field: "status" })
+                }
+                className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                  STATUS_STYLES[item.status as SubmittalStatus] ?? ""
+                }`}
+              >
+                {STATUS_LABELS[item.status as SubmittalStatus] ?? item.status}
+              </button>
+              {item.reviewRound > 1 && (
+                <span className="inline-flex rounded-full border border-[var(--line)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-dim)]">
+                  R{item.reviewRound}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => onBumpReviewRound(item.id)}
+                disabled={bumpingRoundId === item.id}
+                className="text-[13px] leading-none text-[var(--text-dim)] hover:text-[var(--text)] disabled:opacity-50"
+                title="Start a new review round"
+                aria-label="Start a new review round"
+              >
+                {bumpingRoundId === item.id ? "..." : "↺"}
+              </button>
+            </div>
           )}
         </td>
 

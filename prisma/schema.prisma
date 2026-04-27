@@ -785,6 +785,7 @@ model SubmittalItem {
   receivedAt       DateTime?
   reviewedAt       DateTime?
   approvedAt       DateTime?
+  reviewRound      Int       @default(1)
 
   // Attribution
   responsibleSubId Int?

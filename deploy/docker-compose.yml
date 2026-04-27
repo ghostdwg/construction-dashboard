@@ -1,0 +1,33 @@
+services:
+  app:
+    build:
+      context: ../
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.production
+    depends_on:
+      - db
+    restart: unless-stopped
+    networks:
+      - internal
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: groundworx
+      POSTGRES_USER: gwxuser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge

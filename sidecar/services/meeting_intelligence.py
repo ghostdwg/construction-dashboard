@@ -422,6 +422,7 @@ async def analyze_meeting_with_context(
     open_tasks: Optional[list] = None,
     mode: str = "full",
     api_key: Optional[str] = None,
+    max_tokens: int = 8192,
 ) -> dict:
     """
     Context-injected 8-section meeting analysis.
@@ -458,7 +459,7 @@ async def analyze_meeting_with_context(
     client = anthropic.Anthropic(api_key=effective_key)
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4096,
+        max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
 
