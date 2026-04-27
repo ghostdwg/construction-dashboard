@@ -119,14 +119,30 @@ async function ensureBuyoutItemsForBid(bidId: number): Promise<void> {
     }
   }
 
+  // Seed originalBidAmount from parsedTotal on the accepted sub's EstimateUpload.
+  // parsedTotal is an aggregated server-side value — pricingData is never read here.
+  const subIds = [...new Set(acceptedByTrade.values())];
+  const uploads = subIds.length > 0
+    ? await prisma.estimateUpload.findMany({
+        where: { bidId, subcontractorId: { in: subIds }, parsedTotal: { not: null } },
+        select: { subcontractorId: true, parsedTotal: true },
+      })
+    : [];
+  const totalBySub = new Map<number, number>();
+  for (const u of uploads) {
+    if (u.parsedTotal != null) totalBySub.set(u.subcontractorId, u.parsedTotal);
+  }
+
   // Create each missing row individually (Prisma createMany on SQLite can't
   // skipDuplicates in all versions — safer to loop).
   for (const bt of missing) {
+    const subId = acceptedByTrade.get(bt.tradeId) ?? null;
     await prisma.buyoutItem.create({
       data: {
         bidId,
         bidTradeId: bt.id,
-        subcontractorId: acceptedByTrade.get(bt.tradeId) ?? null,
+        subcontractorId: subId,
+        originalBidAmount: subId != null ? (totalBySub.get(subId) ?? null) : null,
         contractStatus: "PENDING",
       },
     });

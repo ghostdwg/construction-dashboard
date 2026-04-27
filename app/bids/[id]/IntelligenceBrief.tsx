@@ -108,6 +108,7 @@ function BriefSection({
 export default function IntelligenceBrief({ bidId }: { bidId: number }) {
   const router = useRouter();
   const [brief, setBrief] = useState<Brief | null | undefined>(undefined); // undefined = loading
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [regenError, setRegenError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -115,9 +116,21 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
 
   const loadBrief = useCallback(() => {
     fetch(`/api/bids/${bidId}/intelligence`)
-      .then((r) => (r.ok ? r.json() : { brief: null }))
-      .then((data: { brief: Brief | null }) => setBrief(data.brief))
-      .catch(() => setBrief(null));
+      .then(async (r) => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error ?? `HTTP ${r.status}`);
+        }
+        return r.json() as Promise<{ brief: Brief | null }>;
+      })
+      .then((data) => {
+        setBrief(data.brief);
+        setLoadError(null);
+      })
+      .catch((e) => {
+        setBrief(null);
+        setLoadError(e instanceof Error ? e.message : "Failed to load brief");
+      });
   }, [bidId]);
 
   useEffect(() => {
@@ -171,6 +184,25 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
   }
 
   // ----- STATE 1 — No brief yet -----
+
+  if (loadError) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 px-5 py-6 flex flex-col gap-3 items-start">
+        <p className="text-sm text-red-700">
+          Intelligence brief failed to load.
+        </p>
+        <p className="text-xs text-red-600">
+          {loadError}
+        </p>
+        <button
+          onClick={loadBrief}
+          className="rounded border border-red-300 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   async function generate() {
     setGenerating(true);

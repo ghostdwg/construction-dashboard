@@ -59,6 +59,7 @@ const OUTCOME_STYLES: Record<string, { bg: string; text: string; label: string }
 
 export default function SubmissionPanel({ bidId }: { bidId: number }) {
   const [submission, setSubmission] = useState<Submission | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showOutcomeModal, setShowOutcomeModal] = useState(false);
   const [snapshotOpen, setSnapshotOpen] = useState(false);
 
@@ -69,11 +70,12 @@ export default function SubmissionPanel({ bidId }: { bidId: number }) {
       if (res.ok) {
         const data = await res.json();
         setSubmission(data.submission);
+        setLoadError(null);
       } else {
-        setSubmission(null);
+        setLoadError(`HTTP ${res.status}`);
       }
     } catch {
-      setSubmission(null);
+      setLoadError("Failed to reload submission");
     }
   }
 
@@ -88,15 +90,24 @@ export default function SubmissionPanel({ bidId }: { bidId: number }) {
           setSubmission(data.submission);
         } else {
           setSubmission(null);
+          setLoadError(`HTTP ${res.status}`);
         }
       } catch {
-        if (!cancelled) setSubmission(null);
+        if (!cancelled) {
+          setSubmission(null);
+          setLoadError("Failed to load submission");
+        }
       }
     })();
     return () => { cancelled = true; };
   }, [bidId]);
 
-  if (submission === undefined) return <div className="h-12 rounded-md bg-zinc-100 animate-pulse dark:bg-zinc-800" />;
+  if (submission === undefined && !loadError) return <div className="h-12 rounded-md bg-zinc-100 animate-pulse dark:bg-zinc-800" />;
+  if (loadError) return (
+    <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/30 dark:text-red-300">
+      Could not load submission data. {loadError}
+    </div>
+  );
   if (!submission) return null;
 
   const brief = parseSnap<SnapshotData["brief"]>(submission.briefSnapshot);

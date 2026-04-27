@@ -9,6 +9,10 @@ type ActiveProject = {
   location: string | null;
   workflowType: string | null;
   status: string;
+  dueDate: string | null;
+  subCount: number;
+  respondedCount: number;
+  levelingUploadCount: number;
   openSubmittals: number;
   hasBrief: boolean;
 } | null;
@@ -17,7 +21,6 @@ type SidebarCounts = {
   projects: number;
   activeJobs: number;
   newSignals: number;
-  openSubmittals: number;
   openActionItems: number;
 };
 
@@ -30,6 +33,26 @@ const STATUS_PHASE: Record<string, string> = {
   lost:      "closed",
   cancelled: "closed",
 };
+
+const dueDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+function formatDueDate(dueDate: string | null) {
+  if (!dueDate) return "not set";
+  return dueDateFormatter.format(new Date(dueDate));
+}
+
+function formatResponses(subCount: number, respondedCount: number) {
+  if (subCount === 0) return "none invited";
+  return `${respondedCount}/${subCount}`;
+}
+
+function formatUploads(count: number) {
+  if (count === 0) return "none";
+  return count === 1 ? "1 upload" : `${count} uploads`;
+}
 
 export default function AppSidebar({
   counts,
@@ -77,21 +100,6 @@ export default function AppSidebar({
       {/* ── execution ─────────────────────────────────────────────────── */}
       <SectionLabel label="execution" />
       <SidebarItem
-        href="#"
-        label="Schedule"
-        sub="critical path + weather"
-        meta="soon"
-        active={false}
-        dim
-      />
-      <SidebarItem
-        href="/submittals"
-        label="Submittals"
-        sub="register + due dates"
-        meta={counts.openSubmittals > 0 ? String(counts.openSubmittals) : "—"}
-        active={isActive("/submittals")}
-      />
-      <SidebarItem
         href="/tasks"
         label="Tasks"
         sub="action items + manual tasks"
@@ -101,7 +109,7 @@ export default function AppSidebar({
       <SidebarItem
         href="/meetings"
         label="Meetings"
-        sub="cross-project meeting log"
+        sub="cross-project action items"
         meta="—"
         active={isActive("/meetings")}
       />
@@ -114,14 +122,6 @@ export default function AppSidebar({
         sub="providers + integrations"
         meta="ok"
         active={isActive("/settings")}
-      />
-      <SidebarItem
-        href="#"
-        label="Audit"
-        sub="changes + approvals"
-        meta="soon"
-        active={false}
-        dim
       />
 
       {/* ── Active project card ───────────────────────────────────────── */}
@@ -140,22 +140,33 @@ export default function AppSidebar({
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: "var(--text-soft)" }}>
               {activeProject.workflowType === "PROJECT" ? "project mode" : "bid mode"}
+              {` // ${STATUS_PHASE[activeProject.status] ?? activeProject.status}`}
               {activeProject.location ? ` // ${activeProject.location.toLowerCase()}` : ""}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-1.5">
-            <MiniStat label="phase" value={STATUS_PHASE[activeProject.status] ?? activeProject.status} />
+            <MiniStat label="due" value={formatDueDate(activeProject.dueDate)} />
+            <MiniStat
+              label="responses"
+              value={formatResponses(activeProject.subCount, activeProject.respondedCount)}
+              accent={activeProject.respondedCount > 0}
+            />
+            <MiniStat
+              label="leveling"
+              value={formatUploads(activeProject.levelingUploadCount)}
+              accent={activeProject.levelingUploadCount > 0}
+            />
             <MiniStat
               label="briefing"
               value={activeProject.hasBrief ? "ready" : "pending"}
               accent={activeProject.hasBrief}
             />
             <MiniStat
+              className="col-span-2"
               label="submittals"
               value={activeProject.openSubmittals > 0 ? `${activeProject.openSubmittals} open` : "none open"}
               accent={activeProject.openSubmittals === 0}
             />
-            <MiniStat label="status" value={activeProject.status} />
           </div>
         </Link>
       )}
@@ -220,15 +231,16 @@ function SidebarItem({
 }
 
 function MiniStat({
-  label, value, accent = false,
+  label, value, accent = false, className = "",
 }: {
   label: string;
   value: string;
   accent?: boolean;
+  className?: string;
 }) {
   return (
     <div
-      className="px-2.5 py-2 rounded-md border border-[var(--line)]"
+      className={`px-2.5 py-2 rounded-md border border-[var(--line)] ${className}`.trim()}
       style={{ background: "rgba(255,255,255,0.02)" }}
     >
       <span

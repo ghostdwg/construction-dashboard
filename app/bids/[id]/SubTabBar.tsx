@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   type TabKey,
   PURSUIT_KEYS,
@@ -20,13 +20,8 @@ export default function SubTabBar({
   bidId: number;
   workflowType?: string;
 }) {
-  const router = useRouter();
   const active = tab as TabKey;
   const isProject = workflowType === "PROJECT";
-
-  function go(t: TabKey) {
-    router.replace(`/bids/${bidId}?tab=${t}`);
-  }
 
   let subtabs: { key: TabKey; label: string }[] | null = null;
   if (!isProject && PURSUIT_KEYS.has(active))   subtabs = PURSUIT_SUBTABS;
@@ -38,9 +33,9 @@ export default function SubTabBar({
   return (
     <nav className="flex items-center border-b border-zinc-200 dark:border-zinc-700 mb-6 overflow-x-auto scrollbar-none">
       {subtabs.map((t) => (
-        <button
+        <Link
           key={t.key}
-          onClick={() => go(t.key)}
+          href={`/bids/${bidId}?tab=${t.key}`}
           className={`shrink-0 px-3.5 py-2 text-[11px] font-mono tracking-wide border-b-2 -mb-px transition-colors ${
             active === t.key
               ? "border-emerald-500 text-zinc-900 dark:text-zinc-100"
@@ -48,7 +43,7 @@ export default function SubTabBar({
           }`}
         >
           {t.label}
-        </button>
+        </Link>
       ))}
     </nav>
   );

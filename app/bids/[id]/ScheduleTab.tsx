@@ -86,6 +86,7 @@ export default function ScheduleTab({ bidId }: { bidId: number }) {
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     (async () => {
       try {
         const res = await fetch(`/api/bids/${bidId}/schedule`, { signal: controller.signal });
@@ -100,15 +101,20 @@ export default function ScheduleTab({ bidId }: { bidId: number }) {
         setError(null);
       } catch (e) {
         if (cancelled) return;
-        if ((e as Error).name === "AbortError") return;
+        if ((e as Error).name === "AbortError") {
+          setError("Schedule load timed out");
+          return;
+        }
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         if (!cancelled) setLoading(false);
+        clearTimeout(timeout);
       }
     })();
     return () => {
       cancelled = true;
       controller.abort();
+      clearTimeout(timeout);
     };
   }, [bidId, reloadTick]);
 

@@ -283,7 +283,7 @@ export async function POST(
     }
 
     const wb = new ExcelJS.Workbook();
-    wb.creator = "Construction Dashboard — Owner Estimate";
+    wb.creator = "NeuroGlitch Construction Intelligence — Owner Estimate";
     wb.created = new Date();
     buildOwnerEstimateSheet(wb, estimate);
 

@@ -1,19 +1,10 @@
 "use client";
 
-// Auth Wall — Login page
-//
-// Simple email + password form. On first visit (no users in the system), shows
-// "Create Admin Account" mode instead. After the admin exists, shows the
-// standard login form.
-//
-// AUTH_DISABLED bypass: if the user navigates here while auth is disabled,
-// show a note explaining that auth is off.
-
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/bids";
@@ -23,8 +14,6 @@ export default function LoginPage() {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // Check if any users exist (determines setup vs login mode)
   const [mode, setMode] = useState<"loading" | "setup" | "login">("loading");
 
   useEffect(() => {
@@ -32,10 +21,7 @@ export default function LoginPage() {
     (async () => {
       try {
         const res = await fetch("/api/auth/setup");
-        if (!res.ok) {
-          setMode("login");
-          return;
-        }
+        if (!res.ok) { setMode("login"); return; }
         const data = (await res.json()) as { hasUsers: boolean };
         if (cancelled) return;
         setMode(data.hasUsers ? "login" : "setup");
@@ -43,47 +29,31 @@ export default function LoginPage() {
         if (!cancelled) setMode("login");
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
     try {
       if (mode === "setup") {
-        // Create the first admin user
         const res = await fetch("/api/auth/setup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name.trim(),
-            email: email.trim().toLowerCase(),
-            password,
-          }),
+          body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error ?? `HTTP ${res.status}`);
         }
-        // Fall through to sign in with the newly created account
       }
-
       const result = await signIn("credentials", {
         email: email.trim().toLowerCase(),
         password,
         redirect: false,
       });
-
-      if (result?.error) {
-        setError("Invalid email or password.");
-        setLoading(false);
-        return;
-      }
-
+      if (result?.error) { setError("Invalid email or password."); setLoading(false); return; }
       router.push(callbackUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -118,54 +88,22 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {isSetup && (
             <div>
-              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1 dark:text-zinc-400">
-                Your Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Jane Smith"
-                required
-                autoFocus
-                className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-              />
+              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1 dark:text-zinc-400">Your Name</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Smith" required autoFocus
+                className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100" />
             </div>
           )}
-
           <div>
-            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1 dark:text-zinc-400">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@yourcompany.com"
-              required
-              autoFocus={!isSetup}
-              className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-            />
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1 dark:text-zinc-400">Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@yourcompany.com" required autoFocus={!isSetup}
+              className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100" />
           </div>
-
           <div>
-            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1 dark:text-zinc-400">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={isSetup ? "Choose a strong password" : "••••••••"}
-              required
-              minLength={8}
-              className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-            />
-            {isSetup && (
-              <p className="text-[11px] text-zinc-400 mt-1 dark:text-zinc-500">
-                Minimum 8 characters.
-              </p>
-            )}
+            <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-1 dark:text-zinc-400">Password</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder={isSetup ? "Choose a strong password" : "••••••••"} required minLength={8}
+              className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100" />
+            {isSetup && <p className="text-[11px] text-zinc-400 mt-1 dark:text-zinc-500">Minimum 8 characters.</p>}
           </div>
 
           {error && (
@@ -174,19 +112,24 @@ export default function LoginPage() {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            {loading
-              ? "Please wait…"
-              : isSetup
-                ? "Create Account & Sign In"
-                : "Sign In"}
+          <button type="submit" disabled={loading}
+            className="rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200">
+            {loading ? "Please wait…" : isSetup ? "Create Account & Sign In" : "Sign In"}
           </button>
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-[80vh] items-center justify-center">
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading…</p>
+      </div>
+    }>
+      <LoginInner />
+    </Suspense>
   );
 }

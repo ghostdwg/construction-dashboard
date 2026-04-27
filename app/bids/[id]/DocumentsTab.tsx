@@ -1154,6 +1154,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
   const [addendumDate, setAddendumDate] = useState("");
   const [addendumUploading, setAddendumUploading] = useState(false);
   const [addendumUploadError, setAddendumUploadError] = useState<string | null>(null);
+  const [addendumLoadError, setAddendumLoadError] = useState<string | null>(null);
   const [deletingAddendumId, setDeletingAddendumId] = useState<number | null>(null);
   const [, setBriefIsStale] = useState(false);
   const [briefExists, setBriefExists] = useState(false);
@@ -1165,34 +1166,87 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
   // ── Load on mount ──────────────────────────────────────────────────────────
 
+  async function fetchWithTimeout(input: string, timeoutMs = 15000): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(input, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+    try {
+      const data = (await res.json()) as { error?: string };
+      if (data?.error) return data.error;
+    } catch {
+      // Ignore JSON parse failures and fall back to status text below.
+    }
+
+    return res.statusText
+      ? `${fallback} (${res.status} ${res.statusText})`
+      : `${fallback} (${res.status})`;
+  }
+
   const loadAddendums = useCallback(async () => {
-    const res = await fetch(`/api/bids/${bidId}/addendums`);
-    if (res.ok) setAddendums((await res.json()) as AddendumRow[]);
+    try {
+      const res = await fetchWithTimeout(`/api/bids/${bidId}/addendums`);
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res, "Failed to load addendums"));
+      }
+      setAddendums((await res.json()) as AddendumRow[]);
+      setAddendumLoadError(null);
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        setAddendumLoadError("Addendums load timed out");
+      } else {
+        setAddendumLoadError(e instanceof Error ? e.message : "Failed to load addendums");
+      }
+    }
   }, [bidId]);
 
   async function loadAll() {
     try {
       const [specRes, drawingRes, tradesRes] = await Promise.all([
-        fetch(`/api/bids/${bidId}/specbook/gaps`),
-        fetch(`/api/bids/${bidId}/drawings/gaps`),
-        fetch(`/api/trades`),
+        fetchWithTimeout(`/api/bids/${bidId}/specbook/gaps`),
+        fetchWithTimeout(`/api/bids/${bidId}/drawings/gaps`),
+        fetchWithTimeout(`/api/trades`),
       ]);
+      if (!specRes.ok) {
+        throw new Error(await readErrorMessage(specRes, "Failed to load spec book coverage"));
+      }
+      if (!drawingRes.ok) {
+        throw new Error(await readErrorMessage(drawingRes, "Failed to load drawing coverage"));
+      }
+      if (!tradesRes.ok) {
+        throw new Error(await readErrorMessage(tradesRes, "Failed to load trades"));
+      }
       setSpecData(await safeJson<SpecData>(specRes));
       setDrawingData(await safeJson<DrawingData>(drawingRes));
       setAllTrades((await safeJson<Trade[]>(tradesRes)) ?? []);
+      setFetchError(null);
     } catch (e) {
-      setFetchError(e instanceof Error ? e.message : "Load failed");
+      if (e instanceof Error && e.name === "AbortError") {
+        setFetchError("Documents load timed out");
+      } else {
+        setFetchError(e instanceof Error ? e.message : "Load failed");
+      }
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
+    setLoading(true);
     loadAll();
     loadAddendums();
     // Check brief state
-    fetch(`/api/bids/${bidId}/intelligence`)
-      .then((r) => (r.ok ? r.json() : null))
+    fetchWithTimeout(`/api/bids/${bidId}/intelligence`)
+      .then(async (r) => {
+        if (!r.ok) return null;
+        return r.json() as Promise<{ brief: { isStale?: boolean; status?: string } | null }>;
+      })
       .then((data: { brief: { isStale?: boolean; status?: string } | null } | null) => {
         const b = data?.brief;
         if (b?.isStale) setBriefIsStale(true);
@@ -2127,6 +2181,9 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
         </div>
         {addendumUploadError && (
           <p className="text-sm text-red-500">{addendumUploadError}</p>
+        )}
+        {addendumLoadError && (
+          <p className="text-sm text-red-500">{addendumLoadError}</p>
         )}
 
         {/* Addendum list */}

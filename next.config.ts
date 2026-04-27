@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["100.82.119.37"],
   serverExternalPackages: ["@prisma/adapter-libsql", "@libsql/core", "pdfjs-dist"],
   experimental: {
     // proxy.ts (auth middleware) buffers request bodies in memory.

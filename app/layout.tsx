@@ -32,7 +32,7 @@ export default async function RootLayout({
 
   // ── Sidebar data ──────────────────────────────────────────────────────────
   const oneDayAgo = new Date(Date.now() - 86_400_000);
-  const [bidCount, activeJob, activeBid, newSignals, globalOpenSubmittals, globalOpenActionItems] = await Promise.all([
+  const [bidCount, activeJob, activeBid, newSignals, globalOpenActionItems] = await Promise.all([
     prisma.bid.count(),
     prisma.backgroundJob.count({ where: { status: { in: ["queued", "running"] } } }),
     prisma.bid.findFirst({
@@ -44,15 +44,15 @@ export default async function RootLayout({
         location: true,
         workflowType: true,
         status: true,
+        dueDate: true,
       },
     }),
     prisma.marketSignal.count({ where: { leadId: null, createdAt: { gte: oneDayAgo } } }),
-    prisma.submittalItem.count({ where: { status: { notIn: ["APPROVED", "APPROVED_AS_NOTED", "REJECTED"] } } }),
     prisma.meetingActionItem.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
   ]);
 
-  // Submittal + brief data for the active project card
-  const [openSubmittals, hasBrief] = activeBid
+  // Active-project card metrics
+  const [openSubmittals, hasBrief, subCount, respondedCount, levelingUploadCount] = activeBid
     ? await Promise.all([
         prisma.submittalItem.count({
           where: {
@@ -64,8 +64,20 @@ export default async function RootLayout({
           where: { bidId: activeBid.id },
           select: { id: true },
         }).then(Boolean),
+        prisma.bidInviteSelection.count({
+          where: { bidId: activeBid.id },
+        }),
+        prisma.bidInviteSelection.count({
+          where: {
+            bidId: activeBid.id,
+            rfqStatus: { in: ["received", "reviewing", "accepted"] },
+          },
+        }),
+        prisma.estimateUpload.count({
+          where: { bidId: activeBid.id },
+        }),
       ])
-    : [0, false];
+    : [0, false, 0, 0, 0];
 
   const activeProject = activeBid
     ? {
@@ -74,6 +86,10 @@ export default async function RootLayout({
         location:       activeBid.location,
         workflowType:   activeBid.workflowType,
         status:         activeBid.status,
+        dueDate:        activeBid.dueDate?.toISOString() ?? null,
+        subCount,
+        respondedCount,
+        levelingUploadCount,
         openSubmittals,
         hasBrief,
       }
@@ -143,7 +159,7 @@ export default async function RootLayout({
             {/* ── Below topbar: sidebar + main ────────────────────────── */}
             <div className="flex flex-1 min-h-0">
               <AppSidebar
-                counts={{ projects: bidCount, activeJobs: activeJob, newSignals, openSubmittals: globalOpenSubmittals, openActionItems: globalOpenActionItems }}
+                counts={{ projects: bidCount, activeJobs: activeJob, newSignals, openActionItems: globalOpenActionItems }}
                 activeProject={activeProject}
               />
               <main className="flex-1 min-w-0 overflow-y-auto">

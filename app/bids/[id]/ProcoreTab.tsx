@@ -757,18 +757,26 @@ function SyncCard({
 function RfiList({ bidId, refreshTick }: { bidId: number; refreshTick: number }) {
   const [rfis, setRfis] = useState<RfiItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    setLoadError(null);
     fetch(`/api/bids/${bidId}/rfis`)
-      .then((r) => r.json() as Promise<{ rfis: RfiItem[] }>)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<{ rfis: RfiItem[] }>;
+      })
       .then((d) => setRfis(d.rfis ?? []))
-      .catch(console.error)
+      .catch((e: Error) => setLoadError(e.message))
       .finally(() => setLoading(false));
   }, [bidId, refreshTick]);
 
   if (loading) return <p className="text-xs text-zinc-400 dark:text-zinc-500">Loading RFIs…</p>;
+  if (loadError) return (
+    <p className="text-xs text-red-600 dark:text-red-400">Failed to load RFIs: {loadError}</p>
+  );
   if (rfis.length === 0)
     return (
       <p className="text-xs text-zinc-400 italic dark:text-zinc-500">

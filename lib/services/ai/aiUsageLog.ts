@@ -173,3 +173,50 @@ export async function loadUsageSummaries(): Promise<{
   ]);
   return { today, last7Days, last30Days };
 }
+
+// ── Per-bid ledger ───────────────────────────────────────────────────────────
+
+export type BidUsageLedger = {
+  totalCalls: number;
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  byCallKey: Array<{
+    callKey: string;
+    label: string;
+    calls: number;
+    costUsd: number;
+  }>;
+};
+
+export async function loadUsageForBid(bidId: number): Promise<BidUsageLedger> {
+  const rows = await prisma.aiUsageLog.findMany({
+    where: { bidId, status: "ok" },
+    select: { callKey: true, inputTokens: true, outputTokens: true, costUsd: true },
+  });
+
+  type Bucket = { calls: number; inputTokens: number; outputTokens: number; costUsd: number };
+  const byKey = new Map<string, Bucket>();
+  let totalCalls = 0, totalIn = 0, totalOut = 0, totalCost = 0;
+
+  for (const row of rows) {
+    totalCalls++;
+    totalIn  += row.inputTokens;
+    totalOut += row.outputTokens;
+    totalCost += row.costUsd;
+    let b = byKey.get(row.callKey);
+    if (!b) { b = { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 }; byKey.set(row.callKey, b); }
+    b.calls++; b.inputTokens += row.inputTokens; b.outputTokens += row.outputTokens; b.costUsd += row.costUsd;
+  }
+
+  const byCallKey = Array.from(byKey.entries())
+    .map(([callKey, b]) => ({
+      callKey,
+      label: (AI_CALL_DEFINITIONS as Record<string, { label: string }>)[callKey]?.label ?? callKey,
+      calls: b.calls,
+      costUsd: b.costUsd,
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd);
+
+  return { totalCalls, totalCostUsd: totalCost, totalInputTokens: totalIn, totalOutputTokens: totalOut, byCallKey };
+}

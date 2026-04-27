@@ -55,10 +55,16 @@ export default function ScopeTab({ bidId }: { bidId: number }) {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/bids/${bidId}/scope`).then((r) => r.json()),
-      fetch(`/api/bids/${bidId}`).then((r) => r.json()),
+      fetch(`/api/bids/${bidId}/scope`).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<ScopeResponse>;
+      }),
+      fetch(`/api/bids/${bidId}`).then((r) => {
+        if (!r.ok) throw new Error(`Bid: HTTP ${r.status}`);
+        return r.json() as Promise<{ bidTrades: { trade: Trade }[] }>;
+      }),
     ])
-      .then(([scopeData, bidData]: [ScopeResponse, { bidTrades: { trade: Trade }[] }]) => {
+      .then(([scopeData, bidData]) => {
         setData({
           byTrade: scopeData?.byTrade ?? {},
           unassigned: scopeData?.unassigned ?? [],

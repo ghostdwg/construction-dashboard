@@ -203,9 +203,13 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     (async () => {
       try {
-        const res = await fetch(`/api/bids/${bidId}/handoff`);
+        const res = await fetch(`/api/bids/${bidId}/handoff`, {
+          signal: controller.signal,
+        });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error ?? `HTTP ${res.status}`);
@@ -217,13 +221,21 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
+          if (e instanceof Error && e.name === "AbortError") {
+            setError("Handoff load timed out");
+          } else {
+            setError(e instanceof Error ? e.message : String(e));
+          }
           setLoading(false);
         }
+      } finally {
+        clearTimeout(timeout);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
+      clearTimeout(timeout);
     };
   }, [bidId, packetReloadTick]);
 

@@ -1,0 +1,97 @@
+/* GroundworX Design Tokens
+   Canonical high-performance token set derived from:
+   C:\Dev\groundworx_high_performance_sample.html
+*/
+
+:root {
+  /* Background system */
+  --gwx-bg: #050608;
+  --gwx-bg-2: #0a0c10;
+  --gwx-surface: #101319;
+  --gwx-surface-2: #141922;
+  --gwx-surface-3: #181d27;
+
+  /* Lines / dividers */
+  --gwx-line: rgba(255, 255, 255, 0.08);
+  --gwx-line-strong: rgba(255, 255, 255, 0.14);
+
+  /* Text */
+  --gwx-text: #f5f7fa;
+  --gwx-text-soft: rgba(245, 247, 250, 0.68);
+  --gwx-text-dim: rgba(245, 247, 250, 0.34);
+
+  /* Signal colors */
+  --gwx-signal: #00ff64;
+  --gwx-signal-soft: #6bff9f;
+  --gwx-signal-dim: rgba(0, 255, 100, 0.09);
+  --gwx-signal-mid: rgba(0, 255, 100, 0.18);
+
+  --gwx-amber: #f5a623;
+  --gwx-amber-dim: rgba(245, 166, 35, 0.12);
+
+  --gwx-red: #e8453c;
+  --gwx-red-dim: rgba(232, 69, 60, 0.12);
+
+  --gwx-blue: #7ea7ff;
+  --gwx-blue-dim: rgba(126, 167, 255, 0.12);
+
+  /* Typography */
+  --gwx-font-sans: "Barlow", sans-serif;
+  --gwx-font-mono: "IBM Plex Mono", monospace;
+
+  /* Radius */
+  --gwx-radius-sm: 6px;
+  --gwx-radius-md: 8px;
+  --gwx-radius-lg: 10px;
+  --gwx-radius-pill: 999px;
+
+  /* Shadows */
+  --gwx-shadow-panel: 0 18px 40px rgba(0, 0, 0, 0.35);
+
+  /* Spacing */
+  --gwx-space-1: 4px;
+  --gwx-space-2: 8px;
+  --gwx-space-3: 12px;
+  --gwx-space-4: 16px;
+  --gwx-space-5: 22px;
+  --gwx-space-6: 28px;
+
+  /* Shell sizing */
+  --gwx-topbar-h: 62px;
+  --gwx-sidebar-w: 250px;
+  --gwx-rail-w: 340px;
+
+  /* Type scale */
+  --gwx-type-label: 10px;
+  --gwx-type-meta: 11px;
+  --gwx-type-body: 12px;
+  --gwx-type-panel: 14px;
+  --gwx-type-h3: 15px;
+  --gwx-type-h2: 34px;
+  --gwx-type-metric: 34px;
+}
+
+/* Recommended semantic aliases */
+:root {
+  --gwx-state-live-bg: var(--gwx-signal-dim);
+  --gwx-state-live-fg: var(--gwx-signal-soft);
+  --gwx-state-live-border: rgba(0, 255, 100, 0.22);
+
+  --gwx-state-review-bg: var(--gwx-amber-dim);
+  --gwx-state-review-fg: #ffcc72;
+  --gwx-state-review-border: rgba(245, 166, 35, 0.2);
+
+  --gwx-state-blocked-bg: var(--gwx-red-dim);
+  --gwx-state-blocked-fg: #ff968f;
+  --gwx-state-blocked-border: rgba(232, 69, 60, 0.22);
+
+  --gwx-state-complete-bg: rgba(126, 167, 255, 0.1);
+  --gwx-state-complete-fg: #b8ceff;
+  --gwx-state-complete-border: rgba(126, 167, 255, 0.2);
+}
+
+/* Guidance:
+   - Keep signal green for active/connected/ready/selected states.
+   - Use amber for review/attention, red for blocked/risk.
+   - Prefer edge treatments and chips over large saturated fills.
+*/

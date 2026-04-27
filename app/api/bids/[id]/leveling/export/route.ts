@@ -102,7 +102,7 @@ export async function GET(
 
   // Build workbook
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Preconstruction Intelligence System";
+  workbook.creator = "NeuroGlitch Construction Intelligence";
   workbook.created = new Date();
 
   for (const key of tradeOrder) {

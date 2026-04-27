@@ -224,17 +224,26 @@ function TradePanel({
 export default function AiReviewTab({ bidId }: { bidId: number }) {
   const [gapData, setGapData] = useState<GapData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedTrade, setSelectedTrade] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | null>(null);
 
   const loadGapData = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      const res = await fetch(`/api/bids/${bidId}/gap-analysis`);
-      if (!res.ok) return;
+      const res = await fetch(`/api/bids/${bidId}/gap-analysis`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
       const data = await res.json() as GapData;
       setGapData(data);
+      setLoadError(null);
       if (data.hasFindings) {
         setLastAnalyzedAt(new Date().toLocaleString());
       }
@@ -243,9 +252,15 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
         const firstTrade = Object.keys(data.byTrade)[0];
         if (firstTrade) setSelectedTrade(firstTrade);
       }
-    } catch {
-      // leave null
+    } catch (e) {
+      setGapData(null);
+      if (e instanceof Error && e.name === "AbortError") {
+        setLoadError("Gap analysis load timed out");
+      } else {
+        setLoadError(e instanceof Error ? e.message : "Failed to load gap analysis");
+      }
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   }, [bidId, selectedTrade]);
@@ -278,6 +293,28 @@ export default function AiReviewTab({ bidId }: { bidId: number }) {
 
   if (loading) {
     return <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 px-5 py-6 flex flex-col gap-3 items-start dark:border-red-900 dark:bg-red-900/30">
+        <p className="text-sm text-red-700 dark:text-red-300">
+          Failed to load gap analysis.
+        </p>
+        <p className="text-xs text-red-600 dark:text-red-400">
+          {loadError}
+        </p>
+        <button
+          onClick={() => {
+            setLoading(true);
+            void loadGapData();
+          }}
+          className="rounded border border-red-300 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-900/20"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   const isStubMode = gapData?.isStubMode ?? false;

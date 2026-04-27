@@ -665,7 +665,7 @@ function MeetingDetailPanel({
       {/* ── Transcript ── */}
       {activeSection === "transcript" && (
         <div className="space-y-3">
-          {!detail.audioFileName && detail.status === "PENDING" && (
+          {(detail.status === "PENDING" || detail.status === "FAILED") && (
             <div className="space-y-2">
               {/* Upload option */}
               <div
@@ -674,19 +674,32 @@ function MeetingDetailPanel({
               >
                 <Upload className="h-6 w-6 text-zinc-400" />
                 <div className="text-center">
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Upload audio file</p>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Upload audio, video, or transcript</p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">MP3, M4A, WAV, MP4, WEBM · max 500 MB</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">TXT, VTT, SRT · loaded directly as transcript</p>
                   <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
-                    Requires AssemblyAI API key in sidecar/.env
+                    Audio/video requires AssemblyAI API key in sidecar/.env
                   </p>
                 </div>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="audio/*,video/mp4,video/webm"
+                accept="audio/*,video/mp4,video/webm,.txt,.vtt,.srt"
                 className="hidden"
-                onChange={(e) => { if (e.target.files?.[0]) uploadAudio(e.target.files[0]); }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.type.startsWith("text/") || /\.(txt|vtt|srt)$/i.test(file.name)) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      setManualTranscript((ev.target?.result as string) ?? "");
+                    };
+                    reader.readAsText(file);
+                  } else {
+                    uploadAudio(file);
+                  }
+                }}
               />
               {uploadError && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 px-1">{uploadError}</p>

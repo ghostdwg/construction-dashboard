@@ -28,6 +28,8 @@ import InspectionsTab from "./InspectionsTab";
 import CloseoutTab from "./CloseoutTab";
 import JobHistoryPanel from "./JobHistoryPanel";
 import MeetingActionsPanel from "./MeetingActionsPanel";
+import AiBidUsageCard from "./AiBidUsageCard";
+import ProjectStatusStrip from "./ProjectStatusStrip";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +105,23 @@ export default async function BidDetailPage({
         })
       : [];
 
+  const [overviewLevelingUploadCount, overviewHasBrief] =
+    tab === "overview"
+      ? await Promise.all([
+          prisma.estimateUpload.count({
+            where: { bidId },
+          }),
+          prisma.bidIntelligenceBrief.findFirst({
+            where: { bidId },
+            select: { id: true },
+          }).then(Boolean),
+        ])
+      : [0, false];
+
+  const overviewRespondedCount = bid.selections.filter((s) =>
+    ["received", "reviewing", "accepted"].includes(s.rfqStatus)
+  ).length;
+
   return (
     <div className="flex flex-col min-h-full">
       <ProjectContextBar
@@ -137,6 +156,14 @@ export default async function BidDetailPage({
                   </span>
                 )}
               </div>
+
+              <ProjectStatusStrip
+                dueDate={bid.dueDate ? bid.dueDate.toISOString() : null}
+                subCount={bid.selections.length}
+                respondedCount={overviewRespondedCount}
+                levelingUploadCount={overviewLevelingUploadCount}
+                hasBrief={overviewHasBrief}
+              />
 
               <section className="grid grid-cols-2 gap-4">
                 <div>
@@ -232,6 +259,10 @@ export default async function BidDetailPage({
                   <div className="flex-1 h-px bg-zinc-100 dark:bg-zinc-800" />
                 </div>
                 <IntelligenceBrief bidId={bid.id} />
+              </section>
+
+              <section>
+                <AiBidUsageCard bidId={bid.id} />
               </section>
 
               <section>

@@ -58,15 +58,24 @@ export default function MeetingActionsPanel({ bidId }: { bidId: number }) {
   const router = useRouter();
   const [items, setItems] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [closing, setClosing] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setActionError(null);
     try {
       const res = await fetch(`/api/bids/${bidId}/action-items`);
-      if (res.ok) {
-        const data = await res.json();
-        setItems(data.actionItems);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
       }
+      const data = await res.json();
+      setItems(data.actionItems);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load meeting action items");
     } finally {
       setLoading(false);
     }
@@ -76,8 +85,9 @@ export default function MeetingActionsPanel({ bidId }: { bidId: number }) {
 
   async function markDone(item: ActionItem) {
     setClosing((s) => new Set(s).add(item.id));
+    setActionError(null);
     try {
-      await fetch(
+      const res = await fetch(
         `/api/bids/${bidId}/meetings/${item.meetingId}/action-items/${item.id}`,
         {
           method: "PATCH",
@@ -85,14 +95,20 @@ export default function MeetingActionsPanel({ bidId }: { bidId: number }) {
           body: JSON.stringify({ status: "CLOSED" }),
         }
       );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
       setItems((prev) => prev.filter((a) => a.id !== item.id));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to mark action item done");
     } finally {
       setClosing((s) => { const n = new Set(s); n.delete(item.id); return n; });
     }
   }
 
   // Don't render the panel at all when there are no open items (and not loading)
-  if (!loading && items.length === 0) return null;
+  if (!loading && !loadError && items.length === 0) return null;
 
   const criticalOrHigh = items.filter(
     (a) => a.priority === "CRITICAL" || a.priority === "HIGH"
@@ -131,11 +147,34 @@ export default function MeetingActionsPanel({ bidId }: { bidId: number }) {
         </button>
       </div>
 
+      {actionError && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-300">
+          {actionError}
+        </div>
+      )}
+
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
             <div key={i} className="h-12 rounded-md bg-zinc-100 animate-pulse dark:bg-zinc-800" />
           ))}
+        </div>
+      ) : loadError ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 flex items-center justify-between gap-3 dark:border-red-900/60 dark:bg-red-900/20">
+          <div className="min-w-0">
+            <p className="text-sm text-red-700 dark:text-red-300">
+              Failed to load meeting action items.
+            </p>
+            <p className="text-xs text-red-600 dark:text-red-400 truncate">
+              {loadError}
+            </p>
+          </div>
+          <button
+            onClick={load}
+            className="shrink-0 rounded border border-red-300 bg-white px-3 py-1.5 text-xs text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-900/20"
+          >
+            Retry
+          </button>
         </div>
       ) : (
         <div className="rounded-md border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden">

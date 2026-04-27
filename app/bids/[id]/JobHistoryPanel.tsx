@@ -143,23 +143,35 @@ function JobRow({ job }: { job: JobRecord }) {
 export default function JobHistoryPanel({ bidId }: { bidId: number }) {
   const [jobs, setJobs] = useState<JobRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     fetch(`/api/bids/${bidId}/jobs`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error ?? `HTTP ${r.status}`);
+        }
+        return r.json();
+      })
       .then((data) => {
         const list: JobRecord[] = data.jobs ?? [];
         setJobs(list);
+        setError(null);
         // Auto-open on failures or automation-triggered runs (morning review signal)
         if (list.some((j) => j.status === "failed" || j.triggerSource === "automation")) {
           setOpen(true);
         }
       })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed to load background jobs");
+        setOpen(true);
+      })
       .finally(() => setLoading(false));
   }, [bidId]);
 
-  if (!loading && jobs.length === 0) return null;
+  if (!loading && !error && jobs.length === 0) return null;
 
   const failCount   = jobs.filter((j) => j.status === "failed").length;
   const activeCount = jobs.filter((j) => j.status === "queued" || j.status === "running").length;
@@ -201,6 +213,10 @@ export default function JobHistoryPanel({ bidId }: { bidId: number }) {
           {loading ? (
             <p className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 py-1">
               Loading…
+            </p>
+          ) : error ? (
+            <p className="text-[10px] font-mono text-red-600 dark:text-red-400 py-1">
+              Failed to load jobs: {error}
             </p>
           ) : (
             jobs.map((job) => <JobRow key={job.id} job={job} />)
