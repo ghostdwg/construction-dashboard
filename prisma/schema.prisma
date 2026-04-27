@@ -155,6 +155,7 @@ model Bid {
   schedules           Schedule[]
   meetings            Meeting[]
   meetingActionItems  MeetingActionItem[]
+  decisions           BidDecision[]
   procorePushes       ProcorePush[]
   rfiItems            RfiItem[]
   backgroundJobs      BackgroundJob[]
@@ -1178,6 +1179,25 @@ model MeetingActionItem {
   @@index([meetingId])
   @@index([status])
   @@index([source])
+}
+
+model BidDecision {
+  id        Int       @id @default(autoincrement())
+  bidId     Int
+  category  String
+  decision  String
+  rationale String?
+  madeBy    String?
+  madeAt    DateTime?
+  impact    String?
+  status    String    @default("OPEN")
+  source    String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  bid       Bid       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([bidId])
 }
 
 // ── Tier F F2 — Procore REST API push history ───────────────────────────────

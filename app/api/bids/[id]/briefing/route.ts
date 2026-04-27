@@ -101,6 +101,17 @@ type ActionItemShape = {
   meetingTitle: string | null;
 };
 
+type DecisionRow = {
+  category: string;
+  decision: string;
+  rationale: string | null;
+  madeBy: string | null;
+  madeAt: string | null;
+  impact: string | null;
+  source: string | null;
+  status: string;
+};
+
 // ── Spec extraction shapes (sent to sidecar) ───────────────────────────────────
 
 type InspectionRow = AiInspection & { csiNumber: string; csiTitle: string; sectionSeverity: string | null };
@@ -139,7 +150,7 @@ export async function POST(
   });
 
   // ── Parallel data fetch ────────────────────────────────────────────────────
-  const [bid, v2Schedule, legacyActivities, submittalRows, actionItemRows, specSections] =
+  const [bid, v2Schedule, legacyActivities, submittalRows, actionItemRows, decisionRows, specSections] =
     await Promise.all([
       prisma.bid.findUnique({
         where: { id: bidId },
@@ -168,6 +179,10 @@ export async function POST(
         where: { bidId, status: { notIn: ["CLOSED"] } },
         include: { meeting: { select: { title: true, meetingDate: true } } },
         orderBy: [{ priority: "desc" }, { dueDate: "asc" }],
+      }),
+      prisma.bidDecision.findMany({
+        where: { bidId, status: { not: "VOID" } },
+        orderBy: [{ category: "asc" }, { createdAt: "asc" }],
       }),
       specBook
         ? prisma.specSection.findMany({
@@ -327,6 +342,17 @@ export async function POST(
     status: item.status, meetingTitle: item.meeting?.title ?? null,
   }));
 
+  const mappedDecisions: DecisionRow[] = decisionRows.map((item) => ({
+    category: item.category,
+    decision: item.decision,
+    rationale: item.rationale ?? null,
+    madeBy: item.madeBy ?? null,
+    madeAt: item.madeAt?.toISOString() ?? null,
+    impact: item.impact ?? null,
+    source: item.source ?? null,
+    status: item.status,
+  }));
+
   // ── Build payload ──────────────────────────────────────────────────────────
   const payload = {
     bid:          { projectName: bid.projectName, location: bid.location ?? null },
@@ -334,6 +360,7 @@ export async function POST(
     lookaheadDays,
     riskFlags,
     specFlags,
+    decisions:    mappedDecisions,
     inspections,
     warranties,
     trainings,

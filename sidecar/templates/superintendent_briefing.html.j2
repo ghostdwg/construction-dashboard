@@ -238,6 +238,13 @@
     .priority-HIGH     { background: #fff7ed; color: #c2410c; }
     .priority-MEDIUM   { background: #fefce8; color: #92400e; }
     .priority-LOW      { background: #f9fafb; color: #6b7280; }
+    .superseded-note {
+      font-size: 7pt;
+      color: #92400e;
+      text-transform: uppercase;
+      letter-spacing: 0.4pt;
+      margin-left: 3pt;
+    }
 
     /* ── Footer ──────────────────────────────────────────────────────────────── */
     .doc-footer {
@@ -309,7 +316,68 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- §2  REQUIRED INSPECTIONS                                                   -->
+<!-- §2  PRE-AWARD DECISIONS                                                    -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+{% if decisions | length > 0 %}
+<div class="section-label warning">Pre-Award Decisions ({{ decisions | length }})</div>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th style="width:12%;">Category</th>
+      <th style="width:28%;">Decision</th>
+      <th style="width:24%;">Rationale</th>
+      <th style="width:16%;">Source</th>
+      <th style="width:10%;">Made By</th>
+      <th style="width:10%;">Date</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in decisions %}
+    {% set cat = (d.category or "OTHER") | upper %}
+    <tr{% if d.status == "SUPERSEDED" %} style="opacity:0.6;"{% endif %}>
+      <td>
+        <span
+          style="
+            display:inline-block;
+            padding:1pt 4pt;
+            border-radius:2pt;
+            font-size:6.5pt;
+            font-weight:bold;
+            text-transform:uppercase;
+            letter-spacing:0.3pt;
+            white-space:nowrap;
+            {% if cat == 'SCOPE' %}background:#dbeafe;color:#1d4ed8;{% endif %}
+            {% if cat == 'EXCLUSION' %}background:#fee2e2;color:#dc2626;{% endif %}
+            {% if cat == 'SUBSTITUTION' %}background:#fef3c7;color:#d97706;{% endif %}
+            {% if cat == 'ASSUMPTION' %}background:#f3f4f6;color:#6b7280;{% endif %}
+            {% if cat == 'RISK' %}background:#ffe4e6;color:#9f1239;{% endif %}
+            {% if cat == 'VE' %}background:#dcfce7;color:#15803d;{% endif %}
+            {% if cat == 'DESIGN' %}background:#ede9fe;color:#7c3aed;{% endif %}
+            {% if cat == 'OTHER' %}background:#f3f4f6;color:#6b7280;{% endif %}
+          "
+        >
+          {{ cat }}
+        </span>
+      </td>
+      <td>
+        <span{% if d.status == "SUPERSEDED" %} style="font-style:italic;"{% endif %}>{{ d.decision }}</span>
+        {% if d.status == "SUPERSEDED" %}
+        <span class="superseded-note">(superseded)</span>
+        {% endif %}
+      </td>
+      <td>{{ d.rationale or "—" }}</td>
+      <td>{{ d.source or "—" }}</td>
+      <td>{{ d.madeBy or "—" }}</td>
+      <td style="white-space:nowrap;">{{ d.madeAt | date_fmt }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- §3  REQUIRED INSPECTIONS                                                   -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 <div class="section-label warning">Required Inspections{% if inspections %} ({{ inspections | length }}){% endif %}</div>
 
@@ -350,7 +418,7 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- §3  WARRANTY REQUIREMENTS                                                  -->
+<!-- §4  WARRANTY REQUIREMENTS                                                  -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 <div class="section-label blue">Warranty Requirements{% if warranties %} ({{ warranties | length }}){% endif %}</div>
 
@@ -388,7 +456,7 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- §4  TRAINING REQUIREMENTS                                                  -->
+<!-- §5  TRAINING REQUIREMENTS                                                  -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 {% if trainings %}
 <div class="section-label green">Owner &amp; Staff Training Requirements ({{ trainings | length }})</div>
@@ -420,7 +488,7 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- §5  CLOSEOUT DELIVERABLES                                                  -->
+<!-- §6  CLOSEOUT DELIVERABLES                                                  -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 {% if closeouts %}
 <div class="section-label">Closeout Deliverables Checklist ({{ closeouts | length }})</div>
@@ -457,7 +525,7 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- §6  SUBMITTALS REQUIRING ATTENTION                                         -->
+<!-- §7  SUBMITTALS REQUIRING ATTENTION                                         -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 {% set urgent_subs = submittals | selectattr("isOverdue") | list %}
 {% set approaching_subs = submittals | selectattr("isApproaching") | list %}
@@ -501,7 +569,7 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- §7  SCHEDULE                                                               -->
+<!-- §8  SCHEDULE                                                               -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 {% if schedule.overdue or schedule.thisWeek or schedule.lookahead %}
 <div class="section-label">Schedule — {{ lookahead_days }}-Day Lookahead from {{ as_of_date_fmt }}</div>
@@ -564,7 +632,7 @@
 
 
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
-<!-- §8  OPEN PRECONSTRUCTION COMMITMENTS                                       -->
+<!-- §9  OPEN PRECONSTRUCTION COMMITMENTS                                       -->
 <!-- ═══════════════════════════════════════════════════════════════════════════ -->
 {% if actionItems %}
 <div class="section-label">Open Preconstruction Commitments ({{ actionItems | length }})</div>

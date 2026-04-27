@@ -4,6 +4,7 @@ import ProjectContextBar from "./ProjectContextBar";
 import TradesTab from "./TradesTab";
 import SubsTab from "./SubsTab";
 import ScopeTab from "./ScopeTab";
+import DecisionLogTab from "./DecisionLogTab";
 import AiReviewTab from "./AiReviewTab";
 import QuestionsTab from "./QuestionsTab";
 import ActivityTab from "./ActivityTab";
@@ -283,6 +284,7 @@ export default async function BidDetailPage({
           )}
 
           {tab === "scope" && <ScopeTab bidId={bid.id} />}
+          {tab === "decisions" && <DecisionLogTab bidId={bid.id} />}
           {tab === "ai-review" && <AiReviewTab bidId={bid.id} />}
           {tab === "questions" && <QuestionsTab bidId={bid.id} />}
           {tab === "leveling" && (

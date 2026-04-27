@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -16,12 +16,22 @@ type Task = {
   priority: string;
   status: string;
   isGcTask: boolean;
+  carriedFromDate: string | null;
+  closedAt: string | null;
   notes: string | null;
   sourceText: string | null;
   createdAt: string;
+  updatedAt: string;
   project: { id: number; name: string; location: string | null };
   meetingRef: { title: string; date: string | null } | null;
   meeting: { id: number; title: string; meetingDate: string | null } | null;
+};
+
+type TaskEditorDraft = {
+  assignedToName: string;
+  dueDate: string;
+  priority: string;
+  notes: string;
 };
 
 type FilterStatus = "open" | "all" | "closed" | "deferred";
@@ -55,6 +65,19 @@ function fmtDate(iso: string | null | undefined): string {
 function fmtShort(iso: string | null | undefined): string {
   if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function toDateInputValue(iso: string | null | undefined): string {
+  return iso ? iso.slice(0, 10) : "";
+}
+
+function buildTaskEditorDraft(task: Task): TaskEditorDraft {
+  return {
+    assignedToName: task.assignedToName ?? "",
+    dueDate: toDateInputValue(task.dueDate),
+    priority: task.priority,
+    notes: task.notes ?? "",
+  };
 }
 
 function isOverdue(dueDate: string | null, status: string): boolean {
@@ -114,6 +137,129 @@ function SourceChip({ source }: { source: string }) {
   );
 }
 
+function TaskDetailPanel({
+  draft,
+  saving,
+  deleting,
+  error,
+  success,
+  onChange,
+  onSave,
+  onDelete,
+}: {
+  draft: TaskEditorDraft;
+  saving: boolean;
+  deleting: boolean;
+  error: string | null;
+  success: string | null;
+  onChange: (field: keyof TaskEditorDraft, value: string) => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className="border-t border-[var(--line)] px-4 py-4"
+      style={{ background: "var(--panel)" }}
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.09em]" style={{ color: "var(--text-dim)" }}>
+          task details
+        </p>
+        <div className="min-h-[16px] text-[11px]">
+          {error && <span style={{ color: "var(--red)" }}>{error}</span>}
+          {!error && success && <span style={{ color: "var(--signal-soft)" }}>{success}</span>}
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <div>
+          <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.07em]" style={{ color: "var(--text-dim)" }}>
+            Assignee
+          </label>
+          <input
+            type="text"
+            value={draft.assignedToName}
+            onChange={(e) => onChange("assignedToName", e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none"
+            style={{ borderColor: "var(--line)", background: "var(--bg)", color: "var(--text)" }}
+            placeholder="Name"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.07em]" style={{ color: "var(--text-dim)" }}>
+            Due Date
+          </label>
+          <input
+            type="date"
+            value={draft.dueDate}
+            onChange={(e) => onChange("dueDate", e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none"
+            style={{ borderColor: "var(--line)", background: "var(--bg)", color: "var(--text)" }}
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.07em]" style={{ color: "var(--text-dim)" }}>
+            Priority
+          </label>
+          <select
+            value={draft.priority}
+            onChange={(e) => onChange("priority", e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none"
+            style={{ borderColor: "var(--line)", background: "var(--bg)", color: "var(--text)" }}
+          >
+            {["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((priority) => (
+              <option key={priority} value={priority}>
+                {priority}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="md:col-span-3">
+          <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.07em]" style={{ color: "var(--text-dim)" }}>
+            Notes
+          </label>
+          <textarea
+            value={draft.notes}
+            onChange={(e) => onChange("notes", e.target.value)}
+            rows={4}
+            className="w-full rounded-md border px-3 py-2 text-sm resize-none focus:outline-none"
+            style={{ borderColor: "var(--line)", background: "var(--bg)", color: "var(--text)" }}
+            placeholder="Optional notes"
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={saving || deleting}
+          className="rounded px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.06em] transition-colors disabled:opacity-50"
+          style={{ color: "var(--red)", background: "transparent" }}
+        >
+          {deleting ? "Deleting..." : "Delete"}
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving || deleting}
+          className="rounded border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.06em] transition-colors disabled:opacity-50"
+          style={{
+            background: "var(--signal-dim)",
+            borderColor: "var(--signal)",
+            color: "var(--signal-soft)",
+          }}
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Status cycle button ────────────────────────────────────────────────────────
 const STATUS_CYCLE: Record<string, string> = {
   OPEN: "IN_PROGRESS", IN_PROGRESS: "CLOSED", CLOSED: "OPEN", DEFERRED: "OPEN",
@@ -134,7 +280,10 @@ function CycleButton({ task, onCycled }: { task: Task; onCycled: () => void }) {
   }
   return (
     <button
-      onClick={cycle}
+      onClick={(event) => {
+        event.stopPropagation();
+        void cycle();
+      }}
       disabled={busy}
       className="gwx-nav-link font-mono text-[10px] uppercase tracking-[0.06em] px-2.5 py-1 rounded transition-colors disabled:opacity-40"
       style={{ border: "1px solid var(--line)" }}
@@ -451,8 +600,17 @@ export default function TasksPage() {
   const [filterProject, setFilterProject] = useState<number | "all">("all");
   const [showAddForm, setShowAddForm] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
+  const [editorDraft, setEditorDraft] = useState<TaskEditorDraft | null>(null);
+  const [editorSaving, setEditorSaving] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState<number | null>(null);
+  const [editorError, setEditorError] = useState<string | null>(null);
+  const [editorSuccess, setEditorSuccess] = useState<string | null>(null);
 
   const reload = useCallback(() => setReloadTick(t => t + 1), []);
+  const updateTaskInState = useCallback((nextTask: Task) => {
+    setTasks((current) => current.map((task) => (task.id === nextTask.id ? nextTask : task)));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -476,6 +634,96 @@ export default function TasksPage() {
       })
       .catch(() => {/* non-critical */});
   }, []);
+
+  useEffect(() => {
+    if (expandedTaskId === null) return;
+    if (!tasks.some((task) => task.id === expandedTaskId)) {
+      setExpandedTaskId(null);
+      setEditorDraft(null);
+      setEditorError(null);
+      setEditorSuccess(null);
+      setEditorSaving(false);
+      setDeletingTaskId(null);
+    }
+  }, [tasks, expandedTaskId]);
+
+  function toggleExpandedTask(task: Task) {
+    if (expandedTaskId === task.id) {
+      setExpandedTaskId(null);
+      setEditorDraft(null);
+      setEditorError(null);
+      setEditorSuccess(null);
+      return;
+    }
+
+    setExpandedTaskId(task.id);
+    setEditorDraft(buildTaskEditorDraft(task));
+    setEditorError(null);
+    setEditorSuccess(null);
+  }
+
+  function updateEditorDraft(field: keyof TaskEditorDraft, value: string) {
+    setEditorDraft((current) => (current ? { ...current, [field]: value } : current));
+    setEditorError(null);
+    setEditorSuccess(null);
+  }
+
+  async function saveExpandedTask() {
+    if (expandedTaskId === null || !editorDraft) return;
+
+    setEditorSaving(true);
+    setEditorError(null);
+    setEditorSuccess(null);
+
+    const response = await fetch(`/api/tasks/${expandedTaskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assignedToName: editorDraft.assignedToName.trim() || null,
+        dueDate: editorDraft.dueDate || null,
+        priority: editorDraft.priority,
+        notes: editorDraft.notes.trim() || null,
+      }),
+    });
+
+    const data = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      item?: Task;
+    };
+
+    if (!response.ok || !data.item) {
+      setEditorError(data.error ?? "Failed to save task");
+      setEditorSaving(false);
+      return;
+    }
+
+    updateTaskInState(data.item);
+    setEditorDraft(buildTaskEditorDraft(data.item));
+    setEditorSuccess("Saved");
+    setEditorSaving(false);
+  }
+
+  async function deleteTask(task: Task) {
+    if (!window.confirm(`Delete task "${task.description}"?`)) return;
+
+    setDeletingTaskId(task.id);
+    setEditorError(null);
+    setEditorSuccess(null);
+
+    const response = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+
+    if (!response.ok) {
+      setEditorError(data.error ?? "Failed to delete task");
+      setDeletingTaskId(null);
+      return;
+    }
+
+    setTasks((current) => current.filter((item) => item.id !== task.id));
+    setExpandedTaskId(null);
+    setEditorDraft(null);
+    setDeletingTaskId(null);
+  }
 
   const sorted = [...tasks].sort((a, b) => {
     const aOver = isOverdue(a.dueDate, a.status) ? 0 : 1;
@@ -664,12 +912,24 @@ export default function TasksPage() {
                 <tbody>
                   {sorted.map(task => {
                     const over = isOverdue(task.dueDate, task.status);
+                    const isExpanded = expandedTaskId === task.id;
                     return (
-                      <tr key={task.id} className="gwx-tr border-b border-[var(--line)] last:border-b-0">
+                      <Fragment key={task.id}>
+                        <tr
+                          className="gwx-tr border-b border-[var(--line)] last:border-b-0 cursor-pointer"
+                          onClick={() => toggleExpandedTask(task)}
+                          aria-expanded={isExpanded}
+                          style={{
+                            background: isExpanded
+                              ? "color-mix(in srgb, var(--panel) 88%, transparent)"
+                              : "transparent",
+                          }}
+                        >
                         {/* Project */}
                         <td className="px-4 py-3">
                           <Link
                             href={`/bids/${task.project.id}?tab=meetings`}
+                            onClick={(event) => event.stopPropagation()}
                             className="text-[12px] font-[600] transition-colors hover:text-emerald-400 block truncate max-w-[130px]"
                             style={{ color: "var(--text)" }}
                           >
@@ -728,6 +988,23 @@ export default function TasksPage() {
                           <CycleButton task={task} onCycled={reload} />
                         </td>
                       </tr>
+                      {isExpanded && editorDraft && (
+                        <tr className="border-b border-[var(--line)]">
+                          <td colSpan={8} className="p-0">
+                            <TaskDetailPanel
+                              draft={editorDraft}
+                              saving={editorSaving}
+                              deleting={deletingTaskId === task.id}
+                              error={editorError}
+                              success={editorSuccess}
+                              onChange={updateEditorDraft}
+                              onSave={() => void saveExpandedTask()}
+                              onDelete={() => void deleteTask(task)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                     );
                   })}
                 </tbody>

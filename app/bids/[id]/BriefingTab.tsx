@@ -179,6 +179,7 @@ export default function BriefingTab({ bidId }: { bidId: number }) {
         <div className="grid grid-cols-2 gap-x-8 gap-y-2">
           {[
             ["Contract & Spec Risk Flags", "Intelligence brief flags + HIGH/CRITICAL spec pain points"],
+            ["Pre-Award Decisions", "Scope inclusions/exclusions, substitutions, assumptions, VE, and design interpretations"],
             ["Required Inspections",       "Special, AHJ, third-party, owner-witness — extracted from specs"],
             ["Warranty Requirements",      "Manufacturer, installer, and system warranties with durations"],
             ["Training Requirements",      "Owner and maintenance staff training obligations"],

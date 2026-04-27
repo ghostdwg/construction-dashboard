@@ -1,12 +1,12 @@
 export type TabKey =
   | "overview"
-  | "documents" | "trades" | "subs" | "scope" | "ai-review"
+  | "documents" | "trades" | "subs" | "scope" | "decisions" | "ai-review"
   | "questions" | "leveling" | "activity"
   | "handoff" | "submittals" | "schedule" | "meetings" | "briefing" | "procore"
   | "warranties" | "training" | "inspections" | "closeout";
 
 export const PURSUIT_KEYS = new Set<TabKey>([
-  "documents", "trades", "subs", "scope", "ai-review",
+  "documents", "trades", "subs", "scope", "decisions", "ai-review",
   "questions", "leveling", "activity",
 ]);
 
@@ -23,6 +23,7 @@ export const PURSUIT_SUBTABS: { key: TabKey; label: string }[] = [
   { key: "trades",     label: "TRADES"       },
   { key: "subs",       label: "SUBS"         },
   { key: "scope",      label: "SCOPE"        },
+  { key: "decisions",  label: "DECISIONS"    },
   { key: "ai-review",  label: "INTELLIGENCE" },
   { key: "questions",  label: "QUESTIONS"    },
   { key: "leveling",   label: "LEVELING"     },

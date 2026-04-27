@@ -65,6 +65,7 @@ def generate_superintendent_briefing(data: dict) -> bytes:
         lookahead_days=data.get("lookaheadDays", 30),
         risk_flags=data.get("riskFlags", []),
         spec_flags=data.get("specFlags", []),
+        decisions=data.get("decisions", []),
         inspections=data.get("inspections", []),
         warranties=data.get("warranties", []),
         trainings=data.get("trainings", []),
