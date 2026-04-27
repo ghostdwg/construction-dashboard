@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-26 (Production readiness session)
+# Last Updated: 2026-04-27 (Decision Log + Teams Hybrid transcription session)
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -17,7 +17,7 @@
 ## Repository Status
 
 - **All planned phases complete** — 35 base modules + full Phase 5 construction intelligence stack
-- Last shipped: Production readiness + Auth B infrastructure (2026-04-26)
+- Last shipped: Decision Log + Teams Hybrid transcription pipeline (2026-04-27)
 - Tier E (Post-Award Handoff): **COMPLETE** — all 8 modules (H1-H8) shipped
 - Phase 5A–5H: **COMPLETE** — Python sidecar, spec AI pipeline, CPM scheduling, meeting intelligence, super briefing, submittal intelligence (5G-1 through 5G-3.6 + drawing cross-reference), near-term closeout registers
 - Operations (SET1, SET1+, Auth Wall Level A): **COMPLETE**
@@ -125,6 +125,8 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **CODEX-WORKFLOW** | **CODEX.md session brief — shared context for Claude+Codex parallel workflow** | **✅ Complete** |
 | **DOCS-POSTGRES** | **PostgreSQL migration runbook — docs/architecture/POSTGRES_MIGRATION.md; Prisma 7 prisma.config.ts switch protocol** | **✅ Complete** |
 | **DOCS-AUTH-B** | **Auth B design doc — role matrix, enforcement sweep, createdById backfill, implementation sequence** | **✅ Complete** |
+| **Decision Log** | **BidDecision model — SCOPE/EXCLUSION/SUBSTITUTION/ASSUMPTION/RISK/VE/DESIGN/OTHER categories, status lifecycle (ACTIVE/SUPERSEDED/VOID), DecisionLogTab, inline edit, category filter chips, pre-award decisions in superintendent briefing PDF** | **✅ Complete** |
+| **Phase 5D+ Hybrid** | **Teams Hybrid transcription — GPU worker (WhisperX large-v3 + pyannote on 4070 Ti via Tailscale/sidecar), HYBRID:{jobId} job prefix, VTT parser, transcript merger (30% overlap threshold), AWAITING_NAMES status, SpeakerNamingPanel UI, /upload-hybrid + /speaker-mapping routes, graceful fallback to plain diarization** | **✅ Complete** |
 | **Queued** | **Future expansion** | **🔜 Planned** |
 | Tier F F5 | Daily Log weather claim integration | 🔜 Not Started |
 | Phase 5F | Drawing OCR + Quantity Takeoff | 🔜 Stretch |

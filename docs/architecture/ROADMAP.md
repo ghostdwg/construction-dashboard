@@ -170,6 +170,16 @@ schedule export (MSP XML + P6 XER), and PDF generation.
 | Procore | CSV Import | ✅ COMPLETE |
 | AI Tokens | Per-Call Token Config | ✅ COMPLETE |
 
+### Pursuit Enhancements
+| Module | Description | Status |
+|--------|-------------|--------|
+| Decision Log | BidDecision model (8 categories, ACTIVE/SUPERSEDED/VOID), DecisionLogTab, inline edit, briefing PDF integration | ✅ COMPLETE |
+
+### Phase 5 Extensions
+| Module | Description | Status |
+|--------|-------------|--------|
+| 5D+ Hybrid | Teams Hybrid transcription — GPU worker (WhisperX + pyannote on 4070 Ti via Tailscale), VTT parser, transcript merger, AWAITING_NAMES flow, SpeakerNamingPanel | ✅ COMPLETE |
+
 ---
 
 ## ACTIVE WORK — THREE PARALLEL STREAMS
@@ -334,7 +344,7 @@ When this ships, it ABSORBS these bid-dashboard deferrals:
 
 #### Phase 5D: Meeting Intelligence Pipeline
 Estimated: 100–140 hours (Weeks 17–22)
-Status: ✅ COMPLETE (transcription, diarization, Claude analysis, action items)
+Status: ✅ COMPLETE (transcription, diarization, Claude analysis, action items; Teams Hybrid GPU pipeline added 2026-04-27)
 
 Transcription → diarization → Claude analysis → structured output.
 Settings toggle between cloud and local processing.
