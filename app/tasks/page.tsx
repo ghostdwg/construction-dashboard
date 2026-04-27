@@ -20,6 +20,7 @@ type Task = {
   sourceText: string | null;
   createdAt: string;
   project: { id: number; name: string; location: string | null };
+  meetingRef: { title: string; date: string | null } | null;
   meeting: { id: number; title: string; meetingDate: string | null } | null;
 };
 
@@ -90,6 +91,25 @@ function StatusChip({ status }: { status: string }) {
       style={{ color: chip.color, background: chip.bg, border: `1px solid ${chip.border}` }}
     >
       {chip.label}
+    </span>
+  );
+}
+
+function SourceChip({ source }: { source: string }) {
+  const isMeeting = source === "meeting";
+
+  return (
+    <span
+      className="font-mono text-[9px] uppercase tracking-[0.06em] px-2 py-0.5 rounded"
+      style={{
+        color: isMeeting ? "var(--text)" : "var(--blue)",
+        background: isMeeting
+          ? "color-mix(in srgb, var(--text-dim) 35%, transparent)"
+          : "color-mix(in srgb, var(--blue) 14%, transparent)",
+        border: `1px solid ${isMeeting ? "var(--line-strong)" : "var(--blue)"}`,
+      }}
+    >
+      {isMeeting ? "meeting" : source}
     </span>
   );
 }
@@ -667,9 +687,10 @@ export default function TasksPage() {
                           <p className="text-[12px] leading-snug" style={{ color: "var(--text)" }}>
                             {task.description}
                           </p>
-                          {task.meeting && (
+                          {task.source === "meeting" && task.meetingRef && (
                             <p className="text-[10px] mt-0.5 truncate" style={{ color: "var(--text-dim)" }}>
-                              from: {task.meeting.title}
+                              {task.meetingRef.title}
+                              {task.meetingRef.date ? ` // ${fmtShort(task.meetingRef.date)}` : ""}
                             </p>
                           )}
                         </td>
@@ -681,16 +702,7 @@ export default function TasksPage() {
 
                         {/* Source */}
                         <td className="px-4 py-3">
-                          <span
-                            className="font-mono text-[9px] uppercase tracking-[0.06em] px-2 py-0.5 rounded"
-                            style={{
-                              color: task.source === "manual" ? "var(--blue)" : "var(--text-dim)",
-                              background: task.source === "manual" ? "rgba(126,167,255,0.08)" : "transparent",
-                              border: task.source === "manual" ? "1px solid rgba(126,167,255,0.15)" : "none",
-                            }}
-                          >
-                            {task.source}
-                          </span>
+                          <SourceChip source={task.source} />
                         </td>
 
                         {/* Due date */}

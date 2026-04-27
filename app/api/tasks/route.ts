@@ -64,7 +64,7 @@ export async function GET(request: Request) {
     take: 300,
   });
 
-  return Response.json(items.map(item => ({
+  const shaped = items.map(item => ({
     id:             item.id,
     bidId:          item.bidId,
     meetingId:      item.meetingId,
@@ -86,12 +86,27 @@ export async function GET(request: Request) {
       name:     item.bid.projectName,
       location: item.bid.location,
     },
+    meetingRef: item.meeting ? {
+      title: item.meeting.title,
+      date: item.meeting.meetingDate?.toISOString() ?? null,
+    } : null,
     meeting: item.meeting ? {
       id:          item.meeting.id,
       title:       item.meeting.title,
       meetingDate: item.meeting.meetingDate?.toISOString() ?? null,
     } : null,
-  })));
+  }));
+
+  shaped.sort((a, b) => {
+    if (a.dueDate && b.dueDate) {
+      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    }
+    if (a.dueDate) return -1;
+    if (b.dueDate) return 1;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  return Response.json(shaped);
 }
 
 export async function POST(request: Request) {
