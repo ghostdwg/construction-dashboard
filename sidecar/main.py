@@ -93,16 +93,23 @@ async def health():
     except ImportError:
         pass
 
-    import psutil
-    mem = psutil.virtual_memory() if "psutil" in dir() else None
+    mem_used_mb = None
+    mem_total_mb = None
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        mem_used_mb  = round(mem.used  / 1024 / 1024, 0)
+        mem_total_mb = round(mem.total / 1024 / 1024, 0)
+    except ImportError:
+        pass
 
     return {
         "status": "ok",
         "version": app.version,
         "uptime_seconds": round(get_uptime(), 1),
         "gpu_available": gpu_available,
-        "memory_used_mb": round(mem.used / 1024 / 1024, 0) if mem else None,
-        "memory_total_mb": round(mem.total / 1024 / 1024, 0) if mem else None,
+        "memory_used_mb": mem_used_mb,
+        "memory_total_mb": mem_total_mb,
         "anthropic_key_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
         "assemblyai_key_configured": bool(os.getenv("ASSEMBLYAI_API_KEY")),
     }
