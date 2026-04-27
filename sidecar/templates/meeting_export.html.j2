@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{ meeting_title }} — Meeting Minutes</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.7in 0.75in 0.85in;
+      @bottom-left {
+        content: "{{ project_name }} · Meeting Minutes";
+        font-size: 7.5pt;
+        color: #6b7280;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font-size: 7.5pt;
+        color: #6b7280;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9pt;
+      color: #1f2937;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────────────── */
+    .page-header {
+      background-color: #0f172a;
+      color: #ffffff;
+      padding: 14pt 16pt;
+      margin-bottom: 16pt;
+    }
+    .page-header table { width: 100%; border-collapse: collapse; }
+    .page-header td { padding: 0; vertical-align: top; }
+    .header-project {
+      font-size: 10pt;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.6pt;
+      margin-bottom: 3pt;
+    }
+    .header-title {
+      font-size: 15pt;
+      font-weight: bold;
+      letter-spacing: 0.2pt;
+      margin-bottom: 3pt;
+    }
+    .header-sub {
+      font-size: 9pt;
+      color: #cbd5e1;
+    }
+    .header-meta {
+      text-align: right;
+    }
+    .header-meta-label {
+      font-size: 7.5pt;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5pt;
+    }
+    .header-meta-value {
+      font-size: 9pt;
+      font-weight: bold;
+      color: #f1f5f9;
+      margin-top: 1pt;
+    }
+    .header-type-badge {
+      display: inline-block;
+      margin-top: 6pt;
+      padding: 2pt 6pt;
+      border-radius: 3pt;
+      background: rgba(255,255,255,0.12);
+      font-size: 7.5pt;
+      letter-spacing: 0.7pt;
+      text-transform: uppercase;
+      color: #e2e8f0;
+    }
+
+    /* ── Section headers ─────────────────────────────────────────────────────── */
+    .section-label {
+      font-size: 7.5pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.8pt;
+      color: #6b7280;
+      border-bottom: 1pt solid #e5e7eb;
+      padding-bottom: 3pt;
+      margin-bottom: 7pt;
+      margin-top: 14pt;
+    }
+
+    /* ── Participants ─────────────────────────────────────────────────────────── */
+    .participant-grid {
+      display: table;
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .participant-row {
+      display: table-row;
+    }
+    .participant-cell {
+      display: table-cell;
+      padding: 3pt 6pt 3pt 0;
+      font-size: 8.5pt;
+      border-bottom: 0.5pt solid #f3f4f6;
+      vertical-align: top;
+      width: 33%;
+    }
+    .participant-name { font-weight: bold; color: #111827; }
+    .participant-role { color: #6b7280; font-size: 8pt; }
+    .gc-badge {
+      display: inline-block;
+      font-size: 6.5pt;
+      font-weight: bold;
+      color: #065f46;
+      background: #d1fae5;
+      border-radius: 2pt;
+      padding: 0.5pt 3pt;
+      margin-left: 3pt;
+      letter-spacing: 0.3pt;
+      vertical-align: middle;
+    }
+
+    /* ── Summary ─────────────────────────────────────────────────────────────── */
+    .summary-text {
+      font-size: 9pt;
+      color: #374151;
+      line-height: 1.5;
+    }
+
+    /* ── Key Decisions ───────────────────────────────────────────────────────── */
+    .decision-list { margin: 0; padding: 0; list-style: none; }
+    .decision-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 5pt;
+      padding: 3.5pt 0;
+      border-bottom: 0.5pt solid #f3f4f6;
+      font-size: 9pt;
+      color: #374151;
+    }
+    .decision-check {
+      color: #059669;
+      font-size: 9pt;
+      font-weight: bold;
+      flex-shrink: 0;
+      margin-top: 0.5pt;
+    }
+
+    /* ── Action Items ─────────────────────────────────────────────────────────── */
+    .action-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5pt;
+    }
+    .action-table th {
+      background: #f9fafb;
+      color: #6b7280;
+      font-size: 7.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.5pt;
+      padding: 5pt 6pt;
+      text-align: left;
+      border-bottom: 1pt solid #e5e7eb;
+      border-top: 1pt solid #e5e7eb;
+    }
+    .action-table td {
+      padding: 5pt 6pt;
+      vertical-align: top;
+      border-bottom: 0.5pt solid #f3f4f6;
+      color: #374151;
+    }
+    .action-table tr:last-child td { border-bottom: none; }
+    .action-table tr.status-closed td { color: #9ca3af; }
+    .action-table tr.status-deferred td { color: #9ca3af; }
+
+    .priority-badge {
+      display: inline-block;
+      font-size: 6.5pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.4pt;
+      padding: 1pt 4pt;
+      border-radius: 2pt;
+      white-space: nowrap;
+    }
+    .priority-CRITICAL { background: #fef2f2; color: #b91c1c; }
+    .priority-HIGH     { background: #fff7ed; color: #c2410c; }
+    .priority-MEDIUM   { background: #fefce8; color: #92400e; }
+    .priority-LOW      { background: #f9fafb; color: #6b7280; }
+
+    .status-badge {
+      display: inline-block;
+      font-size: 6.5pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.4pt;
+      padding: 1pt 4pt;
+      border-radius: 2pt;
+      white-space: nowrap;
+    }
+    .status-OPEN        { background: #eff6ff; color: #1d4ed8; }
+    .status-IN_PROGRESS { background: #f0fdf4; color: #166534; }
+    .status-DEFERRED    { background: #f9fafb; color: #6b7280; }
+    .status-CLOSED      { background: #f9fafb; color: #9ca3af; }
+
+    .gc-task-dot {
+      display: inline-block;
+      width: 6pt;
+      height: 6pt;
+      border-radius: 50%;
+      background: #059669;
+      margin-right: 4pt;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+
+    /* ── Open Issues ─────────────────────────────────────────────────────────── */
+    .issue-item {
+      border: 0.5pt solid #e5e7eb;
+      border-radius: 3pt;
+      padding: 6pt 8pt;
+      margin-bottom: 5pt;
+    }
+    .issue-text { font-weight: bold; font-size: 9pt; color: #111827; }
+    .issue-reason { font-size: 8pt; color: #6b7280; margin-top: 2pt; }
+    .carried-badge {
+      display: inline-block;
+      font-size: 6.5pt;
+      font-weight: bold;
+      padding: 1pt 4pt;
+      border-radius: 2pt;
+      background: #fef9c3;
+      color: #92400e;
+      margin-left: 5pt;
+      vertical-align: middle;
+    }
+
+    /* ── Red Flags ───────────────────────────────────────────────────────────── */
+    .flag-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 7pt;
+      padding: 6pt 8pt;
+      border-radius: 3pt;
+      margin-bottom: 5pt;
+    }
+    .flag-SAFETY    { background: #fef2f2; }
+    .flag-SCHEDULE  { background: #fff7ed; }
+    .flag-FINANCIAL { background: #fefce8; }
+    .flag-SCOPE     { background: #f5f3ff; }
+    .flag-RISK      { background: #f9fafb; }
+    .flag-tag {
+      font-size: 6.5pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.4pt;
+      padding: 2pt 5pt;
+      border-radius: 2pt;
+      border: 0.5pt solid currentColor;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .tag-SAFETY    { color: #b91c1c; }
+    .tag-SCHEDULE  { color: #c2410c; }
+    .tag-FINANCIAL { color: #92400e; }
+    .tag-SCOPE     { color: #6d28d9; }
+    .tag-RISK      { color: #374151; }
+    .flag-desc {
+      font-size: 8.5pt;
+      color: #374151;
+      line-height: 1.4;
+    }
+    .flag-SAFETY   .flag-desc { color: #7f1d1d; }
+    .flag-SCHEDULE .flag-desc { color: #7c2d12; }
+    .flag-SCOPE    .flag-desc { color: #4c1d95; }
+
+    /* ── Footer watermark ─────────────────────────────────────────────────────── */
+    .doc-footer {
+      margin-top: 18pt;
+      padding-top: 8pt;
+      border-top: 0.5pt solid #e5e7eb;
+      font-size: 7.5pt;
+      color: #9ca3af;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Header ───────────────────────────────────────────────────────────── -->
+  <div class="page-header">
+    <table>
+      <tr>
+        <td>
+          <div class="header-project">{{ project_name }}{% if project_location %} · {{ project_location }}{% endif %}</div>
+          <div class="header-title">{{ meeting_title }}</div>
+          {% if meeting_location %}
+          <div class="header-sub">{{ meeting_location }}</div>
+          {% endif %}
+          <div><span class="header-type-badge">{{ meeting_type }}</span></div>
+        </td>
+        <td class="header-meta">
+          <div class="header-meta-label">Meeting Date</div>
+          <div class="header-meta-value">{{ meeting_date | meeting_date_fmt }}</div>
+          <div class="header-meta-label" style="margin-top:8pt;">Generated</div>
+          <div class="header-meta-value" style="font-size:7.5pt; font-weight:normal; color:#94a3b8;">{{ generated_at_fmt }}</div>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- ── Participants ──────────────────────────────────────────────────────── -->
+  {% if participants %}
+  <div class="section-label">Attendees ({{ participants | length }})</div>
+  <div class="participant-grid">
+    {% for p in participants %}
+    <div class="participant-row">
+      <div class="participant-cell">
+        <span class="participant-name">{{ p.name }}</span>
+        {% if p.isGcTeam %}<span class="gc-badge">GC</span>{% endif %}
+        {% if p.role or p.company %}
+        <div class="participant-role">{% if p.role %}{{ p.role }}{% endif %}{% if p.role and p.company %} · {% endif %}{% if p.company %}{{ p.company }}{% endif %}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ── Summary ──────────────────────────────────────────────────────────── -->
+  {% if summary %}
+  <div class="section-label">Overview</div>
+  <p class="summary-text">{{ summary }}</p>
+  {% endif %}
+
+  <!-- ── Action Items ──────────────────────────────────────────────────────── -->
+  {% if action_items %}
+  <div class="section-label">Action Items ({{ action_items | length }})</div>
+  <table class="action-table">
+    <thead>
+      <tr>
+        <th style="width:42%;">Description</th>
+        <th style="width:16%;">Assigned To</th>
+        <th style="width:10%;">Due</th>
+        <th style="width:10%;">Priority</th>
+        <th style="width:10%;">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in action_items %}
+      <tr class="status-{{ a.status }}">
+        <td>
+          {% if a.isGcTask %}<span class="gc-task-dot"></span>{% endif %}{{ a.description }}
+        </td>
+        <td>{{ a.assignedToName or "—" }}</td>
+        <td style="white-space:nowrap;">{{ a.dueDate | date_fmt }}</td>
+        <td><span class="priority-badge priority-{{ a.priority }}">{{ a.priority }}</span></td>
+        <td><span class="status-badge status-{{ a.status }}">{{ a.status.replace("_", " ") }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- ── Key Decisions ─────────────────────────────────────────────────────── -->
+  {% if key_decisions %}
+  <div class="section-label">Key Decisions ({{ key_decisions | length }})</div>
+  <ul class="decision-list">
+    {% for d in key_decisions %}
+    <li class="decision-item">
+      <span class="decision-check">✓</span>
+      <span>{{ d }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <!-- ── Open Issues ───────────────────────────────────────────────────────── -->
+  {% if open_issues %}
+  <div class="section-label">Open Issues ({{ open_issues | length }})</div>
+  {% for iss in open_issues %}
+  <div class="issue-item">
+    <div>
+      <span class="issue-text">{{ iss.text }}</span>
+      {% if iss.carriedFrom %}<span class="carried-badge">Carried {{ iss.carriedFrom | date_fmt }}</span>{% endif %}
+    </div>
+    {% if iss.reason %}<div class="issue-reason">{{ iss.reason }}</div>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- ── Red Flags ─────────────────────────────────────────────────────────── -->
+  {% if red_flags %}
+  <div class="section-label">Risk & Safety Flags ({{ red_flags | length }})</div>
+  {% for f in red_flags %}
+  {% set tag_class = f.tag if f.tag in ["SAFETY","SCHEDULE","FINANCIAL","SCOPE"] else "RISK" %}
+  <div class="flag-item flag-{{ tag_class }}">
+    <span class="flag-tag tag-{{ tag_class }}">{{ f.tag }}</span>
+    <span class="flag-desc">{{ f.description }}</span>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <div class="doc-footer">
+    Generated by NeuroGlitch Construction Intelligence · {{ generated_at_fmt }}
+  </div>
+
+</body>
+</html>

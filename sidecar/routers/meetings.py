@@ -6,9 +6,11 @@ Endpoints:
   POST /meetings/transcribe                  — upload audio + start AssemblyAI job
   GET  /meetings/transcribe/status/{job_id}  — poll transcription status
   POST /meetings/analyze                     — analyze transcript with Claude
+  POST /meetings/export-pdf                  — generate meeting minutes PDF
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
+from fastapi.responses import Response as FastAPIResponse
 from pydantic import BaseModel
 
 from services.meeting_intelligence import (
@@ -205,3 +207,33 @@ async def analyze_meeting(body: AnalyzeRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis error: {e}")
+
+
+# ── PDF Export ────────────────────────────────────────────────────────────────
+
+@router.post("/meetings/export-pdf")
+async def export_meeting_pdf(request: Request):
+    """
+    Generate a meeting minutes PDF from assembled meeting data.
+
+    Accepts a JSON body with:
+      projectName, projectLocation, meetingTitle, meetingDate, meetingType,
+      meetingLocation, summary, participants, keyDecisions, actionItems,
+      openIssues, redFlags
+
+    Returns application/pdf bytes.
+    """
+    try:
+        data = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON body: {exc}")
+
+    try:
+        from services.meeting_export_generator import generate_meeting_export
+        pdf_bytes = generate_meeting_export(data)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}")
+
+    return FastAPIResponse(content=pdf_bytes, media_type="application/pdf")

@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Check,
   Clock,
+  Download,
   Loader2,
   Trash2,
   FileText,
@@ -572,6 +573,7 @@ function MeetingDetailPanel({
   );
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [manualTranscript, setManualTranscript] = useState(detail.transcript ?? "");
   const [savingTranscript, setSavingTranscript] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -630,6 +632,28 @@ function MeetingDetailPanel({
     }
     onReload();
     setActiveSection("analysis");
+  }
+
+  async function exportPdf() {
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/meetings/${detail.id}/export-pdf`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Export failed" }));
+        alert(err.error ?? "Export failed");
+        return;
+      }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1]
+        ?? `meeting_${detail.id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   }
 
   const hasTranscript = !!detail.transcript?.trim() || !!manualTranscript.trim();
@@ -954,13 +978,26 @@ function MeetingDetailPanel({
                   <span>·</span>
                   <span>Analyzed {detail.analyzedAt ? fmtDate(detail.analyzedAt) : "—"}</span>
                 </div>
-                <button
-                  onClick={runAnalysis}
-                  disabled={analyzing}
-                  className="text-xs text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 flex items-center gap-1"
-                >
-                  <Sparkles className="h-3 w-3" /> Re-analyze
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={exportPdf}
+                    disabled={exporting}
+                    className="text-xs text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 flex items-center gap-1 disabled:opacity-40"
+                    title="Export meeting minutes PDF"
+                  >
+                    {exporting
+                      ? <><Loader2 className="h-3 w-3 animate-spin" /> Exporting…</>
+                      : <><Download className="h-3 w-3" /> Export PDF</>
+                    }
+                  </button>
+                  <button
+                    onClick={runAnalysis}
+                    disabled={analyzing}
+                    className="text-xs text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 flex items-center gap-1"
+                  >
+                    <Sparkles className="h-3 w-3" /> Re-analyze
+                  </button>
+                </div>
               </div>
             </div>
           )}
