@@ -197,7 +197,11 @@ async def poll_assemblyai_status(transcript_id: str) -> dict:
 
 # ── WhisperX GPU PC ──────────────────────────────────────────────────────────
 
-async def submit_whisperx_job(audio_bytes: bytes, filename: str = "audio.wav") -> str:
+async def submit_whisperx_job(
+    audio_bytes: bytes,
+    filename: str = "audio.wav",
+    num_speakers: int | None = None,
+) -> str:
     """
     Upload audio to the GPU PC WhisperX service and return the job ID.
     Raises ValueError if WHISPERX_URL is not configured.
@@ -211,11 +215,13 @@ async def submit_whisperx_job(audio_bytes: bytes, filename: str = "audio.wav") -
         headers["X-API-Key"] = WHISPERX_API_KEY
 
     async with httpx.AsyncClient(timeout=600.0) as client:
-        resp = await client.post(
-            f"{WHISPERX_URL}/transcribe",
-            headers=headers,
-            files={"audio": (filename, audio_bytes)},
-        )
+        kwargs = {
+            "headers": headers,
+            "files": {"audio": (filename, audio_bytes)},
+        }
+        if num_speakers is not None and num_speakers > 0:
+            kwargs["data"] = {"num_speakers": str(num_speakers)}
+        resp = await client.post(f"{WHISPERX_URL}/transcribe", **kwargs)
         resp.raise_for_status()
         return resp.json()["jobId"]
 

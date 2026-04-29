@@ -59,6 +59,9 @@ export async function POST(
   const audioBytes = Buffer.from(await audioFile.arrayBuffer());
   const audioName  = audioFile.name;
   const audioType  = audioFile.type || "video/mp4";
+  const inRoomCount = await prisma.meetingParticipant.count({
+    where: { meetingId: mId, speakerLabel: null, speakerType: "IN_ROOM" },
+  });
 
   const headers: Record<string, string> = {};
   if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
@@ -68,6 +71,7 @@ export async function POST(
   void (async () => {
     const bgForm = new FormData();
     bgForm.append("audio", new Blob([audioBytes], { type: audioType }), audioName);
+    if (inRoomCount > 0) bgForm.append("num_speakers", String(inRoomCount));
     try {
       const res = await fetch(`${SIDECAR_URL}/meetings/transcribe`, {
         method:  "POST",

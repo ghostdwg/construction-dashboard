@@ -47,6 +47,10 @@ export async function POST(
   // Proxy to sidecar
   const sidecarForm = new FormData();
   sidecarForm.append("audio", audioFile);
+  const inRoomCount = await prisma.meetingParticipant.count({
+    where: { meetingId: mId, speakerLabel: null, speakerType: "IN_ROOM" },
+  });
+  if (inRoomCount > 0) sidecarForm.append("num_speakers", String(inRoomCount));
 
   const headers: Record<string, string> = {};
   if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;

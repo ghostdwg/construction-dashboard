@@ -67,6 +67,14 @@ type Participant = {
   speakerType: string | null;
 };
 
+type DeclaredParticipant = {
+  name: string;
+  role: string;
+  company: string;
+  isGcTeam: boolean;
+  speakerType: "REMOTE" | "IN_ROOM";
+};
+
 type ActionItem = {
   id: number;
   meetingId: number;
@@ -368,8 +376,16 @@ function AddMeetingForm({
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [type, setType] = useState<MeetingType>("GENERAL");
   const [location, setLocation] = useState("");
+  const [participants, setParticipants] = useState<DeclaredParticipant[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  function addParticipant() {
+    setParticipants((prev) => [
+      ...prev,
+      { name: "", role: "", company: "", isGcTeam: false, speakerType: "IN_ROOM" },
+    ]);
+  }
 
   async function save() {
     if (!title.trim()) return;
@@ -379,7 +395,21 @@ function AddMeetingForm({
       const res = await fetch(`/api/bids/${bidId}/meetings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, meetingDate: date, meetingType: type, location }),
+        body: JSON.stringify({
+          title,
+          meetingDate: date,
+          meetingType: type,
+          location,
+          participants: participants
+            .filter((participant) => participant.name.trim())
+            .map((participant) => ({
+              name: participant.name.trim(),
+              role: participant.role.trim() || undefined,
+              company: participant.company.trim() || undefined,
+              isGcTeam: participant.isGcTeam,
+              speakerType: participant.speakerType,
+            })),
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -437,6 +467,100 @@ function AddMeetingForm({
             placeholder="Trailer, Conference Room B, Zoom…"
             className="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
           />
+        </div>
+        <div className="col-span-2 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs text-zinc-500 dark:text-zinc-400 block">Attendees (optional)</label>
+            <button
+              type="button"
+              onClick={addParticipant}
+              className="text-xs px-2 py-1 rounded border border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            >
+              + Add Attendee
+            </button>
+          </div>
+          {participants.length > 0 && (
+            <div className="space-y-2">
+              {participants.map((participant, index) => (
+                <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                  <input
+                    value={participant.name}
+                    onChange={(e) =>
+                      setParticipants((prev) =>
+                        prev.map((row, rowIndex) =>
+                          rowIndex === index ? { ...row, name: e.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="Full name"
+                    className="col-span-12 md:col-span-3 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                  />
+                  <input
+                    value={participant.role}
+                    onChange={(e) =>
+                      setParticipants((prev) =>
+                        prev.map((row, rowIndex) =>
+                          rowIndex === index ? { ...row, role: e.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="PM / Super / Owner Rep…"
+                    className="col-span-12 md:col-span-3 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                  />
+                  <input
+                    value={participant.company}
+                    onChange={(e) =>
+                      setParticipants((prev) =>
+                        prev.map((row, rowIndex) =>
+                          rowIndex === index ? { ...row, company: e.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="Company"
+                    className="col-span-12 md:col-span-3 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                  />
+                  <label className="col-span-6 md:col-span-1 flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={participant.isGcTeam}
+                      onChange={(e) =>
+                        setParticipants((prev) =>
+                          prev.map((row, rowIndex) =>
+                            rowIndex === index ? { ...row, isGcTeam: e.target.checked } : row
+                          )
+                        )
+                      }
+                      className="h-3.5 w-3.5 rounded border-zinc-300 dark:border-zinc-600"
+                    />
+                    GC Team
+                  </label>
+                  <select
+                    value={participant.speakerType}
+                    onChange={(e) =>
+                      setParticipants((prev) =>
+                        prev.map((row, rowIndex) =>
+                          rowIndex === index
+                            ? { ...row, speakerType: e.target.value as DeclaredParticipant["speakerType"] }
+                            : row
+                        )
+                      )
+                    }
+                    className="col-span-4 md:col-span-1 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                  >
+                    <option value="REMOTE">Remote</option>
+                    <option value="IN_ROOM">In-Room</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setParticipants((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
+                    className="col-span-2 md:col-span-1 text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       {saveError && (
@@ -592,19 +716,41 @@ function SpeakerNamingPanel({
   bidId,
   meetingId,
   speakerMappingData,
+  declaredParticipants,
   onDone,
 }: {
   bidId: number;
   meetingId: number;
   speakerMappingData: SpeakerMappingData;
+  declaredParticipants: Array<{
+    id: number;
+    name: string;
+    role: string | null;
+    speakerType: string | null;
+    speakerLabel: string | null;
+  }>;
   onDone: () => void;
 }) {
   const inRoomClusters = speakerMappingData.clusters.filter((c) => c.type === "IN_ROOM");
   const remoteClusters = speakerMappingData.clusters.filter((c) => c.type === "REMOTE");
+  const unmappedDeclared = declaredParticipants.filter(
+    (participant) =>
+      (participant.speakerType === "IN_ROOM" || participant.speakerType === "UNKNOWN") &&
+      !participant.speakerLabel
+  );
+  const declaredNames = new Set(unmappedDeclared.map((participant) => participant.name));
 
   const [names, setNames] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const c of inRoomClusters) init[c.id] = speakerMappingData.mapping[c.id] ?? "";
+    return init;
+  });
+  const [otherMode, setOtherMode] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    for (const c of inRoomClusters) {
+      const current = speakerMappingData.mapping[c.id] ?? "";
+      init[c.id] = !!current && !declaredNames.has(current);
+    }
     return init;
   });
   const [saving, setSaving] = useState(false);
@@ -683,13 +829,52 @@ function SpeakerNamingPanel({
                   {fmtSecs(c.totalSeconds)} · {c.segmentCount} seg
                 </span>
               </div>
-              <input
-                type="text"
-                value={names[c.id] ?? ""}
-                onChange={(e) => setNames((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                placeholder="Full name"
-                className="flex-1 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-              />
+              {unmappedDeclared.length > 0 ? (
+                <div className="flex-1 space-y-2">
+                  <select
+                    value={otherMode[c.id] ? "__other__" : names[c.id] ?? ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "__other__") {
+                        setOtherMode((prev) => ({ ...prev, [c.id]: true }));
+                        setNames((prev) => ({
+                          ...prev,
+                          [c.id]: declaredNames.has(prev[c.id] ?? "") ? "" : prev[c.id] ?? "",
+                        }));
+                        return;
+                      }
+                      setOtherMode((prev) => ({ ...prev, [c.id]: false }));
+                      setNames((prev) => ({ ...prev, [c.id]: value }));
+                    }}
+                    className="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                  >
+                    <option value=""></option>
+                    {unmappedDeclared.map((participant) => (
+                      <option key={participant.id} value={participant.name}>
+                        {participant.role ? `${participant.name} — ${participant.role}` : participant.name}
+                      </option>
+                    ))}
+                    <option value="__other__">Other (type name)…</option>
+                  </select>
+                  {otherMode[c.id] && (
+                    <input
+                      type="text"
+                      value={names[c.id] ?? ""}
+                      onChange={(e) => setNames((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                      placeholder="Full name"
+                      className="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                    />
+                  )}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={names[c.id] ?? ""}
+                  onChange={(e) => setNames((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                  placeholder="Full name"
+                  className="flex-1 rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                />
+              )}
             </div>
           ))}
         </div>
@@ -950,6 +1135,7 @@ function MeetingDetailPanel({
             bidId={bidId}
             meetingId={detail.id}
             speakerMappingData={smd}
+            declaredParticipants={detail.participants}
             onDone={onReload}
           />
         ) : (

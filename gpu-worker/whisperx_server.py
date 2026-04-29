@@ -19,7 +19,7 @@ from typing import Optional
 
 import torch
 import whisperx
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
 
@@ -61,7 +61,12 @@ def _format_ms(ms: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
 
-def _run_transcription(job_id: str, audio_bytes: bytes, filename: str):
+def _run_transcription(
+    job_id: str,
+    audio_bytes: bytes,
+    filename: str,
+    num_speakers: Optional[int] = None,
+):
     import tempfile, os as _os
     try:
         # Write to temp file (whisperx needs a path)
@@ -73,6 +78,7 @@ def _run_transcription(job_id: str, audio_bytes: bytes, filename: str):
         # 1. Transcribe
         result = _model.transcribe(tmp_path, batch_size=16)
         lang = result.get("language", "en")
+        audio = whisperx.load_audio(tmp_path)
 
         # 2. Align
         align_model, align_meta = whisperx.load_align_model(
@@ -96,7 +102,14 @@ def _run_transcription(job_id: str, audio_bytes: bytes, filename: str):
                 diarize_model = DiarizationPipeline(use_auth_token=HF_TOKEN, device=DEVICE)
             except TypeError:
                 diarize_model = DiarizationPipeline(token=HF_TOKEN, device=DEVICE)
-            diarize_segments = diarize_model(tmp_path)
+            if num_speakers is not None and num_speakers > 1:
+                diarize_segments = diarize_model(
+                    audio,
+                    min_speakers=num_speakers,
+                    max_speakers=num_speakers,
+                )
+            else:
+                diarize_segments = diarize_model(audio)
             result = whisperx.assign_word_speakers(diarize_segments, result)
 
             for seg in result["segments"]:
@@ -155,6 +168,7 @@ def health():
 @app.post("/transcribe")
 async def transcribe(
     audio: UploadFile = File(...),
+    num_speakers: Optional[int] = Form(None),
     x_api_key: Optional[str] = Header(None),
 ):
     _check_key(x_api_key)
@@ -169,7 +183,7 @@ async def transcribe(
     # Run in background thread (whisperx is sync/CPU-heavy)
     thread = threading.Thread(
         target=_run_transcription,
-        args=(job_id, audio_bytes, audio.filename or "audio.wav"),
+        args=(job_id, audio_bytes, audio.filename or "audio.wav", num_speakers),
         daemon=True,
     )
     thread.start()

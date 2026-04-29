@@ -65,6 +65,13 @@ export async function POST(
     meetingDate?: string;
     meetingType?: string;
     location?: string;
+    participants?: Array<{
+      name: string;
+      role?: string;
+      company?: string;
+      isGcTeam?: boolean;
+      speakerType?: "REMOTE" | "IN_ROOM";
+    }>;
   };
 
   if (!body.title?.trim())
@@ -90,6 +97,31 @@ export async function POST(
       status: "PENDING",
     },
   });
+
+  const participants = (body.participants ?? [])
+    .map((participant) => {
+      const name = participant.name.trim();
+      if (!name) return null;
+      return {
+        meetingId: meeting.id,
+        name,
+        role: participant.role?.trim() || null,
+        company: participant.company?.trim() || null,
+        isGcTeam: participant.isGcTeam ?? false,
+        speakerType: participant.speakerType ?? "UNKNOWN",
+        speakerLabel: null,
+        confidence: null,
+      };
+    })
+    .filter((participant): participant is NonNullable<typeof participant> => participant !== null);
+
+  if (participants.length > 0) {
+    try {
+      await prisma.meetingParticipant.createMany({ data: participants });
+    } catch (error) {
+      console.error("Failed to create meeting participants", error);
+    }
+  }
 
   return Response.json({ ok: true, id: meeting.id });
 }

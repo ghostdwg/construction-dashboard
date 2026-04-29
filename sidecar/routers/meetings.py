@@ -9,7 +9,7 @@ Endpoints:
   POST /meetings/export-pdf                  — generate meeting minutes PDF
 """
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import Response as FastAPIResponse
 from pydantic import BaseModel
 
@@ -47,7 +47,10 @@ async def meetings_config():
 # ── Transcription ─────────────────────────────────────────────────────────────
 
 @router.post("/meetings/transcribe")
-async def start_transcription(audio: UploadFile = File(...)):
+async def start_transcription(
+    audio: UploadFile = File(...),
+    num_speakers: int | None = Form(None),
+):
     """
     Upload audio file and start transcription with speaker diarization.
 
@@ -70,7 +73,11 @@ async def start_transcription(audio: UploadFile = File(...)):
     # ── Try GPU PC first ──────────────────────────────────────────────────────
     if WHISPERX_URL:
         try:
-            raw_job_id = await submit_whisperx_job(audio_bytes, filename)
+            raw_job_id = await submit_whisperx_job(
+                audio_bytes,
+                filename,
+                num_speakers=num_speakers,
+            )
             return {
                 "ok": True,
                 "transcriptionJobId": f"WHISPERX:{raw_job_id}",
