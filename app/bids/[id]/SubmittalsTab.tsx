@@ -103,6 +103,9 @@ type PackageItemRow = {
   isOverdue: boolean;
   severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW" | "INFO" | null;
   tradeName?: string | null;
+  // AI Organizer
+  priority: string | null;
+  releasePhase: string | null;
   // Phase 5G-2
   linkedActivityId: string | null;
   leadTimeDays: number;
@@ -179,6 +182,16 @@ type GenerateAiResponse = {
   specResult: GenerateResult;
   jobId: string | null;
   usedFallbackSeed?: boolean;
+};
+
+type OrganizeAiResponse = {
+  ok: boolean;
+  tradesFound: number;
+  packagesCreated: number;
+  itemsCreated: number;
+  itemsRemoved: number;
+  costUsd: number;
+  error?: string;
 };
 
 type DrawingPollResult = {
@@ -299,6 +312,8 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     packagesProcessed: number; itemsUpdated: number; linked: number;
     atRisk: number; blocked: number; readyForExport: number; warnings: string[];
   } | null>(null);
+  const [organizing, setOrganizing] = useState(false);
+  const [orgBanner, setOrgBanner] = useState<OrganizeAiResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -431,6 +446,26 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setGenerating(false);
+    }
+  }
+
+  async function runOrganizeWithAi() {
+    if (!window.confirm(
+      `AI Organize will replace all auto-generated submittals with a trade-packaged, Procore-ready register.\n\nManual items are never touched. Continue?`
+    )) return;
+    setOrganizing(true);
+    setOrgBanner(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/submittals/organize-ai`, { method: "POST" });
+      const data = (await res.json()) as OrganizeAiResponse;
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setOrgBanner(data);
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOrganizing(false);
     }
   }
 
@@ -674,6 +709,14 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
               : "Generate from AI"}
           </button>
           <button
+            onClick={runOrganizeWithAi}
+            disabled={organizing || generating || totalItems === 0}
+            className="rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-300 dark:hover:bg-violet-900/40"
+            title="Deduplicates and trade-packages all AI-extracted submittals into a Procore-ready register. Manual items are never touched."
+          >
+            {organizing ? "Organizing…" : "AI Organize"}
+          </button>
+          <button
             onClick={() => setShowTemplates(!showTemplates)}
             className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
               showTemplates
@@ -818,6 +861,19 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
           )}
           {drawingResult?.drawingItemsCreated === 0 && (
             <span className="ml-2 opacity-60">Drawing scope fully covered by specs.</span>
+          )}
+        </div>
+      )}
+
+      {/* ── AI Organize result banner ── */}
+      {orgBanner && (
+        <div className="rounded-md border border-violet-200 bg-violet-50 px-4 py-2 text-sm text-violet-700 dark:border-violet-800 dark:bg-violet-900/20 dark:text-violet-300">
+          Register reorganized — <strong>{orgBanner.packagesCreated}</strong> packages across{" "}
+          <strong>{orgBanner.tradesFound}</strong> trades,{" "}
+          <strong>{orgBanner.itemsCreated}</strong> items
+          {orgBanner.itemsRemoved > 0 && ` (replaced ${orgBanner.itemsRemoved} raw items)`}.
+          {orgBanner.costUsd > 0 && (
+            <span className="ml-2 opacity-60">${orgBanner.costUsd.toFixed(3)}</span>
           )}
         </div>
       )}
@@ -1278,8 +1334,21 @@ function SubmittalGridRow({
 
         {/* Title + spec section */}
         <td className="px-3 py-2">
-          <div className="font-medium text-zinc-800 dark:text-zinc-100 leading-tight text-xs">
-            {item.title}
+          <div className="flex items-start gap-1.5">
+            <span className="font-medium text-zinc-800 dark:text-zinc-100 leading-tight text-xs">
+              {item.title}
+            </span>
+            {item.priority && (
+              <span className={`shrink-0 mt-0.5 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                item.priority === "HIGH"
+                  ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                  : item.priority === "MEDIUM"
+                  ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+              }`}>
+                {item.priority}
+              </span>
+            )}
           </div>
           {item.specSectionNumber && (
             <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">

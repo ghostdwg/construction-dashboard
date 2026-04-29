@@ -793,6 +793,11 @@ model SubmittalItem {
   reviewer         String?
 
   notes            String?
+
+  // AI Organizer — set by organizeSubmittalsWithAi()
+  priority         String?   // HIGH | MEDIUM | LOW
+  releasePhase     String?   // Preconstruction | Early Construction | Mid Construction | Closeout
+
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

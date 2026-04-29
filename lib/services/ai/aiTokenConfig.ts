@@ -131,6 +131,24 @@ export const AI_CALL_DEFINITIONS = {
     },
     recommended: "standard",
   },
+  "submittal-organize": {
+    label: "Submittal Register Organizer",
+    description:
+      "Transforms raw AI-extracted submittals into a trade-packaged, Procore-ready register. " +
+      "Input size scales with spec complexity; output is a structured table targeting 80–150 items.",
+    model: "claude-sonnet-4-6",
+    typicalInputTokens: 20000,
+    defaultMaxTokens: 16000,
+    minTokens: 8000,
+    maxAllowedTokens: 32000,
+    presets: {
+      minimal:  8000,
+      standard: 16000,
+      extended: 24000,
+      maximum:  32000,
+    },
+    recommended: "standard",
+  },
   "meeting-analysis": {
     label: "Meeting Intelligence Analysis",
     description:

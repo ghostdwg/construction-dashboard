@@ -38,6 +38,9 @@ const ITEM_SELECT = {
   reviewer: true,
   notes: true,
   description: true,
+  // AI Organizer
+  priority: true,
+  releasePhase: true,
   // Phase 5G-2
   linkedActivityId: true,
   leadTimeDays: true,
@@ -61,6 +64,9 @@ type DbItem = {
   reviewer: string | null;
   notes: string | null;
   description: string | null;
+  // AI Organizer
+  priority: string | null;
+  releasePhase: string | null;
   // Phase 5G-2
   linkedActivityId: string | null;
   leadTimeDays: number;
@@ -100,6 +106,9 @@ function mapItem(it: DbItem, now: number) {
     resubmitBufferDays: it.resubmitBufferDays,
     requiredOnSiteDate: it.requiredOnSiteDate?.toISOString() ?? null,
     submitByDate: it.submitByDate?.toISOString() ?? null,
+    // AI Organizer
+    priority: it.priority,
+    releasePhase: it.releasePhase,
   };
 }
 
