@@ -33,7 +33,7 @@ import {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MeetingType = "GENERAL" | "OAC" | "SUBCONTRACTOR" | "PRECONSTRUCTION" | "SAFETY" | "KICKOFF";
-type MeetingStatus = "PENDING" | "UPLOADING" | "TRANSCRIBING" | "AWAITING_NAMES" | "ANALYZING" | "READY" | "FAILED";
+type MeetingStatus = "PENDING" | "UPLOADING" | "TRANSCRIBING" | "AWAITING_SOURCE_MAP" | "AWAITING_NAMES" | "ANALYZING" | "READY" | "FAILED";
 type ActionStatus = "OPEN" | "IN_PROGRESS" | "CLOSED" | "DEFERRED";
 type Priority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
@@ -109,11 +109,24 @@ type SpeakerCluster = {
   resolvedName: string | null;
   totalSeconds: number;
   segmentCount: number;
+  vttOverlap?: string | null;
 };
 
 type SpeakerMappingData = {
   clusters: SpeakerCluster[];
   mapping:  Record<string, string>;
+};
+
+type TeamsSource = {
+  mode: "PERSON" | "SHARED_MIC" | "IGNORE";
+  participantId?: number;
+  participantIds?: number[];
+};
+
+type SourceMappingData = {
+  vttSpeakers: string[];
+  teamsSources: Record<string, TeamsSource>;
+  audioOffsetSeconds: number;
 };
 
 type MeetingDetail = {
@@ -157,6 +170,7 @@ const STATUS_CONFIG: Record<MeetingStatus, { label: string; color: string }> = {
   PENDING:        { label: "Pending",         color: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400" },
   UPLOADING:      { label: "Uploading…",      color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
   TRANSCRIBING:   { label: "Transcribing",    color: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  AWAITING_SOURCE_MAP: { label: "Map Sources", color: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" },
   AWAITING_NAMES: { label: "Name Speakers",   color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
   ANALYZING:      { label: "Analyzing",       color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },
   READY:          { label: "Ready",           color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
@@ -194,6 +208,7 @@ function isActive(status: MeetingStatus) {
   return (
     status === "UPLOADING" ||
     status === "TRANSCRIBING" ||
+    status === "AWAITING_SOURCE_MAP" ||
     status === "ANALYZING"
   );
 }
@@ -201,9 +216,31 @@ function isActive(status: MeetingStatus) {
 function parseSpeakerMapping(raw: string | null): SpeakerMappingData | null {
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as SpeakerMappingData;
+    const parsed = JSON.parse(raw) as Partial<SpeakerMappingData>;
+    return {
+      clusters: parsed.clusters ?? [],
+      mapping: parsed.mapping ?? {},
+    };
   } catch {
     return null;
+  }
+}
+
+function parseSourceMapping(raw: string | null): SourceMappingData {
+  if (!raw) return { vttSpeakers: [], teamsSources: {}, audioOffsetSeconds: 0 };
+  try {
+    const parsed = JSON.parse(raw) as {
+      vtt_speakers?: string[];
+      teams_sources?: Record<string, TeamsSource>;
+      audio_offset_seconds?: number;
+    };
+    return {
+      vttSpeakers: parsed.vtt_speakers ?? [],
+      teamsSources: parsed.teams_sources ?? {},
+      audioOffsetSeconds: parsed.audio_offset_seconds ?? 0,
+    };
+  } catch {
+    return { vttSpeakers: [], teamsSources: {}, audioOffsetSeconds: 0 };
   }
 }
 
@@ -717,6 +754,7 @@ function SpeakerNamingPanel({
   meetingId,
   speakerMappingData,
   declaredParticipants,
+  teamsSources,
   onDone,
 }: {
   bidId: number;
@@ -729,6 +767,7 @@ function SpeakerNamingPanel({
     speakerType: string | null;
     speakerLabel: string | null;
   }>;
+  teamsSources: Record<string, TeamsSource>;
   onDone: () => void;
 }) {
   const inRoomClusters = speakerMappingData.clusters.filter((c) => c.type === "IN_ROOM");
@@ -739,6 +778,23 @@ function SpeakerNamingPanel({
       !participant.speakerLabel
   );
   const declaredNames = new Set(unmappedDeclared.map((participant) => participant.name));
+  const participantById = new Map(declaredParticipants.map((participant) => [participant.id, participant]));
+
+  function candidatesForCluster(cluster: SpeakerCluster) {
+    const micSource = cluster.vttOverlap ? teamsSources[cluster.vttOverlap] : undefined;
+    if (micSource?.mode === "SHARED_MIC") {
+      return unmappedDeclared.filter((participant) => micSource.participantIds?.includes(participant.id));
+    }
+    if (micSource?.mode === "PERSON") return [];
+    return unmappedDeclared;
+  }
+
+  function autoPersonForCluster(cluster: SpeakerCluster) {
+    const micSource = cluster.vttOverlap ? teamsSources[cluster.vttOverlap] : undefined;
+    return micSource?.mode === "PERSON" && micSource.participantId
+      ? participantById.get(micSource.participantId)
+      : undefined;
+  }
 
   const [names, setNames] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
@@ -763,13 +819,18 @@ function SpeakerNamingPanel({
   }
 
   async function confirm() {
+    const finalNames = { ...names };
+    for (const cluster of inRoomClusters) {
+      const autoPerson = autoPersonForCluster(cluster);
+      if (autoPerson) finalNames[cluster.id] = autoPerson.name;
+    }
     setSaving(true);
     setError(null);
     try {
       const res = await fetch(`/api/bids/${bidId}/meetings/${meetingId}/speaker-mapping`, {
         method:  "PATCH",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ mapping: names }),
+        body:    JSON.stringify({ mapping: finalNames }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
@@ -821,7 +882,10 @@ function SpeakerNamingPanel({
           <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
             In-Room Speakers — {inRoomClusters.length} cluster{inRoomClusters.length !== 1 ? "s" : ""} detected
           </p>
-          {inRoomClusters.map((c) => (
+          {inRoomClusters.map((c) => {
+            const autoPerson = autoPersonForCluster(c);
+            const candidates = candidatesForCluster(c);
+            return (
             <div key={c.id} className="flex items-center gap-3">
               <div className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 w-20 shrink-0">
                 <span className="block">{c.id}</span>
@@ -829,7 +893,11 @@ function SpeakerNamingPanel({
                   {fmtSecs(c.totalSeconds)} · {c.segmentCount} seg
                 </span>
               </div>
-              {unmappedDeclared.length > 0 ? (
+              {autoPerson ? (
+                <span className="flex-1 rounded border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                  {autoPerson.name}
+                </span>
+              ) : candidates.length > 0 ? (
                 <div className="flex-1 space-y-2">
                   <select
                     value={otherMode[c.id] ? "__other__" : names[c.id] ?? ""}
@@ -849,7 +917,7 @@ function SpeakerNamingPanel({
                     className="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
                   >
                     <option value=""></option>
-                    {unmappedDeclared.map((participant) => (
+                    {candidates.map((participant) => (
                       <option key={participant.id} value={participant.name}>
                         {participant.role ? `${participant.name} — ${participant.role}` : participant.name}
                       </option>
@@ -876,7 +944,8 @@ function SpeakerNamingPanel({
                 />
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -905,6 +974,189 @@ function SpeakerNamingPanel({
 }
 
 // ── Meeting Detail Panel ──────────────────────────────────────────────────────
+
+function SourceMappingPanel({
+  bidId,
+  meetingId,
+  sourceMappingData,
+  declaredParticipants,
+  onDone,
+}: {
+  bidId: number;
+  meetingId: number;
+  sourceMappingData: SourceMappingData;
+  declaredParticipants: Array<{ id: number; name: string; role: string | null }>;
+  onDone: () => void;
+}) {
+  const [sources, setSources] = useState<Record<string, TeamsSource>>(() =>
+    Object.fromEntries(
+      sourceMappingData.vttSpeakers.map((label) => [
+        label,
+        sourceMappingData.teamsSources[label] ?? {
+          mode: /unknown|system|caption/i.test(label) ? "IGNORE" : "PERSON",
+        },
+      ])
+    )
+  );
+  const [audioOffset, setAudioOffset] = useState(sourceMappingData.audioOffsetSeconds);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirm() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/meetings/${meetingId}/source-mapping`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sources, audioOffsetSeconds: audioOffset }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        setError((err as { error?: string }).error ?? "Failed");
+        return;
+      }
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function setSource(label: string, source: TeamsSource) {
+    setSources((prev) => ({ ...prev, [label]: source }));
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-800 dark:bg-violet-900/20">
+        <p className="text-sm font-medium text-violet-800 dark:text-violet-200">
+          Teams Hybrid — Classify Speaker Sources
+        </p>
+        <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">
+          Each Teams speaker may be one person or a shared room mic. Classify each label so diarization can identify the real speakers.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {sourceMappingData.vttSpeakers.map((label) => {
+          const source = sources[label] ?? { mode: "PERSON" as const };
+          return (
+            <div key={label} className="rounded border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900 space-y-2">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{label}</p>
+                </div>
+                <select
+                  value={source.mode}
+                  onChange={(e) =>
+                    setSource(label, {
+                      mode: e.target.value as TeamsSource["mode"],
+                    })
+                  }
+                  className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                >
+                  <option value="PERSON">Person</option>
+                  <option value="SHARED_MIC">Shared Mic</option>
+                  <option value="IGNORE">Ignore</option>
+                </select>
+              </div>
+
+              {source.mode === "PERSON" && (
+                <select
+                  value={source.participantId ?? ""}
+                  onChange={(e) =>
+                    setSource(label, {
+                      mode: "PERSON",
+                      participantId: e.target.value ? Number(e.target.value) : undefined,
+                    })
+                  }
+                  className="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+                >
+                  <option value=""></option>
+                  {declaredParticipants.map((participant) => (
+                    <option key={participant.id} value={participant.id}>
+                      {participant.role ? `${participant.name} — ${participant.role}` : participant.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {source.mode === "SHARED_MIC" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {declaredParticipants.map((participant) => {
+                    const selected = source.participantIds?.includes(participant.id) ?? false;
+                    return (
+                      <label key={participant.id} className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(e) => {
+                            const current = source.participantIds ?? [];
+                            setSource(label, {
+                              mode: "SHARED_MIC",
+                              participantIds: e.target.checked
+                                ? [...current, participant.id]
+                                : current.filter((id) => id !== participant.id),
+                            });
+                          }}
+                          className="h-3.5 w-3.5 rounded border-zinc-300 dark:border-zinc-600"
+                        />
+                        <span>{participant.role ? `${participant.name} — ${participant.role}` : participant.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs text-zinc-500 dark:text-zinc-400 block">
+          Recording started ___ seconds into the meeting
+        </label>
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={audioOffset}
+          onChange={(e) => setAudioOffset(Number(e.target.value))}
+          className="w-full rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+        />
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">Set if you started recording after the meeting began</p>
+      </div>
+
+      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={confirm}
+          disabled={saving}
+          className="flex items-center gap-1.5 text-xs px-4 py-2 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40"
+        >
+          {saving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</> : "Confirm & Start Diarization"}
+        </button>
+        <button
+          onClick={async () => {
+            await fetch(`/api/bids/${bidId}/meetings/${meetingId}/source-mapping`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sources: {}, audioOffsetSeconds: 0 }),
+            });
+            onDone();
+          }}
+          disabled={saving}
+          className="text-xs px-3 py-2 rounded border border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-400"
+        >
+          Skip (no source mapping)
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function MeetingDetailPanel({
   bidId,
@@ -1064,6 +1316,7 @@ function MeetingDetailPanel({
   }
 
   const hasTranscript = !!detail.transcript?.trim() || !!manualTranscript.trim();
+  const sourceMappingData = parseSourceMapping(detail.speakerMapping ?? null);
 
   return (
     <div className="space-y-4">
@@ -1098,6 +1351,7 @@ function MeetingDetailPanel({
           <div className="flex items-center gap-2 px-3 py-2 rounded bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300">
             <Loader2 className="h-4 w-4 animate-spin shrink-0" />
             {detail.status === "UPLOADING" && "Uploading to GPU — this may take a few minutes for large files…"}
+            {detail.status === "AWAITING_SOURCE_MAP" && "Classify Teams speaker sources before diarization starts."}
             {detail.status === "TRANSCRIBING" && (
               detail.processingMode === "HYBRID"
                 ? "Diarizing recording on GPU — this takes a few minutes…"
@@ -1128,6 +1382,16 @@ function MeetingDetailPanel({
       </div>
 
       {/* ── Speaker Naming (AWAITING_NAMES) ── */}
+      {detail.status === "AWAITING_SOURCE_MAP" && sourceMappingData.vttSpeakers.length > 0 && (
+        <SourceMappingPanel
+          bidId={bidId}
+          meetingId={detail.id}
+          sourceMappingData={sourceMappingData}
+          declaredParticipants={detail.participants}
+          onDone={onReload}
+        />
+      )}
+
       {detail.status === "AWAITING_NAMES" && (() => {
         const smd = parseSpeakerMapping(detail.speakerMapping ?? null);
         return smd ? (
@@ -1136,6 +1400,7 @@ function MeetingDetailPanel({
             meetingId={detail.id}
             speakerMappingData={smd}
             declaredParticipants={detail.participants}
+            teamsSources={sourceMappingData.teamsSources}
             onDone={onReload}
           />
         ) : (
@@ -1144,7 +1409,7 @@ function MeetingDetailPanel({
       })()}
 
       {/* ── Transcript ── */}
-      {activeSection === "transcript" && detail.status !== "AWAITING_NAMES" && (
+      {activeSection === "transcript" && detail.status !== "AWAITING_NAMES" && detail.status !== "AWAITING_SOURCE_MAP" && (
         <div className="space-y-3">
           {(detail.status === "PENDING" || detail.status === "FAILED") && (
             <div className="space-y-2">
