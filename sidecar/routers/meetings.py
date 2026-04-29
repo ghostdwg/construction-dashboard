@@ -9,6 +9,8 @@ Endpoints:
   POST /meetings/export-pdf                  — generate meeting minutes PDF
 """
 
+import json
+
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import Response as FastAPIResponse
 from pydantic import BaseModel
@@ -222,6 +224,7 @@ class MergeHybridRequest(BaseModel):
     rawTranscriptJson: str   # JSON string from GPU worker (has "segments")
     vttContent: str          # Teams VTT text
     timeOffsetSeconds: float = 0.0  # offset to align audio timestamps with VTT
+    teams_sources: dict | str | None = None
 
 
 @router.post("/meetings/merge-hybrid")
@@ -242,10 +245,14 @@ async def merge_hybrid_transcript(body: MergeHybridRequest):
 
     try:
         from services.transcript_merger import merge_hybrid
+        teams_sources = body.teams_sources
+        if isinstance(teams_sources, str):
+            teams_sources = json.loads(teams_sources)
         result = merge_hybrid(
             raw_transcript_json=body.rawTranscriptJson,
             vtt_content=body.vttContent,
             time_offset=body.timeOffsetSeconds,
+            teams_sources=teams_sources,
         )
         return {"ok": True, **result}
     except Exception as exc:

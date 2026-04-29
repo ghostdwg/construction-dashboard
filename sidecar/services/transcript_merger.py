@@ -39,10 +39,9 @@ def _assign_vtt_names(
     vtt_segs: list[VttSegment],
     time_offset: float = 0.0,
     overlap_threshold: float = 0.30,
-) -> dict[str, str | None]:
+) -> dict[str, dict]:
     """
-    Returns { diarized_speaker_id: vtt_speaker_name | None }
-    None means in-room (no strong overlap with any VTT speaker).
+    Returns cluster assignment data keyed by diarized speaker id.
     """
     # Accumulate overlap seconds: cluster_id → vtt_speaker → seconds
     overlap_acc: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
@@ -61,32 +60,37 @@ def _assign_vtt_names(
             if ov > 0:
                 overlap_acc[spk][vtt.speaker] += ov
 
-    assignment: dict[str, str | None] = {}
+    assignment: dict[str, dict] = {}
     for spk in set(seg.get("speaker", "SPEAKER_0") for seg in diarized_segs):
         total = duration_acc.get(spk, 0.0)
         votes = overlap_acc.get(spk, {})
         if not votes or total == 0:
-            assignment[spk] = None
+            assignment[spk] = {"name": None, "vttOverlap": None}
             continue
 
         best_name = max(votes, key=lambda k: votes[k])
         best_ov   = votes[best_name]
         if total > 0 and best_ov / total >= overlap_threshold:
-            assignment[spk] = best_name
+            assignment[spk] = {"name": best_name, "vttOverlap": best_name}
         else:
-            assignment[spk] = None
+            assignment[spk] = {"name": None, "vttOverlap": best_name}
 
     return assignment
 
 
-def _renumber_inroom(assignment: dict[str, str | None]) -> dict[str, str]:
+def _renumber_inroom(assignment: dict[str, dict], teams_sources: dict | None = None) -> dict[str, str]:
     """
     Reassign in-room cluster IDs to a clean SPEAKER_0, SPEAKER_1, ...
     sequence. Remote speakers keep their VTT name as the resolved key.
     """
     counter = 0
     result: dict[str, str] = {}
-    for spk, name in sorted(assignment.items()):
+    for spk, data in sorted(assignment.items()):
+        name = data.get("name")
+        vtt_overlap = data.get("vttOverlap")
+        source = (teams_sources or {}).get(vtt_overlap) if vtt_overlap else None
+        if source and source.get("mode") == "SHARED_MIC":
+            name = None
         if name is not None:
             result[spk] = name
         else:
@@ -99,6 +103,7 @@ def merge_hybrid(
     raw_transcript_json: str,
     vtt_content: str,
     time_offset: float = 0.0,
+    teams_sources: dict | None = None,
 ) -> dict:
     """
     Entry point for the sidecar merge-hybrid endpoint.
@@ -124,7 +129,7 @@ def merge_hybrid(
 
     # ── Assign VTT names to diarized clusters ─────────────────────────────────
     assignment = _assign_vtt_names(segments, vtt_segs, time_offset=time_offset)
-    resolved   = _renumber_inroom(assignment)  # raw_speaker_id → display_name
+    resolved   = _renumber_inroom(assignment, teams_sources)  # raw_speaker_id → display_name
 
     # ── Build merged transcript segments ─────────────────────────────────────
     merged_lines: list[tuple[float, str]] = []  # (start_sec, line)
@@ -134,6 +139,10 @@ def merge_hybrid(
 
     for seg in segments:
         raw_spk = seg.get("speaker", "SPEAKER_0")
+        vtt_overlap = assignment.get(raw_spk, {}).get("vttOverlap")
+        source = (teams_sources or {}).get(vtt_overlap) if vtt_overlap else None
+        if source and source.get("mode") == "IGNORE":
+            continue
         display = resolved.get(raw_spk, raw_spk)
         text    = (seg.get("text") or "").strip()
         if not text:
@@ -179,7 +188,11 @@ def merge_hybrid(
             continue
         seen_display.add(display)
 
-        is_remote = display in vtt_names
+        vtt_overlap = assignment.get(raw_spk, {}).get("vttOverlap")
+        source = (teams_sources or {}).get(vtt_overlap) if vtt_overlap else None
+        if source and source.get("mode") == "IGNORE":
+            continue
+        is_remote = display in vtt_names and not (source and source.get("mode") == "SHARED_MIC")
         stats = speaker_stats.get(display, {})
 
         clusters.append({
@@ -189,6 +202,7 @@ def merge_hybrid(
             "resolvedName": display if is_remote else None,
             "totalSeconds": round(stats.get("totalSeconds", 0.0), 1),
             "segmentCount": stats.get("segmentCount", 0),
+            "vttOverlap":   vtt_overlap,
         })
 
     # Remote first, then in-room sorted by total speaking time desc

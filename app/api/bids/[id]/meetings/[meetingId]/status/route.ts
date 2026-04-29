@@ -28,6 +28,7 @@ type SidecarCluster = {
   resolvedName: string | null;
   totalSeconds: number;
   segmentCount: number;
+  vttOverlap?: string | null;
 };
 
 function sidecarHeaders(): Record<string, string> {
@@ -71,7 +72,14 @@ export async function GET(
 
   const meeting = await prisma.meeting.findFirst({
     where:  { id: mId, bidId },
-    select: { id: true, status: true, transcriptionJobId: true, processingMode: true, vttContent: true },
+    select: {
+      id: true,
+      status: true,
+      transcriptionJobId: true,
+      processingMode: true,
+      vttContent: true,
+      speakerMapping: true,
+    },
   });
   if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
 
@@ -148,14 +156,26 @@ export async function GET(
       return Response.json({ status: "READY" });
     }
 
+    const existingSpeakerMapping = meeting.speakerMapping
+      ? JSON.parse(meeting.speakerMapping) as {
+          teams_sources?: unknown;
+          audio_offset_seconds?: number;
+          mapping?: Record<string, string>;
+        }
+      : {};
+    const mergeBody: Record<string, unknown> = {
+      rawTranscriptJson: data.rawTranscript ?? "{}",
+      vttContent: meeting.vttContent,
+      timeOffsetSeconds: existingSpeakerMapping.audio_offset_seconds ?? 0,
+    };
+    if (existingSpeakerMapping.teams_sources) {
+      mergeBody.teams_sources = existingSpeakerMapping.teams_sources;
+    }
+
     const mergeRes = await fetch(`${SIDECAR_URL}/meetings/merge-hybrid`, {
       method:  "POST",
       headers: { ...sidecarHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rawTranscriptJson: data.rawTranscript ?? "{}",
-        vttContent:        meeting.vttContent,
-        timeOffsetSeconds: 0,
-      }),
+      body: JSON.stringify(mergeBody),
     });
 
     if (!mergeRes.ok) {
@@ -189,8 +209,9 @@ export async function GET(
 
     // Store cluster metadata in speakerMapping for the naming UI
     const speakerMappingJson = JSON.stringify({
+      ...existingSpeakerMapping,
       clusters: merged.clusters,
-      mapping:  {},
+      mapping:  existingSpeakerMapping.mapping ?? {},
     });
 
     const nextStatus = hasInRoom ? "AWAITING_NAMES" : "READY";

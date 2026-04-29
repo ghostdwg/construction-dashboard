@@ -61,8 +61,12 @@ export async function PATCH(
     const sm = JSON.parse(updatedSpeakerMapping) as {
       clusters?: unknown[];
       mapping?: Record<string, string>;
+      teams_sources?: unknown;
+      audio_offset_seconds?: unknown;
     };
     sm.mapping = { ...(sm.mapping ?? {}), ...mapping };
+    sm.teams_sources = sm.teams_sources ?? undefined;
+    sm.audio_offset_seconds = sm.audio_offset_seconds ?? undefined;
     updatedSpeakerMapping = JSON.stringify(sm);
   } catch {
     updatedSpeakerMapping = JSON.stringify({ mapping });

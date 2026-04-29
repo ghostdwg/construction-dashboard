@@ -7,14 +7,10 @@
 // Flow:
 //   1. Store VTT text in meeting.vttContent
 //   2. Send audio to sidecar → GPU worker (WhisperX async job)
-//   3. Set meeting status = TRANSCRIBING, transcriptionJobId = "HYBRID:{job_id}",
-//      processingMode = HYBRID
-//   4. The /status polling route handles the merge when the GPU job completes.
 
 import { prisma } from "@/lib/prisma";
-
-const SIDECAR_URL    = process.env.SIDECAR_URL    ?? "http://127.0.0.1:8001";
-const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
+import { mkdir, writeFile } from "fs/promises";
+import { join } from "path";
 
 export async function POST(
   request: Request,
@@ -43,58 +39,32 @@ export async function POST(
   if (!vttText.includes("WEBVTT"))
     return Response.json({ error: "vtt file does not appear to be a valid WebVTT file" }, { status: 400 });
 
-  // Mark as uploading and persist VTT content
+  try {
+    const audioDir = join(process.cwd(), "uploads", "meetings", String(mId));
+    await mkdir(audioDir, { recursive: true });
+    await writeFile(join(audioDir, audioFile.name), Buffer.from(await audioFile.arrayBuffer()));
+  } catch {
+    await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
+    return Response.json({ error: "Failed to save audio file" }, { status: 500 });
+  }
+
+  const speakerLabels = Array.from(vttText.matchAll(/<v ([^>]+)>/g))
+    .map((match) => match[1].trim())
+    .filter(Boolean)
+    .filter((label, index, labels) => labels.indexOf(label) === index);
+
   await prisma.meeting.update({
     where: { id: mId },
     data: {
-      status:          "UPLOADING",
+      status:          "AWAITING_SOURCE_MAP",
       processingMode:  "HYBRID",
       audioFileName:   audioFile.name,
       vttContent:      vttText,
+      speakerMapping:  JSON.stringify({ vtt_speakers: speakerLabels }),
       uploadedAt:      new Date(),
     },
   });
 
-  // Read audio bytes now — the File object is tied to the request body
-  const audioBytes = Buffer.from(await audioFile.arrayBuffer());
-  const audioName  = audioFile.name;
-  const audioType  = audioFile.type || "video/mp4";
-  const inRoomCount = await prisma.meetingParticipant.count({
-    where: { meetingId: mId, speakerLabel: null, speakerType: "IN_ROOM" },
-  });
-
-  const headers: Record<string, string> = {};
-  if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
-
-  // Fire-and-forget: upload to sidecar → GPU PC in the background so the browser
-  // doesn't wait for the full Tailscale transfer before getting a response.
-  void (async () => {
-    const bgForm = new FormData();
-    bgForm.append("audio", new Blob([audioBytes], { type: audioType }), audioName);
-    if (inRoomCount > 0) bgForm.append("num_speakers", String(inRoomCount));
-    try {
-      const res = await fetch(`${SIDECAR_URL}/meetings/transcribe`, {
-        method:  "POST",
-        headers,
-        body:    bgForm,
-      });
-      if (!res.ok) {
-        await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
-        return;
-      }
-      const data = (await res.json()) as { transcriptionJobId: string; source: string };
-      await prisma.meeting.update({
-        where: { id: mId },
-        data: {
-          status:              "TRANSCRIBING",
-          transcriptionJobId:  `HYBRID:${data.transcriptionJobId}`,
-          transcriptionSource: "HYBRID",
-        },
-      });
-    } catch {
-      await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
-    }
-  })();
 
   return Response.json({ ok: true, source: "HYBRID" });
 }
