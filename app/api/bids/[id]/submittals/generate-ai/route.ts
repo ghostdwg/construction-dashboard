@@ -17,6 +17,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { generateSubmittalsFromAiAnalysis } from "@/lib/services/submittal/generateFromAiAnalysis";
+import { seedCsiBaseline } from "@/lib/services/submittal/csiBaselineSeeder";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -57,6 +58,19 @@ export async function POST(
     return Response.json({ error: msg }, { status: msg.includes("No spec book") ? 404 : 500 });
   }
 
+  // Fallback: if AI extraction yielded nothing (spec not yet analyzed, or AI
+  // found no submittals), run the regex seed so the register isn't left empty.
+  // Regex seed reads rawText directly — works even without aiExtractions.
+  let usedFallbackSeed = false;
+  if (specResult.created === 0) {
+    try {
+      await seedCsiBaseline(bidId);
+      usedFallbackSeed = true;
+    } catch {
+      // Non-fatal — proceed without baseline items
+    }
+  }
+
   // Phase 2: drawing cross-reference (optional, async)
   const drawing = await prisma.drawingUpload.findFirst({
     where: { bidId, analysisStatus: "ready" },
@@ -65,7 +79,7 @@ export async function POST(
   });
 
   if (!drawing?.analysisJson) {
-    return Response.json({ specResult, jobId: null });
+    return Response.json({ specResult, jobId: null, usedFallbackSeed });
   }
 
   // Compact spec section list — just csi + title for coverage comparison
@@ -88,14 +102,14 @@ export async function POST(
   // No analyzed sections → skip drawing cross-reference (empty list would make
   // everything in the drawings appear "uncovered", producing misleading results).
   if (specSections.length === 0) {
-    return Response.json({ specResult, jobId: null });
+    return Response.json({ specResult, jobId: null, usedFallbackSeed });
   }
 
   let drawingAnalysis: Record<string, unknown>;
   try {
     drawingAnalysis = JSON.parse(drawing.analysisJson) as Record<string, unknown>;
   } catch {
-    return Response.json({ specResult, jobId: null });
+    return Response.json({ specResult, jobId: null, usedFallbackSeed });
   }
 
   try {
@@ -114,14 +128,14 @@ export async function POST(
       const err = await res.json().catch(() => ({ detail: `Sidecar ${res.status}` })) as { detail?: string };
       // Non-fatal — spec items are already saved, just skip drawing phase
       console.warn("[submittals/generate-ai] sidecar rejected:", err.detail);
-      return Response.json({ specResult, jobId: null });
+      return Response.json({ specResult, jobId: null, usedFallbackSeed });
     }
 
     const { job_id } = await res.json() as { job_id: string };
-    return Response.json({ specResult, jobId: job_id });
+    return Response.json({ specResult, jobId: job_id, usedFallbackSeed });
   } catch (err) {
     console.warn("[submittals/generate-ai] sidecar unavailable:", err);
-    return Response.json({ specResult, jobId: null });
+    return Response.json({ specResult, jobId: null, usedFallbackSeed });
   }
 }
 

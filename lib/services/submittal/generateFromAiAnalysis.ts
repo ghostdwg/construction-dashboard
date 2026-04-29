@@ -146,7 +146,7 @@ export async function generateSubmittalsFromAiAnalysis(
   // prior auto-generated items (both AI and regex seed) so we don't
   // double-count. Manual entries are preserved.
   const removed = await prisma.submittalItem.deleteMany({
-    where: { bidId, source: { in: ["ai_extraction", "regex_seed"] } },
+    where: { bidId, source: { in: ["ai_extraction", "regex_seed", "csi_baseline"] } },
   });
 
   // Also wipe auto-generated packages (ones with no remaining manual items).

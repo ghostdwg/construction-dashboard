@@ -178,6 +178,7 @@ type GenerateResult = {
 type GenerateAiResponse = {
   specResult: GenerateResult;
   jobId: string | null;
+  usedFallbackSeed?: boolean;
 };
 
 type DrawingPollResult = {
@@ -283,7 +284,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [genJobId, setGenJobId] = useState<string | null>(null);
-  const [aiBanner, setAiBanner] = useState<GenerateResult | null>(null);
+  const [aiBanner, setAiBanner] = useState<(GenerateResult & { usedFallbackSeed?: boolean }) | null>(null);
   const [drawingResult, setDrawingResult] = useState<DrawingPollResult | null>(null);
   const [specMeta, setSpecMeta] = useState<SpecMeta | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -419,7 +420,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
       const res = await fetch(`/api/bids/${bidId}/submittals/generate-ai`, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as GenerateAiResponse;
-      setAiBanner(data.specResult);
+      setAiBanner({ ...data.specResult, usedFallbackSeed: data.usedFallbackSeed });
       reload();
       if (data.jobId) {
         setGenJobId(data.jobId);
@@ -784,20 +785,29 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
         </div>
       )}
       {aiBanner && (
-        <div className="rounded-md border border-purple-200 bg-purple-50 px-4 py-2 text-sm text-purple-700 dark:border-purple-900 dark:bg-purple-900/30 dark:text-purple-300">
-          AI read {aiBanner.sectionsWithExtractions} sections, found{" "}
-          <strong>{aiBanner.submittalsFound}</strong> requirements.
-          {aiBanner.previousAutoItemsRemoved > 0 &&
-            ` Replaced ${aiBanner.previousAutoItemsRemoved} prior items.`}{" "}
-          Created <strong>{aiBanner.created}</strong> items
-          {aiBanner.skippedProcedural > 0 &&
-            `, skipped ${aiBanner.skippedProcedural} Div 00/01`}
-          {aiBanner.skippedBoilerplate > 0 &&
-            `, ${aiBanner.skippedBoilerplate} boilerplate`}
-          {aiBanner.deferredToCloseout > 0 &&
-            `, ${aiBanner.deferredToCloseout} deferred to closeout`}
-          {aiBanner.bidTradesLinked > 0 &&
-            ` · ${aiBanner.bidTradesLinked} linked to trades`}.
+        <div className={`rounded-md border px-4 py-2 text-sm ${aiBanner.usedFallbackSeed ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300" : "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-900/30 dark:text-purple-300"}`}>
+          {aiBanner.usedFallbackSeed ? (
+            <>
+              Spec has no AI-analyzed submittals — seeded a baseline register from spec text instead.
+              Run <strong>Analyze Spec</strong> for full AI-extracted results.
+            </>
+          ) : (
+            <>
+              AI read {aiBanner.sectionsWithExtractions} sections, found{" "}
+              <strong>{aiBanner.submittalsFound}</strong> requirements.
+              {aiBanner.previousAutoItemsRemoved > 0 &&
+                ` Replaced ${aiBanner.previousAutoItemsRemoved} prior items.`}{" "}
+              Created <strong>{aiBanner.created}</strong> items
+              {aiBanner.skippedProcedural > 0 &&
+                `, skipped ${aiBanner.skippedProcedural} Div 00/01`}
+              {aiBanner.skippedBoilerplate > 0 &&
+                `, ${aiBanner.skippedBoilerplate} boilerplate`}
+              {aiBanner.deferredToCloseout > 0 &&
+                `, ${aiBanner.deferredToCloseout} deferred to closeout`}
+              {aiBanner.bidTradesLinked > 0 &&
+                ` · ${aiBanner.bidTradesLinked} linked to trades`}.
+            </>
+          )}
           {genJobId && generating && (
             <span className="ml-2 opacity-70">Cross-referencing drawings…</span>
           )}
