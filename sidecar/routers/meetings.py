@@ -77,7 +77,7 @@ async def start_transcription(audio: UploadFile = File(...)):
                 "source": "WHISPERX",
             }
         except Exception as e:
-            print(f"[sidecar] WhisperX unavailable ({e}), falling back to AssemblyAI")
+            print(f"[sidecar] WhisperX unavailable ({type(e).__name__}: {e}), falling back to AssemblyAI")
 
     # ── Fallback: AssemblyAI ──────────────────────────────────────────────────
     if not ASSEMBLYAI_API_KEY:

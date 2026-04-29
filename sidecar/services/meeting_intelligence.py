@@ -210,7 +210,7 @@ async def submit_whisperx_job(audio_bytes: bytes, filename: str = "audio.wav") -
     if WHISPERX_API_KEY:
         headers["X-API-Key"] = WHISPERX_API_KEY
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=600.0) as client:
         resp = await client.post(
             f"{WHISPERX_URL}/transcribe",
             headers=headers,

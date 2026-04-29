@@ -33,7 +33,7 @@ export type SettingDefinition = {
   key: string;
   label: string;
   description: string;
-  category: "email" | "ai" | "estimator" | "procore";
+  category: "email" | "ai" | "estimator" | "procore" | "infrastructure";
   secret: boolean;
   envVar: string;
   placeholder?: string;
@@ -214,6 +214,52 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
     secret: true,
     envVar: "PROCORE_WEBHOOK_SECRET",
     placeholder: "your-random-secret",
+  },
+  // ── Infrastructure ───────────────────────────────────────────────────────
+  {
+    key: "SIDECAR_URL",
+    label: "Python Sidecar URL",
+    description: "URL where the FastAPI sidecar is running. Default: http://127.0.0.1:8001 (local). Set to the sidecar's deployed URL in production.",
+    category: "infrastructure",
+    secret: false,
+    envVar: "SIDECAR_URL",
+    placeholder: "http://127.0.0.1:8001",
+  },
+  {
+    key: "SIDECAR_API_KEY",
+    label: "Sidecar API Key",
+    description: "Shared secret the app sends in X-API-Key headers to authenticate with the sidecar. Leave blank in dev (sidecar allows all). Must match SIDECAR_API_KEY in your sidecar environment.",
+    category: "infrastructure",
+    secret: true,
+    envVar: "SIDECAR_API_KEY",
+    placeholder: "your-random-secret",
+  },
+  {
+    key: "WHISPERX_URL",
+    label: "GPU Worker URL",
+    description: "Tailscale (or LAN) URL of the WhisperX GPU worker. Format: http://<tailscale-ip>:8002. Leave blank to skip GPU transcription and fall back to AssemblyAI.",
+    category: "infrastructure",
+    secret: false,
+    envVar: "WHISPERX_URL",
+    placeholder: "http://100.x.x.x:8002",
+  },
+  {
+    key: "WHISPERX_API_KEY",
+    label: "GPU Worker API Key",
+    description: "Shared secret sent in X-API-Key headers to the GPU worker. Must match WHISPERX_API_KEY in the GPU worker's environment.",
+    category: "infrastructure",
+    secret: true,
+    envVar: "WHISPERX_API_KEY",
+    placeholder: "your-random-secret",
+  },
+  {
+    key: "APP_URL",
+    label: "App Public URL",
+    description: "The public HTTPS URL of this Groundworx instance. Used for webhook callbacks and email links.",
+    category: "infrastructure",
+    secret: false,
+    envVar: "APP_URL",
+    placeholder: "https://groundworx.neuroglitch.ai",
   },
 ];
 

@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import NewLeadButton from "./NewLeadButton";
+import ScanPanel from "./ScanPanel";
+import SourcesPanel from "./SourcesPanel";
 
 // ── Status + type chip maps ──────────────────────────────────────────────────
 
@@ -148,13 +150,8 @@ export default async function MarketIntelligencePage() {
             Signal ingestion · permit feeds · relationship intel · pursuit pipeline
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span
-            className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded"
-            style={{ color: "var(--text-dim)", border: "1px solid var(--line)" }}
-          >
-            Scrapers: Manual
-          </span>
+        <div className="flex items-center gap-2 relative">
+          <ScanPanel />
           <NewLeadButton />
         </div>
       </div>
@@ -172,6 +169,9 @@ export default async function MarketIntelligencePage() {
 
         {/* ── Left column ─────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 flex flex-col gap-5">
+
+          {/* Scrape Sources */}
+          <SourcesPanel />
 
           {/* Signal Queue */}
           <div

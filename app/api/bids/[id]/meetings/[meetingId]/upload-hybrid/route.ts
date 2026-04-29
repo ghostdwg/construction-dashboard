@@ -55,51 +55,42 @@ export async function POST(
     },
   });
 
-  // Proxy audio to sidecar → GPU worker
-  const sidecarForm = new FormData();
-  sidecarForm.append("audio", audioFile);
+  // Read audio bytes now — the File object is tied to the request body
+  const audioBytes = Buffer.from(await audioFile.arrayBuffer());
+  const audioName  = audioFile.name;
+  const audioType  = audioFile.type || "video/mp4";
 
   const headers: Record<string, string> = {};
   if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
 
-  try {
-    const res = await fetch(`${SIDECAR_URL}/meetings/transcribe`, {
-      method:  "POST",
-      headers,
-      body:    sidecarForm,
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Sidecar error" }));
+  // Fire-and-forget: upload to sidecar → GPU PC in the background so the browser
+  // doesn't wait for the full Tailscale transfer before getting a response.
+  void (async () => {
+    const bgForm = new FormData();
+    bgForm.append("audio", new Blob([audioBytes], { type: audioType }), audioName);
+    try {
+      const res = await fetch(`${SIDECAR_URL}/meetings/transcribe`, {
+        method:  "POST",
+        headers,
+        body:    bgForm,
+      });
+      if (!res.ok) {
+        await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
+        return;
+      }
+      const data = (await res.json()) as { transcriptionJobId: string; source: string };
       await prisma.meeting.update({
         where: { id: mId },
-        data: { status: "FAILED" },
+        data: {
+          status:              "TRANSCRIBING",
+          transcriptionJobId:  `HYBRID:${data.transcriptionJobId}`,
+          transcriptionSource: "HYBRID",
+        },
       });
-      return Response.json(
-        { error: (err as { detail?: string }).detail ?? "Sidecar error" },
-        { status: 502 }
-      );
+    } catch {
+      await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
     }
+  })();
 
-    const data = (await res.json()) as { transcriptionJobId: string; source: string };
-
-    // Prefix job ID with HYBRID: so the /status route knows to run the merge
-    await prisma.meeting.update({
-      where: { id: mId },
-      data: {
-        status:              "TRANSCRIBING",
-        transcriptionJobId:  `HYBRID:${data.transcriptionJobId}`,
-        transcriptionSource: "HYBRID",
-      },
-    });
-
-    return Response.json({ ok: true, source: "HYBRID" });
-
-  } catch (err) {
-    await prisma.meeting.update({
-      where: { id: mId },
-      data: { status: "FAILED" },
-    });
-    return Response.json({ error: String(err) }, { status: 502 });
-  }
+  return Response.json({ ok: true, source: "HYBRID" });
 }

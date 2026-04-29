@@ -733,6 +733,8 @@ function MeetingDetailPanel({
   const [activeSection, setActiveSection] = useState<"transcript" | "analysis" | "items">(
     detail.status === "READY" && detail.summary ? "analysis" : "transcript"
   );
+  const [reviewStatus, setReviewStatus] = useState(detail.reviewStatus ?? "DRAFT");
+  const [patchingReview, setPatchingReview] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -746,12 +748,21 @@ function MeetingDetailPanel({
   const hybridVttRef = useRef<HTMLInputElement>(null);
   const hybridAudioRef = useRef<HTMLInputElement>(null);
 
-  // Poll if actively processing
+  // Poll if actively processing — call /status when TRANSCRIBING so it actually advances
   useEffect(() => {
     if (!isActive(detail.status as MeetingStatus)) return;
-    const timer = setTimeout(() => onReload(), 5000);
+    const timer = setTimeout(async () => {
+      if (detail.status === "TRANSCRIBING") {
+        await fetch(`/api/bids/${bidId}/meetings/${detail.id}/status`);
+      }
+      onReload();
+    }, 5000);
     return () => clearTimeout(timer);
-  }, [detail.status, onReload]);
+  }, [detail.status, detail.id, bidId, onReload]);
+
+  useEffect(() => {
+    setReviewStatus(detail.reviewStatus ?? "DRAFT");
+  }, [detail.reviewStatus]);
 
   async function uploadAudio(file: File) {
     setUploading(true);
@@ -848,23 +859,69 @@ function MeetingDetailPanel({
     }
   }
 
+  async function patchReviewStatus(newStatus: string) {
+    setPatchingReview(true);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/meetings/${detail.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewStatus: newStatus }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to update review status" }));
+        alert(err.error ?? "Failed to update review status");
+        return;
+      }
+      setReviewStatus(newStatus);
+    } finally {
+      setPatchingReview(false);
+    }
+  }
+
   const hasTranscript = !!detail.transcript?.trim() || !!manualTranscript.trim();
 
   return (
     <div className="space-y-4">
       {/* ── Status banner for in-progress states ── */}
-      {isActive(detail.status as MeetingStatus) && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300">
-          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-          {detail.status === "UPLOADING" && "Uploading audio…"}
-          {detail.status === "TRANSCRIBING" && (
-            detail.processingMode === "HYBRID"
-              ? "Diarizing recording on GPU — this takes a few minutes…"
-              : "Transcribing audio — this takes 1-5 minutes…"
-          )}
-          {detail.status === "ANALYZING" && "Running Claude analysis on transcript…"}
-        </div>
-      )}
+      {isActive(detail.status as MeetingStatus) && (() => {
+        const uploadStale = detail.status === "UPLOADING" && detail.uploadedAt
+          ? Date.now() - new Date(detail.uploadedAt).getTime() > 5 * 60 * 1000
+          : false;
+
+        if (uploadStale) {
+          return (
+            <div className="flex items-center justify-between px-3 py-2 rounded bg-red-50 border border-red-200 text-red-800 text-sm dark:bg-red-900/20 dark:border-red-800 dark:text-red-300">
+              <span>Upload timed out — the GPU connection may have stalled.</span>
+              <button
+                onClick={async () => {
+                  await fetch(`/api/bids/${bidId}/meetings/${detail.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status: "PENDING", transcriptionJobId: null }),
+                  });
+                  onReload();
+                }}
+                className="ml-3 shrink-0 px-2 py-1 rounded text-xs font-medium bg-red-100 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/60"
+              >
+                Reset &amp; Retry
+              </button>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex items-center gap-2 px-3 py-2 rounded bg-amber-50 border border-amber-200 text-amber-800 text-sm dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300">
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            {detail.status === "UPLOADING" && "Uploading to GPU — this may take a few minutes for large files…"}
+            {detail.status === "TRANSCRIBING" && (
+              detail.processingMode === "HYBRID"
+                ? "Diarizing recording on GPU — this takes a few minutes…"
+                : "Transcribing audio — this takes 1-5 minutes…"
+            )}
+            {detail.status === "ANALYZING" && "Running Claude analysis on transcript…"}
+          </div>
+        );
+      })()}
 
       {/* ── Section tabs ── */}
       <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-700">
@@ -1266,15 +1323,45 @@ function MeetingDetailPanel({
                 <div className="flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
                   <span>v{detail.analysisVersion}</span>
                   <span>·</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                    detail.reviewStatus === "PUBLISHED"
-                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                      : detail.reviewStatus === "IN_REVIEW"
-                      ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                      : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                  }`}>
-                    {detail.reviewStatus}
-                  </span>
+                  {reviewStatus === "DRAFT" ? (
+                    <button
+                      onClick={() => patchReviewStatus("IN_REVIEW")}
+                      disabled={patchingReview}
+                      className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 disabled:opacity-40 inline-flex items-center gap-1"
+                    >
+                      {patchingReview ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>Submit for Review</span>}
+                    </button>
+                  ) : reviewStatus === "IN_REVIEW" ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => patchReviewStatus("PUBLISHED")}
+                        disabled={patchingReview}
+                        className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 disabled:opacity-40 inline-flex items-center gap-1"
+                      >
+                        {patchingReview ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>Publish</span>}
+                      </button>
+                      <button
+                        onClick={() => patchReviewStatus("DRAFT")}
+                        disabled={patchingReview}
+                        className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 disabled:opacity-40"
+                      >
+                        Revert
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                        Published
+                      </span>
+                      <button
+                        onClick={() => patchReviewStatus("IN_REVIEW")}
+                        disabled={patchingReview}
+                        className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 disabled:opacity-40"
+                      >
+                        Unpublish
+                      </button>
+                    </div>
+                  )}
                   <span>·</span>
                   <span>Analyzed {detail.analyzedAt ? fmtDate(detail.analyzedAt) : "—"}</span>
                 </div>

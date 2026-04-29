@@ -7,16 +7,18 @@ import AiSettingsCard from "./AiSettingsCard";
 import AboutSettingsCard from "./AboutSettingsCard";
 import MeetingSettingsCard from "./MeetingSettingsCard";
 import ProcoreSettingsCard from "./ProcoreSettingsCard";
+import InfrastructureSettingsCard from "./InfrastructureSettingsCard";
 
 type SearchParams = Promise<{ section?: string }>;
 
 const SECTIONS = [
-  { key: "ai",        label: "AI Configuration",    description: "providers, routing, token budgets", dot: "set"     },
-  { key: "email",     label: "Email Integration",   description: "Resend + SMTP for RFQ emails",     dot: "set"     },
-  { key: "meetings",  label: "Meeting Intelligence",description: "AssemblyAI transcription key",     dot: "partial" },
-  { key: "procore",   label: "Procore Integration", description: "client ID, secret, company ID",    dot: "unset"   },
-  { key: "estimator", label: "Estimator Profile",   description: "name + reply-to address",          dot: "unset"   },
-  { key: "about",     label: "About",               description: "build info + module reference",    dot: "unset"   },
+  { key: "ai",             label: "AI Configuration",    description: "providers, routing, token budgets",    dot: "set"     },
+  { key: "email",          label: "Email Integration",   description: "Resend + SMTP for RFQ emails",         dot: "set"     },
+  { key: "meetings",       label: "Meeting Intelligence",description: "AssemblyAI transcription key",         dot: "partial" },
+  { key: "infrastructure", label: "Infrastructure",      description: "sidecar, GPU worker, app URL",         dot: "partial" },
+  { key: "procore",        label: "Procore Integration", description: "client ID, secret, company ID",        dot: "unset"   },
+  { key: "estimator",      label: "Estimator Profile",   description: "name + reply-to address",              dot: "unset"   },
+  { key: "about",          label: "About",               description: "build info + module reference",        dot: "unset"   },
 ] as const;
 
 type SectionKey = (typeof SECTIONS)[number]["key"];
@@ -106,12 +108,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
 
         {/* Content */}
         <div className="flex-1 px-7 py-6 min-w-0 flex flex-col gap-5">
-          {active === "ai"        && <AiSettingsCard />}
-          {active === "email"     && <EmailSettingsCard />}
-          {active === "estimator" && <EstimatorSettingsCard />}
-          {active === "meetings"  && <MeetingSettingsCard />}
-          {active === "procore"   && <ProcoreSettingsCard />}
-          {active === "about"     && <AboutSettingsCard />}
+          {active === "ai"             && <AiSettingsCard />}
+          {active === "email"          && <EmailSettingsCard />}
+          {active === "estimator"      && <EstimatorSettingsCard />}
+          {active === "meetings"       && <MeetingSettingsCard />}
+          {active === "infrastructure" && <InfrastructureSettingsCard />}
+          {active === "procore"        && <ProcoreSettingsCard />}
+          {active === "about"          && <AboutSettingsCard />}
         </div>
       </div>
     </div>

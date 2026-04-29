@@ -17,6 +17,7 @@ const VALID_TYPES = new Set([
 const VALID_STATUSES = new Set([
   "PENDING", "UPLOADING", "TRANSCRIBING", "AWAITING_NAMES", "ANALYZING", "READY", "FAILED",
 ]);
+const VALID_REVIEW_STATUSES = new Set(["DRAFT", "IN_REVIEW", "PUBLISHED"]);
 
 const safeArr = (raw: string | null): unknown[] => {
   if (!raw) return [];
@@ -141,6 +142,12 @@ export async function PATCH(
   if (body.status !== undefined) {
     const s = String(body.status).toUpperCase();
     if (VALID_STATUSES.has(s)) data.status = s;
+  }
+  if (body.transcriptionJobId !== undefined)
+    data.transcriptionJobId = body.transcriptionJobId ?? null;
+  if (body.reviewStatus !== undefined) {
+    const rs = String(body.reviewStatus).toUpperCase();
+    if (VALID_REVIEW_STATUSES.has(rs)) data.reviewStatus = rs;
   }
   if (body.transcript !== undefined) data.transcript = body.transcript ?? null;
   if (body.summary !== undefined) data.summary = body.summary ?? null;
