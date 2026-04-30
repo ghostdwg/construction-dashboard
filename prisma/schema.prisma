@@ -736,6 +736,9 @@ model SubmittalPackage {
   linkedActivityId  String?
   riskStatus        String   @default("NONE")   // NONE | AT_RISK | BLOCKED
   readyForExport    Boolean  @default(false)
+  releasePhase      String?  // Preconstruction | Early Construction | Mid Construction | Closeout
+  targetIssueDate   DateTime? // when GC plans to issue the package to sub
+  requiredReturnDate DateTime? // when GC needs it back from sub/AOR
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

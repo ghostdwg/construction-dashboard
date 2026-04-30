@@ -390,7 +390,7 @@ Status: STRETCH — validate Phases 5A–5E first
 
 #### Phase 5G: Submittal Intelligence Layer
 Estimated: 80–120 hours total (split across four sub-phases)
-Status: ✅ 5G-1 through 5G-3.6 COMPLETE — bridges Phase 5A (AI extraction) into H3 (register)
+Status: ✅ 5G-1 through 5G-3.6 + AI Organizer + Export Review COMPLETE — bridges Phase 5A (AI extraction) into H3 (register)
 
 The "moat feature" — turns the AI submittal extractions sitting in
 SpecSection.aiExtractions into a live, schedule-aware register. Procore
@@ -555,6 +555,20 @@ First deliverable worth shipping: 5G-1 + 5G-3.5 + 5G-3.6 as a bundle.
   Together = ~45 hrs = spec-driven submittal register with package grouping
   and bulk edit. That's the "easier than Procore + easier than Excel" MVP.
   5G-2 / 5G-3 / 5G-4 layer on additional intelligence afterward.
+
+##### 5G-Organizer — AI Submittal Register Organizer ✅ COMPLETE
+GC-perspective 10-step Claude system prompt transforms raw AI extractions into
+a trade-packaged, deduplicated Procore-ready register. Replaces all auto sources
+with `source: "ai_organized"` items grouped into PKG-[TRADE]-[SEQ] packages.
+Priority (HIGH/MEDIUM/LOW) and release phase (Preconstruction/Early Construction/
+Mid Construction/Closeout) assigned per row. "AI Organize" button in SubmittalsTab.
+Route: POST /api/bids/[id]/submittals/organize-ai → organizeWithAi.ts.
+
+##### 5G-ExportReview — Procore Export Review ✅ COMPLETE
+SubmittalPackage gains releasePhase, targetIssueDate, requiredReturnDate, readyForExport.
+ExportReviewView in SubmittalsTab groups packages by release phase with inline date
+editing (target issue / required return) and readyForExport toggle per card.
+Counter shows "X of N packages marked export-ready." Toggle via "Export Review" button.
 
 #### Phase 5H: Closeout Intelligence (ASPIRATIONAL — future direction)
 Near-term derived views shipped: Warranty Register (5H), Training Register (5H-2), Inspections Register (5H-3), Closeout Checklist (5H-4).

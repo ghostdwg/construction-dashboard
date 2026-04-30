@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-27 (Decision Log + Teams Hybrid transcription session)
+# Last Updated: 2026-04-30 (AI Submittal Organizer + Procore Export Review session)
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -114,6 +114,8 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 | **Phase 5G-3.6** | **Bulk-edit grid UI with inline editing** | **✅ Complete** |
 | **Phase 5G-Extension** | **Drawing cross-reference — drawing-sourced submittal items via sidecar AI** | **✅ Complete** |
 | **Phase 5H near-term** | **Warranty, training, inspections, closeout registers from aiExtractions** | **✅ Complete** |
+| **5G-Organizer** | **AI Submittal Register Organizer — GC-perspective 10-step deduplication + trade packaging; PKG-[TRADE]-[SEQ] package IDs; priority (HIGH/MEDIUM/LOW) + release phase; organizeWithAi.ts + POST /organize-ai; `source: "ai_organized"`** | **✅ Complete** |
+| **5G-ExportReview** | **Procore Export Review — SubmittalPackage releasePhase + targetIssueDate + requiredReturnDate schema fields; ExportReviewView grouped by phase (Preconstruction / Early Construction / Mid Construction / Closeout); package cards with priority counts, inline date editing, readyForExport toggle; packages GET/PATCH extended** | **✅ Complete** |
 | **GWX-INTEGRATE-004** | **Meeting action items surfaced on Overview — MeetingActionsPanel + GET /api/bids/[id]/action-items aggregates open items cross-meeting; panel self-hides when empty, shows overdue/priority badges, inline Done button, links to Meetings tab** | **✅ Complete** |
 | **UX-001** | **Quick-jump links on bids list — status-aware action buttons per row (SUBS/LEVELING/HANDOFF/SUBMITTALS based on bid status and workflowType)** | **✅ Complete** |
 | **UX-002** | **ProjectStatusStrip on Overview — 4-tile stat strip (due days, sub responses, leveling uploads, Glint briefing state) with color-coded urgency signals** | **✅ Complete** |
@@ -226,9 +228,9 @@ The system is structured as three pursuit wings plus a post-award handoff layer:
 - **SpecBook + SpecSection models** — `SpecBook.status` (uploading/splitting/analyzing/ready/error), `SpecSection.csiNumber/csiTitle/rawText/aiExtractions/canonicalTitle`; `SpecSectionPdf` stores per-section PDF blob
 - **CsiMasterformat table** — ~3,995 Level 3 MasterFormat 2020 codes; seeded from XLSX via `prisma/seed/seedCsiMasterformat.ts`; used for title canonicalization
 - **DrawingUpload model** — `analysisJson` (discipline breakdown), `analysisStatus` (pending/analyzing/ready/error); drawing intelligence via `sidecar/services/drawing_intelligence.py`
-- **SubmittalItem.source** — `"ai_extraction"` | `"regex_seed"` | `"manual"` | `"drawing_analysis"`; drawing-sourced items come from POST `/api/bids/[id]/submittals/generate-ai` two-phase flow
+- **SubmittalItem.source** — `"ai_extraction"` | `"regex_seed"` | `"manual"` | `"drawing_analysis"` | `"ai_organized"`; drawing-sourced items from POST `/api/bids/[id]/submittals/generate-ai`; AI-reorganized items from POST `/api/bids/[id]/submittals/organize-ai`
 - **SubmittalItem.specSectionId** — FK auto-linked during AI extraction (5G-1); `linkedActivityId` FK to ScheduleActivity for schedule-tied due dates (5G-2)
-- **SubmittalPackage model** — container for grouped submittals; packageNumber, name, bidTradeId, status (DRAFT/OPEN/CLOSED), defaultReviewers, defaultDistribution; SubmittalItem.packageId FK
+- **SubmittalPackage model** — container for grouped submittals; packageNumber, name, bidTradeId, status (DRAFT/OPEN/CLOSED), defaultReviewers, defaultDistribution; SubmittalItem.packageId FK; `releasePhase`, `targetIssueDate`, `requiredReturnDate`, `readyForExport` fields added for Procore Export Review
 - **SubmittalDistributionTemplate model** — per-trade routing rules; auto-populates reviewers + distribution when CSI section picked on a submittal
 - **ScheduleV2** — `ScheduleActivityV2` with 9-phase CPM template, all 4 dep types (FS/SS/FF/SF), positive/negative lag; `scheduleV2Service.ts` for seed, recalc, and AI intelligence; GET `/api/bids/[id]/schedule-v2/generate` for preflight metadata
 - **Submittal generate-ai preflight** — GET `/api/bids/[id]/submittals/generate-ai` (no jobId) returns `{ analyzedSectionCount, hasSpecBook, hasDrawings }` for UI dependency hint; empty spec guard prevents misleading drawing cross-reference when no AI analysis has run

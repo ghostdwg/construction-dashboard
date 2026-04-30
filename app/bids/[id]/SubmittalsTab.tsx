@@ -84,6 +84,24 @@ const PKG_STATUS_LABELS: Record<string, string> = {
   CLOSED: "Closed",
 };
 
+const RELEASE_PHASES = [
+  "Preconstruction",
+  "Early Construction",
+  "Mid Construction",
+  "Closeout",
+] as const;
+
+const RELEASE_PHASE_LABELS: Record<string, string> = {
+  Preconstruction: "Pre-Con",
+  "Early Construction": "Early",
+  "Mid Construction": "Mid",
+  Closeout: "Closeout",
+};
+
+function releasePhaseLabel(phase: string | null): string {
+  return phase ? RELEASE_PHASE_LABELS[phase] ?? phase : "Unphased";
+}
+
 type PackageItemRow = {
   id: number;
   bidTradeId: number | null;
@@ -148,6 +166,9 @@ type PackageRow = {
   linkedActivityId: string | null;
   riskStatus: string;
   readyForExport: boolean;
+  releasePhase: string | null;
+  targetIssueDate: string | null;
+  requiredReturnDate: string | null;
   defaultLeadTimeDays: number | null;
   defaultReviewBufferDays: number | null;
   defaultResubmitBufferDays: number | null;
@@ -156,6 +177,13 @@ type PackageRow = {
   overdue: number;
   items: PackageItemRow[];
 };
+
+type PackagePatch = Partial<
+  Pick<
+    PackageRow,
+    "releasePhase" | "targetIssueDate" | "requiredReturnDate" | "readyForExport"
+  >
+>;
 
 type ApiRollup = {
   total: number;
@@ -304,6 +332,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
   const [showAddPackageForm, setShowAddPackageForm] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showExportReview, setShowExportReview] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   const [showProcurement, setShowProcurement] = useState(false);
   const [orchestrating, setOrchestrating] = useState(false);
@@ -325,12 +354,13 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
         const res = await fetch(`/api/bids/${bidId}/submittals/packages`, {
           signal: controller.signal,
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as {
           packages: PackageRow[];
           unassigned: PackageItemRow[];
           rollup: ApiRollup;
+          error?: string;
         };
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
         if (cancelled) return;
         const allItems = [
           ...data.packages.flatMap((pkg) => pkg.items),
@@ -628,6 +658,29 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
     }
   }
 
+  async function patchPackage(
+    pkgId: number,
+    patch: PackagePatch
+  ) {
+    const res = await fetch(
+      `/api/bids/${bidId}/submittals/packages/${pkgId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }
+    );
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(err.error ?? `HTTP ${res.status}`);
+    }
+    setPackages((current) =>
+      current.map((pkg) =>
+        pkg.id === pkgId ? computePackageCounts({ ...pkg, ...patch }) : pkg
+      )
+    );
+  }
+
   function filterItems(items: PackageItemRow[]): PackageItemRow[] {
     if (filter === "open") return items.filter((i) => !isTerminal(i.status));
     if (filter === "overdue") return items.filter((i) => i.isOverdue);
@@ -748,6 +801,16 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             }`}
           >
             Procurement
+          </button>
+          <button
+            onClick={() => setShowExportReview(!showExportReview)}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+              showExportReview
+                ? "border-sky-400 bg-sky-50 text-sky-700 dark:border-sky-600 dark:bg-sky-900/30 dark:text-sky-300"
+                : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            }`}
+          >
+            {showExportReview ? "Exit Export Review" : "Export Review"}
           </button>
           <button
             onClick={runOrchestrate}
@@ -1007,6 +1070,21 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
       )}
 
       {/* ── Rollup ── */}
+      {showExportReview ? (
+        <ExportReviewView
+          packages={packages}
+          onClose={() => setShowExportReview(false)}
+          onPatchPackage={async (pkgId, patch) => {
+            try {
+              await patchPackage(pkgId, patch);
+              setError(null);
+            } catch (e) {
+              setError(e instanceof Error ? e.message : String(e));
+            }
+          }}
+        />
+      ) : (
+        <>
       {rollup && (
         <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
           <div className="grid grid-cols-3 md:grid-cols-5 gap-4">
@@ -1097,11 +1175,191 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             />
           );
         })()}
+        </>
+      )}
     </div>
   );
 }
 
 // ── Package Section ────────────────────────────────────────────────────────
+
+function ReleasePhaseBadge({ phase }: { phase: string | null }) {
+  if (!phase) return null;
+  return (
+    <span className="shrink-0 mt-0.5 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800/60 dark:bg-sky-900/30 dark:text-sky-300">
+      {releasePhaseLabel(phase)}
+    </span>
+  );
+}
+
+function ExportReviewView({
+  packages,
+  onClose,
+  onPatchPackage,
+}: {
+  packages: PackageRow[];
+  onClose: () => void;
+  onPatchPackage: (pkgId: number, patch: PackagePatch) => Promise<void>;
+}) {
+  const readyCount = packages.filter((pkg) => pkg.readyForExport).length;
+  const sections = [
+    ...RELEASE_PHASES.map((phase) => ({
+      key: phase,
+      label: phase,
+      packages: packages.filter((pkg) => pkg.releasePhase === phase),
+    })),
+    {
+      key: "Unphased",
+      label: "Unphased",
+      packages: packages.filter((pkg) => !pkg.releasePhase),
+    },
+  ];
+
+  return (
+    <section className="rounded-lg border border-sky-200 bg-sky-50/50 dark:border-sky-900/60 dark:bg-sky-950/20 overflow-hidden">
+      <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-sky-200 dark:border-sky-900/60">
+        <div>
+          <p className="text-sm font-semibold text-sky-900 dark:text-sky-200">
+            Procore Export Review
+          </p>
+          <p className="text-[11px] text-sky-700/80 dark:text-sky-300/70 mt-0.5">
+            {readyCount} of {packages.length} packages marked export-ready
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded-md border border-sky-300 bg-white px-2.5 py-1 text-xs font-medium text-sky-700 hover:bg-sky-50 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/30"
+        >
+          X
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-5 p-4">
+        {sections.map((section) => {
+          if (section.key === "Unphased" && section.packages.length === 0) return null;
+          return (
+            <div key={section.key} className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">
+                  {section.label}
+                </h3>
+                <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-mono text-zinc-400 dark:bg-zinc-900 dark:text-zinc-500">
+                  {section.packages.length}
+                </span>
+              </div>
+              {section.packages.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                  {section.packages.map((pkg) => (
+                    <ExportReviewPackageCard
+                      key={pkg.id}
+                      pkg={pkg}
+                      onPatchPackage={onPatchPackage}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-md border border-dashed border-zinc-200 bg-white/70 px-3 py-4 text-center text-xs text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-500">
+                  No packages in this phase.
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ExportReviewPackageCard({
+  pkg,
+  onPatchPackage,
+}: {
+  pkg: PackageRow;
+  onPatchPackage: (pkgId: number, patch: PackagePatch) => Promise<void>;
+}) {
+  const highCount = pkg.items.filter((item) => item.priority === "HIGH").length;
+  const mediumCount = pkg.items.filter((item) => item.priority === "MEDIUM").length;
+  const lowCount = pkg.items.filter((item) => item.priority === "LOW").length;
+
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="font-mono text-[10px] font-semibold text-sky-700 dark:text-sky-300">
+            {pkg.packageNumber}
+          </p>
+          <p className="mt-0.5 text-sm font-semibold leading-tight text-zinc-900 dark:text-zinc-100">
+            {pkg.name}
+          </p>
+        </div>
+        {pkg.releasePhase && <ReleasePhaseBadge phase={pkg.releasePhase} />}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]">
+        <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+          {pkg.total} items
+        </span>
+        <span className="rounded bg-red-100 px-1.5 py-0.5 font-mono text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          {highCount} HIGH
+        </span>
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+          {mediumCount} MED
+        </span>
+        <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+          {lowCount} LOW
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-2">
+        <label className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+          Target Issue
+          <input
+            type="date"
+            defaultValue={toInputDate(pkg.targetIssueDate)}
+            onBlur={(e) =>
+              onPatchPackage(pkg.id, { targetIssueDate: e.target.value || null })
+            }
+            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-normal text-zinc-800 outline-none focus:border-sky-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+          />
+        </label>
+        <label className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+          Required Return
+          <input
+            type="date"
+            defaultValue={toInputDate(pkg.requiredReturnDate)}
+            onBlur={(e) =>
+              onPatchPackage(pkg.id, { requiredReturnDate: e.target.value || null })
+            }
+            className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-normal text-zinc-800 outline-none focus:border-sky-400 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+          />
+        </label>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between border-t border-zinc-100 pt-3 dark:border-zinc-800">
+        {pkg.readyForExport ? (
+          <>
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-mono font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+              Ready ✓
+            </span>
+            <button
+              onClick={() => onPatchPackage(pkg.id, { readyForExport: false })}
+              className="text-[11px] text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
+              Undo
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => onPatchPackage(pkg.id, { readyForExport: true })}
+            className="rounded-md border border-zinc-300 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+          >
+            Mark Ready
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function PackageSection({
   pkg,
@@ -1183,6 +1441,8 @@ function PackageSection({
             {pkg.tradeName}
           </span>
         )}
+
+        {pkg.releasePhase && <ReleasePhaseBadge phase={pkg.releasePhase} />}
 
         {/* Right side: overdue warning, progress, status, delete */}
         <div className="flex items-center gap-2.5 ml-auto shrink-0">
@@ -1349,6 +1609,7 @@ function SubmittalGridRow({
                 {item.priority}
               </span>
             )}
+            {item.releasePhase && <ReleasePhaseBadge phase={item.releasePhase} />}
           </div>
           {item.specSectionNumber && (
             <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">

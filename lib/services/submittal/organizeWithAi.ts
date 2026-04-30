@@ -293,6 +293,37 @@ function normalizePriority(raw: string): string {
   return "MEDIUM";
 }
 
+const RELEASE_PHASE_ORDER = [
+  "Preconstruction",
+  "Early Construction",
+  "Mid Construction",
+  "Closeout",
+] as const;
+
+function normalizeReleasePhase(raw: string): string | null {
+  const k = raw.toLowerCase().trim();
+  return RELEASE_PHASE_ORDER.find((phase) => phase.toLowerCase() === k) ?? null;
+}
+
+function derivePackageReleasePhase(rows: ParsedRow[]): string | null {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const phase = normalizeReleasePhase(row.releasePhase);
+    if (phase) counts.set(phase, (counts.get(phase) ?? 0) + 1);
+  }
+
+  let bestPhase: string | null = null;
+  let bestCount = 0;
+  for (const phase of RELEASE_PHASE_ORDER) {
+    const count = counts.get(phase) ?? 0;
+    if (count > bestCount) {
+      bestPhase = phase;
+      bestCount = count;
+    }
+  }
+  return bestPhase;
+}
+
 // ── Table parser ──────────────────────────────────────────────────────────
 
 function parseMarkdownTable(text: string): ParsedRow[] {
@@ -427,12 +458,14 @@ export async function organizeSubmittalsWithAi(bidId: number): Promise<OrganizeR
 
   for (const [pkgCode, pkgRows] of packageMap) {
     const firstRow = pkgRows[0];
+    const releasePhase = derivePackageReleasePhase(pkgRows);
     const pkg = await prisma.submittalPackage.create({
       data: {
         bidId,
         packageNumber: pkgCode,
         name:          firstRow.packageName,
         status:        "DRAFT",
+        releasePhase,
       },
     });
     packagesCreated++;

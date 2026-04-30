@@ -45,6 +45,10 @@ export async function PATCH(
     defaultLeadTimeDays?: number | null;
     defaultReviewBufferDays?: number | null;
     defaultResubmitBufferDays?: number | null;
+    releasePhase?: string | null;
+    targetIssueDate?: string | null;
+    requiredReturnDate?: string | null;
+    readyForExport?: boolean;
   };
 
   const data: Record<string, unknown> = {};
@@ -62,6 +66,14 @@ export async function PATCH(
     data.defaultReviewBufferDays = typeof body.defaultReviewBufferDays === "number" ? body.defaultReviewBufferDays : null;
   if ("defaultResubmitBufferDays" in body)
     data.defaultResubmitBufferDays = typeof body.defaultResubmitBufferDays === "number" ? body.defaultResubmitBufferDays : null;
+  if ("releasePhase" in body)
+    data.releasePhase = body.releasePhase?.trim() || null;
+  if ("targetIssueDate" in body)
+    data.targetIssueDate = body.targetIssueDate ? new Date(body.targetIssueDate) : null;
+  if ("requiredReturnDate" in body)
+    data.requiredReturnDate = body.requiredReturnDate ? new Date(body.requiredReturnDate) : null;
+  if ("readyForExport" in body)
+    data.readyForExport = body.readyForExport === true;
 
   await prisma.submittalPackage.update({ where: { id: pkgId }, data });
   return Response.json({ ok: true });

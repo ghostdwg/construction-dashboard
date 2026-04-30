@@ -121,6 +121,7 @@ export async function GET(
   if (isNaN(bidId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  try {
   const [packages, unassignedItems] = await Promise.all([
     prisma.submittalPackage.findMany({
       where: { bidId },
@@ -143,7 +144,7 @@ export async function GET(
       },
       orderBy: [{ submittalNumber: "asc" }, { id: "asc" }],
     }),
-  ]);
+    ]);
 
   const now = Date.now();
 
@@ -170,6 +171,9 @@ export async function GET(
       linkedActivityId: pkg.linkedActivityId,
       riskStatus: pkg.riskStatus,
       readyForExport: pkg.readyForExport,
+      releasePhase: pkg.releasePhase,
+      targetIssueDate: pkg.targetIssueDate?.toISOString() ?? null,
+      requiredReturnDate: pkg.requiredReturnDate?.toISOString() ?? null,
       defaultLeadTimeDays: pkg.defaultLeadTimeDays,
       defaultReviewBufferDays: pkg.defaultReviewBufferDays,
       defaultResubmitBufferDays: pkg.defaultResubmitBufferDays,
@@ -196,6 +200,11 @@ export async function GET(
   };
 
   return Response.json({ packages: result, unassigned, rollup });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[submittals/packages] GET failed:", msg);
+    return Response.json({ error: msg }, { status: 500 });
+  }
 }
 
 export async function POST(
