@@ -1,0 +1,79 @@
+name: CI / Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: "libsql://placeholder.turso.io"
+          DATABASE_AUTH_TOKEN: "placeholder"
+      - name: Type check
+        run: npm run typecheck
+
+  build:
+    name: Build
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: "libsql://placeholder.turso.io"
+          DATABASE_AUTH_TOKEN: "placeholder"
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: "libsql://placeholder.turso.io"
+          DATABASE_AUTH_TOKEN: "placeholder"
+          AUTH_SECRET: "placeholder-auth-secret-minimum-32-chars-xx"
+          ANTHROPIC_API_KEY: "sk-ant-placeholder"
+          NEXTAUTH_URL: "https://neuroglitch.ai"
+
+  deploy-app:
+    name: Deploy — neuroglitch-app
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy main app
+        run: flyctl deploy --remote-only --config fly.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-sidecar:
+    name: Deploy — neuroglitch-sidecar
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy sidecar
+        run: flyctl deploy --remote-only --config fly.sidecar.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
