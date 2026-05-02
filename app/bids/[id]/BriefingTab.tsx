@@ -174,7 +174,7 @@ export default function BriefingTab({ bidId }: { bidId: number }) {
         style={{ borderColor: "var(--line)", background: "rgba(255,255,255,0.02)" }}
       >
         <h3 className="text-sm font-[600] mb-3" style={{ color: "var(--text-soft)" }}>
-          What's included
+          What&apos;s included
         </h3>
         <div className="grid grid-cols-2 gap-x-8 gap-y-2">
           {[

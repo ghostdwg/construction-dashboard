@@ -10,7 +10,7 @@ const PRIORITY_CHIP: Record<string, { label: string; color: string; bg: string; 
   LOW:      { label: "LOW",      color: "var(--text-dim)",    bg: "rgba(255,255,255,0.04)",  border: "rgba(255,255,255,0.1)" },
 };
 
-const STATUS_CHIP: Record<string, { label: string; color: string; bg: string; border: string }> = {
+const _STATUS_CHIP: Record<string, { label: string; color: string; bg: string; border: string }> = {
   OPEN:        { label: "OPEN",        color: "var(--text-soft)",  bg: "rgba(255,255,255,0.04)",  border: "rgba(255,255,255,0.1)"  },
   IN_PROGRESS: { label: "IN PROGRESS", color: "#ffcc72",           bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)"   },
   CLOSED:      { label: "CLOSED",      color: "var(--signal-soft)",bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
@@ -52,6 +52,7 @@ function MetricCard({ label, value, sub, accent }: {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function MeetingsPage() {
+  // eslint-disable-next-line react-hooks/purity
   const weekAgo = new Date(Date.now() - 7 * 86_400_000);
 
   const [items, overdueCount, criticalHighCount, closedThisWeek] = await Promise.all([

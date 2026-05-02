@@ -65,7 +65,6 @@ export default async function SubmittalsPage({
 }) {
   const { type: typeFilter } = await searchParams;
   const now = new Date();
-  const weekAgo = new Date(Date.now() - 7 * 86_400_000);
   const typeWhere = typeFilter ? { type: typeFilter } : {};
 
   const [items, overdueCount, underReviewCount, pendingProcoreCount, typeCounts] = await Promise.all([

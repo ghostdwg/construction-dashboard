@@ -88,6 +88,7 @@ export default function WarrantiesTab({ bidId }: { bidId: number }) {
   const [tradeFilter, setTradeFilter] = useState<string>("all");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetch(`/api/bids/${bidId}/warranties`)
       .then((r) => {

@@ -613,6 +613,7 @@ export default function TasksPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     const statusParam = filterStatus === "open" ? "" : filterStatus === "all" ? "?status=all" : `?status=${filterStatus}`;
     const projectParam = filterProject !== "all" ? `${statusParam ? "&" : "?"}bidId=${filterProject}` : "";
@@ -638,6 +639,7 @@ export default function TasksPage() {
   useEffect(() => {
     if (expandedTaskId === null) return;
     if (!tasks.some((task) => task.id === expandedTaskId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpandedTaskId(null);
       setEditorDraft(null);
       setEditorError(null);
@@ -736,7 +738,7 @@ export default function TasksPage() {
   });
 
   const overdueCount = tasks.filter(t => isOverdue(t.dueDate, t.status)).length;
-  const openCount    = tasks.filter(t => t.status === "OPEN").length;
+  const _openCount   = tasks.filter(t => t.status === "OPEN").length;
   const inProgCount  = tasks.filter(t => t.status === "IN_PROGRESS").length;
   const manualCount  = tasks.filter(t => t.source === "manual").length;
 

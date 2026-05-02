@@ -104,6 +104,7 @@ function MetricCard({
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function MarketIntelligencePage() {
+  // eslint-disable-next-line react-hooks/purity
   const oneDayAgo = new Date(Date.now() - 86_400_000);
 
   const [

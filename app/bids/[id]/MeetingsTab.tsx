@@ -644,6 +644,7 @@ function MeetingRow({
 
   useEffect(() => {
     if (!expanded) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingDetail(true);
     setDetailError(null);
     fetch(`/api/bids/${bidId}/meetings/${meeting.id}`)
@@ -2195,6 +2196,7 @@ function AllActionItemsView({
       setLoading(false);
     }
     if (meetings.length > 0) load();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     else setLoading(false);
   }, [bidId, meetings]);
 

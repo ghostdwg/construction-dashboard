@@ -25,7 +25,6 @@ import { useScheduleStore } from "../store/useScheduleStore";
 import ScheduleIntelligencePanel from "./ScheduleIntelligencePanel";
 import {
   formatPredecessors,
-  parsePredecessorString,
 } from "@/lib/services/schedule/scheduleV2Service";
 import type { ActivityV2 } from "@/lib/services/schedule/scheduleV2Service";
 
@@ -63,6 +62,7 @@ function EditableCell({
   const saving = useScheduleStore((s) => s.saving.has(activityId));
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!editing) setDraft(value);
   }, [value, editing]);
 

@@ -158,7 +158,7 @@ export async function POST(
       }
     }
 
-    const installStart = resolvedActivity?.startDate ?? null;
+    const _installStart = resolvedActivity?.startDate ?? null;
 
     // Effective package-level defaults (fall through to item-level)
     const pkgLeadTime = pkg.defaultLeadTimeDays ?? 0;

@@ -120,7 +120,7 @@ export async function GET(
       currentSection: job.current_section,
       error: job.error,
     });
-  } catch (err) {
+  } catch (_err) {
     return Response.json({ error: "Analysis service unavailable" }, { status: 503 });
   }
 }

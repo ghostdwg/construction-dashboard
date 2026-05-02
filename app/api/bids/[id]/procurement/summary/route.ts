@@ -45,8 +45,6 @@ export async function GET(
     },
   });
 
-  const CLOSED_STATUSES = ["APPROVED", "APPROVED_AS_NOTED"];
-
   let overdueItems = 0;
   let nearestSubmitByDate: Date | null = null;
 

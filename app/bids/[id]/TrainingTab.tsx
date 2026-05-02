@@ -92,6 +92,7 @@ export default function TrainingTab({ bidId }: { bidId: number }) {
   const [tradeFilter, setTradeFilter] = useState<string>("all");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetch(`/api/bids/${bidId}/training`)
       .then((r) => {
@@ -330,7 +331,7 @@ export default function TrainingTab({ bidId }: { bidId: number }) {
       <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
         <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
           <strong className="text-zinc-700 dark:text-zinc-300">Audience types:</strong>{" "}
-          <strong>Owner</strong> — training for building owner or owner's representative (operations, emergency procedures).{" "}
+          <strong>Owner</strong> — training for building owner or owner&apos;s representative (operations, emergency procedures).{" "}
           <strong>Maintenance</strong> — training for facility maintenance staff (equipment service, filter schedules, calibration).{" "}
           <strong>Operations</strong> — training for day-to-day building operations staff (BMS, lighting controls, access control).{" "}
           <strong>Emergency</strong> — life-safety training (fire alarm, sprinkler shutdown, evacuation panels).

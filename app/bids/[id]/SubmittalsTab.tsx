@@ -522,7 +522,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
       }
     }, 2_500);
     return () => clearInterval(interval);
-  }, [bidId, genJobId, generating]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bidId, genJobId, generating]);
 
   async function runExport() {
     setExporting(true);

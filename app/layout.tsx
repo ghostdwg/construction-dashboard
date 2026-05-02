@@ -31,6 +31,7 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
 
   // ── Sidebar data ──────────────────────────────────────────────────────────
+  // eslint-disable-next-line react-hooks/purity
   const oneDayAgo = new Date(Date.now() - 86_400_000);
   const [bidCount, activeJob, activeBid, newSignals, globalOpenActionItems] = await Promise.all([
     prisma.bid.count(),

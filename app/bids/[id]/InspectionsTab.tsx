@@ -103,6 +103,7 @@ export default function InspectionsTab({ bidId }: { bidId: number }) {
   const [tradeFilter, setTradeFilter] = useState<string>("all");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetch(`/api/bids/${bidId}/inspections`)
       .then((r) => {

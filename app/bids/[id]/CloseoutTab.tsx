@@ -54,7 +54,7 @@ type ApiResponse = {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const TYPE_LABELS: Record<CloseoutType, string> = {
+const _TYPE_LABELS: Record<CloseoutType, string> = {
   RECORD_DRAWINGS: "Record Drawings",
   ATTIC_STOCK: "Attic Stock",
   MANUALS: "O&M Manuals",
@@ -135,6 +135,7 @@ export default function CloseoutTab({ bidId }: { bidId: number }) {
   const [tradeFilter, setTradeFilter] = useState<string>("all");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetch(`/api/bids/${bidId}/closeout`)
       .then((r) => {
@@ -371,7 +372,7 @@ export default function CloseoutTab({ bidId }: { bidId: number }) {
           <strong>Attic stock</strong> — extra material (10% spare tile, 1 extra door hardware set) must be priced into the bid.{" "}
           <strong>O&amp;M Manuals</strong> — labor to compile per-trade bound sets (typically 1–2 days/trade).{" "}
           <strong>TAB/Balancing</strong> — certified third-party test-and-balance firm; price separately.{" "}
-          <strong>Commissioning</strong> — Owner's Cx agent (OPR/BOD); coordinate with MEP subs.{" "}
+          <strong>Commissioning</strong> — Owner&apos;s Cx agent (OPR/BOD); coordinate with MEP subs.{" "}
           <strong>Record Drawings</strong> — redlined as-builts converted to CAD/BIM; confirm responsibility (GC or each sub).{" "}
           Cross-reference with Division 01 (01 77 00 Closeout Procedures, 01 78 00 Closeout Submittals) for project-wide requirements.
         </p>

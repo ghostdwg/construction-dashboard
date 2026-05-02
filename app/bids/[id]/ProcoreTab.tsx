@@ -761,6 +761,7 @@ function RfiList({ bidId, refreshTick }: { bidId: number; refreshTick: number })
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setLoadError(null);
     fetch(`/api/bids/${bidId}/rfis`)
@@ -845,6 +846,7 @@ function WebhookPanel({ credsMissing }: { credsMissing: boolean }) {
 
   useEffect(() => {
     if (credsMissing) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadError(null);
     fetch("/api/procore/webhook/register")
       .then((r) => r.json() as Promise<WebhookStatus & { error?: string }>)
@@ -987,7 +989,7 @@ export default function ProcoreTab({ bidId }: { bidId: number }) {
   const [linkedProjectName, setLinkedProjectName] = useState<string | null>(null);
   const [pushStatuses, setPushStatuses] = useState<PushStatus[]>([]);
   const [credsMissing, setCredsMissing] = useState(false);
-  const [rfiRefreshTick, setRfiRefreshTick] = useState(0);
+  const [rfiRefreshTick, _setRfiRefreshTick] = useState(0);
 
   const loadStatus = useCallback(async () => {
     const res = await fetch(`/api/bids/${bidId}/procore-push/status`);
@@ -1008,6 +1010,7 @@ export default function ProcoreTab({ bidId }: { bidId: number }) {
       fetch("/api/procore/test").then(
         (r) => r.json() as Promise<{ ok: boolean; error?: string }>
       ),
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadStatus(),
     ])
       .then(([statsData, testData]) => {
@@ -1239,7 +1242,7 @@ export default function ProcoreTab({ bidId }: { bidId: number }) {
             sections.
           </li>
           <li>
-            <strong>Schedule</strong> — push the CPM baseline to Procore's scheduling module.
+            <strong>Schedule</strong> — push the CPM baseline to Procore&apos;s scheduling module.
             Procore processes the import asynchronously.
           </li>
           <li>

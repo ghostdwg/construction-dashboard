@@ -86,7 +86,7 @@ export function addWorkingDays(start: Date, days: number): Date {
   if (days === 0) return new Date(start);
   const step = days > 0 ? 1 : -1;
   let remaining = Math.abs(days);
-  let d = new Date(start);
+  const d = new Date(start);
   while (remaining > 0) {
     d.setUTCDate(d.getUTCDate() + step);
     if (!isWeekend(d)) remaining--;

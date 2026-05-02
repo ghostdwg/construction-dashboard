@@ -9,7 +9,6 @@
 
 import { prisma } from "@/lib/prisma";
 
-const SIDECAR_URL     = process.env.SIDECAR_URL     ?? "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
 
 export async function PATCH(
