@@ -1,3 +1,4 @@
+import '@/lib/env'
 import { PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 
