@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Python sidecar + GPU workers — not JS/TS
+    "sidecar/**",
+    "sidecar_gpu/**",
+    "gpu-service/**",
+    "gpu_worker/**",
   ]),
   {
     rules: {
@@ -26,6 +31,8 @@ const eslintConfig = defineConfig([
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+      // Warn on explicit `any` — keeps strict typing honest without blocking legacy spots.
+      "@typescript-eslint/no-explicit-any": "warn",
     },
   },
 ]);
