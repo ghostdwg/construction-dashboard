@@ -33,13 +33,22 @@ export default class TabErrorBoundary extends Component<Props, State> {
         <p className="mt-1 text-xs text-red-600/80 dark:text-red-400/80">
           Something in this tab crashed, but the rest of the project page is still available.
         </p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="mt-4 rounded-md border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-950/30"
-        >
-          Reload tab
-        </button>
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false })}
+            className="rounded-md border border-red-500/40 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-950/30"
+          >
+            Try again
+          </button>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="text-xs text-red-500/60 hover:text-red-700 dark:text-red-400/50 dark:hover:text-red-400"
+          >
+            Reload page
+          </button>
+        </div>
       </div>
     );
   }
