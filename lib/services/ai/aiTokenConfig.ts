@@ -204,6 +204,18 @@ export function estimateCallCost(
   };
 }
 
+export function computeCallCost(
+  model: ModelId,
+  inputTokens: number,
+  outputTokens: number
+): number {
+  const pricing = MODEL_PRICING[model];
+  if (!pricing) return 0;
+  const inputCost = (inputTokens / 1_000_000) * pricing.inputPer1M;
+  const outputCost = (outputTokens / 1_000_000) * pricing.outputPer1M;
+  return inputCost + outputCost;
+}
+
 // ── Runtime fetch ──────────────────────────────────────────────────────────
 
 // Process-level cache. Cleared via clearTokenConfigCache() after PATCH.
@@ -224,9 +236,11 @@ export function clearTokenConfigCache(): void {
  * Get the effective max_tokens for an AI call.
  * Reads from the AiTokenConfig table (cached); falls back to the hardcoded default.
  */
-export async function getMaxTokens(callKey: CallKey): Promise<number> {
+export async function getMaxTokens(callKey: CallKey | string): Promise<number> {
+  const def = (AI_CALL_DEFINITIONS as Record<string, CallDefinition>)[callKey];
+  if (!def) return 8192;
   const map = await loadCache();
-  return map.get(callKey) ?? AI_CALL_DEFINITIONS[callKey].defaultMaxTokens;
+  return map.get(callKey) ?? def?.defaultMaxTokens ?? 8192;
 }
 
 /**

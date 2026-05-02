@@ -31,6 +31,7 @@ import JobHistoryPanel from "./JobHistoryPanel";
 import MeetingActionsPanel from "./MeetingActionsPanel";
 import AiBidUsageCard from "./AiBidUsageCard";
 import ProjectStatusStrip from "./ProjectStatusStrip";
+import TabErrorBoundary from "./TabErrorBoundary";
 
 export const dynamic = "force-dynamic";
 
@@ -138,7 +139,8 @@ export default async function BidDetailPage({
 
 
           {tab === "overview" && (
-            <div className="flex flex-col gap-6">
+            <TabErrorBoundary tabName="Overview">
+              <div className="flex flex-col gap-6">
               <div className="flex items-center gap-2 flex-wrap -mb-2">
                 <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-zinc-400 dark:text-zinc-500 select-none">
                   Status
@@ -269,39 +271,112 @@ export default async function BidDetailPage({
               <section>
                 <JobHistoryPanel bidId={bid.id} />
               </section>
-            </div>
+              </div>
+            </TabErrorBoundary>
           )}
 
-          {tab === "trades" && <TradesTab bidId={bid.id} bidTrades={bid.bidTrades} />}
+          {tab === "trades" && (
+            <TabErrorBoundary tabName="Trades">
+              <TradesTab bidId={bid.id} bidTrades={bid.bidTrades} />
+            </TabErrorBoundary>
+          )}
 
           {tab === "subs" && (
-            <SubsTab
-              bidId={bid.id}
-              initialSelections={bid.selections}
-              bidTrades={bid.bidTrades}
-              projectType={bid.projectType}
-            />
+            <TabErrorBoundary tabName="Subs">
+              <SubsTab
+                bidId={bid.id}
+                initialSelections={bid.selections}
+                bidTrades={bid.bidTrades}
+                projectType={bid.projectType}
+              />
+            </TabErrorBoundary>
           )}
 
-          {tab === "scope" && <ScopeTab bidId={bid.id} />}
-          {tab === "decisions" && <DecisionLogTab bidId={bid.id} />}
-          {tab === "ai-review" && <AiReviewTab bidId={bid.id} />}
-          {tab === "questions" && <QuestionsTab bidId={bid.id} />}
-          {tab === "leveling" && (
-            <LevelingTab bidId={bid.id} subs={levelingSubs} initialUploads={estimateUploads} />
+          {tab === "scope" && (
+            <TabErrorBoundary tabName="Scope">
+              <ScopeTab bidId={bid.id} />
+            </TabErrorBoundary>
           )}
-          {tab === "activity" && <ActivityTab bidId={bid.id} />}
-          {tab === "documents" && <DocumentsTab bidId={bid.id} />}
-          {tab === "handoff" && <HandoffTab bidId={bid.id} />}
-          {tab === "submittals" && <SubmittalsTab bidId={bid.id} />}
-          {tab === "schedule" && <ScheduleTab bidId={bid.id} />}
-          {tab === "meetings" && <MeetingsTab bidId={bid.id} />}
-          {tab === "briefing" && <BriefingTab bidId={bid.id} />}
-          {tab === "procore" && <ProcoreTab bidId={bid.id} />}
-          {tab === "warranties" && <WarrantiesTab bidId={bid.id} />}
-          {tab === "training" && <TrainingTab bidId={bid.id} />}
-          {tab === "inspections" && <InspectionsTab bidId={bid.id} />}
-          {tab === "closeout" && <CloseoutTab bidId={bid.id} />}
+          {tab === "decisions" && (
+            <TabErrorBoundary tabName="Decisions">
+              <DecisionLogTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "ai-review" && (
+            <TabErrorBoundary tabName="Glint Review">
+              <AiReviewTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "questions" && (
+            <TabErrorBoundary tabName="Questions">
+              <QuestionsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "leveling" && (
+            <TabErrorBoundary tabName="Leveling">
+              <LevelingTab bidId={bid.id} subs={levelingSubs} initialUploads={estimateUploads} />
+            </TabErrorBoundary>
+          )}
+          {tab === "activity" && (
+            <TabErrorBoundary tabName="Activity">
+              <ActivityTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "documents" && (
+            <TabErrorBoundary tabName="Documents">
+              <DocumentsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "handoff" && (
+            <TabErrorBoundary tabName="Handoff">
+              <HandoffTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "submittals" && (
+            <TabErrorBoundary tabName="Submittals">
+              <SubmittalsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "schedule" && (
+            <TabErrorBoundary tabName="Schedule">
+              <ScheduleTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "meetings" && (
+            <TabErrorBoundary tabName="Meetings">
+              <MeetingsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "briefing" && (
+            <TabErrorBoundary tabName="Briefing">
+              <BriefingTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "procore" && (
+            <TabErrorBoundary tabName="Procore">
+              <ProcoreTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "warranties" && (
+            <TabErrorBoundary tabName="Warranties">
+              <WarrantiesTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "training" && (
+            <TabErrorBoundary tabName="Training">
+              <TrainingTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "inspections" && (
+            <TabErrorBoundary tabName="Inspections">
+              <InspectionsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "closeout" && (
+            <TabErrorBoundary tabName="Closeout">
+              <CloseoutTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
       </div>
     </div>
   );

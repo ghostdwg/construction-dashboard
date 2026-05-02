@@ -40,7 +40,7 @@ const EXCLUDED_TYPES: SubmittalType[] = ["CERT", "LEED"];
 // with no specifics). These are AI noise from section header skim.
 const GENERIC_LABELS = /^(product\s*data|shop\s*drawings?|samples?|warranty|warranties|training|mockups?|certificates?|certifications?|submittals?)\.?$/i;
 
-function isGenericBoilerplate(desc: string): boolean {
+export function isGenericBoilerplate(desc: string): boolean {
   const cleaned = desc.trim().replace(/[.,]+$/, "");
   if (GENERIC_LABELS.test(cleaned)) return true;
   if (cleaned.split(/\s+/).length < 3) return true;
