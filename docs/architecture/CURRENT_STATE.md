@@ -336,9 +336,9 @@ If any migration is listed as "failed" or "not applied," stop and investigate be
 | GWX-INF-002 | Health endpoint `/api/health` | ✅ COMPLETE — unauthenticated, in public routes |
 | GWX-INF-003 | Zod env validation (`lib/env.ts`) | ✅ COMPLETE — zod 4.4.2, validated on Prisma init |
 | GWX-INF-004 | Turso adapter in `lib/prisma.ts` | ✅ COMPLETE — dev falls back to SQLite |
-| GWX-INF-005 | Dockerfile (multi-stage standalone) | ⏳ PENDING — content not yet provided |
-| GWX-INF-006 | `fly.toml` + `fly.sidecar.toml` | ⏳ PENDING — content not yet provided |
-| GWX-INF-007 | `.github/workflows/deploy.yml` | ⏳ PENDING — content not yet provided |
+| GWX-INF-005 | Dockerfile (multi-stage standalone) | ✅ COMPLETE |
+| GWX-INF-006 | `fly.toml` + `fly.sidecar.toml` | ✅ COMPLETE |
+| GWX-INF-007 | `.github/workflows/deploy.yml` | ✅ COMPLETE |
 | GWX-INF-008 | Turso production database | ⏳ PENDING — next session |
 | GWX-INF-009 | `flyctl launch` + first deploy (both apps) | ⏳ PENDING — next session |
 | GWX-INF-010 | DNS — neuroglitch.ai → Fly.io + SSL cert | ⏳ PENDING — next session |

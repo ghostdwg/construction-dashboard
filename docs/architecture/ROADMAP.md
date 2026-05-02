@@ -229,9 +229,9 @@ Database: Turso (libSQL, edge-native SQLite)
 | GWX-INF-002 | `/api/health` unauthenticated endpoint | ✅ COMPLETE |
 | GWX-INF-003 | Zod env validation (`lib/env.ts`) | ✅ COMPLETE |
 | GWX-INF-004 | Turso/libSQL adapter in `lib/prisma.ts` | ✅ COMPLETE |
-| GWX-INF-005 | Dockerfile (multi-stage standalone) | ⏳ PENDING |
-| GWX-INF-006 | `fly.toml` + `fly.sidecar.toml` | ⏳ PENDING |
-| GWX-INF-007 | `.github/workflows/deploy.yml` | ⏳ PENDING |
+| GWX-INF-005 | Dockerfile (multi-stage standalone) | ✅ COMPLETE |
+| GWX-INF-006 | `fly.toml` + `fly.sidecar.toml` | ✅ COMPLETE |
+| GWX-INF-007 | `.github/workflows/deploy.yml` | ✅ COMPLETE |
 | GWX-INF-008 | Turso production database | ⏳ PENDING |
 | GWX-INF-009 | `flyctl launch` + first deploy (both apps) | ⏳ PENDING |
 | GWX-INF-010 | DNS — neuroglitch.ai → Fly.io + SSL cert | ⏳ PENDING |
@@ -240,9 +240,13 @@ Database: Turso (libSQL, edge-native SQLite)
 
 ### NEXT SESSION — Production go-live (~2 hours, 3 steps)
 
-1. **Turso database** — `turso db create neuroglitch-prod` → `prisma db push` → data migration from dev.db
-2. **Fly deploy** — provide Dockerfile + fly.toml content → `flyctl launch` → set secrets → `flyctl deploy` (both Next.js app and sidecar)
-3. **DNS + SSL** — point neuroglitch.ai A/CNAME records to Fly.io → cert auto-provisions via Let's Encrypt
+- [ ] Turso production DB + data migration
+- [ ] Fly.io first deploy (main app + sidecar)
+- [ ] neuroglitch.ai DNS + SSL
+
+Step 1: `turso db create neuroglitch-prod` → `prisma db push` → data migration from dev.db
+Step 2: `flyctl launch` (both apps) → secrets → `flyctl deploy`
+Step 3: DNS records → `flyctl certs create` → verify neuroglitch.ai live
 
 ---
 
