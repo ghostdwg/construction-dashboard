@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-04-30 (AI Submittal Organizer + Procore Export Review session)
+# Last Updated: 2026-05-02 (Production infrastructure session)
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -327,6 +327,27 @@ If any migration is listed as "failed" or "not applied," stop and investigate be
 | Other existing DB, partially repaired | Yes | Mix of old/new rows | Delete old rows, verify new row per steps 2–3 |
 
 **Scope:** This repair is manual and environment-by-environment. There is no automated migration that performs it. It must be run once on each existing database that pre-dates GWX-005.4.
+
+## Production Infrastructure
+
+| ID | Item | Status |
+|----|------|--------|
+| GWX-INF-001 | Standalone Next.js build (`output: 'standalone'`) | ✅ COMPLETE — `.next/standalone` verified |
+| GWX-INF-002 | Health endpoint `/api/health` | ✅ COMPLETE — unauthenticated, in public routes |
+| GWX-INF-003 | Zod env validation (`lib/env.ts`) | ✅ COMPLETE — zod 4.4.2, validated on Prisma init |
+| GWX-INF-004 | Turso adapter in `lib/prisma.ts` | ✅ COMPLETE — dev falls back to SQLite |
+| GWX-INF-005 | Dockerfile (multi-stage standalone) | ⏳ PENDING — content not yet provided |
+| GWX-INF-006 | `fly.toml` + `fly.sidecar.toml` | ⏳ PENDING — content not yet provided |
+| GWX-INF-007 | `.github/workflows/deploy.yml` | ⏳ PENDING — content not yet provided |
+| GWX-INF-008 | Turso production database | ⏳ PENDING — next session |
+| GWX-INF-009 | `flyctl launch` + first deploy (both apps) | ⏳ PENDING — next session |
+| GWX-INF-010 | DNS — neuroglitch.ai → Fly.io + SSL cert | ⏳ PENDING — next session |
+
+Also this session:
+- **[Codex] Prompts 1–4** — package cleanup, Vitest scaffold (3 test files, 8 passing tests), TabErrorBoundary, ESLint tightening
+- **[Lint]** — cleared all 32 pre-existing lint problems in `app/` and `lib/`
+- **[CI]** — `npm test` job added to GitHub Actions pipeline between typecheck and build
+- **[Simplify]** — removed duplicate `computeCallCost`, tightened error boundary UX (try-again before reload)
 
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and

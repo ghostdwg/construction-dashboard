@@ -1,5 +1,5 @@
 # Roadmap — Construction Intelligence Platform
-# Version 2.8 — Last Updated: 2026-04-19
+# Version 2.9 — Last Updated: 2026-05-02
 # Repo: construction-dashboard (forked from bid-dashboard)
 # Parallel repo: bid-dashboard (active, still receiving updates)
 
@@ -218,16 +218,33 @@ Prerequisite: SQLite → Postgres migration (done in Phase 5A)
 | OAuth | Microsoft / Google SSO providers | NOT STARTED |
 | Magic Link | Email-based passwordless login (model exists) | NOT STARTED |
 
-#### A3. Production Readiness
-Priority: DEFERRED until pre-deploy
-Prerequisite: Auth B+C complete
+#### A3. Production Infrastructure — IN PROGRESS
+Priority: ACTIVE — neuroglitch.ai deploy target
+Platform: Fly.io (Next.js app + Python sidecar as separate Fly apps)
+Database: Turso (libSQL, edge-native SQLite)
 
-| Item | Description | Status |
-|------|-------------|--------|
-| Database | SQLite → Postgres migration | NOT STARTED |
-| Secrets | AppSetting secrets → real secret manager | NOT STARTED |
-| Security | HTTPS, rate limiting, secure cookie flags | NOT STARTED |
-| Deploy | Target selection + CI/CD pipeline | NOT STARTED |
+| ID | Item | Status |
+|----|------|--------|
+| GWX-INF-001 | Standalone Next.js build | ✅ COMPLETE |
+| GWX-INF-002 | `/api/health` unauthenticated endpoint | ✅ COMPLETE |
+| GWX-INF-003 | Zod env validation (`lib/env.ts`) | ✅ COMPLETE |
+| GWX-INF-004 | Turso/libSQL adapter in `lib/prisma.ts` | ✅ COMPLETE |
+| GWX-INF-005 | Dockerfile (multi-stage standalone) | ⏳ PENDING |
+| GWX-INF-006 | `fly.toml` + `fly.sidecar.toml` | ⏳ PENDING |
+| GWX-INF-007 | `.github/workflows/deploy.yml` | ⏳ PENDING |
+| GWX-INF-008 | Turso production database | ⏳ PENDING |
+| GWX-INF-009 | `flyctl launch` + first deploy (both apps) | ⏳ PENDING |
+| GWX-INF-010 | DNS — neuroglitch.ai → Fly.io + SSL cert | ⏳ PENDING |
+
+---
+
+### NEXT SESSION — Production go-live (~2 hours, 3 steps)
+
+1. **Turso database** — `turso db create neuroglitch-prod` → `prisma db push` → data migration from dev.db
+2. **Fly deploy** — provide Dockerfile + fly.toml content → `flyctl launch` → set secrets → `flyctl deploy` (both Next.js app and sidecar)
+3. **DNS + SSL** — point neuroglitch.ai A/CNAME records to Fly.io → cert auto-provisions via Let's Encrypt
+
+---
 
 #### A4. Carried Forward — Minor Enhancements
 Priority: OPPORTUNISTIC — pick these up when you're already touching
