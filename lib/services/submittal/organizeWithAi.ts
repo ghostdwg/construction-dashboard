@@ -428,6 +428,18 @@ export async function organizeSubmittalsWithAi(bidId: number): Promise<OrganizeR
     );
   }
 
+  // 5b. Build specSectionId lookup from the first CSI ref in each row's specRefs
+  const allSpecRefs = new Set<string>();
+  for (const row of rows) {
+    const first = row.specRefs.split(",")[0].trim();
+    if (first) allSpecRefs.add(first);
+  }
+  const specSectionRows = await prisma.specSection.findMany({
+    where: { specBook: { bidId }, csiNumber: { in: [...allSpecRefs] } },
+    select: { id: true, csiNumber: true },
+  });
+  const specSectionMap = new Map(specSectionRows.map((s) => [s.csiNumber, s.id]));
+
   // 6. Delete old auto-generated items
   const removed = await prisma.submittalItem.deleteMany({
     where: { bidId, source: { in: AUTO_SOURCES } },
@@ -473,14 +485,15 @@ export async function organizeSubmittalsWithAi(bidId: number): Promise<OrganizeR
     await prisma.submittalItem.createMany({
       data: pkgRows.map((row) => ({
         bidId,
-        packageId:   pkg.id,
-        title:       row.description,
-        description: row.specRefs ? `Spec refs: ${row.specRefs}` : null,
-        type:        normalizeType(row.submittalType),
-        priority:    normalizePriority(row.priority),
-        releasePhase: row.releasePhase.trim() || null,
-        source:      "ai_organized",
-        status:      "PENDING",
+        packageId:      pkg.id,
+        title:          row.description,
+        description:    row.specRefs ? `Spec refs: ${row.specRefs}` : null,
+        type:           normalizeType(row.submittalType),
+        priority:       normalizePriority(row.priority),
+        releasePhase:   row.releasePhase.trim() || null,
+        source:         "ai_organized",
+        status:         "PENDING",
+        specSectionId:  specSectionMap.get(row.specRefs.split(",")[0].trim()) ?? null,
       })),
     });
     itemsCreated += pkgRows.length;

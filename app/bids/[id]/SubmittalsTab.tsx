@@ -1539,6 +1539,7 @@ function SubmittalGrid({
           <th className="px-3 py-2 w-20">#</th>
           <th className="px-3 py-2">Title</th>
           <th className="px-3 py-2 w-24 hidden md:table-cell">Type</th>
+          <th className="px-3 py-2 w-24 hidden xl:table-cell">CSI</th>
           <th className="px-3 py-2 w-32 hidden lg:table-cell">Sub</th>
           <th className="px-3 py-2 w-24">Due</th>
           <th className="px-3 py-2 w-24 hidden lg:table-cell" title="Schedule-tied submit-by date (backward math from install activity)">Submit By</th>
@@ -1611,11 +1612,6 @@ function SubmittalGridRow({
             )}
             {item.releasePhase && <ReleasePhaseBadge phase={item.releasePhase} />}
           </div>
-          {item.specSectionNumber && (
-            <div className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono">
-              {item.specSectionNumber}{item.specSectionTitle ? ` — ${item.specSectionTitle}` : ""}
-            </div>
-          )}
           {item.tradeName && (
             <div className="text-[10px] text-zinc-400 dark:text-zinc-500">
               {item.tradeName}
@@ -1626,6 +1622,17 @@ function SubmittalGridRow({
         {/* Type */}
         <td className="px-3 py-2 text-[11px] text-zinc-500 dark:text-zinc-400 hidden md:table-cell">
           {TYPE_LABELS[item.type as SubmittalType] ?? item.type}
+        </td>
+
+        {/* CSI */}
+        <td className="px-3 py-2 hidden xl:table-cell">
+          {item.specSectionNumber ? (
+            <span className="font-mono text-[11px] text-zinc-500 dark:text-zinc-400" title={item.specSectionTitle ?? undefined}>
+              {item.specSectionNumber}
+            </span>
+          ) : (
+            <span className="text-zinc-300 dark:text-zinc-600">—</span>
+          )}
         </td>
 
         {/* Sub (display only — assign via detail editor) */}
