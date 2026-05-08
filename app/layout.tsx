@@ -7,6 +7,8 @@ import UserNav from "./components/UserNav";
 import AppSidebar from "./components/AppSidebar";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 const barlow = Barlow({
   variable: "--font-barlow",
   subsets: ["latin"],
