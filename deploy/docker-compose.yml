@@ -1,3 +1,8 @@
+x-groundworx-upload-mount: &groundworx-upload-mount
+  type: bind
+  source: "${GROUNDWORX_UPLOADS_DIR:-/opt/neuroglitch/uploads/groundworx}"
+  target: /app/uploads
+
 services:
   app:
     build:
@@ -7,8 +12,27 @@ services:
       - "3000:3000"
     env_file:
       - .env.production
+    environment:
+      SIDECAR_URL: "${SIDECAR_URL:-http://sidecar:8001}"
     depends_on:
       - db
+      - sidecar
+    volumes:
+      - *groundworx-upload-mount
+    restart: unless-stopped
+    networks:
+      - internal
+
+  sidecar:
+    build:
+      context: ../sidecar
+      dockerfile: Dockerfile
+    expose:
+      - "8001"
+    env_file:
+      - .env.production
+    volumes:
+      - *groundworx-upload-mount
     restart: unless-stopped
     networks:
       - internal
