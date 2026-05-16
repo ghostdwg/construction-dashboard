@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useEffect, useCallback, useTransition, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import OllamaModelsModal from "./OllamaModelsModal";
 import { QueueManagerModal } from "./QueueManagerModal";
@@ -505,6 +506,27 @@ function SourceRow({
   const [overrideOpen, setOverrideOpen]     = useState(false);
   const [overrideFrom, setOverrideFrom]     = useState("");
   const [overrideTo, setOverrideTo]         = useState("");
+  // Anchor + position for the override popover. We portal it to document.body
+  // so the outer panel's overflow-hidden (needed for rounded corners) doesn't
+  // clip it — and re-measure on open/scroll/resize.
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; right: number } | null>(null);
+  useEffect(() => {
+    if (!overrideOpen) return;
+    const measure = () => {
+      const el = triggerRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setPopoverPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    };
+    measure();
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
+  }, [overrideOpen]);
   // Sync scrape stays bounded at 5 (cost guardrail). Queued (overnight)
   // scrape defaults to 200 — enough to backfill a typical Iowa city's
   // 1-2 year archive in one run.
@@ -603,8 +625,9 @@ function SourceRow({
             style={{ color: "var(--text-dim)", border: "1px solid var(--line)" }}>
             {isExpanded ? "Hide" : "Docs"}
           </button>
-          <div className="relative">
+          <div>
             <button
+              ref={triggerRef}
               onClick={() => setOverrideOpen(!overrideOpen)}
               disabled={isScraping || !src.isActive}
               className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded transition-colors disabled:opacity-40"
@@ -615,11 +638,25 @@ function SourceRow({
               }}>
               {isScraping ? "Scanning…" : "Scrape Now"}
             </button>
-            {overrideOpen && !isScraping && (
-              <div
-                className="absolute right-0 top-full mt-2 z-20 w-[320px] rounded p-3 flex flex-col gap-2.5"
-                style={{ background: "rgba(14,17,23,0.98)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}
-              >
+            {overrideOpen && !isScraping && popoverPos && typeof document !== "undefined" && createPortal(
+              <>
+                <div
+                  onClick={() => setOverrideOpen(false)}
+                  style={{ position: "fixed", inset: 0, zIndex: 49 }}
+                />
+                <div
+                  className="rounded p-3 flex flex-col gap-2.5"
+                  style={{
+                    position: "fixed",
+                    top: popoverPos.top,
+                    right: popoverPos.right,
+                    width: 320,
+                    zIndex: 50,
+                    background: "rgba(14,17,23,0.98)",
+                    border: "1px solid var(--line)",
+                    boxShadow: "var(--shadow)",
+                  }}
+                >
                 <div>
                   <p className="text-[11px] mb-1.5" style={{ color: "var(--text-soft)" }}>Date range (optional)</p>
                   <div className="flex gap-2">
@@ -654,7 +691,9 @@ function SourceRow({
                     Run now
                   </button>
                 </div>
-              </div>
+                </div>
+              </>,
+              document.body,
             )}
           </div>
         </div>
