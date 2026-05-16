@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useTransition } from "react";
 import Link from "next/link";
 import OllamaModelsModal from "./OllamaModelsModal";
+import { QueueManagerModal } from "./QueueManagerModal";
 
 type RecentDoc = {
   id: string;
@@ -113,6 +114,7 @@ export default function SourcesPanel() {
   const [sources, setSources]   = useState<Source[]>([]);
   const [loading, setLoading]   = useState(true);
   const [showAdd, setShowAdd]   = useState(false);
+  const [showQueueManager, setShowQueueManager] = useState(false);
   const [scraping, setScraping] = useState<string | null>(null);
   const [results, setResults]   = useState<Record<string, ScrapeResult | undefined>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -204,6 +206,15 @@ export default function SourcesPanel() {
                   {queueSummary.nextRunAt && (
                     <> · next at {new Date(queueSummary.nextRunAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</>
                   )}
+                  <>
+                    {" · "}
+                    <button
+                      type="button"
+                      onClick={() => setShowQueueManager(true)}
+                      className="underline hover:no-underline"
+                      style={{ color: "#ffcc72", background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
+                    >manage</button>
+                  </>
                 </>
               )}
               {queueSummary.queuedCount > 0 && queueSummary.recentlyCompleted > 0 && " · "}
@@ -227,6 +238,7 @@ export default function SourcesPanel() {
       </div>
 
       {showAdd && <AddSourceForm onAdded={() => { setShowAdd(false); load(); }} />}
+      {showQueueManager && <QueueManagerModal onClose={() => setShowQueueManager(false)} />}
 
       {loading ? (
         <div className="px-4 py-8 text-center text-sm" style={{ color: "var(--text-dim)" }}>Loading…</div>
