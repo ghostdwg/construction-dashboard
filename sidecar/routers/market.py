@@ -1097,3 +1097,143 @@ async def scrape_source(req: ScrapeRequest):
         results=results,
         total_cost_usd=round(total_cost, 4),
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dual-engine on-demand analysis (Phase 1 of "doc-as-artifact" pivot).
+#
+# The scrape flow auto-runs Claude. This endpoint lets the user fire either
+# Claude or Ollama against an already-scraped doc's raw text. The app stores
+# the response in MarketDocAnalysis so the same doc can be analyzed by
+# multiple engines and the outputs compared.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class AnalyzeTextRequest(BaseModel):
+    text: str
+    engine: str                          # "claude" | "ollama"
+    model: Optional[str] = None          # override default per engine
+    jurisdiction: Optional[str] = None
+    source_date: Optional[str] = None
+
+
+class AnalyzeTextResponse(BaseModel):
+    engine: str
+    model: str
+    duration_ms: int
+    cost_usd: float
+    input_tokens: int = 0
+    output_tokens: int = 0
+    signals_count: int
+    leads_count: int = 0   # leads are derived later by the app; sidecar returns 0
+    jurisdiction: Optional[str] = None
+    document_date: Optional[str] = None
+    raw_response: dict                    # full parsed JSON the engine returned
+    error: Optional[str] = None
+
+
+async def _analyze_with_ollama(doc_text: str, model: Optional[str]) -> dict:
+    """Run the extraction prompt on Ollama with format=json. Reuses the
+    Claude EXTRACT_PROMPT schema so downstream consumers don't care which
+    engine produced the JSON."""
+    chosen_model = model or OLLAMA_MODEL
+    # Match prefilter's cap so we don't blow context on huge minutes.
+    capped = doc_text[:OLLAMA_MAX_TEXT_CHARS]
+    prompt = EXTRACT_PROMPT + capped
+
+    async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT_S) as client:
+        r = await client.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": chosen_model,
+                "prompt": prompt,
+                "format": "json",          # Ollama forces JSON output
+                "stream": False,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
+                "options": {"temperature": 0.1, "num_ctx": OLLAMA_NUM_CTX},
+            },
+        )
+        r.raise_for_status()
+        data = r.json()
+
+    response_text = (data.get("response") or "").strip()
+    response_text = re.sub(r"^```(?:json)?\s*", "", response_text)
+    response_text = re.sub(r"\s*```$", "", response_text)
+    try:
+        parsed = json.loads(response_text) if response_text else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(500, f"Ollama returned invalid JSON: {exc}\n{response_text[:500]}")
+
+    return {
+        "parsed": parsed,
+        "model": chosen_model,
+        "cost_usd": 0.0,                   # local inference
+        "input_tokens": data.get("prompt_eval_count", 0) or 0,
+        "output_tokens": data.get("eval_count", 0) or 0,
+    }
+
+
+@router.post("/market/analyze-text", response_model=AnalyzeTextResponse)
+async def analyze_text(req: AnalyzeTextRequest):
+    """On-demand engine analysis of arbitrary text. Engine = claude | ollama."""
+    if not req.text or not req.text.strip():
+        raise HTTPException(400, "text is required")
+    engine = (req.engine or "").lower()
+    if engine not in ("claude", "ollama"):
+        raise HTTPException(400, "engine must be 'claude' or 'ollama'")
+
+    started = _now_ms()
+    try:
+        if engine == "claude":
+            doc_text = req.text[:MAX_TEXT_CHARS]
+            if len(req.text) > MAX_TEXT_CHARS:
+                doc_text += f"\n\n[... document truncated at {MAX_TEXT_CHARS} chars ...]"
+            result = await _scan_text(doc_text, req.jurisdiction, req.source_date)
+            duration_ms = _now_ms() - started
+            return AnalyzeTextResponse(
+                engine="claude",
+                model=MODEL,
+                duration_ms=duration_ms,
+                cost_usd=result["cost_usd"],
+                input_tokens=result["input_tokens"],
+                output_tokens=result["output_tokens"],
+                signals_count=len(result["signals"]),
+                jurisdiction=result["jurisdiction"],
+                document_date=result["document_date"],
+                raw_response={
+                    "jurisdiction": result["jurisdiction"],
+                    "document_date": result["document_date"],
+                    "signals": result["signals"],
+                    "relationships": result["relationships"],
+                },
+            )
+        else:
+            out = await _analyze_with_ollama(req.text, req.model)
+            parsed = out["parsed"]
+            duration_ms = _now_ms() - started
+            jurisdiction = req.jurisdiction or parsed.get("jurisdiction")
+            document_date = req.source_date or parsed.get("document_date")
+            return AnalyzeTextResponse(
+                engine="ollama",
+                model=out["model"],
+                duration_ms=duration_ms,
+                cost_usd=0.0,
+                input_tokens=out["input_tokens"],
+                output_tokens=out["output_tokens"],
+                signals_count=len(parsed.get("signals") or []),
+                jurisdiction=jurisdiction,
+                document_date=document_date,
+                raw_response=parsed,
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        duration_ms = _now_ms() - started
+        # Surface engine errors with status 502 — sidecar itself is fine,
+        # the downstream LLM is what failed.
+        raise HTTPException(502, f"{engine} analysis failed after {duration_ms}ms: {exc}")
+
+
+def _now_ms() -> int:
+    import time
+    return int(time.time() * 1000)

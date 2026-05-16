@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { AnalysisPanel } from "./AnalysisPanel";
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
@@ -44,9 +45,26 @@ export default async function SourceDocViewerPage({
           detectedAt: true,
         },
       },
+      analyses: {
+        orderBy: { requestedAt: "desc" },
+        take: 50,
+        select: {
+          id: true, engine: true, modelName: true, status: true,
+          requestedAt: true, startedAt: true, completedAt: true,
+          durationMs: true, costUsd: true, signalsCount: true, leadsCount: true,
+          errorMessage: true,
+        },
+      },
     },
   });
   if (!doc) notFound();
+
+  const initialAnalyses = doc.analyses.map((a) => ({
+    ...a,
+    requestedAt: a.requestedAt.toISOString(),
+    startedAt:   a.startedAt?.toISOString() ?? null,
+    completedAt: a.completedAt?.toISOString() ?? null,
+  }));
 
   return (
     <div className="max-w-[1100px] mx-auto px-6 py-8 flex flex-col gap-5">
@@ -111,6 +129,11 @@ export default async function SourceDocViewerPage({
             ))}
           </div>
         )}
+      </Section>
+
+      {/* On-demand engine analyses */}
+      <Section title="Engine analyses">
+        <AnalysisPanel docId={doc.id} initial={initialAnalyses} />
       </Section>
 
       {/* Signals from this doc */}

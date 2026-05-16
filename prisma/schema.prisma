@@ -1497,14 +1497,43 @@ model MarketSourceDoc {
   costUsd       Float     @default(0)
   error         String?
 
-  source  MarketSource   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  leads   MarketLead[]
-  signals MarketSignal[]
+  source   MarketSource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  leads    MarketLead[]
+  signals  MarketSignal[]
+  analyses MarketDocAnalysis[]
 
   @@unique([sourceId, docUrl])
   @@index([sourceId])
   @@index([scannedAt])
   @@index([documentDate])
+}
+
+// MarketDocAnalysis: one row per on-demand engine analysis of a scraped doc.
+// Lets the user fire Claude AND Ollama (or repeat either) against the same
+// document and compare results. Distinct from the auto-extraction at scrape
+// time, which writes into MarketSignal/MarketLead directly.
+model MarketDocAnalysis {
+  id              String    @id @default(cuid())
+  docId           String
+  engine          String    // "claude" | "ollama"
+  modelName       String    // e.g. "claude-sonnet-4-6" or "qwen2.5:14b"
+  status          String    @default("queued") // queued | running | complete | failed
+  requestedAt     DateTime  @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  durationMs      Int?
+  costUsd         Float     @default(0)
+  signalsCount    Int       @default(0) // number of signal items in response
+  leadsCount      Int       @default(0) // number of lead items in response
+  rawResponseJson String?   // full JSON the engine returned (for diff/compare)
+  errorMessage    String?
+  triggerSource   String    @default("user") // user | automation | retry
+
+  doc MarketSourceDoc @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@index([docId])
+  @@index([engine])
+  @@index([requestedAt])
 }
 
 // RelationshipEdge: architect↔GC, owner↔GC, developer↔GC associations derived
