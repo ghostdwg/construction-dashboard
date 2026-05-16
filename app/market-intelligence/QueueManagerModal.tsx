@@ -31,6 +31,10 @@ export function QueueManagerModal({ onClose }: { onClose: () => void }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [maxDocsDraft, setMaxDocsDraft] = useState<string>("");
+  // Inline confirm state — replaces native confirm() which can be suppressed
+  // per-origin by the browser ("Don't let this site prompt again").
+  const [confirmingCancelId, setConfirmingCancelId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ id: string; msg: string } | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -50,17 +54,18 @@ export function QueueManagerModal({ onClose }: { onClose: () => void }) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   async function cancel(id: string) {
-    if (!confirm("Cancel this queued job? It will not run.")) return;
     setBusyId(id);
+    setRowError(null);
     try {
       const res = await fetch(`/api/jobs/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${res.status}`);
       }
+      setConfirmingCancelId(null);
       await refresh();
     } catch (e) {
-      alert(`Cancel failed: ${e instanceof Error ? e.message : String(e)}`);
+      setRowError({ id, msg: `Cancel failed: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setBusyId(null);
     }
@@ -69,10 +74,11 @@ export function QueueManagerModal({ onClose }: { onClose: () => void }) {
   async function saveMaxDocs(id: string) {
     const n = parseInt(maxDocsDraft, 10);
     if (!Number.isFinite(n) || n < 1) {
-      alert("maxDocs must be a positive integer");
+      setRowError({ id, msg: "maxDocs must be a positive integer" });
       return;
     }
     setBusyId(id);
+    setRowError(null);
     try {
       const res = await fetch(`/api/jobs/${id}`, {
         method: "PATCH",
@@ -87,7 +93,7 @@ export function QueueManagerModal({ onClose }: { onClose: () => void }) {
       setMaxDocsDraft("");
       await refresh();
     } catch (e) {
-      alert(`Edit failed: ${e instanceof Error ? e.message : String(e)}`);
+      setRowError({ id, msg: `Edit failed: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setBusyId(null);
     }
@@ -188,12 +194,31 @@ export function QueueManagerModal({ onClose }: { onClose: () => void }) {
                       </>
                     )}
                     <span className="ml-auto" />
-                    <button
-                      onClick={() => cancel(j.id)} disabled={isBusy}
-                      className="text-xs px-2 py-0.5 rounded font-[600]"
-                      style={{ background: "rgba(255,114,114,0.15)", color: "#ff7272", border: "1px solid rgba(255,114,114,0.3)" }}
-                    >Cancel job</button>
+                    {confirmingCancelId === j.id ? (
+                      <>
+                        <span className="opacity-70 mr-1">Cancel for sure?</span>
+                        <button
+                          onClick={() => cancel(j.id)} disabled={isBusy}
+                          className="text-xs px-2 py-0.5 rounded font-[600]"
+                          style={{ background: "#ff7272", color: "#000", border: "1px solid #ff7272" }}
+                        >{isBusy ? "Cancelling…" : "Yes, cancel"}</button>
+                        <button
+                          onClick={() => { setConfirmingCancelId(null); setRowError(null); }}
+                          className="text-xs px-2 py-0.5 rounded opacity-70"
+                        >Keep job</button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => { setConfirmingCancelId(j.id); setRowError(null); }}
+                        disabled={isBusy}
+                        className="text-xs px-2 py-0.5 rounded font-[600]"
+                        style={{ background: "rgba(255,114,114,0.15)", color: "#ff7272", border: "1px solid rgba(255,114,114,0.3)" }}
+                      >Cancel job</button>
+                    )}
                   </div>
+                  {rowError?.id === j.id && (
+                    <div className="mt-1 text-[11px]" style={{ color: "#ff7272" }}>{rowError.msg}</div>
+                  )}
                   {params.dateFrom || params.dateTo ? (
                     <div className="opacity-60 mt-1">date range: {String(params.dateFrom ?? "—")} → {String(params.dateTo ?? "—")}</div>
                   ) : null}
