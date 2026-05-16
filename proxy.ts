@@ -2,7 +2,8 @@
 //
 // When AUTH_DISABLED=true (solo dev mode), all requests pass through.
 // When auth is enabled, unauthenticated requests to protected routes are
-// redirected to /login. Public routes: /login, /api/auth/*, static assets.
+// redirected to /login. Public routes: /login, /api/auth/*, static assets,
+// /api/health, /api/jobs/run-due (worker token auth — handled in the route).
 
 import { auth } from "@/lib/auth";
 
@@ -17,6 +18,7 @@ export default auth((req) => {
     pathname === "/login" ||
     pathname.startsWith("/api/auth/") ||
     pathname === "/api/health" ||
+    pathname === "/api/jobs/run-due" ||      // worker token auth — see route
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico";
 

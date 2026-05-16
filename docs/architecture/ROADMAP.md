@@ -591,6 +591,27 @@ ExportReviewView in SubmittalsTab groups packages by release phase with inline d
 editing (target issue / required return) and readyForExport toggle per card.
 Counter shows "X of N packages marked export-ready." Toggle via "Export Review" button.
 
+#### Phase 5I: Market Intelligence Scraper ✅ COMPLETE (Phase 1-4) — 2026-05-15
+
+**Status:** Phases 1-4 deployed and stable on `groundworx.neuroglitch.ai`.
+Phase 5 (auto source discovery) deferred.
+
+**What shipped:**
+- Sidecar `/market/scrape-source` — date-bounded listing crawler with URL/link-text date parser, query-string normalization for dedup, raw_text returned per doc
+- `MarketSource` tuning knobs: dateFrom / dateTo / minRelevanceScore (default 60) / minEstimatedValue / projectTypeAllowlist (CSV)
+- `MarketSourceDoc` doc-traceability — rawText, charCount, title, docUrlFull, documentDate persisted per scanned doc
+- `MarketLead.sourceDocId` + `MarketSignal.sourceDocId` FK backlinks
+- Doc viewer page (`/market-intelligence/docs/[id]`) — signals + leads + raw text + "View original PDF"
+- SourcesPanel rewrite — collapsible Advanced tuning form, per-row config chips, pause/resume, scrape-now with override date range, dropped-by-reason metrics
+
+**Cost ceiling:** ~$0.10 per doc worst case (sidecar `MAX_TEXT_CHARS = 60_000`). Direct-to-Claude flow; Ollama prefilter deferred until empty-doc ratio justifies it.
+
+**Deferred to Phase 5I-5:**
+- `POST /market/discover-sources` — radius-based municipality discovery (OSM Overpass → heuristic page-finder → viability check → ranked candidate list)
+- "Discover Sources" UI panel — radius slider, bulk approve
+
+---
+
 #### Phase 5H: Closeout Intelligence (ASPIRATIONAL — future direction)
 Near-term derived views shipped: Warranty Register (5H), Training Register (5H-2), Inspections Register (5H-3), Closeout Checklist (5H-4).
 Estimated: 80–120 hours

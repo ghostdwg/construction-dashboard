@@ -1315,6 +1315,9 @@ model BackgroundJob {
   retryCount    Int       @default(0)
   triggerSource String    @default("user")
 
+  // Off-peak queueing — worker only picks up jobs where runAfter <= now()
+  runAfter      DateTime?
+
   // GWX-005.1 — Atomic duplicate prevention
   // Active (queued/running) jobs hold activeSlot=1; terminal jobs clear it to null.
   // The @@unique below enforces at most one active job per (bidId, jobType) at the
@@ -1330,6 +1333,7 @@ model BackgroundJob {
   @@index([jobType, status])
   @@index([status, createdAt])
   @@index([externalJobId])
+  @@index([runAfter])
 }
 
 // ── Tier F F3 — Procore webhook event log ───────────────────────────────────
@@ -1369,6 +1373,7 @@ model MarketLead {
   leadType        String    @default("MANUAL")
   source          String?   // "beeline" | "city_hall" | "blue_book" | "county_records" | "manual"
   sourceUrl       String?
+  sourceDocId     String?   // FK to MarketSourceDoc when auto-detected
   status          String    @default("NEW")
   confidence      String    @default("MEDIUM")
   aiScore         Int?      // 0–100 overall signal strength
@@ -1388,11 +1393,13 @@ model MarketLead {
 
   signals     MarketSignal[]
   promotedBid Bid?           @relation(fields: [promotedToBidId], references: [id], onDelete: SetNull)
+  sourceDoc   MarketSourceDoc? @relation(fields: [sourceDocId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([leadType])
   @@index([detectedAt])
   @@index([promotedToBidId])
+  @@index([sourceDocId])
 }
 
 // MarketSignal: a raw piece of market evidence (permit filing, plan room posting,
@@ -1404,7 +1411,9 @@ model MarketLead {
 model MarketSignal {
   id               String    @id @default(cuid())
   leadId           String?
-  signalType       String
+  sourceDocId      String?   // FK to MarketSourceDoc when auto-detected
+  signalType       String    // PERMIT | MEETING_MINUTE | PLAN_ROOM_* | ...
+  signalSubtype    String?   // SUP_CUP | REZONING | PLAT | VARIANCE | SITE_PLAN | ... (P&Z item types)
   source           String?
   sourceUrl        String?
   sourceDate       DateTime?
@@ -1412,13 +1421,90 @@ model MarketSignal {
   rawText          String?
   metadata         String?   // JSON: source-specific fields (permit no., parcel id, etc.)
   aiRelevanceScore Int?      // 0–100
+  nextMeetingDate  DateTime? // Set when status=CONTINUED — watch the next agenda
   createdAt        DateTime  @default(now())
 
-  lead MarketLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  lead      MarketLead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  sourceDoc MarketSourceDoc? @relation(fields: [sourceDocId], references: [id], onDelete: SetNull)
 
   @@index([leadId])
   @@index([signalType])
+  @@index([signalSubtype])
   @@index([createdAt])
+  @@index([sourceDocId])
+  @@index([nextMeetingDate])
+}
+
+// MarketSource: a configured ingestion endpoint (city council minutes page,
+// permit feed listing, planning commission agenda archive). The scraper
+// crawls this URL on demand and emits new MarketSourceDoc rows per document.
+//
+// sourceType: city_council | planning_commission | permit_feed | rss
+model MarketSource {
+  id                    String    @id @default(cuid())
+  name                  String
+  jurisdiction          String
+  url                   String
+  sourceType            String    @default("city_council")
+  isActive              Boolean   @default(true)
+  lastScannedAt         DateTime?
+  docsProcessed         Int       @default(0)
+  // Tuning knobs — applied per-source during scrape persist
+  dateFrom              DateTime?    // skip docs older than this
+  dateTo                DateTime?    // skip docs newer than this
+  minRelevanceScore     Int       @default(60)   // drop signals below this score
+  minEstimatedValue     Float?       // drop leads below this value (null = no floor)
+  projectTypeAllowlist  String?      // CSV: commercial,industrial,institutional (null = all)
+  // Ollama prefilter (cost control) — runs local LLM on the GPU PC first to
+  // strip boilerplate before Claude. Modes: off | large | always.
+  // "large" triggers when extracted doc length exceeds prefilterCharThreshold.
+  prefilterMode         String    @default("off")
+  prefilterCharThreshold Int      @default(30000)
+  prefilterModel        String?   // null = use sidecar OLLAMA_MODEL default
+  // Publish-cadence learning + smart polling
+  publishCadenceDays    Int?      // median days between consecutive docs
+  cadenceConfidence     String?   // LOW (<5 samples) | MEDIUM (5-15) | HIGH (>15)
+  cadenceSampleSize     Int?      // number of date-deltas the cadence is derived from
+  lastDocSeenAt         DateTime? // documentDate of the most recent doc on file
+  nextExpectedAt        DateTime? // when smart polling should fire next
+  backfillYears         Int?      // how far back we've intentionally backfilled
+  backfillCompletedAt   DateTime? // null = no backfill done yet
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  docs MarketSourceDoc[]
+
+  @@index([sourceType])
+  @@index([isActive])
+  @@index([nextExpectedAt])
+}
+
+// MarketSourceDoc: per-document dedup record. Each row is one document URL
+// the scraper has processed under a given source — prevents re-scanning the
+// same minutes/agenda PDF on subsequent runs.
+model MarketSourceDoc {
+  id            String    @id @default(cuid())
+  sourceId      String
+  docUrl        String    // canonical URL (query string stripped) — dedup key
+  docUrlFull    String?   // original URL incl. query string, kept for re-fetch
+  title         String?   // link text from listing page (e.g. "April 13 P&Z Minutes")
+  scannedAt     DateTime  @default(now())
+  signalsFound  Int       @default(0)
+  jurisdiction  String?
+  documentDate  DateTime?
+  rawText       String?   // full extracted text — for traceability + future re-analysis
+  charCount     Int       @default(0)
+  costUsd       Float     @default(0)
+  error         String?
+
+  source  MarketSource   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  leads   MarketLead[]
+  signals MarketSignal[]
+
+  @@unique([sourceId, docUrl])
+  @@index([sourceId])
+  @@index([scannedAt])
+  @@index([documentDate])
 }
 
 // RelationshipEdge: architect↔GC, owner↔GC, developer↔GC associations derived
@@ -1447,4 +1533,32 @@ model RelationshipEdge {
   @@index([fromName])
   @@index([toName])
   @@index([relationshipType])
+}
+
+// ── Integration Credentials Vault ───────────────────────────────────────────
+//
+// Encrypted storage for third-party integration credentials (Beeline, Blue
+// Book Network, ConstructConnect, iSqFt, etc.). Encryption is AES-256-GCM
+// with a master key from CREDENTIAL_MASTER_KEY env var. The DB never holds
+// plaintext; the master key never enters the DB.
+//
+// Read path: ONLY lib/services/credentials/credentialVault.ts may decrypt.
+// AI/prompt-building code is forbidden from importing the vault (enforced
+// by ESLint no-restricted-imports rule). See docs/architecture/CREDENTIALS.md.
+model IntegrationCredential {
+  id              String    @id @default(cuid())
+  service         String    // "beeline" | "blue_book" | "constructconnect" | "isqft"
+  field           String    // "username" | "password" | "api_key" | "totp_secret"
+  encryptedValue  String    // base64 ciphertext
+  iv              String    // base64 nonce (12 bytes for GCM)
+  authTag         String    // base64 GCM auth tag
+  algorithm       String    @default("aes-256-gcm")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastTestedAt    DateTime?
+  lastTestStatus  String?   // 'success' | 'failed' | null
+  lastTestError   String?
+
+  @@unique([service, field])
+  @@index([service])
 }

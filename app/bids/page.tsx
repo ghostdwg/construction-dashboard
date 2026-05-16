@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import NewBidButton from "./NewBidButton";
+import DeleteBidButton from "./DeleteBidButton";
 
 const STATUS_STATE: Record<string, { color: string; bg: string; border: string }> = {
   draft:     { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.04)",  border: "rgba(255,255,255,0.1)"  },
@@ -202,6 +203,7 @@ export default async function BidsPage() {
                           >
                             Open
                           </Link>
+                          <DeleteBidButton bidId={bid.id} projectName={bid.projectName} />
                         </div>
                       </td>
                     </tr>

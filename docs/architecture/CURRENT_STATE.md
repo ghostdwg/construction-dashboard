@@ -1,5 +1,5 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-05-02 (Production infrastructure session)
+# Last Updated: 2026-05-15 (Market Intelligence scraper Phase 1-4 live in prod)
 
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
@@ -352,3 +352,157 @@ Also this session:
 ## Pricing / AI Boundary — Non-Negotiable
 EstimateUpload.pricingData is never returned to client and
 never included in any AI prompt. Only scopeLines go to AI.
+
+## Phase 5I — Market Intelligence Scraper (2026-05-15)
+
+Production-deployed two-stage pipeline: app → sidecar → Claude Sonnet 4.5 → DB.
+Operational on `groundworx.neuroglitch.ai`. Phases 1-4 stable; Phase 5 (auto source
+discovery) deferred.
+
+### What ships now
+
+**Schema (Turso prod):**
+- `MarketSource` — tuning knobs per source: `dateFrom`/`dateTo` (scrape window),
+  `minRelevanceScore` (default 60), `minEstimatedValue`, `projectTypeAllowlist` (CSV)
+- `MarketSourceDoc` — per-doc dedup + `rawText` persisted for traceability,
+  `docUrl` (canonical, query-string stripped) is the dedup key, `docUrlFull` kept
+  for re-fetch, `title` + `documentDate` for surfacing
+- `MarketLead.sourceDocId` and `MarketSignal.sourceDocId` — backlinks so every
+  generated signal/lead points at the source document it was called out from
+
+**Sidecar (`sidecar/routers/market.py`):**
+- `POST /market/scan-document` — single-doc Claude scan, returns `raw_text` + `char_count`
+- `POST /market/scrape-source` — listing crawl with:
+  - Date filter on candidate links (URL filename → link text → drop if undated unless `include_undated`)
+  - Query-string normalization for dedup (fixes municipal CMS cache-buster `?t=...`)
+  - Per-doc `raw_text` returned for app-side persistence
+  - Breakdown counts: `docs_found`, `docs_in_range`, `docs_scanned`, `docs_skipped`, `docs_dropped_date`, `docs_dropped_undated`
+- Date parser handles `MM.DD.YYYY` (Iowa P&Z), `MM-DD-YYYY`, `MM/DD/YYYY`, `YYYY-MM-DD`, and `Month D, YYYY`
+
+**Next routes (`app/api/market-intelligence/`):**
+- `GET POST PATCH /sources` — list / create / edit (toggle isActive, change tuning)
+- `POST /sources/[id]/scrape` — accepts per-run override (`dateFrom`, `dateTo`, `maxDocs`, `includeUndated`); persists `MarketSourceDoc` first, then signals/leads with `sourceDocId` linkage; applies per-source `minRelevanceScore`, `minEstimatedValue`, `projectTypeAllowlist` during persist
+- `POST /scan` — manual single-doc scan (no source tuning)
+- `GET /source-docs/[id]` — full doc record with linked signals and leads
+
+**UI (`app/market-intelligence/`):**
+- `SourcesPanel` — Add Source form with collapsible Advanced tuning (date range, min relevance, min value, project-type chips); per-row config chips so tuning is visible at a glance; Pause/Resume toggle; per-row Scrape Now with optional date-range override dropdown; result breakdown shows found / in-range / scanned / dropped (by reason); expandable "Docs" accordion linking to the doc viewer
+- `docs/[id]/page.tsx` — doc viewer surfacing signals + leads called out from that doc, "View original PDF" deep-link, collapsible full-text preview
+
+### Operational notes
+
+- **Claude path**: `MAX_TEXT_CHARS = 60_000` (~$0.10/doc worst case). Direct-to-Claude is the default per-source flow.
+- **Ollama prefilter path** (shipped 2026-05-15): `OLLAMA_MAX_TEXT_CHARS = 100_000` per chunk, `OLLAMA_INPUT_MAX_CHARS = 500_000` absolute cap. Docs over 100k chars get **map-reduced**: split into chunks (paragraph-aligned, 1500-char overlap), each chunk Ollama-condensed independently, results merged (dedupe by excerpt text). Long council packets that previously got truncated now process in full.
+- **Model context**: `OLLAMA_NUM_CTX = 32768` tokens (vs the prior 16384) — handles each chunk cleanly on `qwen2.5:14b`'s 128k native context.
+- **VRAM coexistence with WhisperX**: `OLLAMA_KEEP_ALIVE = "2m"` (env override). After 2 min idle, Ollama unloads the model from VRAM so WhisperX can take it without an eviction war. Set higher for sustained nightly bulk processing.
+- App container reads `.env.local` mode-660 (uid 1001:gid 1002). Before running `docker compose up`, chmod 644 via docker-as-root, then restore 660 after.
+- Prisma CLI not in the production image; migrations run via temp `node:20-alpine` container with `--env-file` (env-file must be world-readable to docker client — same chmod trick).
+- Discover-sources is shipped (`POST /market/discover-sources` + DiscoverPanel UI). Auto-discovery works best for direct-PDF-listing CMSes; CivicPlus AgendaCenter and CivicClerk sites need manual or bulk add (see Source Coverage below).
+
+### Source coverage (2026-05-15)
+
+**Working** (added/verified for Des Moines metro):
+- Direct-PDF cities: Norwalk, Des Moines, Clive, Altoona, Carlisle
+- CivicPlus AgendaCenter cities (handled via `_DOC_URL_PATTERN` regex update): Urbandale, Pleasant Hill, Grimes, Indianola, Waukee, Windsor Heights
+
+**Pending follow-up**:
+- Ankeny (CivicClerk variant — agendas live on `*.api.civicclerk.com` subdomain; needs API call or full-browser rendering)
+- Johnston (BoardDocs — same shape as CivicClerk)
+- West Des Moines (custom CMS, needs probe)
+- Polk City (Cloudflare bot protection)
+
+### Tier 1 (Ollama-only) — DEFERRED
+
+Per-source `extractionTier: tier1 | tier2` planned but not built. Tier 1 would skip Claude entirely (Ollama does both prefilter and structured extraction). Estimated $0 LLM cost, ~85% quality of Claude. Requires new JSON-strict prompt + parser. Default new sources to tier 2 when shipped.
+
+## Phase 5J — Storage architecture, doc traceability, credential vault (2026-05-16)
+
+Three foundational pieces landed in one session:
+
+### Storage layout (Phase 5J-1)
+
+- Bind-mounted docker volume at `/opt/neuroglitch/storage` shared across `app`, `sidecar`, and `worker` containers as `/storage`
+- `lib/storage/blobStore.ts` — `BlobStore` interface + `LocalBlobStore` impl (sha256, path-traversal safe, async fs)
+- Migration trigger to S3/MinIO documented: volume >50 GB, multi-host deploy, or Beeline ships
+- See [docs/architecture/STORAGE.md](./STORAGE.md) for layout convention
+
+### Signal/lead → source doc UI links (Phase 5J-2)
+
+- Main Market Intelligence page now surfaces the source doc on every signal and lead row
+- Click-through opens `/market-intelligence/docs/{id}` with full text + signals + leads view (already existed; just wasn't linked from the main tables)
+- Query updated to `include: { sourceDoc: { id, title, documentDate } }`
+
+### Credential vault (Phase 5J-3)
+
+- `IntegrationCredential` model: AES-256-GCM encrypted, base64-encoded `encryptedValue` + `iv` + `authTag`, master key from `CREDENTIAL_MASTER_KEY` env var (32-byte hex)
+- Three-layer AI isolation per security model:
+  1. **Code-level**: ESLint `no-restricted-imports` rule on `lib/services/{jobs,spec,briefing,drawing,submittal,meeting*}` paths blocks importing `credentialVault`, `credentialsService`, or `auditLog`
+  2. **Process-level**: Next.js app encrypts on write but NEVER decrypts; only the sidecar Python process decrypts at scrape time
+  3. **Audit-level**: every decrypt logs to `/storage/audit/credentials-access.jsonl` (NDJSON) with `service`, `field`, `caller_module`
+- Sidecar uses Turso HTTP API (POST `/v2/pipeline`) directly to fetch encrypted rows — Python `libsql-client` 0.x WSS protocol doesn't work with current Turso instances
+- Settings UI at `/settings/integrations` — admin-only, seed list: Beeline / Blue Book / ConstructConnect / iSqFt / Dodge
+- Sidecar `/credentials/test/{service}` runs platform-specific login probe (Beeline stub returns ok if creds decrypt cleanly; real Playwright login flows ship with each adapter)
+- Full security model in [docs/architecture/CREDENTIALS.md](./CREDENTIALS.md)
+
+E2E verified 2026-05-16: encrypted username/password inserted via Node → DB columns contain no plaintext → sidecar fetches + decrypts via HTTP API → audit log records both reads with `caller_module: sidecar:credentials.test_beeline` → cleanup deletes test rows.
+
+## Phase 5K–5S, 5L, 5M + Tier 1 — Full source map roll-out (2026-05-16)
+
+Eleven phases shipped in one session, covering every source category in `docs/sources/des_moines_msa_source_map.md`.
+
+### Phase 5K — P&Z prompt upgrades (shipped)
+- Sidecar `routers/market.py` Claude prompt now emits `signal_subtype` (SUP_CUP / REZONING / PLAT / VARIANCE / SITE_PLAN / COMPREHENSIVE_PLAN / ANNEXATION / TIF / BOND / PERMIT_AWARD / CONTRACT_AWARD / OTHER) and `next_meeting_date` (when status=CONTINUED)
+- `lib/services/marketIntelligence/sidecarMarket.ts` normalizes both fields, status map handles TABLED→CONTINUED
+- Market Intelligence page shows subtype chip + "continued — next agenda: …" line
+
+### Phase 5J — EnerGov adapter (shipped, skeleton)
+- `sidecar/routers/energov.py` — POST `/api/energov/search/public` against Tyler EnerGov CSS instances (Ankeny, West Des Moines, Waukee, etc.)
+- `lib/services/marketIntelligence/energovAdapter.ts` — Next-side persist with rules-based Tier-0 scoring
+- Des Moines uses older Kendo UI variant — adapter works but Des Moines source itself marked inactive (different endpoint shape, needs per-jurisdiction tuning)
+
+### Phase 5Q — Press feed (shipped, skeleton)
+- `sidecar/routers/press.py` — IEDA / Governor / Greater Des Moines Partnership / Business Record
+- Skeleton ships; per-source HTML parsers will move under Playwright fallback (sources are JS-rendered)
+
+### Phase 5O-2 — Iowa MNLR (shipped, deferred)
+- Adapter wired into `routers/press.py`
+- `mnlr.iowa.gov` DNS does not resolve — host needs verification before tuning
+
+### Phase 5N — Vanguard CAMA + Beacon + ArcGIS (shipped, skeleton)
+- `sidecar/routers/assessors.py` — fingerprint + skeleton extraction for Vanguard CAMA, Schneider Beacon, and ArcGIS REST FeatureServers
+- Per-county tuning is per-installation work — entry point ready
+
+### Phase 5P — Iowa DOT lettings + DAS Bidopportunities (shipped, skeleton)
+- `sidecar/routers/state_procurement.py` — fetches Iowa DOT lettings index + DAS Bidopportunities
+- Skeleton parses common patterns; full extraction is per-feed tuning
+
+### Phase 5R — OpenGov + Citizenserve + MyGov portal adapters (shipped, skeleton)
+- `sidecar/routers/portal.py` — unified `/market/scrape-portal` with `platform` discriminator
+- Confirms reachability + returns structured response — per-platform record extraction is per-installation tuning
+
+### Phase 5S — Institutional (shipped, skeleton)
+- `sidecar/routers/institutional.py` — ISU FP&M + DMACC capital project feeds
+- Endpoints ship; structure-specific parsers grow as ISU/DMACC publish
+
+### Phase 5L — Beeline scraper shell + risk overlay (shipped, awaits credentials)
+- `sidecar/routers/beeline.py` — list_jobs / download_job / risk_analyze endpoints
+- Credential vault hook wired (`fetch_and_decrypt("beeline", ["username","password"], caller_module=...)`); login flow stubbed until real Beeline URLs supplied
+- Risk overlay scaffolded: LD penalties, indemnification, insurance, schedule, payment terms, scope ambiguity, geotech, hazmat, warranty, owner-control, differing site conditions
+- `/credentials/test/beeline` returns ok on decrypt — full Playwright login flow lands with the first real credential
+
+### Phase 5M — Cross-source reconciliation (shipped)
+- Next route `app/api/market-intelligence/reconcile/route.ts` — admin-only POST
+- Pulls last-365-day signals with non-null `owner_name`, normalizes via `normalizeEntity()` (strips LLC/Inc/Corp/Holdings/Group/Properties/etc.), clusters by exact normalized-name match
+- Multi-source clusters (≥2 distinct `signalType`s) promote oldest signal's lead to HIGH confidence — or create a new RELATIONSHIP-type `MarketLead` if no existing lead, linking all sibling signals via `MarketSignal.leadId`
+- `dry_run: true` returns the sample without writes — safe to schedule via cron later
+
+### Tier 1 — Ollama-only extraction (shipped, smoke-verified)
+- Sidecar `routers/tier1.py` — POST `/market/tier1-extract` runs the FULL extraction (relevance, project_type, owner, GC, architect, subs, signal_subtype, status, relationships) via Ollama
+- Same JSON shape as Claude path; `cost_usd: 0` always
+- Quality trade-off: ~85% of Claude — names + structure reliable, dollar values sometimes misparsed (smoke test misread `$24.5M` as `$4.5M`)
+- Use case: nightly bulk processing of cheap/medium-relevance docs, with Claude reserved for top-priority docs and risk overlays
+- Smoke-tested 2026-05-16 against Norwalk-style minutes → 2 signals + 2 relationships extracted, subtype + status + jurisdiction + next_meeting_date all correct
+
+All 14 sidecar market routes registered. Confirmed via `/openapi.json`.
+
+Next milestones: per-installation tuning for Vanguard / OpenGov / Citizenserve installations as they get fingerprinted; Beeline credentials → real Playwright login → risk overlay live; cron-schedule the reconcile route nightly.

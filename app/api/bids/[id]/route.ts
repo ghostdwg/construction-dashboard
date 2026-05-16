@@ -175,3 +175,36 @@ export async function PATCH(
     return Response.json({ error: message }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const bidId = parseInt(id, 10);
+  if (isNaN(bidId)) {
+    return Response.json({ error: "Invalid id" }, { status: 400 });
+  }
+
+  // Hard delete the bid. Most relations cascade via Prisma schema; for any that
+  // don't, Prisma raises P2003. The user has explicitly confirmed deletion in
+  // the UI before we reach here.
+  try {
+    await prisma.bid.delete({ where: { id: bidId } });
+    return Response.json({ deleted: bidId });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === "P2025") {
+        return Response.json({ error: "Bid not found" }, { status: 404 });
+      }
+      if (err.code === "P2003") {
+        return Response.json(
+          { error: "Bid has dependent records that cannot be cascaded. Contact support." },
+          { status: 409 },
+        );
+      }
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    return Response.json({ error: message }, { status: 500 });
+  }
+}

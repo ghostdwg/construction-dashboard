@@ -213,6 +213,16 @@ function isActive(status: MeetingStatus) {
   );
 }
 
+// Polls fire only while the backend is doing work. AWAITING_SOURCE_MAP is a
+// human-input state — polling it just churns the form's parent and causes flicker.
+function isBackendActive(status: MeetingStatus) {
+  return (
+    status === "UPLOADING" ||
+    status === "TRANSCRIBING" ||
+    status === "ANALYZING"
+  );
+}
+
 function parseSpeakerMapping(raw: string | null): SpeakerMappingData | null {
   if (!raw) return null;
   try {
@@ -301,9 +311,9 @@ export default function MeetingsTab({ bidId }: { bidId: number }) {
 
   useEffect(() => { loadMeetings(); }, [loadMeetings]);
 
-  // Poll while any meeting is actively processing
+  // Poll while any meeting has backend work in flight
   useEffect(() => {
-    const needsPoll = meetings.some((m) => isActive(m.status));
+    const needsPoll = meetings.some((m) => isBackendActive(m.status));
     if (!needsPoll) return;
     const timer = setTimeout(() => loadMeetings(), 5000);
     return () => clearTimeout(timer);
@@ -1188,7 +1198,7 @@ function MeetingDetailPanel({
 
   // Poll if actively processing — call /status when TRANSCRIBING so it actually advances
   useEffect(() => {
-    if (!isActive(detail.status as MeetingStatus)) return;
+    if (!isBackendActive(detail.status as MeetingStatus)) return;
     const timer = setTimeout(async () => {
       if (detail.status === "TRANSCRIBING") {
         await fetch(`/api/bids/${bidId}/meetings/${detail.id}/status`);
