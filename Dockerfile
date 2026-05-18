@@ -24,8 +24,12 @@ ENV NODE_ENV=production
 # real APP_ENV is injected at container runtime via the tier env_file
 # (/opt/neuroglitch/.env or .env.staging), which overrides this default.
 ENV APP_ENV="local"
-ENV DATABASE_URL="libsql://placeholder.turso.io"
-ENV DATABASE_AUTH_TOKEN="placeholder"
+# Phase R6.5: DATABASE_URL during the build stage must be a file: URL so
+# prisma.config.ts permits the build (it refuses libsql:// to prevent the
+# P1013 silent-failure mode). The real Turso DATABASE_URL is injected at
+# container runtime via the tier env_file, which overrides this default.
+ENV DATABASE_URL="file:./build.db"
+ENV DATABASE_AUTH_TOKEN=""
 ENV AUTH_SECRET="placeholder-auth-secret-minimum-32-chars-xx"
 ENV ANTHROPIC_API_KEY="sk-ant-placeholder"
 ENV NEXTAUTH_URL="https://neuroglitch.ai"

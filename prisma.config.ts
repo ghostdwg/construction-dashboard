@@ -1,5 +1,76 @@
 import { defineConfig } from "prisma/config";
 
+// ──────────────────────────────────────────────────────────────────────────────
+//  Prisma CLI datasource governance (Phase R6.5)
+//
+//  This file is consumed ONLY by the Prisma CLI (`prisma migrate`,
+//  `prisma db push`, `prisma db seed`, `prisma studio`, `prisma generate`).
+//
+//  The application runtime — lib/prisma.ts — uses a SEPARATE code path
+//  through @prisma/adapter-libsql that reads `process.env.DATABASE_URL` at
+//  client construction time. That code path is unaffected by this file and
+//  remains the authoritative production runtime DB connection.
+//
+//  Phase R6.5 changes the CLI datasource from a HARDCODED `file:./dev.db`
+//  (which silently bypassed DATABASE_URL) to a tier-aware resolver:
+//
+//    1. If process.env.DATABASE_URL is set and starts with `file:`,
+//       Prisma CLI uses it.
+//    2. If process.env.DATABASE_URL is unset, falls back to `file:./dev.db`
+//       so existing local-dev ergonomics ("just run `prisma migrate dev`")
+//       continue to work without any env setup.
+//    3. If process.env.DATABASE_URL is set to a `libsql://` or `https://`
+//       URL, this file REFUSES to load and prints an operator-friendly
+//       diagnostic.
+//
+//  Why refuse libsql:// in the CLI:
+//
+//  `prisma migrate deploy` (and most other Prisma CLI commands) against a
+//  libsql:// URL returns Prisma error P1013 and silently mis-records
+//  migration state in the `_prisma_migrations` table. Documented in
+//  Migration/Production Runtime Assessment.txt §9 and §17 Medium.
+//
+//  The CORRECT way to apply migrations to staging or production Turso DBs
+//  is the bespoke runner: `scripts/apply-turso-migrations.mjs`, which uses
+//  @libsql/client directly. This runner is invoked from
+//  `runtime/deployment/apply-migrations.sh` (Phase R4 stub) per
+//  `runtime/runbooks/environment-promotion.md` §Migrate.
+//
+//  Refusing in this file prevents the silent-failure mode entirely.
+// ──────────────────────────────────────────────────────────────────────────────
+
+const databaseUrl = process.env.DATABASE_URL ?? "file:./dev.db";
+
+if (!databaseUrl.startsWith("file:")) {
+  const masked = databaseUrl.replace(/authToken=[^&]+/gi, "authToken=***");
+  throw new Error(
+    [
+      "",
+      "─────────────────────────────────────────────────────────────────────",
+      "  prisma.config.ts: refusing non-file DATABASE_URL.",
+      "─────────────────────────────────────────────────────────────────────",
+      "",
+      `  Got:  ${masked}`,
+      "",
+      "  Prisma CLI may only operate against local SQLite. Running it",
+      "  against Turso/libSQL returns P1013 and silently mis-records",
+      "  migration state in the _prisma_migrations table.",
+      "",
+      "  For local development:",
+      '    • unset DATABASE_URL, OR',
+      '    • set DATABASE_URL=file:./dev.db',
+      "",
+      "  For staging/production Turso migrations:",
+      "    scripts/apply-turso-migrations.mjs",
+      "    (invoked via runtime/deployment/apply-migrations.sh per",
+      "     runtime/runbooks/environment-promotion.md §Migrate)",
+      "",
+      "─────────────────────────────────────────────────────────────────────",
+      "",
+    ].join("\n")
+  );
+}
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
@@ -7,6 +78,6 @@ export default defineConfig({
     seed: "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",
   },
   datasource: {
-    url: "file:./dev.db",
+    url: databaseUrl,
   },
 });

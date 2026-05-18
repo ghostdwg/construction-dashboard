@@ -37,8 +37,9 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
         env:
-          DATABASE_URL: "libsql://placeholder.turso.io"
-          DATABASE_AUTH_TOKEN: "placeholder"
+          # Phase R6.5: prisma.config.ts refuses non-file URLs. Use file: for CI.
+          DATABASE_URL: "file:./ci.db"
+          DATABASE_AUTH_TOKEN: ""
       - name: Type check
         run: npm run typecheck
 
@@ -57,14 +58,16 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
         env:
-          DATABASE_URL: "libsql://placeholder.turso.io"
-          DATABASE_AUTH_TOKEN: "placeholder"
+          # Phase R6.5: prisma.config.ts refuses non-file URLs. Use file: for CI.
+          DATABASE_URL: "file:./ci.db"
+          DATABASE_AUTH_TOKEN: ""
       - name: Build
         run: npm run build
         env:
           APP_ENV: "local"
-          DATABASE_URL: "libsql://placeholder.turso.io"
-          DATABASE_AUTH_TOKEN: "placeholder"
+          # Phase R6.5: build invokes prisma generate transitively; same fence.
+          DATABASE_URL: "file:./ci.db"
+          DATABASE_AUTH_TOKEN: ""
           AUTH_SECRET: "placeholder-auth-secret-minimum-32-chars-xx"
           ANTHROPIC_API_KEY: "sk-ant-placeholder"
           NEXTAUTH_URL: "https://neuroglitch.ai"
