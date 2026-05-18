@@ -19,10 +19,16 @@ RUN npx prisma generate
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
-# Phase R5: APP_ENV is now required at build time so lib/env.ts Zod parse
-# succeeds during `next build`. The "local" value here is build-only; the
-# real APP_ENV is injected at container runtime via the tier env_file
-# (/opt/neuroglitch/.env or .env.staging), which overrides this default.
+# Phase R5: APP_ENV is required at build time so lib/env.ts Zod parse
+# succeeds during `next build`. The "local" value here is a build-only
+# placeholder — at container runtime the tier env_file (/opt/neuroglitch/.env
+# or .env.staging) sets the real APP_ENV, which is what lib/env.ts validates
+# at server boot and what proxy.ts reads when injecting X-App-Env.
+#
+# Phase R6.7: do NOT declare X-App-Env in next.config.ts `headers()` — that
+# function is evaluated at build time and would bake "local" into every
+# response in every tier. The X-App-Env injection lives in proxy.ts (Node
+# runtime middleware) so it reads the runtime APP_ENV per request.
 ENV APP_ENV="local"
 # Phase R6.5: DATABASE_URL during the build stage must be a file: URL so
 # prisma.config.ts permits the build (it refuses libsql:// to prevent the

@@ -188,4 +188,4 @@ For now: the rollout document for R5 simply notes that production env files shou
 - `lib/runtime/banner.ts` — the startup banner.
 - `instrumentation.ts` — the boot hook.
 - `app/components/EnvironmentBanner.tsx` — the UI tier indicator.
-- `next.config.ts` `headers()` — the `X-App-Env` response header.
+- `proxy.ts` — the middleware that injects the `X-App-Env` response header at request time (Phase R6.7; previously `next.config.ts` `headers()`, which was build-time-frozen and produced the wrong header value in staging).

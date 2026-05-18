@@ -10,24 +10,12 @@ const nextConfig: NextConfig = {
     proxyClientMaxBodySize: "250mb",
   },
 
-  // ── X-App-Env response header (Phase R5) ───────────────────────────────
-  // Every response carries the canonical tier identifier so operators can
-  // verify tier via DevTools or monitoring without rendering the page.
-  // Value is captured at config-evaluation time (server start); APP_ENV
-  // changes require a container recreate, not a config reload.
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          {
-            key: 'X-App-Env',
-            value: process.env.APP_ENV ?? 'unknown',
-          },
-        ],
-      },
-    ];
-  },
+  // X-App-Env response header is injected at request time by proxy.ts
+  // middleware (Phase R6.7). It is NOT declared here because next.config.ts
+  // `headers()` is evaluated at BUILD time and bakes its values into
+  // routes-manifest.json — so a build-time APP_ENV="local" placeholder
+  // would freeze "local" into every response regardless of runtime tier.
+  // See proxy.ts and runtime/runbooks/app-env-rollout.md.
 };
 
 export default nextConfig;

@@ -1,14 +1,37 @@
-// Auth Wall — Route protection middleware
+// Auth Wall + runtime tier header — Route protection middleware.
 //
-// When AUTH_DISABLED=true (solo dev mode), all requests pass through.
-// When auth is enabled, unauthenticated requests to protected routes are
-// redirected to /login. Public routes: /login, /api/auth/*, static assets.
+// Two responsibilities, both request-time:
+//
+//   1. Auth gate. AUTH_DISABLED=true → all requests pass through (solo dev).
+//      Auth enabled → unauthenticated requests to protected routes redirect
+//      to /login. Public routes: /login, /api/auth/*, /api/health, _next, favicon.
+//
+//   2. X-App-Env response header. Injected at request time so the value
+//      reflects the *runtime* APP_ENV (from the tier env_file), not whatever
+//      was baked into the build. Phase R6.7 — see runtime/runbooks/
+//      app-env-rollout.md §X-App-Env header.
+//
+// Why not next.config.ts headers(): that function runs at build time and
+// freezes values into routes-manifest.json. Build always has APP_ENV="local"
+// (the Dockerfile placeholder needed to satisfy Zod), which would propagate
+// to every response in every tier. The middleware path reads env.APP_ENV
+// from lib/env.ts, which is Zod-validated at server boot from the runtime
+// process env.
 
+import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
+
+function attach(res: NextResponse): NextResponse {
+  res.headers.set("X-App-Env", env.APP_ENV);
+  return res;
+}
 
 export default auth((req) => {
   // Solo dev bypass
-  if (process.env.AUTH_DISABLED === "true") return;
+  if (process.env.AUTH_DISABLED === "true") {
+    return attach(NextResponse.next());
+  }
 
   const { pathname } = req.nextUrl;
 
@@ -20,13 +43,13 @@ export default auth((req) => {
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico";
 
-  if (isPublic) return;
+  if (isPublic) return attach(NextResponse.next());
 
   // Unauthenticated + protected route → redirect to login
   if (!req.auth) {
     const loginUrl = new URL("/login", req.nextUrl.origin);
     loginUrl.searchParams.set("callbackUrl", pathname);
-    return Response.redirect(loginUrl);
+    return attach(NextResponse.redirect(loginUrl));
   }
 
   // Authenticated — enforce admin-only for settings pages (not API routes;
@@ -36,9 +59,11 @@ export default auth((req) => {
   if (isSettingsPage) {
     const role = (req.auth.user as { role?: string })?.role;
     if (role !== "admin") {
-      return Response.redirect(new URL("/", req.nextUrl.origin));
+      return attach(NextResponse.redirect(new URL("/", req.nextUrl.origin)));
     }
   }
+
+  return attach(NextResponse.next());
 });
 
 export const config = {
