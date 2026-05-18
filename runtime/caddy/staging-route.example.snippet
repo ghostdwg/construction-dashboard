@@ -1,0 +1,69 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  runtime/caddy/staging-route.example.snippet
+#  Staging-route Caddyfile fragment. Phase R6 (Phase 6.b activation).
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  STATUS: NOT applied to any live Caddy. This is a template that the
+#  operator MERGES into the production Caddyfile during Phase 6.b shared-edge
+#  activation. See runtime/runbooks/staging-first-activation.md §Phase 6.b.
+#
+#  Production Caddy lives in the `neuroglitch` Compose project. Adding this
+#  route to its Caddyfile gives Caddy a fifth virtual host (alongside
+#  neuroglitch.ai, hello.neuroglitch.ai, api.neuroglitch.ai, and
+#  groundworx.neuroglitch.ai) that reverse-proxies to the staging app.
+#
+#  Prerequisites BEFORE applying this snippet:
+#    1. Staging compose stack is already up and validated via Phase 6.a
+#       (internal `docker exec` curl).
+#    2. DNS A-record for `staging.groundworx.neuroglitch.ai` points at the
+#       host's public IP. Wait for propagation.
+#    3. External Docker network `neuroglitch_edge` exists:
+#         docker network create neuroglitch_edge
+#    4. Production Caddy container is connected to `neuroglitch_edge`:
+#         docker network connect neuroglitch_edge neuroglitch-caddy
+#       (Persists until caddy is recreated. Add to production compose's
+#       caddy networks list to make permanent — that's a SEPARATE prod
+#       compose change requiring its own review.)
+#    5. Staging app container is connected to `neuroglitch_edge`:
+#         docker network connect neuroglitch_edge neuroglitch-staging-app
+#       (Add to runtime/compose/overrides/staging.active.yml as an
+#       `external` network when ready to persist.)
+#
+#  AFTER merging this snippet into the live Caddyfile:
+#    docker exec neuroglitch-caddy caddy validate \
+#      --config /etc/caddy/Caddyfile
+#    docker exec neuroglitch-caddy caddy reload \
+#      --config /etc/caddy/Caddyfile
+#
+#  Caddy reload is online — no container restart, no app downtime. ACME
+#  certificate issuance for the new hostname begins automatically and
+#  persists in neuroglitch_caddy_data (existing prod volume).
+#
+#  ROLLBACK: remove this block from the live Caddyfile and reload Caddy.
+#  Staging app remains running in isolation; it simply becomes unreachable
+#  from the public internet.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+staging.groundworx.neuroglitch.ai {
+    # Route to staging app container via the shared external network.
+    # neuroglitch-staging-app must be connected to neuroglitch_edge for
+    # this hostname resolution to work across compose projects.
+    reverse_proxy neuroglitch-staging-app:3000
+
+    # Optional: add staging-specific headers, basic auth, or rate limits.
+    # The Phase R6 first activation deliberately keeps this minimal.
+
+    # If operator wants to restrict staging access to a specific IP allowlist
+    # (e.g., operator's home / office / Tailscale CIDR), wrap the proxy in
+    # an @internal matcher. Default below is publicly accessible.
+    #
+    # @internal client_ip 100.64.0.0/10 1.2.3.4/32
+    # handle @internal {
+    #     reverse_proxy neuroglitch-staging-app:3000
+    # }
+    # handle {
+    #     respond "Forbidden" 403
+    # }
+}

@@ -1,0 +1,96 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  runtime/compose/overrides/staging.active.yml
+#  ACTIVATABLE staging tier override. Phase R6 first-activation artifact.
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  STATUS: deployable by the operator following the first-activation procedure
+#  in runtime/runbooks/staging-first-activation.md. NOT auto-deployed by any
+#  CI pipeline. NOT replacing any production artifact.
+#
+#  Companion files:
+#    - runtime/compose/base.yml                     (service topology)
+#    - runtime/compose/overrides/staging.yml        (R3 placeholder; this file
+#                                                    supersedes for deploy use)
+#    - runtime/env/staging.env.bootstrap.example    (env shape)
+#    - runtime/caddy/staging-route.example.snippet  (Caddy route for Phase 6.b)
+#    - runtime/runbooks/staging-first-activation.md (operator procedure)
+#
+#  PRODUCTION REMAINS AUTHORITATIVE.
+#  Bringing staging up does NOT modify the production Compose project.
+#  Both stacks coexist on host `superglitch` with full isolation:
+#
+#    Dimension              Production              Staging
+#    ─────────              ──────────              ───────
+#    Compose project        neuroglitch             neuroglitch-staging
+#    Containers             neuroglitch-{...}       neuroglitch-staging-{...}
+#    Network                neuroglitch_neuroglitch neuroglitch-staging_neuroglitch
+#    Storage volume         neuroglitch_storage     neuroglitch-staging_storage
+#    Storage bind source    /opt/neuroglitch/       /opt/neuroglitch/
+#                             storage                 storage-staging
+#    env_file               /opt/neuroglitch/.env   /opt/neuroglitch/.env.staging
+#    Turso DB               groundworx-prod-        groundworx-staging-
+#                             ghostdwg                ghostdwg
+#
+#  INVOCATION (NOT executed during R6 PR — operator runs after merge):
+#
+#    APP_SHA=<reviewed-and-approved-sha> docker compose \
+#      -f runtime/compose/base.yml \
+#      -f runtime/compose/overrides/staging.active.yml \
+#      -p neuroglitch-staging \
+#      up -d --force-recreate app sidecar worker
+#
+#  Note: `up -d <services>` explicitly lists only app/sidecar/worker. The
+#  base.yml caddy/landing/hello/api services are NOT started in staging —
+#  they belong to the production Compose project only.
+#
+#  SHARED-CADDY (Phase 6.b, NOT in initial Phase 6.a activation):
+#  Once staging is validated in isolation, the operator extends the Caddy
+#  edge to serve staging.groundworx.neuroglitch.ai. That activation requires
+#  a one-time `docker network create neuroglitch_edge` and a separate
+#  follow-up to the production compose. The shared-edge changes are
+#  documented in the activation runbook §Phase 6.b but are deliberately
+#  NOT applied by this file (additive-only governance).
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  app:
+    image: ghcr.io/ghostdwg/groundworx-app:${APP_SHA:?APP_SHA must be set to the staging deploy SHA}
+    env_file:
+      - /opt/neuroglitch/.env.staging
+    # No host port publishing — staging is reachable only:
+    #   (a) from inside the staging Compose network, or
+    #   (b) via the production Caddy when Phase 6.b (shared edge) is activated.
+    # Operator validates Phase 6.a via `docker exec` + internal curl.
+
+  sidecar:
+    image: ghcr.io/ghostdwg/groundworx-sidecar:${APP_SHA:?APP_SHA must be set to the staging deploy SHA}
+    env_file:
+      - /opt/neuroglitch/.env.staging
+
+  worker:
+    image: ghcr.io/ghostdwg/groundworx-worker:${APP_SHA:?APP_SHA must be set to the staging deploy SHA}
+    env_file:
+      - /opt/neuroglitch/.env.staging
+
+  # caddy, landing, hello, api: NOT redefined here. They remain defined in
+  # base.yml but the staging deploy command does not start them. Production's
+  # caddy is the canonical edge; staging shares it via Phase 6.b.
+
+volumes:
+
+  # `storage` volume from base.yml is redefined here with a STAGING-ONLY
+  # bind source. Under Compose project `neuroglitch-staging`, this volume
+  # becomes the Docker named volume `neuroglitch-staging_storage` — distinct
+  # from production's `neuroglitch_storage`.
+  #
+  # CRITICAL ISOLATION INVARIANT: device MUST be `/opt/neuroglitch/storage-staging`.
+  # Any operator who edits this to `/opt/neuroglitch/storage` will collapse
+  # the storage isolation between staging and production. See R6 completion
+  # report §isolation guarantees.
+  storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/neuroglitch/storage-staging
