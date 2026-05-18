@@ -81,7 +81,9 @@ jobs:
       - name: Build
         run: npm run build
         env:
+          APP_ENV: "local"
           DATABASE_URL: "file:./dev.db"
+          AUTH_SECRET: "ci-placeholder-auth-secret-minimum-32-chars-xx"
           NEXTAUTH_SECRET: "ci-placeholder-secret-not-real"
           NEXTAUTH_URL: "http://localhost:3000"
           ANTHROPIC_API_KEY: "sk-ant-placeholder"

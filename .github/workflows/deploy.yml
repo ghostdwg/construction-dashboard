@@ -62,6 +62,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
+          APP_ENV: "local"
           DATABASE_URL: "libsql://placeholder.turso.io"
           DATABASE_AUTH_TOKEN: "placeholder"
           AUTH_SECRET: "placeholder-auth-secret-minimum-32-chars-xx"
