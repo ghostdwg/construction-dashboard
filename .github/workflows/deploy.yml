@@ -1,5 +1,21 @@
 name: CI / Deploy
 
+# ── DORMANT FLY DEPLOYMENT PLANE — Phase R4.5 safety patch ────────────────
+# This workflow describes the Fly.io deployment plane for the GroundWorX
+# app and sidecar. Fly is NOT the active production deployment plane:
+# Docker Compose on host `superglitch` is authoritative (see
+# Migration/Production Runtime Assessment.txt and Migration/ARCHITECTURE_V1).
+#
+# The deploy-app and deploy-sidecar jobs are intentionally disabled via
+# `if: false` to prevent accidental activation if a FLY_API_TOKEN secret
+# is ever added to the repo. typecheck and build remain active as ordinary
+# CI validation — they do not deploy anything.
+#
+# Re-enabling requires:
+#   1. An explicit architectural decision recorded in `planning/`.
+#   2. Verification that the dormant Fly entities are still appropriate.
+#   3. Coordination with the active Docker Compose deploy plane.
+
 on:
   push:
     branches: [main]
@@ -56,7 +72,10 @@ jobs:
     name: Deploy — neuroglitch-app
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Phase R4.5: Fly deploy plane disabled. See top-of-file note.
+    # Original condition (for future reference if Fly is ever reactivated):
+    #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: false
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
@@ -69,7 +88,10 @@ jobs:
     name: Deploy — neuroglitch-sidecar
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Phase R4.5: Fly deploy plane disabled. See top-of-file note.
+    # Original condition (for future reference if Fly is ever reactivated):
+    #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: false
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
