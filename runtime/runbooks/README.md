@@ -19,6 +19,7 @@ Operator procedures for staging and production: deploys, rollbacks, secret rotat
 | `new-environment-tier.md` | How to add a fourth tier (preview, ephemeral) | Phase R6+ |
 | `prod-host-setup.md` | Bootstrap procedure for replacing or expanding the `superglitch` host | Phase R7 |
 | `worker-incident-checklist.md` | How to diagnose the worker container; based on `Migration/DEPLOYMENT_DNS_ANALYSIS-Corrected.md` | Phase R4 |
+| `turso-migrations.md` | How to apply Prisma migrations to a Turso DB via `scripts/apply-turso-migrations.mjs`; APP_ENV tier fence, dry-run, failure recovery | Phase R6.6 ✅ |
 
 ## Runbook style guide
 

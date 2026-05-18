@@ -31,10 +31,10 @@ import { defineConfig } from "prisma/config";
 //  Migration/Production Runtime Assessment.txt §9 and §17 Medium.
 //
 //  The CORRECT way to apply migrations to staging or production Turso DBs
-//  is the bespoke runner: `scripts/apply-turso-migrations.mjs`, which uses
-//  @libsql/client directly. This runner is invoked from
-//  `runtime/deployment/apply-migrations.sh` (Phase R4 stub) per
-//  `runtime/runbooks/environment-promotion.md` §Migrate.
+//  is the bespoke runner: `scripts/apply-turso-migrations.mjs` (Phase R6.6),
+//  which uses @libsql/client directly and enforces an APP_ENV tier fence.
+//  Invoke via `npm run migrate:turso` (or `npm run migrate:turso:status`
+//  for dry-run). Full procedure in `runtime/runbooks/turso-migrations.md`.
 //
 //  Refusing in this file prevents the silent-failure mode entirely.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -61,9 +61,8 @@ if (!databaseUrl.startsWith("file:")) {
       '    • set DATABASE_URL=file:./dev.db',
       "",
       "  For staging/production Turso migrations:",
-      "    scripts/apply-turso-migrations.mjs",
-      "    (invoked via runtime/deployment/apply-migrations.sh per",
-      "     runtime/runbooks/environment-promotion.md §Migrate)",
+      "    APP_ENV=<tier> DATABASE_URL=<tier-url> npm run migrate:turso",
+      "    (full procedure: runtime/runbooks/turso-migrations.md)",
       "",
       "─────────────────────────────────────────────────────────────────────",
       "",

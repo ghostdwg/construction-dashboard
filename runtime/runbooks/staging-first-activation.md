@@ -102,14 +102,22 @@ sudo chown root:root /opt/neuroglitch/.env.staging
 
 ### Step 4 — Apply migrations to staging Turso
 
+The Phase R6.6 runner enforces an APP_ENV tier fence and refuses any URL that does not match `groundworx-staging`. Run from inside the staging worktree:
+
 ```text
 ssh superglitch
-cd /opt/neuroglitch/construction-dashboard
-DATABASE_URL="libsql://groundworx-staging-ghostdwg.turso.io?authToken=$(grep '^DATABASE_AUTH_TOKEN=' /opt/neuroglitch/.env.staging | cut -d= -f2)" \
-  node scripts/apply-turso-migrations.mjs
+cd /opt/neuroglitch/apps/construction-dashboard-staging
+
+APP_ENV=staging \
+  DATABASE_URL=$(grep '^DATABASE_URL=' /opt/neuroglitch/.env.staging | sed 's/^DATABASE_URL=//') \
+  npm run migrate:turso
 ```
 
-**Verify:** the script reports the migration count matches `prisma/migrations/` directory count. Empty DB starts at 0; after running, count equals the local migrations dir.
+Use `npm run migrate:turso:status` for a dry-run that lists pending migrations without applying.
+
+**Verify:** the script reports `Done. Applied N migration(s).` and the in-DB count of `_prisma_migrations` rows matches the `prisma/migrations/` directory count. Empty DB starts at 0; after running, count equals the local migrations dir.
+
+Full procedure, exit codes, and failure recovery: `runtime/runbooks/turso-migrations.md`.
 
 ### Step 5 — Create staging storage directory
 

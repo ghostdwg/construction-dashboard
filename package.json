@@ -11,7 +11,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "migrate:turso": "node scripts/apply-turso-migrations.mjs",
+    "migrate:turso:status": "node scripts/apply-turso-migrations.mjs --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
