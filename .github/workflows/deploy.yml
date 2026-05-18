@@ -61,7 +61,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy main app
-        run: flyctl deploy --remote-only --config fly.toml
+        run: flyctl deploy --remote-only --config runtime/fly/fly.toml
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -74,6 +74,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy sidecar
-        run: flyctl deploy --remote-only --config fly.sidecar.toml
+        run: flyctl deploy --remote-only --config runtime/fly/fly.sidecar.toml
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

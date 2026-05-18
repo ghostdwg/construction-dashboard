@@ -56,9 +56,9 @@ dev.db
 # Docs (don't need in container)
 docs
 
-# Fly.io artifacts (we're not using Fly)
-fly.toml
-fly.sidecar.toml
+# Fly.io artifacts — dormant alternate plane, preserved in runtime/fly/ (Phase R4)
+# Never bake into image; self-hosted Docker Compose is the active prod runtime.
+runtime/fly/
 .fly
 
 # Deploy directory (this is config, not app code)

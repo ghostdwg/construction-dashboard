@@ -1,0 +1,67 @@
+name: Runtime Compose Lint
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Validate the merged runtime/compose/ YAML by rendering it with
+#  `docker compose ... config`. Catches:
+#    - syntactic YAML errors
+#    - schema violations
+#    - override merge failures
+#    - unresolved variable references
+#
+#  Phase R4 introduction. Cheap (~10s). Runs on any PR or main push that
+#  touches runtime/compose/** or this workflow file.
+#
+#  Note: `docker compose config` validates STRUCTURE but does NOT validate
+#  image refs are pullable (placeholders like `:<sha>` pass; they're opaque
+#  strings to the validator).
+# ──────────────────────────────────────────────────────────────────────────────
+
+on:
+  pull_request:
+    paths:
+      - 'runtime/compose/**'
+      - '.github/workflows/runtime-compose-lint.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'runtime/compose/**'
+      - '.github/workflows/runtime-compose-lint.yml'
+
+jobs:
+  compose-lint:
+    name: Validate runtime/compose/
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show docker compose version
+        run: |
+          docker --version
+          docker compose version
+
+      - name: Validate base + production override
+        run: |
+          docker compose \
+            -f runtime/compose/base.yml \
+            -f runtime/compose/overrides/production.yml \
+            -p neuroglitch \
+            config > /dev/null
+          echo "OK: base.yml + overrides/production.yml renders cleanly"
+
+      - name: Validate base + staging override
+        run: |
+          docker compose \
+            -f runtime/compose/base.yml \
+            -f runtime/compose/overrides/staging.yml \
+            -p neuroglitch-staging \
+            config > /dev/null
+          echo "OK: base.yml + overrides/staging.yml renders cleanly"
+
+      - name: Lint base only (no override)
+        run: |
+          docker compose \
+            -f runtime/compose/base.yml \
+            config --no-interpolate > /dev/null || true
+          echo "Note: base.yml alone is not deployable; tier override required."

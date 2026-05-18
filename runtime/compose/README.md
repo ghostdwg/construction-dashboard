@@ -1,48 +1,84 @@
 # runtime/compose/
 
-Canonical Docker Compose definitions for the GroundWorX platform.
+Canonical Docker Compose definitions for the GroundWorX platform. **Reconstruction status — not yet authoritative.**
 
-## Status (Phase R1)
+## Status
 
-**Empty.** This folder is structural only. No Compose files exist here yet.
-
-## Planned contents (Phase R3)
+Phase R3 populated this folder with a reconstruction of the live production compose topology. Phase R4 introduces CI validation for the merged YAML.
 
 ```text
 compose/
-├── base.yml          # Canonical service definitions: caddy, app, sidecar, worker,
-│                     # landing (+ hello, api during decommission).
-│                     # No env_file, no image tags, no host bindings —
-│                     # pure service topology.
-│
+├── README.md           this file
+├── TOPOLOGY.md         descriptive snapshot of current production runtime
+├── base.yml            canonical service topology (RECONSTRUCTED — see warning below)
 └── overrides/
-    ├── compose.dev.yml      # Laptop Compose parity testing (optional)
-    ├── compose.staging.yml  # project=neuroglitch-staging, storage-staging mount,
-    │                          staging env_file, staging image tags
-    └── compose.prod.yml     # project=neuroglitch, storage mount, prod env_file,
-                               prod image tags
+    ├── README.md       override invocation pattern
+    ├── production.yml  placeholder production tier override
+    └── staging.yml     placeholder staging tier override
 ```
 
-## Compose override invocation pattern
+## ⚠ Verification warning
 
-When this folder is populated, the deployment scripts invoke Compose as:
+`runtime/compose/base.yml` is a **reconstruction** of the live production compose file, derived from `Migration/Production Runtime Assessment.txt` (dated 2026-05-17). It has NOT been verified line-by-line against the actual `/opt/neuroglitch/docker-compose.yml` on host `superglitch`.
+
+**No runtime/compose/ file is authoritative until the operator validates parity.**
+
+Required verification before any Phase R7 cutover:
+
+1. Render `runtime/compose/base.yml + overrides/production.yml`:
+   ```text
+   docker compose \
+     -f runtime/compose/base.yml \
+     -f runtime/compose/overrides/production.yml \
+     -p neuroglitch \
+     config > runtime-prod-rendered.yml
+   ```
+2. Render the live file:
+   ```text
+   docker compose -f /opt/neuroglitch/docker-compose.yml -p neuroglitch config > live-prod-rendered.yml
+   ```
+3. Diff:
+   ```text
+   diff -u live-prod-rendered.yml runtime-prod-rendered.yml
+   ```
+4. Reconcile any differences by updating either `runtime/compose/base.yml` or `runtime/compose/overrides/production.yml`.
+5. Repeat until the diff is empty (or empty modulo intentional changes recorded in `planning/`).
+6. ONLY THEN promote `runtime/compose/` to authoritative (Phase R7 cutover step).
+
+The CI workflow `.github/workflows/runtime-compose-lint.yml` (added Phase R4) validates structural correctness of the merged YAML on every PR touching `runtime/compose/**`. It does NOT validate parity with the live host file — that requires operator action with access to `superglitch`.
+
+## What's authoritative today (NOT in this folder)
+
+Until the verification above is complete:
+
+- The live production compose is `/opt/neuroglitch/docker-compose.yml` on host `superglitch`.
+- The live Caddyfile is `/opt/neuroglitch/infrastructure/caddy/Caddyfile`.
+- The live worker entrypoint is `/opt/neuroglitch/infrastructure/worker/entrypoint.sh`.
+
+These three host paths drive production behavior. The corresponding in-repo files (`runtime/compose/`, `runtime/caddy/`, `runtime/worker/`) are governance artifacts pending verification.
+
+## Override invocation pattern (when active)
 
 ```text
 docker compose \
-  -f construction-dashboard/runtime/compose/base.yml \
-  -f construction-dashboard/runtime/compose/overrides/compose.<tier>.yml \
-  -p neuroglitch[-staging] \
-  up -d --force-recreate <services>
+  -f runtime/compose/base.yml \
+  -f runtime/compose/overrides/<tier>.yml \
+  -p <project> \
+  up -d [services...]
 ```
 
-Staging (`-p neuroglitch-staging`) and production (`-p neuroglitch`) coexist on the same host with separate Compose projects, separate volumes, separate networks, separate env files, and a shared Caddy edge.
+| Tier | Project | Override |
+|---|---|---|
+| Production | `-p neuroglitch` | `overrides/production.yml` |
+| Staging | `-p neuroglitch-staging` | `overrides/staging.yml` |
 
-## Source of the eventual `base.yml`
-
-Phase R3 derives `base.yml` from a snapshot of the **active** production Compose file at `/opt/neuroglitch/docker-compose.yml` on host `superglitch`. **Not** from the stale `construction-dashboard/deploy/docker-compose.yml` (which never matched prod — see `deploy/DEPRECATED.md`).
+See `runtime/deployment/compose-governance.md` for layering rules, refusal conditions, and rollback expectations.
 
 ## Canonical references
 
-- `Migration/WORKSPACE_NORMALIZATION_SINGLE_REPO.md` §4 — staging strategy + Compose override pattern.
-- `Migration/Production Runtime Assessment.txt` §1, §3 — current Compose topology on `superglitch`.
-- `runtime/STATUS.md` — overall transition state.
+- `runtime/compose/TOPOLOGY.md` — descriptive snapshot of current production topology.
+- `runtime/compose/base.yml` — service topology in YAML.
+- `runtime/compose/overrides/` — per-tier overlays.
+- `runtime/deployment/compose-governance.md` — governance and rules.
+- `Migration/Production Runtime Assessment.txt` — authoritative description of current runtime.
+- `Migration/WORKSPACE_NORMALIZATION_SINGLE_REPO.md` §7 Phase R3, Phase R7 — phasing.
