@@ -1,0 +1,86 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  runtime/compose/overrides/production.yml
+#  Production tier override layered on top of runtime/compose/base.yml.
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  STATUS (Phase R3): PLACEHOLDER. Documents intended override shape.
+#    - Image tags are placeholders. Phase R8 publishes tagged images to GHCR
+#      and the deploy scripts substitute the SHA at invocation time.
+#    - This file is NOT a valid invocation today: the live production stack
+#      continues to run from /opt/neuroglitch/docker-compose.yml on host
+#      superglitch until Phase R7 cuts the deploy command over to runtime/.
+#    - DO NOT invoke until Phase R7 explicitly authorizes it.
+#
+#  INTENDED INVOCATION (Phase R7+):
+#    docker compose \
+#      -f runtime/compose/base.yml \
+#      -f runtime/compose/overrides/production.yml \
+#      -p neuroglitch \
+#      up -d --force-recreate
+#
+#  IMMUTABLE EXPECTATIONS (do not change in this override):
+#    - APP_ENV=production must be present in /opt/neuroglitch/.env before R5 lands.
+#    - Compose project: neuroglitch (matches current production).
+#    - Storage root: /opt/neuroglitch/storage (host bind).
+#    - env_file: .env (relative to compose file dir = /opt/neuroglitch/).
+#    - Public DNS: groundworx.neuroglitch.ai (and the three vestigial vhosts).
+#    - Caddy serves all four vhosts from one container; ACME state in
+#      neuroglitch_caddy_data and neuroglitch_caddy_config (DO NOT WIPE).
+#
+#  Reference: runtime/compose/TOPOLOGY.md, runtime/runbooks/environment-promotion.md.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  caddy:
+    # caddy:2 already pinned in base; preserve.
+    ports:
+      - "80:80"
+      - "443:443/tcp"
+      - "443:443/udp"
+    volumes:
+      # Bind mount for Caddyfile. Host path matches current production.
+      - type: bind
+        source: /opt/neuroglitch/infrastructure/caddy/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+
+  app:
+    # Phase R8 substitutes the tagged image. Until then, image is built locally
+    # by `docker compose build app` on the host (current production pattern).
+    image: ghcr.io/ghostdwg/groundworx-app:<sha>
+    env_file:
+      - /opt/neuroglitch/.env
+
+  sidecar:
+    image: ghcr.io/ghostdwg/groundworx-sidecar:<sha>
+    env_file:
+      - /opt/neuroglitch/.env
+
+  worker:
+    image: ghcr.io/ghostdwg/groundworx-worker:<sha>
+    env_file:
+      - /opt/neuroglitch/.env
+
+  landing:
+    # Static marketing site at neuroglitch.ai.
+    # Image is locally built today; placeholder reflects future GHCR pattern.
+    image: ghcr.io/ghostdwg/groundworx-landing:<sha>
+
+  hello:
+    # Vestigial. Decommission candidate (Phase Z).
+    image: ghcr.io/ghostdwg/groundworx-hello:<sha>
+
+  api:
+    # Vestigial JS stub. Decommission candidate (Phase Z).
+    image: ghcr.io/ghostdwg/groundworx-api:<sha>
+
+volumes:
+  # Production storage bind: /opt/neuroglitch/storage → /storage (in containers).
+  # Matches current production exactly.
+  storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/neuroglitch/storage

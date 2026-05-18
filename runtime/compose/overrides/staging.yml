@@ -1,0 +1,82 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  runtime/compose/overrides/staging.yml
+#  Staging tier override layered on top of runtime/compose/base.yml.
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  STATUS (Phase R3): PLACEHOLDER. Documents intended override shape.
+#    - Staging is not active. /opt/neuroglitch/.env.staging exists on host
+#      `superglitch` but no staging containers run today.
+#    - This file is NOT a valid invocation today.
+#    - Phase R6 (staging activation) is the operator step that makes this
+#      invokable. See runtime/runbooks/staging-bootstrap.md.
+#
+#  INTENDED INVOCATION (Phase R6+):
+#    docker compose \
+#      -f runtime/compose/base.yml \
+#      -f runtime/compose/overrides/staging.yml \
+#      -p neuroglitch-staging \
+#      up -d --force-recreate app sidecar worker
+#
+#  IMMUTABLE EXPECTATIONS:
+#    - APP_ENV=staging must be present in /opt/neuroglitch/.env.staging.
+#    - Compose project: neuroglitch-staging (NEVER `neuroglitch` — that's prod).
+#    - Storage root: /opt/neuroglitch/storage-staging (separate from prod).
+#    - env_file: .env.staging (relative to /opt/neuroglitch/).
+#    - Public DNS: staging.groundworx.neuroglitch.ai (served by SHARED Caddy
+#      in the production project; staging itself does NOT run caddy).
+#    - Image tags follow the same registry as production (`ghcr.io/...:<sha>`)
+#      but typically point at a newer SHA than production runs.
+#
+#  ARCHITECTURAL NOTE — shared Caddy:
+#    Staging shares the production Caddy container for TLS termination. For
+#    Caddy (which lives in the `neuroglitch` Compose project) to reach
+#    `neuroglitch-staging-app:3000`, an external Docker network must be
+#    declared in BOTH projects so containers can resolve each other across
+#    projects. The current production compose does not yet declare such an
+#    external network. Phase R6 staging-bootstrap activation includes:
+#       1. Declare an external `neuroglitch_edge` network in prod compose.
+#       2. Connect the production caddy to it.
+#       3. Reference the same external network in this staging override.
+#       4. Connect staging app to it.
+#    See runtime/runbooks/staging-bootstrap.md for the full sequence.
+#
+#  EXCLUDED SERVICES IN STAGING:
+#    base.yml defines caddy, landing, hello, api in addition to app/sidecar/worker.
+#    Staging deploys NEVER run those — they belong to the production project only.
+#    The Compose invocation above explicitly lists only `app sidecar worker` to
+#    bring up. (Compose does not need staging.yml to redefine the edge services;
+#    they remain defined in base.yml but not started by the staging deploy.)
+#
+#  Reference: runtime/runbooks/staging-bootstrap.md, runtime/compose/TOPOLOGY.md.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  app:
+    image: ghcr.io/ghostdwg/groundworx-app:<staging-sha>
+    env_file:
+      - /opt/neuroglitch/.env.staging
+
+  sidecar:
+    image: ghcr.io/ghostdwg/groundworx-sidecar:<staging-sha>
+    env_file:
+      - /opt/neuroglitch/.env.staging
+
+  worker:
+    image: ghcr.io/ghostdwg/groundworx-worker:<staging-sha>
+    env_file:
+      - /opt/neuroglitch/.env.staging
+
+  # NOTE: caddy, landing, hello, api are defined in base.yml but NOT modified
+  # here, and the staging deploy command does NOT include them in the
+  # `up -d` service list. They remain unstarted in the staging project.
+
+volumes:
+  # Staging storage bind: /opt/neuroglitch/storage-staging → /storage.
+  # Separate host directory from production. Already exists (empty) per PRA §10.
+  storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/neuroglitch/storage-staging

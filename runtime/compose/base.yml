@@ -1,0 +1,180 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  runtime/compose/base.yml
+#  Canonical service topology for the GroundWorX platform.
+# ──────────────────────────────────────────────────────────────────────────────
+#
+#  STATUS (Phase R3):
+#    RECONSTRUCTED from Production Runtime Assessment (Migration/Production
+#    Runtime Assessment.txt, dated 2026-05-17). NOT YET verified against the
+#    live /opt/neuroglitch/docker-compose.yml on host `superglitch`.
+#    Operator must verify parity and reconcile before Phase R7 cutover.
+#
+#  INVOCATION (NOT active during R3 — this file does nothing until R7 cutover):
+#    Production:
+#      docker compose \
+#        -f runtime/compose/base.yml \
+#        -f runtime/compose/overrides/production.yml \
+#        -p neuroglitch \
+#        up -d --force-recreate
+#
+#    Staging (when activated — Phase R6):
+#      docker compose \
+#        -f runtime/compose/base.yml \
+#        -f runtime/compose/overrides/staging.yml \
+#        -p neuroglitch-staging \
+#        up -d --force-recreate app sidecar worker
+#
+#  WHAT THIS FILE OMITS (set in tier overrides):
+#    - image tags (production override pins :<sha>; locally-built today)
+#    - env_file paths (host-tier-specific)
+#    - volume bind source paths (host-tier-specific)
+#    - host port publishing (only caddy publishes; only in production override)
+#    - Caddyfile bind mount source path (host-tier-specific)
+#
+#  WHAT THIS FILE COMMITS TO:
+#    - service names (caddy, app, sidecar, worker, landing, hello, api)
+#    - service-to-service depends_on relationships
+#    - healthcheck shapes (app /api/health, sidecar /health)
+#    - restart policy (unless-stopped)
+#    - network membership (single bridge "neuroglitch")
+#    - volume names (storage, caddy_data, caddy_config)
+#    - storage mount target (/storage in app, sidecar, worker)
+#
+#  Reference: runtime/compose/TOPOLOGY.md (canonical description of current
+#  production runtime).
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # caddy — TLS termination + reverse proxy edge
+  # ──────────────────────────────────────────────────────────────────────────
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - hello  # vestigial; preserved for parity with current prod
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      # Caddyfile bind mount declared in tier override (host path differs by tier)
+    networks:
+      - neuroglitch
+    # Host port publishing declared in tier override (only production publishes today)
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # app — Next.js product (the only public application surface)
+  # ──────────────────────────────────────────────────────────────────────────
+  app:
+    # image set in tier override
+    restart: unless-stopped
+    depends_on:
+      - sidecar
+    expose:
+      - "3000"
+    volumes:
+      - storage:/storage
+    networks:
+      - neuroglitch
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # sidecar — FastAPI compute-bound + AI-adjacent service
+  # ──────────────────────────────────────────────────────────────────────────
+  sidecar:
+    # image set in tier override
+    restart: unless-stopped
+    expose:
+      - "8001"
+    volumes:
+      - storage:/storage
+    networks:
+      - neuroglitch
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # worker — background-job poller (curl loop on app:3000/api/jobs/run-due)
+  # ──────────────────────────────────────────────────────────────────────────
+  worker:
+    # image set in tier override
+    restart: unless-stopped
+    depends_on:
+      - app
+    volumes:
+      # mounted but not used by current curl-loop entrypoint;
+      # preserved for future durable-job state (Phase D'+)
+      - storage:/storage
+    networks:
+      - neuroglitch
+    # Phase R4 adds a healthcheck against a tick file written by the
+    # hardened entrypoint. Not present in current production.
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # landing — static marketing site at neuroglitch.ai (vestigial-ish)
+  # ──────────────────────────────────────────────────────────────────────────
+  landing:
+    # image set in tier override
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - neuroglitch
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # hello — vestigial static site at hello.neuroglitch.ai
+  # ──────────────────────────────────────────────────────────────────────────
+  hello:
+    # image set in tier override
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - neuroglitch
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # api — vestigial JS stub at api.neuroglitch.ai (12 lines, no real API)
+  # ──────────────────────────────────────────────────────────────────────────
+  api:
+    # image set in tier override
+    restart: unless-stopped
+    expose:
+      - "3000"
+    networks:
+      - neuroglitch
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Volumes
+# ──────────────────────────────────────────────────────────────────────────────
+volumes:
+  # storage — shared filesystem between app, sidecar, worker.
+  # Bind source set in tier override:
+  #   production override → /opt/neuroglitch/storage
+  #   staging override    → /opt/neuroglitch/storage-staging
+  storage:
+
+  # caddy_data — Docker-managed; ACME state (LE certs). DO NOT RECREATE
+  # blindly; back up before any caddy container recreate.
+  caddy_data:
+
+  # caddy_config — Docker-managed; transient caddy config state.
+  caddy_config:
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Networks
+# ──────────────────────────────────────────────────────────────────────────────
+networks:
+  # Explicit network name "neuroglitch" — under project name `neuroglitch`,
+  # Docker creates this as `neuroglitch_neuroglitch` (matching the live
+  # production network, subnet 172.21.0.0/16).
+  neuroglitch:
+    driver: bridge
