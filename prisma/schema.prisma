@@ -1773,6 +1773,8 @@ model Project {
   probabilityTrends ProbabilityTrend[]
   expectedTimelines ExpectedTimeline[]
 
+  outcomes Outcome[]
+
   mergedInto       Project?  @relation("ProjectMergeTarget", fields: [mergedIntoProjectId], references: [id], onDelete: SetNull)
   absorbedProjects Project[] @relation("ProjectMergeTarget")
 
@@ -2081,6 +2083,9 @@ model Parcel {
   trajectories      EmergenceTrajectory[]
   probabilityTrends ProbabilityTrend[]
   expectedTimelines ExpectedTimeline[]
+
+  // Phase MI-9 outcome back-relation.
+  outcomes Outcome[]
 
   mergedInto      Parcel?  @relation("ParcelMergeTarget", fields: [mergedIntoParcelId], references: [id], onDelete: SetNull)
   absorbedParcels Parcel[] @relation("ParcelMergeTarget")
@@ -2480,9 +2485,10 @@ model ForecastSnapshot {
 
   payloadJson String
 
-  project      Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  parcel       Parcel?               @relation(fields: [parcelId], references: [id], onDelete: SetNull)
-  explanations ForecastExplanation[]
+  project            Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parcel             Parcel?               @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+  explanations       ForecastExplanation[]
+  outcomeResolutions OutcomeResolution[]
 
   @@index([subjectKind, subjectId, computedAt])
   @@index([projectId, computedAt])
@@ -2730,6 +2736,543 @@ model ForecastExplanation {
   @@index([factorKind])
   @@index([factorName])
   @@index([contribution])
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Market Intelligence: Outcome Tracking + Forecast Calibration (MI-9)
+//
+//  Feedback intelligence — the layer that teaches the platform whether its
+//  predictions matched reality. Builds on top of MI-8's ForecastSnapshot
+//  history. Deterministic-first: no black-box self-modifying behavior, no
+//  silent forecast retrofits, no destruction of historical lineage.
+//
+//  Schema-only in MI-9 PR-1. Service layer in lib/services/outcomeCalibration
+//  ships in the same PR but does not mutate any historical forecast row.
+//  Calibration coefficients are advisory inputs to the next forecast cycle,
+//  not retroactive rewrites of past forecasts.
+//
+//  All ten models are additive. No existing table is altered.
+//
+//  Outcome ontology (Outcome.outcomeKind pseudo-enum):
+//    CONSTRUCTION_STARTED
+//    PERMIT_ISSUED
+//    BID_ISSUED
+//    PROJECT_ABANDONED
+//    PROJECT_STALLED
+//    TIMELINE_SLIPPED
+//    SHELL_REALIZED
+//    FRANCHISE_ROLLOUT_CONFIRMED
+//    ZONING_FAILED
+//    UTILITY_EXPANSION_COMPLETED
+//    CORRIDOR_ACCELERATION_CONFIRMED
+//    OTHER
+//
+//  Subject loose-pointer pattern: every outcome targets a subject identified
+//  by (subjectKind, subjectId), mirroring MI-8's pattern. Strong nullable FKs
+//  to Project / Parcel are kept for relational queries.
+//
+//  Pseudo-enum field values (validated in app code):
+//    Outcome.outcomeKind:               (see above)
+//    Outcome.detectionMethod:           AUTOMATIC | OPERATOR_REPORTED |
+//                                       EXTERNAL_FEED | INFERRED
+//    Outcome.subjectKind:               PROJECT | PARCEL | CORRIDOR |
+//                                       JURISDICTION | DEVELOPER
+//    OutcomeEvidence.evidenceKind:      MARKET_SIGNAL | DOCUMENT |
+//                                       PRESS_RELEASE | OPERATOR_NOTE |
+//                                       EXTERNAL_FEED | PHOTO | OTHER
+//    OutcomeResolution.resolutionState: PENDING | CONFIRMED | PARTIAL |
+//                                       DISCONFIRMED | DISPUTED | WITHDRAWN
+//    OutcomeResolution.predictionPosture: HIGH_CONF_PREDICTED |
+//                                       MEDIUM_CONF_PREDICTED |
+//                                       LOW_CONF_PREDICTED | UNPREDICTED
+//    ForecastAccuracy.accuracyKind:     PROBABILITY | TIMELINE |
+//                                       TRAJECTORY | OUTCOME_KIND |
+//                                       CORRIDOR | COMPOSITE
+//    TrajectoryOutcome.alignment:       ALIGNED | DIVERGED | EARLY_SHIFT |
+//                                       MISSED_SHIFT | INCONCLUSIVE
+//    FalsePositive.reasonClass:         OVERWEIGHTED_DEVELOPER |
+//                                       OVERWEIGHTED_CONTINUANCE |
+//                                       OVERWEIGHTED_UTILITY |
+//                                       STALE_SIGNAL_CARRYOVER |
+//                                       JURISDICTION_LAG_UNDERESTIMATED |
+//                                       SHELL_CLUSTER_MISREAD | OTHER
+//    FalseNegative.reasonClass:         UNDERWEIGHTED_PARCEL |
+//                                       UNDERWEIGHTED_INFRASTRUCTURE |
+//                                       MISSED_CORRIDOR_IGNITION |
+//                                       MISSED_FRANCHISE_PATTERN |
+//                                       NEW_SIGNAL_TYPE | OTHER
+//    CalibrationSnapshot.scope:         GLOBAL | JURISDICTION | CORRIDOR |
+//                                       SUBJECT_KIND | FACTOR
+//    ForecastCalibration.scope:         GLOBAL | JURISDICTION | CORRIDOR |
+//                                       SUBJECT_KIND | FACTOR
+//    ForecastCalibration.adjustmentKind: WEIGHT_MULTIPLIER | DECAY_OVERRIDE |
+//                                       LAG_DAYS | THRESHOLD_OVERRIDE
+//
+//  Cascades:
+//    OutcomeEvidence CASCADE from Outcome — evidence is meaningless detached
+//    from its outcome.
+//    OutcomeResolution.outcomeId CASCADE from Outcome; .forecastSnapshotId
+//    SetNull (a forecast deletion is unusual but must not lose outcome
+//    lineage).
+//    ForecastAccuracy.resolutionId CASCADE from OutcomeResolution.
+//    TrajectoryOutcome.resolutionId CASCADE from OutcomeResolution.
+//    TimelineAccuracy.resolutionId CASCADE from OutcomeResolution.
+//    FalsePositive / FalseNegative cascade from their parent Outcome or
+//    Resolution where applicable.
+//
+//  Append-only lineage discipline:
+//    - Outcome rows are append-only; corrections create a new Outcome with
+//      `supersededByOutcomeId` pointing to the replacement and
+//      `resolutionState=WITHDRAWN` on the original's resolution.
+//    - Past ForecastAccuracy rows are NEVER mutated. Recomputation appends
+//      a new row with a fresh `evaluationVersion`.
+//    - CalibrationSnapshot is strictly append-only.
+//
+//  Bumps to CALIBRATION_VERSION (in app code, recorded on every accuracy /
+//  calibration row) flag schema-and-algorithm generations the same way
+//  FORECAST_VERSION tags emergence forecasts.
+// ──────────────────────────────────────────────────────────────────────────────
+
+model Outcome {
+  id String @id @default(cuid())
+
+  // Subject identity. subjectKind + subjectId is the universal pointer;
+  // strong FKs are nullable for relational query convenience.
+  subjectKind String
+  subjectId   String
+  projectId   String?
+  parcelId    String?
+
+  // Outcome type + observation metadata.
+  outcomeKind     String
+  outcomeLabel    String? // operator-facing label override
+  detectionMethod String  @default("AUTOMATIC")
+
+  // When the outcome actually occurred (operator-best-knowledge), and
+  // when the platform observed it. These can differ — a permit issued
+  // 3 weeks ago that we discover today has observedAt = today but
+  // occurredAt = 3 weeks ago.
+  occurredAt DateTime
+  observedAt DateTime @default(now())
+
+  // Confidence in the outcome itself (not in any forecast).
+  outcomeConfidence String @default("MEDIUM") // LOW | MEDIUM | HIGH | VERIFIED
+
+  // Free-text rationale + optional structured payload.
+  notes       String?
+  payloadJson String?
+
+  // Append-only supersede chain. When an operator corrects an Outcome
+  // (wrong date, wrong subject, retraction), a NEW Outcome row is created
+  // and the original gets supersededByOutcomeId pointing at it.
+  supersededByOutcomeId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project        Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parcel         Parcel?             @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+  evidence       OutcomeEvidence[]
+  resolutions    OutcomeResolution[]
+  falsePositives FalsePositive[]
+  falseNegatives FalseNegative[]
+  supersededBy   Outcome?            @relation("OutcomeSupersede", fields: [supersededByOutcomeId], references: [id], onDelete: SetNull)
+  supersedes     Outcome[]           @relation("OutcomeSupersede")
+
+  @@index([subjectKind, subjectId, occurredAt])
+  @@index([outcomeKind])
+  @@index([projectId])
+  @@index([parcelId])
+  @@index([occurredAt])
+  @@index([observedAt])
+  @@index([supersededByOutcomeId])
+}
+
+// Per-outcome evidence rows. Each evidence row points back to its source
+// (MarketSignal, MarketSourceDoc, MarketLead, operator note, external feed)
+// via loose pointer (sourceRefKind + sourceRefId) — same pattern as MI-7
+// ParcelSignal.
+model OutcomeEvidence {
+  id        String @id @default(cuid())
+  outcomeId String
+
+  evidenceKind  String
+  sourceRefKind String?
+  sourceRefId   String?
+  sourceUrl     String?
+
+  capturedAt DateTime
+  observedAt DateTime @default(now())
+
+  rationale   String
+  payloadJson String?
+
+  // Optional operator vouching.
+  vouchedByUserId String?
+  vouchedByEmail  String?
+  vouchedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outcome Outcome @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+
+  @@index([outcomeId])
+  @@index([evidenceKind])
+  @@index([capturedAt])
+  @@index([sourceRefKind, sourceRefId])
+}
+
+// One row per (Outcome, ForecastSnapshot) pair. This is where the platform
+// records "did this forecast predict this outcome?" — and it's the row the
+// accuracy / calibration services attach to.
+//
+// resolutionState transitions are append-only via new rows: a DISPUTED row
+// for the same (outcome, snapshot) creates a NEW OutcomeResolution row
+// rather than mutating an existing one.
+model OutcomeResolution {
+  id                 String  @id @default(cuid())
+  outcomeId          String
+  // The forecast snapshot being evaluated. Null when the outcome had no
+  // matching forecast (a UNPREDICTED FalseNegative case).
+  forecastSnapshotId String?
+
+  resolutionState   String @default("PENDING")
+  predictionPosture String @default("UNPREDICTED")
+
+  // Snapshot of the forecast values at prediction time, captured here for
+  // cheap query without re-joining to ForecastSnapshot. Mirrors what the
+  // forecast asserted; the actual outcome is on the Outcome row.
+  predictedScore      Float?
+  predictedTrajectory String?
+  predictedAt         DateTime?
+
+  // How long between predictedAt and Outcome.occurredAt, in days. Negative
+  // if the outcome occurred before the forecast was made (operator-late
+  // outcome capture).
+  leadTimeDays Float?
+
+  resolvedAt       DateTime @default(now())
+  resolvedByUserId String?
+  resolvedByEmail  String?
+  resolutionNotes  String?
+
+  // Bumps when resolution policy changes. Stamps new resolutions; old ones
+  // keep their stamp so historical accuracy comparisons are stable.
+  calibrationVersion String @default("v1")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outcome          Outcome           @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+  forecastSnapshot ForecastSnapshot? @relation(fields: [forecastSnapshotId], references: [id], onDelete: SetNull)
+
+  accuracies         ForecastAccuracy[]
+  trajectoryOutcomes TrajectoryOutcome[]
+  timelineAccuracies TimelineAccuracy[]
+
+  @@index([outcomeId])
+  @@index([forecastSnapshotId])
+  @@index([resolutionState])
+  @@index([predictionPosture])
+  @@index([resolvedAt])
+}
+
+// Per-resolution per-accuracy-kind score record. One OutcomeResolution can
+// have many ForecastAccuracy rows (one per kind: PROBABILITY, TIMELINE,
+// TRAJECTORY, OUTCOME_KIND, CORRIDOR, COMPOSITE).
+//
+// Append-only: a re-evaluation creates a new row with a fresh evaluationVersion.
+model ForecastAccuracy {
+  id           String @id @default(cuid())
+  resolutionId String
+
+  accuracyKind       String
+  // Numeric in [0..1] where 1 = perfectly accurate. Composite is the
+  // weighted blend of the others.
+  accuracyScore      Float
+  // Brier-style probabilistic score for the PROBABILITY kind:
+  // brier = (predictedScore - 1)² when outcome=happened, predictedScore²
+  // when outcome=did-not-happen. Other kinds may store NaN — kept nullable.
+  brierScore         Float?
+  // Timeline-kind metrics:
+  timelineErrorDays  Float? // (actualDate - expectedDate); positive = late
+  withinExpectedBand Boolean? // true when actual fell within earliest..latest
+  // Free-text + structured rationale.
+  rationale          String
+  payloadJson        String?
+
+  evaluationVersion String @default("v1")
+
+  computedAt DateTime @default(now())
+
+  resolution OutcomeResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
+
+  @@index([resolutionId])
+  @@index([accuracyKind])
+  @@index([accuracyScore])
+  @@index([computedAt])
+}
+
+// Operator-tunable calibration adjustments. Read at the START of each new
+// forecast cycle to modulate per-(jurisdiction, factor) weights — does NOT
+// rewrite historical forecasts. Append-only by row identity, but a row's
+// fields can be edited to retune; every edit bumps updatedAt and is captured
+// by the next CalibrationSnapshot.
+//
+// scope tells the engine which subset of forecasts the row applies to:
+//   GLOBAL          — every forecast
+//   JURISDICTION    — forecasts whose subject's jurisdiction matches scopeKey
+//   CORRIDOR        — forecasts whose subject's corridor matches scopeKey
+//   SUBJECT_KIND    — forecasts of a given subjectKind
+//   FACTOR          — applies to a specific factor name (e.g. "utilityExpansion")
+//
+// adjustmentKind determines how the value is interpreted:
+//   WEIGHT_MULTIPLIER  — value × current factor weight
+//   DECAY_OVERRIDE     — replaces signal-decay half-life days
+//   LAG_DAYS           — added to expected-milestone date math
+//   THRESHOLD_OVERRIDE — replaces a trajectory or velocity threshold
+model ForecastCalibration {
+  id String @id @default(cuid())
+
+  scope      String // GLOBAL | JURISDICTION | CORRIDOR | SUBJECT_KIND | FACTOR
+  scopeKey   String? // jurisdictionKey | corridorKey | subjectKind | null for GLOBAL
+  factorName String? // only used when scope=FACTOR or applies to a factor
+
+  adjustmentKind String // WEIGHT_MULTIPLIER | DECAY_OVERRIDE | LAG_DAYS | THRESHOLD_OVERRIDE
+  value          Float
+
+  // Operator-facing rationale + provenance.
+  source String? // "calibration_runner" | "operator_manual" | "watchlist"
+  notes  String?
+
+  // Disable without deleting — preserves history.
+  active Boolean @default(true)
+
+  // Bumps when the algorithm that wrote the row changes — older rows know
+  // which calibration generation produced them.
+  calibrationVersion String @default("v1")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([scope, scopeKey, factorName, adjustmentKind])
+  @@index([scope, scopeKey])
+  @@index([factorName])
+  @@index([adjustmentKind])
+  @@index([active])
+}
+
+// Per-resolution trajectory alignment record. Records whether the trajectory
+// state at prediction time matched the actual progression observed via the
+// outcome.
+model TrajectoryOutcome {
+  id           String @id @default(cuid())
+  resolutionId String
+
+  predictedState String
+  actualState    String?
+  alignment      String  @default("INCONCLUSIVE")
+
+  // True when MI-8 detected a momentum shift at prediction time AND that
+  // shift turned out to correctly anticipate the outcome.
+  shiftCorrect Boolean?
+  // True when MI-8 missed a momentum shift that would have improved
+  // prediction (post-hoc evident from outcome timing).
+  shiftMissed  Boolean?
+
+  rationale String?
+
+  computedAt DateTime @default(now())
+
+  resolution OutcomeResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
+
+  @@index([resolutionId])
+  @@index([alignment])
+  @@index([shiftMissed])
+}
+
+// Per-resolution timeline-accuracy record. One row per
+// (resolution, milestoneKind). Stores actual vs expected date variance.
+model TimelineAccuracy {
+  id           String @id @default(cuid())
+  resolutionId String
+
+  milestoneKind String
+  // Forecast values captured at prediction time.
+  expectedAt    DateTime?
+  earliestAt    DateTime?
+  latestAt      DateTime?
+  // Actual observed date from the Outcome.
+  actualAt      DateTime
+
+  // Derived metrics.
+  errorDays                     Float // actualAt - expectedAt (positive = late)
+  absoluteErrorDays             Float
+  withinBand                    Boolean // true when actualAt ∈ [earliestAt, latestAt]
+  // Optional jurisdiction-relative metric: errorDays minus this
+  // jurisdiction's typical lag (read from ForecastCalibration scope=JURISDICTION
+  // adjustmentKind=LAG_DAYS). Lets the platform say "this was 50 days late
+  // BUT this jurisdiction typically runs 45 days late, so really only 5 days
+  // late by jurisdiction-norm".
+  jurisdictionAdjustedErrorDays Float?
+
+  rationale  String?
+  computedAt DateTime @default(now())
+
+  resolution OutcomeResolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
+
+  @@index([resolutionId])
+  @@index([milestoneKind])
+  @@index([errorDays])
+  @@index([withinBand])
+}
+
+// One row per detected false positive — high-confidence forecast that did
+// NOT result in the predicted outcome within the expected band. Drives
+// PR-3 false-positive review queue.
+model FalsePositive {
+  id String @id @default(cuid())
+
+  // What was predicted, and why we think it was wrong.
+  forecastSnapshotId String?
+  subjectKind        String
+  subjectId          String
+
+  predictedScore      Float
+  predictedTrajectory String?
+  predictedAt         DateTime
+
+  // The outcome (if any) that disconfirmed the prediction. Often null —
+  // the absence of any outcome by a deadline is what makes the prediction
+  // a false positive. When set, this links to the disconfirming Outcome.
+  disconfirmingOutcomeId String?
+
+  // Time window we waited for the prediction to materialize.
+  expectedByLatest DateTime
+  detectedAt       DateTime @default(now())
+
+  reasonClass String  @default("OTHER")
+  notes       String?
+
+  // Review state. Operator can verify or dismiss.
+  reviewStatus     String    @default("AUTO") // AUTO | VERIFIED | DISMISSED
+  reviewedByUserId String?
+  reviewedByEmail  String?
+  reviewedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  disconfirmingOutcome Outcome? @relation(fields: [disconfirmingOutcomeId], references: [id], onDelete: SetNull)
+
+  @@index([subjectKind, subjectId])
+  @@index([forecastSnapshotId])
+  @@index([reasonClass])
+  @@index([reviewStatus])
+  @@index([expectedByLatest])
+  @@index([detectedAt])
+}
+
+// Mirror of FalsePositive: outcomes that occurred without any
+// corresponding high-confidence forecast.
+model FalseNegative {
+  id        String @id @default(cuid())
+  outcomeId String
+
+  subjectKind String
+  subjectId   String
+
+  // The most-recent forecast (if any) preceding the outcome, plus its
+  // score — null if no forecast existed.
+  precedingSnapshotId String?
+  precedingScore      Float?
+  precedingTrajectory String?
+  precedingAt         DateTime?
+
+  // How far in advance did we miss the call, in days.
+  missedByDays Float?
+
+  reasonClass String  @default("OTHER")
+  notes       String?
+
+  reviewStatus     String    @default("AUTO")
+  reviewedByUserId String?
+  reviewedByEmail  String?
+  reviewedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  outcome Outcome @relation(fields: [outcomeId], references: [id], onDelete: Cascade)
+
+  @@index([outcomeId])
+  @@index([subjectKind, subjectId])
+  @@index([reasonClass])
+  @@index([reviewStatus])
+  @@index([precedingAt])
+}
+
+// Append-only snapshot of overall calibration state. One row per scope
+// per scope-key per computed-at. The platform writes these on a schedule;
+// the time series powers a "how is our calibration drifting?" UI in PR-3.
+model CalibrationSnapshot {
+  id String @id @default(cuid())
+
+  scope    String // GLOBAL | JURISDICTION | CORRIDOR | SUBJECT_KIND | FACTOR
+  scopeKey String? // jurisdictionKey | corridorKey | subjectKind | null for GLOBAL
+
+  // Aggregate metrics across resolutions in this scope at compute time.
+  resolutionCount   Int
+  confirmedCount    Int
+  partialCount      Int
+  disconfirmedCount Int
+
+  meanProbabilityAccuracy Float?
+  meanBrierScore          Float?
+  meanTimelineErrorDays   Float?
+  trajectoryAlignmentRate Float?
+
+  falsePositiveCount Int @default(0)
+  falseNegativeCount Int @default(0)
+
+  // Snapshot of active calibration adjustments at compute time.
+  // Stringified JSON of an array of {factorName, adjustmentKind, value}.
+  activeAdjustmentsJson String?
+
+  computedAt         DateTime @default(now())
+  calibrationVersion String   @default("v1")
+
+  // Why this snapshot was created. "scheduled" | "post_outcome" |
+  // "operator_run" | "backfill".
+  triggerReason String @default("scheduled")
+
+  @@index([scope, scopeKey, computedAt])
+  @@index([calibrationVersion])
+  @@index([computedAt])
+}
+
+// Operator-tunable resolution-state policy table. One row per resolution
+// state describing the transitions it allows and the human-readable label.
+// Lets PR-3 governance UI render legal action buttons without hard-coding
+// the state machine on the client.
+model ResolutionState {
+  id                 String  @id @default(cuid())
+  state              String  @unique // PENDING | CONFIRMED | PARTIAL | DISCONFIRMED | DISPUTED | WITHDRAWN
+  label              String
+  description        String?
+  // CSV of allowed next states.
+  allowedTransitions String  @default("")
+
+  // Whether this state contributes to accuracy / calibration aggregates.
+  // CONFIRMED + PARTIAL + DISCONFIRMED contribute; PENDING + DISPUTED +
+  // WITHDRAWN do not.
+  contributesToAccuracy Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([state])
 }
 
 // ── Integration Credentials Vault ───────────────────────────────────────────
