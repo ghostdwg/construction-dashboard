@@ -10,6 +10,40 @@ env:
   NODE_VERSION: "20"
 
 jobs:
+  replay-validation:
+    name: Migration replay + drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Replay migrations from zero and check drift
+        run: node scripts/replay-validation.mjs
+
+  migration-lint:
+    name: Migration lint (additive-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Lint migrations changed in this PR
+        run: node scripts/migration-lint.mjs --since=origin/main
+
   typecheck:
     name: Type check
     runs-on: ubuntu-latest
