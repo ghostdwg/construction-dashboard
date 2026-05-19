@@ -17,7 +17,11 @@
     "backfill:entity-graph": "tsx scripts/backfill-entity-graph.ts",
     "backfill:entity-graph:dry-run": "tsx scripts/backfill-entity-graph.ts --dry-run",
     "backfill:entity-graph:report-only": "tsx scripts/backfill-entity-graph.ts --report-only",
-    "backfill:entity-graph:rollback": "tsx scripts/rollback-entity-backfill.ts"
+    "backfill:entity-graph:rollback": "tsx scripts/rollback-entity-backfill.ts",
+    "backfill:project-graph": "tsx scripts/backfill-project-graph.ts",
+    "backfill:project-graph:dry-run": "tsx scripts/backfill-project-graph.ts --dry-run",
+    "backfill:project-graph:report-only": "tsx scripts/backfill-project-graph.ts --report-only",
+    "backfill:project-graph:rollback": "tsx scripts/rollback-project-backfill.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
