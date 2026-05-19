@@ -21,6 +21,7 @@ import HandoffTab from "./HandoffTab";
 import SubmittalsTab from "./SubmittalsTab";
 import ScheduleTab from "./ScheduleTab";
 import MeetingsTab from "./MeetingsTab";
+import TasksTab from "./TasksTab";
 import BriefingTab from "./BriefingTab";
 import ProcoreTab from "./ProcoreTab";
 import WarrantiesTab from "./WarrantiesTab";
@@ -345,6 +346,11 @@ export default async function BidDetailPage({
           {tab === "meetings" && (
             <TabErrorBoundary tabName="Meetings">
               <MeetingsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "tasks" && (
+            <TabErrorBoundary tabName="Tasks">
+              <TasksTab bidId={bid.id} />
             </TabErrorBoundary>
           )}
           {tab === "briefing" && (

@@ -65,6 +65,9 @@ COPY --from=builder /app/node_modules/@libsql ./node_modules/@libsql
 COPY --from=builder /app/node_modules/@prisma/adapter-libsql ./node_modules/@prisma/adapter-libsql
 COPY --from=builder /app/prisma ./prisma
 
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 USER nextjs
 
 EXPOSE 3000
@@ -72,4 +75,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:3000/api/health || exit 1
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "server.js"]

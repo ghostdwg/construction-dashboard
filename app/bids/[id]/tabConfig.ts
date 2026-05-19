@@ -2,7 +2,7 @@ export type TabKey =
   | "overview"
   | "documents" | "trades" | "subs" | "scope" | "decisions" | "ai-review"
   | "questions" | "leveling" | "activity"
-  | "handoff" | "submittals" | "schedule" | "meetings" | "briefing" | "procore"
+  | "handoff" | "submittals" | "schedule" | "meetings" | "tasks" | "briefing" | "procore"
   | "warranties" | "training" | "inspections" | "closeout";
 
 export const PURSUIT_KEYS = new Set<TabKey>([
@@ -11,7 +11,7 @@ export const PURSUIT_KEYS = new Set<TabKey>([
 ]);
 
 export const POST_AWARD_KEYS = new Set<TabKey>([
-  "handoff", "submittals", "schedule", "meetings", "briefing", "procore",
+  "handoff", "submittals", "schedule", "meetings", "tasks", "briefing", "procore",
 ]);
 
 export const CONSTRUCTION_KEYS = new Set<TabKey>([
@@ -35,6 +35,7 @@ export const POST_AWARD_SUBTABS: { key: TabKey; label: string }[] = [
   { key: "submittals", label: "SUBMITTALS" },
   { key: "schedule",   label: "SCHEDULE"   },
   { key: "meetings",   label: "MEETINGS"   },
+  { key: "tasks",      label: "TASKS"      },
   { key: "briefing",   label: "BRIEFING"   },
   { key: "procore",    label: "PROCORE"    },
 ];

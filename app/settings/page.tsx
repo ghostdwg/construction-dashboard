@@ -94,6 +94,17 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
           <div className="mx-4 my-3 border-t" style={{ borderColor: "var(--line)" }} />
 
           <Link
+            href="/settings/integrations"
+            className="relative flex items-center gap-2 px-4 py-[7px] text-[12px] transition-colors"
+            style={{ color: "var(--text-soft)" }}
+          >
+            <span
+              className="w-[5px] h-[5px] rounded-full shrink-0"
+              style={{ background: "rgba(255,255,255,0.15)" }}
+            />
+            Integrations
+          </Link>
+          <Link
             href="/settings/users"
             className="relative flex items-center gap-2 px-4 py-[7px] text-[12px] transition-colors"
             style={{ color: "var(--text-soft)" }}

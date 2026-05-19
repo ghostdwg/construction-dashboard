@@ -28,7 +28,10 @@ import { defineConfig } from "prisma/config";
 //  `prisma migrate deploy` (and most other Prisma CLI commands) against a
 //  libsql:// URL returns Prisma error P1013 and silently mis-records
 //  migration state in the `_prisma_migrations` table. Documented in
-//  Migration/Production Runtime Assessment.txt §9 and §17 Medium.
+//  Migration/Production Runtime Assessment.txt §9 and §17 Medium, and
+//  observed empirically 2026-05-15 (operator note carried from
+//  feat/market-intelligence: migrate deploy silently applied to a throwaway
+//  local file inside the migrate container and reported success).
 //
 //  The CORRECT way to apply migrations to staging or production Turso DBs
 //  is the bespoke runner: `scripts/apply-turso-migrations.mjs` (Phase R6.6),

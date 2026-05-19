@@ -3,6 +3,7 @@ import Link from "next/link";
 import NewLeadButton from "./NewLeadButton";
 import ScanPanel from "./ScanPanel";
 import SourcesPanel from "./SourcesPanel";
+import DiscoverPanel from "./DiscoverPanel";
 
 // ── Status + type chip maps ──────────────────────────────────────────────────
 
@@ -120,11 +121,17 @@ export default async function MarketIntelligencePage() {
       where:   { leadId: null },
       orderBy: [{ aiRelevanceScore: "desc" }, { createdAt: "desc" }],
       take:    25,
+      include: {
+        sourceDoc: { select: { id: true, title: true, documentDate: true } },
+      },
     }),
     prisma.marketLead.findMany({
       where:   { status: { notIn: ["ARCHIVED", "DISMISSED"] } },
       orderBy: { detectedAt: "desc" },
-      include: { signals: { select: { id: true } } },
+      include: {
+        signals: { select: { id: true } },
+        sourceDoc: { select: { id: true, title: true, documentDate: true } },
+      },
     }),
     prisma.relationshipEdge.findMany({
       orderBy: { createdAt: "desc" },
@@ -171,6 +178,9 @@ export default async function MarketIntelligencePage() {
         {/* ── Left column ─────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 flex flex-col gap-5">
 
+          {/* Discover Sources by radius */}
+          <DiscoverPanel />
+
           {/* Scrape Sources */}
           <SourcesPanel />
 
@@ -208,18 +218,44 @@ export default async function MarketIntelligencePage() {
                     return (
                       <tr key={sig.id} className="gwx-tr border-b border-[var(--line)] last:border-b-0">
                         <td className="px-4 py-3">
-                          <span
-                            className="font-mono text-[9px] uppercase tracking-[0.07em] px-2 py-0.5 rounded-full whitespace-nowrap"
-                            style={{ color: st.color, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-                          >
-                            {st.label}
-                          </span>
+                          <div className="flex flex-col gap-0.5 items-start">
+                            <span
+                              className="font-mono text-[9px] uppercase tracking-[0.07em] px-2 py-0.5 rounded-full whitespace-nowrap"
+                              style={{ color: st.color, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+                            >
+                              {st.label}
+                            </span>
+                            {sig.signalSubtype && (
+                              <span
+                                className="font-mono text-[8px] uppercase tracking-[0.07em] px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                                style={{ color: "#b8ceff", background: "rgba(126,167,255,0.06)", border: "1px solid rgba(126,167,255,0.15)" }}
+                              >
+                                {sig.signalSubtype.replace(/_/g, " ")}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-[13px] font-[500]" style={{ color: "var(--text)" }}>
                           {sig.headline}
+                          {sig.nextMeetingDate && (
+                            <p className="text-[10px] mt-0.5 font-mono" style={{ color: "#ffcc72" }}>
+                              ↻ continued — next agenda {fmtDate(sig.nextMeetingDate)}
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-[11px]" style={{ color: "var(--text-dim)" }}>
-                          {sig.source ?? "—"}
+                          {sig.sourceDoc ? (
+                            <Link
+                              href={`/market-intelligence/docs/${sig.sourceDoc.id}`}
+                              className="hover:underline"
+                              title={sig.sourceDoc.title || "Open source document"}
+                              style={{ color: "var(--text-soft)" }}
+                            >
+                              {(sig.sourceDoc.title || sig.source || "doc").slice(0, 40)} ↗
+                            </Link>
+                          ) : (
+                            sig.source ?? "—"
+                          )}
                         </td>
                         <td className="px-4 py-3 text-[11px]" style={{ color: "var(--text-dim)" }}>
                           {fmtDate(sig.sourceDate)}
@@ -291,6 +327,17 @@ export default async function MarketIntelligencePage() {
                           <p className="text-[13px] font-[600]" style={{ color: "var(--text)" }}>{lead.title}</p>
                           {lead.jurisdiction && (
                             <p className="text-[11px] mt-0.5" style={{ color: "var(--text-dim)" }}>{lead.jurisdiction}</p>
+                          )}
+                          {lead.sourceDoc && (
+                            <Link
+                              href={`/market-intelligence/docs/${lead.sourceDoc.id}`}
+                              className="hover:underline inline-block mt-0.5"
+                              title="Open source document"
+                              style={{ color: "var(--text-soft)", fontSize: 10, fontFamily: "var(--font-mono)" }}
+                            >
+                              ↗ from {(lead.sourceDoc.title || "doc").slice(0, 50)}
+                              {lead.sourceDoc.documentDate && ` · ${fmtDate(lead.sourceDoc.documentDate)}`}
+                            </Link>
                           )}
                         </td>
                         <td className="px-4 py-3 text-[11px]" style={{ color: "var(--text-dim)" }}>

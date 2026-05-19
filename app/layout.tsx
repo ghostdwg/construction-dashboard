@@ -36,68 +36,12 @@ export default async function RootLayout({
   // ── Sidebar data ──────────────────────────────────────────────────────────
   // eslint-disable-next-line react-hooks/purity
   const oneDayAgo = new Date(Date.now() - 86_400_000);
-  const [bidCount, activeJob, activeBid, newSignals, globalOpenActionItems] = await Promise.all([
+  const [bidCount, activeJob, newSignals, globalOpenActionItems] = await Promise.all([
     prisma.bid.count(),
     prisma.backgroundJob.count({ where: { status: { in: ["queued", "running"] } } }),
-    prisma.bid.findFirst({
-      where: { OR: [{ workflowType: "PROJECT" }, { status: "awarded" }] },
-      orderBy: { updatedAt: "desc" },
-      select: {
-        id: true,
-        projectName: true,
-        location: true,
-        workflowType: true,
-        status: true,
-        dueDate: true,
-      },
-    }),
     prisma.marketSignal.count({ where: { leadId: null, createdAt: { gte: oneDayAgo } } }),
     prisma.meetingActionItem.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }),
   ]);
-
-  // Active-project card metrics
-  const [openSubmittals, hasBrief, subCount, respondedCount, levelingUploadCount] = activeBid
-    ? await Promise.all([
-        prisma.submittalItem.count({
-          where: {
-            bidId: activeBid.id,
-            status: { in: ["PENDING", "REQUESTED", "RECEIVED", "UNDER_REVIEW"] },
-          },
-        }),
-        prisma.bidIntelligenceBrief.findFirst({
-          where: { bidId: activeBid.id },
-          select: { id: true },
-        }).then(Boolean),
-        prisma.bidInviteSelection.count({
-          where: { bidId: activeBid.id },
-        }),
-        prisma.bidInviteSelection.count({
-          where: {
-            bidId: activeBid.id,
-            rfqStatus: { in: ["received", "reviewing", "accepted"] },
-          },
-        }),
-        prisma.estimateUpload.count({
-          where: { bidId: activeBid.id },
-        }),
-      ])
-    : [0, false, 0, 0, 0];
-
-  const activeProject = activeBid
-    ? {
-        id:             activeBid.id,
-        projectName:    activeBid.projectName,
-        location:       activeBid.location,
-        workflowType:   activeBid.workflowType,
-        status:         activeBid.status,
-        dueDate:        activeBid.dueDate?.toISOString() ?? null,
-        subCount,
-        respondedCount,
-        levelingUploadCount,
-        openSubmittals,
-        hasBrief,
-      }
-    : null;
 
   return (
     <html
@@ -168,7 +112,6 @@ export default async function RootLayout({
             <div className="flex flex-1 min-h-0">
               <AppSidebar
                 counts={{ projects: bidCount, activeJobs: activeJob, newSignals, openActionItems: globalOpenActionItems }}
-                activeProject={activeProject}
               />
               <main className="flex-1 min-w-0 overflow-y-auto">
                 {children}

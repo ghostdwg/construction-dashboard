@@ -4,7 +4,9 @@
 //
 //   1. Auth gate. AUTH_DISABLED=true → all requests pass through (solo dev).
 //      Auth enabled → unauthenticated requests to protected routes redirect
-//      to /login. Public routes: /login, /api/auth/*, /api/health, _next, favicon.
+//      to /login. Public routes: /login, /api/auth/*, /api/health,
+//      /api/jobs/run-due (worker token auth handled in the route),
+//      /_next/*, favicon.
 //
 //   2. X-App-Env response header. Injected at request time so the value
 //      reflects the *runtime* APP_ENV (from the tier env_file), not whatever
@@ -40,6 +42,7 @@ export default auth((req) => {
     pathname === "/login" ||
     pathname.startsWith("/api/auth/") ||
     pathname === "/api/health" ||
+    pathname === "/api/jobs/run-due" ||      // worker token auth — see route
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico";
 

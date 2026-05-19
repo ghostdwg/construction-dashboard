@@ -203,9 +203,11 @@ async def submit_whisperx_job(
     num_speakers: int | None = None,
 ) -> str:
     """
-    Upload audio to the GPU PC WhisperX service and return the job ID.
-    Raises ValueError if WHISPERX_URL is not configured.
-    Raises httpx.HTTPError on network/service failure — caller catches and falls back.
+    Upload audio to the WhisperX worker and return the job id.
+
+    Worker contract: POST /transcribe with multipart field 'file', returns
+    {"job_id": "..."}. In scaffold mode the job is queued but not processed
+    until /queue/process-next is invoked.
     """
     if not WHISPERX_URL:
         raise ValueError("WHISPERX_URL not configured")
@@ -217,24 +219,23 @@ async def submit_whisperx_job(
     async with httpx.AsyncClient(timeout=600.0) as client:
         kwargs = {
             "headers": headers,
-            "files": {"audio": (filename, audio_bytes)},
+            "files": {"file": (filename, audio_bytes)},
         }
         if num_speakers is not None and num_speakers > 0:
+            # Scaffold worker ignores this; real-inference worker is expected to consume it.
             kwargs["data"] = {"num_speakers": str(num_speakers)}
         resp = await client.post(f"{WHISPERX_URL}/transcribe", **kwargs)
         resp.raise_for_status()
-        return resp.json()["jobId"]
+        return resp.json()["job_id"]
 
 
 async def poll_whisperx_status(job_id: str) -> dict:
     """
-    Poll the GPU PC WhisperX service for job status.
+    Poll the WhisperX worker for job status.
 
-    Returns one of:
-      { "status": "processing" }
-      { "status": "completed", "transcript", "rawTranscript",
-        "durationSeconds", "participants" }
-      { "status": "error", "error": str }
+    Worker exposes GET /job/{id} for state and GET /artifacts/{id} for
+    transcript/diarization/manifest. Translates to the contract the
+    Next.js status route expects (matches the AssemblyAI shape).
     """
     if not WHISPERX_URL:
         return {"status": "error", "error": "WHISPERX_URL not configured"}
@@ -244,25 +245,56 @@ async def poll_whisperx_status(job_id: str) -> dict:
         headers["X-API-Key"] = WHISPERX_API_KEY
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            f"{WHISPERX_URL}/status/{job_id}",
-            headers=headers,
-        )
+        resp = await client.get(f"{WHISPERX_URL}/job/{job_id}", headers=headers)
         resp.raise_for_status()
-        data = resp.json()
+        job = resp.json()
 
-    wx_status = data.get("status")
-    if wx_status == "completed":
-        return {
-            "status": "completed",
-            "transcript": data.get("transcript", ""),
-            "rawTranscript": data.get("rawTranscript", ""),
-            "durationSeconds": data.get("durationSeconds", 0),
-            "participants": data.get("participants", []),
-        }
-    if wx_status == "error":
-        return {"status": "error", "error": data.get("error", "WhisperX error")}
-    return {"status": "processing"}
+        state = job.get("state")
+        if state == "failed":
+            return {"status": "error", "error": job.get("error") or "WhisperX error"}
+        if state != "completed":
+            return {"status": "processing"}
+
+        resp = await client.get(f"{WHISPERX_URL}/artifacts/{job_id}", headers=headers)
+        resp.raise_for_status()
+        artifacts = resp.json().get("artifacts", {}) or {}
+
+    transcript_txt = artifacts.get("transcript_txt") or ""
+    transcript_json = artifacts.get("transcript_json") or {}
+    diarization_json = artifacts.get("diarization_json") or {}
+    manifest = artifacts.get("manifest") or {}
+
+    word_counts: dict[str, int] = {}
+    for seg in transcript_json.get("segments") or []:
+        spk = seg.get("speaker")
+        if not spk:
+            continue
+        word_counts[spk] = word_counts.get(spk, 0) + len((seg.get("text") or "").split())
+    for spk in diarization_json.get("speakers") or []:
+        word_counts.setdefault(spk, 0)
+
+    def _display_name(raw: str) -> str:
+        # pyannote/scaffold labels are "SPEAKER_00"; AAI labels are bare letters.
+        if raw.upper().startswith("SPEAKER_"):
+            suffix = raw.split("_", 1)[1]
+            try:
+                return f"Speaker {int(suffix) + 1}"
+            except ValueError:
+                return f"Speaker {suffix}"
+        return f"Speaker {raw}"
+
+    participants = [
+        {"speakerLabel": spk, "name": _display_name(spk), "wordCount": wc}
+        for spk, wc in word_counts.items()
+    ]
+
+    return {
+        "status": "completed",
+        "transcript": transcript_txt,
+        "rawTranscript": json.dumps(transcript_json),
+        "durationSeconds": int(manifest.get("duration_seconds") or 0),
+        "participants": participants,
+    }
 
 
 # ── Prompt builder ────────────────────────────────────────────────────────────

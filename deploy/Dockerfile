@@ -12,13 +12,20 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 --ingroup nodejs nextjs && \
+    mkdir -p /app/uploads && \
+    chown -R nextjs:nodejs /app
+
 # Requires output: "standalone" in next.config.ts
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 ENV NODE_ENV=production
 ENV PORT=3000
+
+USER nextjs
 
 EXPOSE 3000
 
