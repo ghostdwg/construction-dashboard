@@ -1626,6 +1626,9 @@ model Entity {
   outgoingRelationships EntityRelationship[] @relation("EntityRelationshipFrom")
   incomingRelationships EntityRelationship[] @relation("EntityRelationshipTo")
 
+  // Phase MI-10 workspace back-relation.
+  watchlistItems WatchlistItem[]
+
   @@index([entityType])
   @@index([reviewStatus])
 }
@@ -1774,6 +1777,9 @@ model Project {
   expectedTimelines ExpectedTimeline[]
 
   outcomes Outcome[]
+
+  watchlistItems WatchlistItem[]
+  alertEvents    AlertEvent[]
 
   mergedInto       Project?  @relation("ProjectMergeTarget", fields: [mergedIntoProjectId], references: [id], onDelete: SetNull)
   absorbedProjects Project[] @relation("ProjectMergeTarget")
@@ -2086,6 +2092,10 @@ model Parcel {
 
   // Phase MI-9 outcome back-relation.
   outcomes Outcome[]
+
+  // Phase MI-10 workspace back-relations.
+  watchlistItems WatchlistItem[]
+  alertEvents    AlertEvent[]
 
   mergedInto      Parcel?  @relation("ParcelMergeTarget", fields: [mergedIntoParcelId], references: [id], onDelete: SetNull)
   absorbedParcels Parcel[] @relation("ParcelMergeTarget")
@@ -2489,6 +2499,7 @@ model ForecastSnapshot {
   parcel             Parcel?               @relation(fields: [parcelId], references: [id], onDelete: SetNull)
   explanations       ForecastExplanation[]
   outcomeResolutions OutcomeResolution[]
+  alertEvents        AlertEvent[]
 
   @@index([subjectKind, subjectId, computedAt])
   @@index([projectId, computedAt])
@@ -3273,6 +3284,414 @@ model ResolutionState {
   updatedAt DateTime @updatedAt
 
   @@index([state])
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Market Intelligence: Operator Workspace + Strategic Action Layer (MI-10)
+//
+//  Operator leverage layer — transforms regional intelligence into an
+//  operator-facing command center. Watchlists, alerts, briefings, targeting
+//  patterns, and user workspace preferences. Strictly explainable, never
+//  autonomous: no auto-outreach, no auto-CRM, no auto-promote.
+//
+//  Schema-only in MI-10 PR-1. Service + UI ship in the same PR. Live alert
+//  evaluation hooks (PR-2 work) are deferred — the engine writes alerts when
+//  triggered by service calls; no scheduler shipped here.
+//
+//  All ten models are additive. No existing table is altered. Strong FKs
+//  to existing intelligence tables (Project, Parcel, Entity, ForecastSnapshot)
+//  use SetNull on delete so workspace artifacts survive upstream cleanup.
+//
+//  Subject loose-pointer pattern from MI-8 + MI-9 reused: WatchlistItem
+//  and AlertEvent target subjects via (subjectKind, subjectId).
+//
+//  Pseudo-enum field values (validated in app code):
+//    Watchlist.subjectKind:            DEVELOPER | PARCEL | CORRIDOR |
+//                                      JURISDICTION | BROKER | FRANCHISE |
+//                                      UTILITY | PROJECT_TYPE | MIXED
+//    Watchlist.visibility:             PRIVATE | TEAM | ORG
+//    WatchlistItem.attachReason:       MANUAL | RULE_DERIVED | IMPORTED |
+//                                      MIGRATED
+//    AlertRule.triggerKind:            PROBABILITY_SPIKE | TRAJECTORY_SHIFT |
+//                                      CORRIDOR_IGNITION | TIMELINE_PULL_IN |
+//                                      HIGH_CONFIDENCE_EMERGENCE |
+//                                      RECURRING_ENTITY | UTILITY_ACCELERATION |
+//                                      SHELL_PATTERN_DETECTED | WATCHLIST_HIT |
+//                                      CUSTOM
+//    AlertRule.severityFloor:          INFO | WATCH | ATTENTION | URGENT
+//    AlertEvent.severity:              INFO | WATCH | ATTENTION | URGENT
+//    AlertEvent.reviewStatus:          UNREAD | ACKNOWLEDGED | DISMISSED |
+//                                      ESCALATED | SUPPRESSED
+//    AlertEvent.subjectKind:           PROJECT | PARCEL | CORRIDOR |
+//                                      JURISDICTION | DEVELOPER | ENTITY
+//    AlertSubscription.deliveryChannel: IN_APP | EMAIL | WEBHOOK
+//    BriefingDocument.briefingKind:    CORRIDOR_SUMMARY | WEEKLY_EMERGENCE |
+//                                      JURISDICTION_HEAT | DEVELOPER_MOVEMENT |
+//                                      FORECAST_CHANGE | CUSTOM
+//    BriefingDocument.status:          DRAFT | GENERATED | OPERATOR_REVIEWED |
+//                                      PUBLISHED | ARCHIVED
+//    BriefingSection.sectionKind:      HEADLINE | KEY_FINDINGS |
+//                                      CORRIDOR_BLOCK | DEVELOPER_BLOCK |
+//                                      JURISDICTION_BLOCK | FORECAST_BLOCK |
+//                                      EVIDENCE_BLOCK | NOTE_BLOCK
+//    TargetingPattern.patternKind:     DEVELOPER_ENTERS_CORRIDOR |
+//                                      BROKER_PRECEDES_INDUSTRIAL |
+//                                      RECURRING_GC_DEVELOPER |
+//                                      ENTITY_CLUSTER_PRE_PROJECT |
+//                                      FRANCHISE_ROLLOUT | UTILITY_CHAIN |
+//                                      ZONING_CADENCE | CUSTOM
+//    AlertExplanation.factorKind:      EVIDENCE | FORECAST_DELTA |
+//                                      CALIBRATION_CONTEXT |
+//                                      UNCERTAINTY | RECOMMENDATION |
+//                                      OTHER
+//    WorkspacePreference.layoutKind:   DASHBOARD | LIST | KANBAN
+//
+//  Cascades:
+//    WatchlistItem CASCADE from Watchlist
+//    BriefingSection CASCADE from BriefingDocument
+//    AlertExplanation CASCADE from AlertEvent
+//    AlertSubscription CASCADE from AlertRule
+//    All strong FKs to Project/Parcel/Entity/ForecastSnapshot are SetNull
+// ──────────────────────────────────────────────────────────────────────────────
+
+model Watchlist {
+  id String @id @default(cuid())
+
+  ownerUserId String?
+  ownerEmail  String?
+  name        String
+  description String?
+
+  subjectKind String @default("MIXED")
+  visibility  String @default("PRIVATE")
+
+  // Optional auto-population rule (JSON). When present, the watchlist
+  // is rule-driven — a background runner can repopulate from rule criteria.
+  // Operator-curated lists leave this NULL.
+  ruleJson String?
+
+  // Loose tagging for UI grouping.
+  tagsCsv String?
+
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items WatchlistItem[]
+
+  @@index([ownerUserId])
+  @@index([subjectKind])
+  @@index([visibility])
+  @@index([archivedAt])
+}
+
+model WatchlistItem {
+  id          String @id @default(cuid())
+  watchlistId String
+
+  // Subject loose-pointer plus optional strong FKs.
+  subjectKind String
+  subjectId   String
+  projectId   String?
+  parcelId    String?
+  entityId    String?
+
+  // Operator-facing display fields cached for fast UI render.
+  displayLabel   String?
+  displayContext String? // e.g. "West Des Moines / industrial corridor"
+
+  attachReason String  @default("MANUAL")
+  notes        String?
+
+  // Operator-tagged priority (1 = top).
+  priority Int @default(3)
+
+  addedAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Soft-detach via timestamp preserves history.
+  detachedAt     DateTime?
+  detachedReason String?
+  detachedBy     String?
+
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parcel    Parcel?   @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+  entity    Entity?   @relation(fields: [entityId], references: [id], onDelete: SetNull)
+
+  @@unique([watchlistId, subjectKind, subjectId])
+  @@index([watchlistId])
+  @@index([subjectKind, subjectId])
+  @@index([projectId])
+  @@index([parcelId])
+  @@index([entityId])
+  @@index([detachedAt])
+  @@index([priority])
+}
+
+// Operator-defined alert rule. Evaluates against the intelligence stream
+// (forecast snapshots, parcel pressure, corridor heat, etc.). Rules are
+// authored, not auto-discovered.
+model AlertRule {
+  id String @id @default(cuid())
+
+  ownerUserId String?
+  ownerEmail  String?
+
+  name        String
+  description String?
+
+  triggerKind   String // PROBABILITY_SPIKE | TRAJECTORY_SHIFT | ...
+  severityFloor String @default("WATCH")
+
+  // Rule criteria (JSON). Schema varies per triggerKind; documented in
+  // lib/services/operatorWorkspace/types.ts.
+  //
+  // Examples:
+  //   { "minScore": 0.7, "windowDays": 7, "subjectKind": "PROJECT" }
+  //   { "watchlistId": "wl_abc123", "fireOn": "any_change" }
+  criteriaJson String
+
+  // Optional scope filters (CSV) for narrowing where the rule applies.
+  jurisdictionCsv String?
+  subjectKindCsv  String?
+
+  // When the rule was last evaluated; null = never run.
+  lastEvaluatedAt DateTime?
+  // Suppression — operator may pause without deleting.
+  active          Boolean   @default(true)
+  // Cooldown between consecutive fires for the same (rule, subjectId).
+  // Prevents alert storms. Default 24h; 0 = no cooldown.
+  cooldownMinutes Int       @default(1440)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events        AlertEvent[]
+  subscriptions AlertSubscription[]
+
+  @@index([ownerUserId])
+  @@index([triggerKind])
+  @@index([active])
+  @@index([lastEvaluatedAt])
+}
+
+// One fire of an alert. Append-only — re-fires create new rows. Cooldown
+// rules suppress within the configured window.
+model AlertEvent {
+  id String @id @default(cuid())
+
+  ruleId      String? // null when the alert was triggered ad-hoc
+  // Subject targeting (loose + optional strong FKs).
+  subjectKind String
+  subjectId   String
+  projectId   String?
+  parcelId    String?
+
+  // Forecast snapshot context (when applicable).
+  forecastSnapshotId String?
+
+  severity String  @default("WATCH")
+  headline String // operator-facing one-line summary
+  detail   String? // multi-paragraph explanation
+
+  // Captured state at fire time for replayability.
+  capturedScore      Float?
+  capturedTrajectory String?
+  capturedAt         DateTime @default(now())
+
+  reviewStatus     String    @default("UNREAD")
+  reviewedByUserId String?
+  reviewedByEmail  String?
+  reviewedAt       DateTime?
+
+  payloadJson String? // arbitrary metadata for the alert
+
+  rule             AlertRule?         @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  project          Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parcel           Parcel?            @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+  forecastSnapshot ForecastSnapshot?  @relation(fields: [forecastSnapshotId], references: [id], onDelete: SetNull)
+  explanations     AlertExplanation[]
+
+  @@index([ruleId, capturedAt])
+  @@index([subjectKind, subjectId, capturedAt])
+  @@index([projectId, capturedAt])
+  @@index([parcelId, capturedAt])
+  @@index([reviewStatus])
+  @@index([severity])
+  @@index([capturedAt])
+}
+
+// Per-alert subscription. Operator decides where alerts from a rule should
+// be delivered. IN_APP is the default; EMAIL / WEBHOOK delivery requires
+// PR-2 follow-up (this PR ships only IN_APP).
+model AlertSubscription {
+  id               String  @id @default(cuid())
+  ruleId           String
+  subscriberUserId String?
+  subscriberEmail  String?
+  deliveryChannel  String  @default("IN_APP")
+  // Per-channel config (e.g. webhook URL, email tokenization options).
+  configJson       String?
+  active           Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rule AlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, subscriberEmail, deliveryChannel])
+  @@index([ruleId])
+  @@index([subscriberUserId])
+  @@index([deliveryChannel])
+  @@index([active])
+}
+
+// Structured explanation rows for a fired alert. One row per factor /
+// piece of evidence so the UI can render a sortable why-table without
+// parsing payloadJson.
+model AlertExplanation {
+  id      String @id @default(cuid())
+  alertId String
+
+  factorKind  String // EVIDENCE | FORECAST_DELTA | CALIBRATION_CONTEXT | ...
+  factorName  String
+  factorScore Float?
+  rationale   String
+
+  // Optional pointer to source row driving this factor.
+  sourceRefKind String?
+  sourceRefId   String?
+
+  createdAt DateTime @default(now())
+
+  alert AlertEvent @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@index([alertId])
+  @@index([factorKind])
+}
+
+// Operator briefing document. Generated periodically (weekly / on-demand)
+// summarizing emergence patterns for human consumption. NOT shared
+// externally — internal command-center artifact.
+model BriefingDocument {
+  id String @id @default(cuid())
+
+  briefingKind String
+  title        String
+  // Time window the briefing covers.
+  windowStart  DateTime
+  windowEnd    DateTime
+
+  // Optional scope filters.
+  jurisdictionKey String?
+  corridorKey     String?
+  watchlistId     String?
+
+  status      String  @default("DRAFT")
+  // Free-text TL;DR rendered at the top.
+  summary     String?
+  // Structured payload — full evidence bundle.
+  payloadJson String?
+
+  authoredByUserId String?
+  authoredByEmail  String?
+
+  generatedAt DateTime  @default(now())
+  publishedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  sections BriefingSection[]
+
+  @@index([briefingKind])
+  @@index([status])
+  @@index([windowStart])
+  @@index([jurisdictionKey])
+  @@index([corridorKey])
+  @@index([watchlistId])
+}
+
+// Per-section briefing content. Ordered display via `position`. Cascade
+// from BriefingDocument so an archived briefing loses its sections.
+model BriefingSection {
+  id         String @id @default(cuid())
+  briefingId String
+
+  position    Int     @default(0)
+  sectionKind String
+  title       String?
+  body        String // markdown-ish operator-facing text
+
+  // Optional structured payload for the section (factor lists, evidence rows).
+  payloadJson String?
+
+  createdAt DateTime @default(now())
+
+  briefing BriefingDocument @relation(fields: [briefingId], references: [id], onDelete: Cascade)
+
+  @@index([briefingId, position])
+  @@index([sectionKind])
+}
+
+// Operator-curated targeting pattern. Either rule-defined (criteria JSON)
+// or operator-tagged (a known pattern the operator wants to surface
+// recurrence of). The engine evaluates these and writes AlertEvents when
+// matches occur.
+model TargetingPattern {
+  id String @id @default(cuid())
+
+  ownerUserId String?
+  ownerEmail  String?
+
+  name        String
+  description String?
+  patternKind String
+
+  // Pattern criteria — schema varies per patternKind.
+  criteriaJson String
+
+  // Optional priority for surfacing.
+  priority Int @default(3)
+
+  // Activity tracking.
+  lastEvaluatedAt DateTime?
+  lastMatchedAt   DateTime?
+  matchCount      Int       @default(0)
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([patternKind])
+  @@index([active])
+  @@index([priority])
+  @@index([lastMatchedAt])
+}
+
+// Per-user workspace preferences. Layout choice, pinned watchlists, default
+// filters. One row per user (the relation enforces it via unique).
+model WorkspacePreference {
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  userEmail String?
+
+  layoutKind          String  @default("DASHBOARD")
+  // CSV of watchlist ids pinned to the top of the workspace.
+  pinnedWatchlistsCsv String?
+  // CSV of corridor keys pinned.
+  pinnedCorridorsCsv  String?
+  // Default jurisdiction filter.
+  defaultJurisdiction String?
+
+  // Free-form display-only JSON for any future preference additions.
+  preferencesJson String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userEmail])
 }
 
 // ── Integration Credentials Vault ───────────────────────────────────────────
