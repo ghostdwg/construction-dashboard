@@ -1767,6 +1767,12 @@ model Project {
   parcelEntities       ParcelProject[]
   probabilitySnapshots ProjectProbabilitySnapshot[]
 
+  forecastSnapshots ForecastSnapshot[]
+  emergenceScores   EmergenceScore[]
+  trajectories      EmergenceTrajectory[]
+  probabilityTrends ProbabilityTrend[]
+  expectedTimelines ExpectedTimeline[]
+
   mergedInto       Project?  @relation("ProjectMergeTarget", fields: [mergedIntoProjectId], references: [id], onDelete: SetNull)
   absorbedProjects Project[] @relation("ProjectMergeTarget")
 
@@ -2069,6 +2075,13 @@ model Parcel {
   zoningContexts      ParcelZoningContext[]
   pressureSnapshots   ParcelPressureSnapshot[]
 
+  // Phase MI-8 forecasting back-relations.
+  forecastSnapshots ForecastSnapshot[]
+  emergenceScores   EmergenceScore[]
+  trajectories      EmergenceTrajectory[]
+  probabilityTrends ProbabilityTrend[]
+  expectedTimelines ExpectedTimeline[]
+
   mergedInto      Parcel?  @relation("ParcelMergeTarget", fields: [mergedIntoParcelId], references: [id], onDelete: SetNull)
   absorbedParcels Parcel[] @relation("ParcelMergeTarget")
 
@@ -2369,6 +2382,354 @@ model ParcelPressureSnapshot {
 
   @@index([parcelId, computedAt])
   @@index([pressureScore])
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Market Intelligence: Emergence Probability Engine + Forecasting (MI-8)
+//
+//  Trajectory intelligence — the layer that answers "what is likely to happen
+//  next?" instead of just "what has happened?". Builds on top of MI-6's
+//  ProjectProbabilitySnapshot history and MI-7's ParcelPressureSnapshot
+//  history. Deterministic-first: no black-box ML, no embeddings, no opaque
+//  forecasting. Every forecast is replayable from its inputs and explainable
+//  via per-factor reason logs.
+//
+//  Schema-only in MI-8 PR-1. Service layer in lib/services/emergenceProbability
+//  ships in the same PR but does not mutate ingestion paths or production data.
+//  Live wiring + backfill follow in subsequent PRs.
+//
+//  All ten models are additive. No existing table is altered.
+//
+//  Subject loose-pointer pattern:
+//    Every forecast targets a subject identified by (subjectKind, subjectId).
+//    subjectKind: PROJECT | PARCEL | CORRIDOR | JURISDICTION | DEVELOPER
+//    subjectId  : the row's id in the corresponding canonical table OR
+//                 (for CORRIDOR/JURISDICTION/DEVELOPER) a deterministic string
+//                 key (e.g. "jurisdiction:West Des Moines" or
+//                 "developer:<entityId>").
+//    This keeps the engine pluggable across subject kinds without forcing
+//    nine FKs on every forecast row. Where strong FKs are valuable, we still
+//    declare them — e.g., ForecastSnapshot.projectId → Project (nullable).
+//
+//  Pseudo-enum field values (validated in app code):
+//    ForecastSnapshot.subjectKind:   PROJECT | PARCEL | CORRIDOR |
+//                                    JURISDICTION | DEVELOPER
+//    EmergenceTrajectory.state:      EMERGING | IGNITING | ACCELERATING |
+//                                    STEADY | DECELERATING | STALLED |
+//                                    DECAYING | DORMANT
+//    ProbabilityTrend.direction:     UP | DOWN | FLAT
+//    ExpectedTimeline.milestoneKind: ENTITLEMENT_START | ENTITLEMENT_DECISION |
+//                                    PERMIT_ISSUED | SITE_PREP_START |
+//                                    CONSTRUCTION_START | COMPLETION
+//    JurisdictionVelocity.cadenceClass: HOT | WARM | STEADY | COOLING | COLD
+//    CorridorHeat.classification:    IGNITING | HOT | WARM | STEADY | COOLING
+//    DevelopmentMomentum.classification:
+//                                    ACCELERATING | SUSTAINED | FADING | DORMANT
+//    SignalDecayProfile.curveShape:  EXPONENTIAL | LINEAR | STEP | SUSTAINED
+//    ForecastSnapshot.reviewStatus:  AUTO | PENDING_REVIEW | VERIFIED |
+//                                    OVERRIDDEN | SUPPRESSED
+//    ForecastExplanation.factorKind: SIGNAL_CONTRIBUTION | ENTITY_INFLUENCE |
+//                                    PARCEL_INFLUENCE | JURISDICTION_PATTERN |
+//                                    TEMPORAL_DECAY | TRAJECTORY_SHIFT |
+//                                    CORRIDOR_HEAT | OTHER
+//
+//  Cascades:
+//    Per-subject "current state" rows (EmergenceScore, EmergenceTrajectory,
+//    ExpectedTimeline) use SetNull on Project / Parcel delete — projections
+//    survive cleanup. ForecastSnapshot.projectId / parcelId likewise SetNull
+//    so historical lineage is preserved.
+//    ForecastExplanation rows CASCADE from ForecastSnapshot (an explanation
+//    is meaningless without its parent forecast).
+//
+//  ForecastSnapshot is the central append-only record. Everything else is
+//  either configuration (SignalDecayProfile), current-state projection
+//  (EmergenceScore, EmergenceTrajectory, ExpectedTimeline,
+//  JurisdictionVelocity, CorridorHeat, DevelopmentMomentum), or structured
+//  explanation (ForecastExplanation, ProbabilityTrend).
+// ──────────────────────────────────────────────────────────────────────────────
+
+model ForecastSnapshot {
+  id String @id @default(cuid())
+
+  subjectKind String
+  subjectId   String
+  projectId   String?
+  parcelId    String?
+
+  emergenceScore       Float
+  accelerationIndex    Float
+  momentumScore        Float
+  decayScore           Float
+  corridorHeatScore    Float?
+  jurisdictionVelocity Float?
+
+  trajectoryState String
+  confidence      String @default("MEDIUM")
+
+  forecastVersion String @default("v1")
+
+  reviewStatus       String  @default("AUTO")
+  overriddenByUserId String?
+  overriddenByEmail  String?
+  overrideReason     String?
+
+  triggerReason String @default("scheduled")
+
+  computedAt DateTime @default(now())
+  recordedAt DateTime @default(now())
+
+  payloadJson String
+
+  project      Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parcel       Parcel?               @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+  explanations ForecastExplanation[]
+
+  @@index([subjectKind, subjectId, computedAt])
+  @@index([projectId, computedAt])
+  @@index([parcelId, computedAt])
+  @@index([emergenceScore])
+  @@index([trajectoryState])
+  @@index([reviewStatus])
+  @@index([forecastVersion])
+}
+
+model EmergenceScore {
+  id String @id @default(cuid())
+
+  subjectKind String
+  subjectId   String
+  projectId   String?
+  parcelId    String?
+
+  score      Float
+  confidence String @default("MEDIUM")
+
+  latestSnapshotId String?
+  latestComputedAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parcel  Parcel?  @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+
+  @@unique([subjectKind, subjectId])
+  @@index([projectId])
+  @@index([parcelId])
+  @@index([score])
+  @@index([latestComputedAt])
+}
+
+model EmergenceTrajectory {
+  id String @id @default(cuid())
+
+  subjectKind String
+  subjectId   String
+  projectId   String?
+  parcelId    String?
+
+  state          String   @default("EMERGING")
+  previousState  String?
+  streakLength   Int      @default(1)
+  stateEnteredAt DateTime @default(now())
+
+  shortTermDelta Float @default(0)
+  longTermDelta  Float @default(0)
+  acceleration   Float @default(0)
+
+  shiftDetected Boolean @default(false)
+  shiftReason   String?
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parcel  Parcel?  @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+
+  @@unique([subjectKind, subjectId])
+  @@index([state])
+  @@index([projectId])
+  @@index([parcelId])
+  @@index([shiftDetected])
+}
+
+model ProbabilityTrend {
+  id String @id @default(cuid())
+
+  subjectKind String
+  subjectId   String
+  projectId   String?
+  parcelId    String?
+
+  previousScore Float
+  currentScore  Float
+  delta         Float
+  direction     String
+  windowDays    Int
+
+  snapshotId String?
+
+  recordedAt DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parcel  Parcel?  @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+
+  @@index([subjectKind, subjectId, recordedAt])
+  @@index([projectId, recordedAt])
+  @@index([parcelId, recordedAt])
+  @@index([direction])
+  @@index([windowDays])
+}
+
+model ExpectedTimeline {
+  id String @id @default(cuid())
+
+  subjectKind String
+  subjectId   String
+  projectId   String?
+  parcelId    String?
+
+  milestoneKind String
+
+  earliestEstimate DateTime?
+  expectedEstimate DateTime?
+  latestEstimate   DateTime?
+
+  confidence String  @default("MEDIUM")
+  rationale  String?
+
+  latestSnapshotId String?
+  latestComputedAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parcel  Parcel?  @relation(fields: [parcelId], references: [id], onDelete: SetNull)
+
+  @@unique([subjectKind, subjectId, milestoneKind])
+  @@index([projectId])
+  @@index([parcelId])
+  @@index([milestoneKind])
+  @@index([expectedEstimate])
+}
+
+model JurisdictionVelocity {
+  id                String @id @default(cuid())
+  jurisdictionKey   String @unique
+  jurisdictionLabel String
+
+  newProjectsLast30d  Int @default(0)
+  newProjectsLast90d  Int @default(0)
+  newProjectsLast365d Int @default(0)
+
+  newSignalsLast30d Int @default(0)
+  newSignalsLast90d Int @default(0)
+
+  velocityScore Float  @default(0)
+  cadenceClass  String @default("STEADY")
+
+  acceleration Float @default(0)
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@index([cadenceClass])
+  @@index([velocityScore])
+  @@index([acceleration])
+}
+
+model CorridorHeat {
+  id            String @id @default(cuid())
+  corridorKey   String @unique
+  corridorLabel String
+
+  memberParcelIds    String
+  memberSetTruncated Boolean @default(false)
+
+  heatScore     Float
+  meanPressure  Float @default(0)
+  acceleration  Float @default(0)
+  activeMembers Int   @default(0)
+
+  classification String @default("STEADY")
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@index([classification])
+  @@index([heatScore])
+  @@index([acceleration])
+}
+
+model DevelopmentMomentum {
+  id                 String  @id @default(cuid())
+  developerEntityId  String  @unique
+  developerNameCache String?
+
+  newProjectsLast30d  Int @default(0)
+  newProjectsLast90d  Int @default(0)
+  newProjectsLast365d Int @default(0)
+  newParcelsLast90d   Int @default(0)
+
+  momentumScore  Float  @default(0)
+  acceleration   Float  @default(0)
+  classification String @default("DORMANT")
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@index([classification])
+  @@index([momentumScore])
+  @@index([acceleration])
+}
+
+model SignalDecayProfile {
+  id         String @id @default(cuid())
+  signalType String @unique
+  curveShape String @default("EXPONENTIAL")
+
+  halfLifeDays Int   @default(60)
+  floorWeight  Float @default(0)
+
+  baseWeight Float @default(1)
+
+  notes  String?
+  source String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([signalType])
+  @@index([curveShape])
+}
+
+model ForecastExplanation {
+  id         String @id @default(cuid())
+  snapshotId String
+
+  factorKind   String
+  factorName   String
+  factorScore  Float
+  factorWeight Float
+  contribution Float
+
+  sourceRefKind String?
+  sourceRefId   String?
+
+  rationale String
+
+  recordedAt DateTime @default(now())
+
+  snapshot ForecastSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId])
+  @@index([factorKind])
+  @@index([factorName])
+  @@index([contribution])
 }
 
 // ── Integration Credentials Vault ───────────────────────────────────────────
