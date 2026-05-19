@@ -159,6 +159,17 @@ export default async function MarketIntelligencePage() {
           </p>
         </div>
         <div className="flex items-center gap-2 relative">
+          <Link
+            href="/market-intelligence/entities"
+            className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.07em] rounded-md hover:opacity-100 opacity-90"
+            style={{
+              border: "1px solid var(--line)",
+              color: "var(--text-soft)",
+              background: "rgba(255,255,255,0.02)",
+            }}
+          >
+            Entities →
+          </Link>
           <ScanPanel />
           <NewLeadButton />
         </div>
