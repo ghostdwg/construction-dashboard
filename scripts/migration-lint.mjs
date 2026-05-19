@@ -79,6 +79,8 @@ const COGNITION_TABLES = new Set([
   "EntityWatchlistSeed",
   // Observability AuditEvent (O1.2)
   "AuditEvent",
+  // Operational RunnerLease (O1.4)
+  "RunnerLease",
 ]);
 
 // ── Destructive patterns ─────────────────────────────────────────────────────

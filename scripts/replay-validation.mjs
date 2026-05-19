@@ -63,6 +63,7 @@ const REQUIRED_TABLES = [
   "AlertEvent",           // MI-10
   "BriefingDocument",     // MI-10
   "AuditEvent",           // O1.2
+  "RunnerLease",          // O1.4
 ];
 
 function log(...args) {

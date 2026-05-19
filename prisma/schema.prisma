@@ -3797,3 +3797,65 @@ model AuditEvent {
   @@index([severity])
   @@index([emittedAt])
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Operational: RunnerLease (Phase O1.4)
+//
+//  Coordination primitive for recurring MI cycle execution (forecast,
+//  calibration, briefing, alert-eval, outcome-detect, backfill). Provides:
+//
+//    1. At-most-once execution per window — multiple workers can't both
+//       fire the daily forecast cycle.
+//    2. Heartbeat — a long-running cycle extends its lease periodically;
+//       absence of heartbeats > lease window flags a stale/hung run.
+//    3. Cycle history — last successful + last attempted run per cycleKey
+//       with status + duration + error.
+//
+//  Distinct from BackgroundJob (which is per-bid + per-jobType). RunnerLease
+//  is platform-wide: one row per cycleKey × windowStart.
+//
+//  windowKey shape: `<cycleName>_<windowGranularity>_<windowStartIso>`
+//    e.g. "forecast-daily_2026-05-19"
+//         "calibration-weekly_2026-W20"
+//         "briefing-corridor-daily_2026-05-19"
+//
+//  Append-only history-wise: re-running the same cycleKey + window updates
+//  the existing row (status transitions, heartbeats); never deleted. The
+//  AuditEvent table (O1.2) carries the long-lived runner_cycle history;
+//  this table is hot-path coordination only.
+// ──────────────────────────────────────────────────────────────────────────────
+
+model RunnerLease {
+  id String @id @default(cuid())
+
+  // Cycle identity. cycleName is the stable runner name (e.g. forecast-daily).
+  // windowKey is the unique (cycleName + window-bounded-time) string that
+  // makes a particular cycle invocation idempotent.
+  cycleName String
+  windowKey String @unique
+
+  // Lease semantics.
+  status          String   @default("claimed") // claimed | running | succeeded | failed | stale
+  leaseToken      String // random per-claim; only this holder can release
+  leasedBy        String // runner instance identifier (hostname/pid/uuid)
+  leasedAt        DateTime @default(now())
+  leaseExpiresAt  DateTime // claim window; holder must heartbeat before this
+  lastHeartbeatAt DateTime @default(now())
+
+  // Outcome.
+  finishedAt   DateTime?
+  durationMs   Int?
+  errorMessage String?
+
+  // Optional correlation pointers (matches AuditEvent envelope from O1.2).
+  runnerId String? // matches AuditEvent.runnerId for cross-tier tracing
+  replayId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cycleName, leasedAt])
+  @@index([status])
+  @@index([leaseExpiresAt])
+  @@index([runnerId])
+}
