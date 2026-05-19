@@ -1559,9 +1559,166 @@ model RelationshipEdge {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // ── Phase MI-1 additive entity-link columns ──────────────────────────────
+  // Populated by the future resolver (MI-2) and backfill (MI-3). NULL on
+  // existing rows; reads must continue to work via the free-text fromName /
+  // toName columns above (dual-read pattern).
+  fromEntityId       String?
+  toEntityId         String?
+  resolverVersion    String?
+  resolverConfidence String?
+
   @@index([fromName])
   @@index([toName])
   @@index([relationshipType])
+  @@index([fromEntityId])
+  @@index([toEntityId])
+}
+
+// ── Market Intelligence: Entity normalization layer (Phase MI-1) ────────────
+//
+// Foundation for relationship intelligence. Makes market entities first-class
+// objects so signals, leads, and relationships can be resolved against a
+// canonical set of organizations instead of free-text names.
+//
+// Schema-only in MI-1. Resolver (MI-2), backfill (MI-3), entity profile UI
+// (MI-4), and dual-write ingestion (MI-5) follow in subsequent PRs.
+//
+// All four models are additive. No existing table is destructively altered.
+// RelationshipEdge above gains four nullable columns; existing rows continue
+// to function unchanged.
+//
+// Pseudo-enum field values (validated in app code, not in Prisma):
+//   Entity.entityType:      Developer | Owner | Broker | GC | Architect |
+//                           Engineer | Municipality | Tenant | Lender |
+//                           Agency | Unknown
+//   relationshipType:       OWNS | DEVELOPED | BUILT | DESIGNED | ENGINEERED
+//                           | PARTNERED | TENANT_OF | LENT_TO |
+//                           PERMIT_AUTHORITY_FOR | COMPETED_FOR | OTHER
+//   reviewStatus:           AUTO | PENDING_REVIEW | VERIFIED | REJECTED
+//   confidence:             LOW | MEDIUM | HIGH | VERIFIED
+//
+// Acceptance criteria for the MI-1→MI-5 stack live in
+// docs/sources/ENTITIES_WATCHLIST.md §"Validation tests".
+// ────────────────────────────────────────────────────────────────────────────
+
+model Entity {
+  id             String   @id @default(cuid())
+
+  // Canonical naming. normalizedName is the dedup key: lowercased,
+  // suffix-stripped ("LLC", "Inc", "Corp", "Company", "The"), whitespace
+  // and punctuation removed. See lib/services/entityResolver/normalize.ts
+  // (added in MI-2 PR) for the exact algorithm.
+  canonicalName  String   // "Hubbell Realty Company"
+  normalizedName String   @unique // "hubbellrealty"
+  entityType     String
+
+  // Workflow + provenance
+  reviewStatus   String   @default("AUTO")
+  confidence     String   @default("MEDIUM")
+  source         String?  // "watchlist_seed" | "resolver" | "manual" | "backfill"
+  notes          String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  aliases             EntityAlias[]
+  outgoingRelationships EntityRelationship[] @relation("EntityRelationshipFrom")
+  incomingRelationships EntityRelationship[] @relation("EntityRelationshipTo")
+
+  @@index([entityType])
+  @@index([reviewStatus])
+}
+
+model EntityAlias {
+  id              String   @id @default(cuid())
+  entityId        String
+  alias           String   // "Hubbell"
+  normalizedAlias String   // "hubbell" — same normalizer as Entity.normalizedName
+  confidence      String   @default("MEDIUM")
+  source          String?  // "watchlist" | "backfill" | "manual"
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  entity          Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([entityId, normalizedAlias])
+  @@index([normalizedAlias])
+  @@index([entityId])
+}
+
+model EntityRelationship {
+  id               String   @id @default(cuid())
+  fromEntityId     String
+  toEntityId       String
+  relationshipType String
+
+  // Project / lead / signal context (denormalized — no Project aggregate yet).
+  // Populated where the relationship was observed in a project-scoped context.
+  projectName      String?
+  projectValue     Float?
+  projectYear      Int?
+  projectAddress   String?
+  jurisdiction     String?
+  sourceDocId      String?  // loose pointer to MarketSourceDoc.id when applicable
+  leadId           String?  // loose pointer to MarketLead.id when applicable
+  signalId         String?  // loose pointer to MarketSignal.id when applicable
+  legacyEdgeId     String?  // points back to RelationshipEdge.id for backfilled rows
+
+  // Provenance + confidence + workflow
+  source           String?  // "permit" | "meeting_minute" | "press" | "manual" | "backfill"
+  sourceUrl        String?
+  confidence       String   @default("MEDIUM")
+  reviewStatus     String   @default("AUTO")
+  notes            String?
+
+  // Observation lifecycle — distinct from row-level created/updated. A
+  // relationship may be observed multiple times before being collapsed.
+  firstObservedAt  DateTime @default(now())
+  lastObservedAt   DateTime @default(now())
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  fromEntity       Entity   @relation("EntityRelationshipFrom", fields: [fromEntityId], references: [id], onDelete: Cascade)
+  toEntity         Entity   @relation("EntityRelationshipTo",   fields: [toEntityId],   references: [id], onDelete: Cascade)
+
+  @@index([fromEntityId])
+  @@index([toEntityId])
+  @@index([relationshipType])
+  @@index([projectYear])
+  @@index([sourceDocId])
+  @@index([leadId])
+  @@index([signalId])
+  @@index([legacyEdgeId])
+}
+
+model EntityWatchlistSeed {
+  id              String   @id @default(cuid())
+
+  // Raw + normalized form of the canonical name as it appears in the
+  // immutable seed source (docs/sources/ENTITIES_WATCHLIST.md). MI-3 backfill
+  // reads these rows to materialize Entity rows + EntityAlias rows.
+  rawName         String   // "Hubbell Realty Company"
+  normalizedName  String   // "hubbellrealty"
+
+  entityType      String   // matches Entity.entityType pseudo-enum
+  category        String?  // markdown section heading: "Developers / Owners",
+                           // "Corporates (likely repeat capital projects)",
+                           // "General Contractors (regional + national active in DSM)"
+  seedSource      String   @default("docs/sources/ENTITIES_WATCHLIST.md")
+
+  notes           String?  // free-text context carried over from the markdown
+
+  reviewStatus    String   @default("AUTO") // AUTO | VERIFIED | REJECTED
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([normalizedName])
+  @@index([entityType])
+  @@index([reviewStatus])
 }
 
 // ── Integration Credentials Vault ───────────────────────────────────────────
