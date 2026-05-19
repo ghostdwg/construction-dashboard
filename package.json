@@ -13,7 +13,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "migrate:turso": "node scripts/apply-turso-migrations.mjs",
-    "migrate:turso:status": "node scripts/apply-turso-migrations.mjs --dry-run"
+    "migrate:turso:status": "node scripts/apply-turso-migrations.mjs --dry-run",
+    "backfill:entity-graph": "tsx scripts/backfill-entity-graph.ts",
+    "backfill:entity-graph:dry-run": "tsx scripts/backfill-entity-graph.ts --dry-run",
+    "backfill:entity-graph:report-only": "tsx scripts/backfill-entity-graph.ts --report-only",
+    "backfill:entity-graph:rollback": "tsx scripts/rollback-entity-backfill.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
@@ -59,6 +63,7 @@
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
+    "tsx": "^4.20.6",
     "typescript": "^5",
     "vite": "^6",
     "vitest": "^4.1.5"
