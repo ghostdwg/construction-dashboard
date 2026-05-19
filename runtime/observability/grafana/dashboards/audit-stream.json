@@ -1,0 +1,60 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "showTime": true, "showLabels": true, "showCommonLabels": false, "wrapLogMessage": true, "prettifyLogMessage": true, "enableLogDetails": true, "dedupStrategy": "none", "sortOrder": "Descending" },
+      "targets": [{ "expr": "{container=~\"groundworx_.*\"} |~ \"^\\\\[(audit|entity-resolver|project-aggregator|parcel-memory|emergence-forecast|outcome-calibration|operator-workspace|live-ingestion)\\\\]\"", "refId": "A" }],
+      "title": "Live audit stream — all services",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{ "expr": "sum by (severity) (rate({container=~\"groundworx_.*\", prefix=\"audit\"}[5m]))", "legendFormat": "{{severity}}", "refId": "A" }],
+      "title": "Audit emission rate by severity (5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [{ "expr": "sum by (category) (rate({container=~\"groundworx_.*\", prefix=\"audit\"}[5m]))", "legendFormat": "{{category}}", "refId": "A" }],
+      "title": "Audit emission rate by category (5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "id": 4,
+      "options": { "showTime": true, "showLabels": true, "wrapLogMessage": true, "prettifyLogMessage": true, "dedupStrategy": "none", "sortOrder": "Descending" },
+      "targets": [{ "expr": "{container=~\"groundworx_.*\"} | json | severity=~\"ERROR|CRITICAL\"", "refId": "A" }],
+      "title": "ERROR / CRITICAL events",
+      "type": "logs"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["groundworx", "audit-stream"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "GroundWorX — Audit Stream",
+  "uid": "gwx-audit-stream",
+  "version": 1,
+  "weekStart": ""
+}

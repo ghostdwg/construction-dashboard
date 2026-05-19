@@ -1,0 +1,58 @@
+# Loki — local single-binary configuration for the GroundWorX
+# observability stack. Phase O1.2.
+#
+# Storage: filesystem-backed BoltDB-shipper + chunks on local disk
+# (mounted as the loki_data volume in observability.yml). At metro scale
+# this is sufficient — typical audit volume is ~10-100 MB/day. Move to
+# S3-compatible storage when daily volume exceeds 1GB.
+#
+# Retention: 90 days hot via the table-manager. Older periods are deleted.
+# For long-term archive, run a separate snapshot-to-S3 job (operator-driven,
+# not part of this config).
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: info
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: ""
+
+limits_config:
+  retention_period: 2160h  # 90 days
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h  # 7 days
+  max_query_series: 10000
+  max_streams_per_user: 10000
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150

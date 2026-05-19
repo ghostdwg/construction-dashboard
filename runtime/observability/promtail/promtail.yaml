@@ -1,0 +1,79 @@
+# Promtail — scrapes Docker container stdout/stderr and ships to Loki.
+# Phase O1.2.
+#
+# Pipeline:
+#   1. Tail all Docker container logs via the docker socket.
+#   2. For containers with name groundworx_app / groundworx_app_cron / etc.
+#      parse JSON audit lines with one of 8 known prefixes:
+#        [audit]              — canonical envelope from lib/observability/audit.ts
+#        [entity-resolver]    — MI-2 resolver
+#        [project-aggregator] — MI-6 aggregator
+#        [parcel-memory]      — MI-7 spatial
+#        [emergence-forecast] — MI-8 forecaster
+#        [outcome-calibration]— MI-9 calibration
+#        [operator-workspace] — MI-10 workspace
+#        [live-ingestion]     — MI-5 ingestion
+#   3. Extract category, action, severity, subjectKind as Loki labels.
+#   4. Push to Loki with retained log body for full-text search.
+#
+# Non-matching lines (Caddy, Next.js framework, etc.) are still shipped
+# with their container_name label intact, just without parsed fields.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/lib/promtail/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    backoff_config:
+      min_period: 500ms
+      max_period: 5m
+      max_retries: 10
+    batchsize: 1048576  # 1MB
+    batchwait: 1s
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: container
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: stream
+    pipeline_stages:
+      # First, identify the audit prefix as a label.
+      - match:
+          selector: '{container=~"groundworx_.*"}'
+          stages:
+            - regex:
+                expression: '^\[(?P<prefix>audit|entity-resolver|project-aggregator|parcel-memory|emergence-forecast|outcome-calibration|operator-workspace|live-ingestion)\] (?P<json>\{.*\})$'
+            - labels:
+                prefix:
+            - json:
+                expressions:
+                  category: category
+                  action: action
+                  severity: severity
+                  subject_kind: '"subject.kind"'
+                  actor_kind: '"actor.kind"'
+                  correlation_id: correlationId
+                  replay_id: replayId
+                  runner_id: runnerId
+                source: json
+            - labels:
+                category:
+                action:
+                severity:
+                subject_kind:
+                actor_kind:
+            - timestamp:
+                source: timestamp
+                format: RFC3339Nano
+                fallback_formats:
+                  - RFC3339

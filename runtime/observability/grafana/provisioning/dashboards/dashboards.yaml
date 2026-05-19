@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning — auto-load all *.json files in
+# /etc/grafana/dashboards.
+
+apiVersion: 1
+
+providers:
+  - name: GroundWorX
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

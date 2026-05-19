@@ -10,6 +10,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { emitWorkspaceAudit } from "./audit";
+import { emitAuditEvent } from "@/lib/observability";
 import {
   type AlertEvaluationContext,
   type AlertEvaluationResult,
@@ -345,12 +346,31 @@ export async function reviewAlertEvent(input: AlertReviewActionInput): Promise<{
       reviewedAt: new Date(),
     },
   });
+  // Legacy stdout emitter — still used by existing dashboards.
   emitWorkspaceAudit({
     action: "review_alert_event",
     alertEventId: input.alertId,
     decision: input.newStatus.toLowerCase(),
     actorUserId: input.actor.userId,
     actorEmail: input.actor.email,
+  });
+  // Phase O1.2 canonical emission — alert_review is in DB_PERSISTED_CATEGORIES
+  // so this also writes an AuditEvent row that outlives Loki retention.
+  await emitAuditEvent({
+    category: "alert_review",
+    action: "review_alert_event",
+    severity: input.newStatus === "ESCALATED" ? "NOTICE" : "INFO",
+    subject: { kind: "ALERT_EVENT", id: input.alertId },
+    actor: { kind: "operator", userId: input.actor.userId, email: input.actor.email },
+    decision: input.newStatus.toLowerCase(),
+    reasonLog: [`previousStatus=${existing.reviewStatus}`, `newStatus=${input.newStatus}`],
+    versions: { workspaceVersion: "v1" },
+    payload: {
+      ruleId: existing.ruleId,
+      subjectKind: existing.subjectKind,
+      subjectId: existing.subjectId,
+      severity: existing.severity,
+    },
   });
   return { ok: true };
 }

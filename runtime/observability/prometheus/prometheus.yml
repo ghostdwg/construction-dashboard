@@ -1,0 +1,29 @@
+# Prometheus — scrape config for the GroundWorX app + future cron container.
+# Phase O1.2.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    deployment: ${APP_ENV:-development}
+
+# Alertmanager + alerting rules are deferred to O1.3 (paged ops).
+
+scrape_configs:
+  - job_name: groundworx_app
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app:3000"]
+        labels:
+          service: "app"
+    scrape_interval: 15s
+
+  # Future O2: when the cron runner ships, add it here.
+  # - job_name: groundworx_cron
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ["cron:3010"]
+
+  - job_name: prometheus_self
+    static_configs:
+      - targets: ["localhost:9090"]

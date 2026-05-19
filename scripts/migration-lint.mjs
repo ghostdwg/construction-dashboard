@@ -77,6 +77,8 @@ const COGNITION_TABLES = new Set([
   "TargetingPattern", "WorkspacePreference",
   // Entity watchlist seed
   "EntityWatchlistSeed",
+  // Observability AuditEvent (O1.2)
+  "AuditEvent",
 ]);
 
 // ── Destructive patterns ─────────────────────────────────────────────────────

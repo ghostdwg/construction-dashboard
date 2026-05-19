@@ -1,0 +1,103 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  runtime/compose/observability.yml
+#  Phase O1.2 — Observability stack overlay.
+#
+#  Brings up Loki + Promtail + Prometheus + Grafana alongside the existing
+#  app + sidecar containers. Designed to compose-up cleanly on top of the
+#  main runtime compose file:
+#
+#    docker compose -f runtime/compose/base.yml \
+#                   -f runtime/compose/observability.yml \
+#                   up -d
+#
+#  All four containers share the same Docker network as the app so Promtail
+#  can scrape app/sidecar stdout via the docker socket and Prometheus can
+#  reach /metrics on the app over the internal network.
+#
+#  Storage is local Docker volumes; in production you may want bind-mounts
+#  to host disk so retention survives container recreation. Backups of
+#  loki + grafana volumes to S3 are operational (not in compose).
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: groundworx_loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ../observability/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    expose:
+      - "3100"
+    networks:
+      - groundworx_observability
+
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: groundworx_promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail.yaml
+    volumes:
+      - ../observability/promtail/promtail.yaml:/etc/promtail/promtail.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail_positions:/var/lib/promtail
+    depends_on:
+      - loki
+    networks:
+      - groundworx_observability
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: groundworx_prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    volumes:
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    expose:
+      - "9090"
+    networks:
+      - groundworx_observability
+      - groundworx_app  # so it can scrape app:/metrics
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: groundworx_grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_INSTALL_PLUGINS=
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/etc/grafana/dashboards:ro
+    expose:
+      - "3000"
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - groundworx_observability
+
+volumes:
+  loki_data:
+  promtail_positions:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  groundworx_observability:
+    name: groundworx_observability
+  groundworx_app:
+    external: true
+    name: groundworx_app

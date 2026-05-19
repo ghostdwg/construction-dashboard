@@ -3721,3 +3721,79 @@ model IntegrationCredential {
   @@unique([service, field])
   @@index([service])
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Observability: cross-cutting AuditEvent persistence (Phase O1.2)
+//
+//  Single canonical table for audit events that must outlive Loki retention.
+//  The existing 7 service audit emitters (entity-resolver, project-aggregator,
+//  parcel-memory, emergence-forecast, outcome-calibration,
+//  operator-workspace, live-ingestion) continue to emit stdout JSON as
+//  before — Promtail scrapes those to Loki for hot search.
+//
+//  This table is for the subset of audit events that need DB-backed
+//  forever-persistence:
+//    - operator_override
+//    - merge_split
+//    - replay_run
+//    - migration_governance
+//    - runner_cycle
+//    - review_action
+//    - alert_review
+//    - calibration_adjustment (when operator-applied)
+//    - ingestion_pipeline_error
+//    - system_health
+//
+//  Volume estimate: ≤ 1000 rows/day at metro scale. Indexes optimized for
+//  operator queries:
+//    - by category + time ("show me all operator overrides this week")
+//    - by subject ("show me everything that happened to this project")
+//    - by correlation/replay/ingestion id (cross-service tracing)
+//    - by actor ("show me what this analyst did today")
+//
+//  Append-only. No update / no delete by code. Retention enforced by ops
+//  job (future O3) — likely 5+ years for compliance-grade lineage.
+// ──────────────────────────────────────────────────────────────────────────────
+
+model AuditEvent {
+  id String @id @default(cuid())
+
+  category String // entity_resolution | project_attachment | forecast_generation | ...
+  action   String // service-specific verb
+  severity String @default("INFO") // DEBUG | INFO | NOTICE | WARN | ERROR | CRITICAL
+
+  // Subject + actor (loose-pointer).
+  subjectKind String?
+  subjectId   String?
+  actorUserId String?
+  actorEmail  String?
+  actorKind   String  @default("system") // operator | system | runner | api | anonymous
+
+  // Correlation envelope.
+  correlationId String?
+  replayId      String?
+  ingestionId   String?
+  runnerId      String?
+
+  // Version snapshot at emit time. JSON of all engine version tags.
+  schemaVersion   String  @default("1.0")
+  versionTagsJson String?
+
+  // Operator-readable payload.
+  decision    String?
+  reasonLog   String? // JSON-stringified string array
+  payloadJson String?
+
+  emittedAt DateTime @default(now())
+
+  @@index([category, emittedAt])
+  @@index([action])
+  @@index([subjectKind, subjectId])
+  @@index([actorUserId])
+  @@index([correlationId])
+  @@index([replayId])
+  @@index([ingestionId])
+  @@index([runnerId])
+  @@index([severity])
+  @@index([emittedAt])
+}
