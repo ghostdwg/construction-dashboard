@@ -1694,6 +1694,243 @@ model EntityRelationship {
   @@index([legacyEdgeId])
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+//  Market Intelligence: Project Aggregate layer (Phase MI-6)
+//
+//  Project = temporal intelligence object. Many weak signals (rezoning,
+//  broker activity, utility extension, plat review, engineer appearance,
+//  shell-building rumor, franchise movement) accumulate over time into one
+//  evolving aggregate that represents a single construction emergence.
+//
+//  Schema-only in MI-6 PR 1. Service layer in lib/services/projectAggregation
+//  ships in the same PR but does not mutate ingestion paths. Backfill runner
+//  + UI follow in subsequent PRs (MI-6 PR 2, MI-6 PR 3).
+//
+//  Pseudo-enum field values (validated in app code):
+//    Project.lifecycleState:   EMERGING | EARLY_SIGNAL | PRE_ENTITLEMENT |
+//                              ENTITLEMENT | SITE_PREP | PRE_CONSTRUCTION |
+//                              ACTIVE_CONSTRUCTION | STALLED | ABANDONED |
+//                              COMPLETED
+//    Project.reviewStatus:     AUTO_AGGREGATED | PENDING_REVIEW | VERIFIED |
+//                              REJECTED | MERGED
+//    Project.confidence:       LOW | MEDIUM | HIGH | VERIFIED
+//    ProjectSignal.signalKind: MARKET_SIGNAL | RELATIONSHIP_EDGE |
+//                              MARKET_LEAD | SOURCE_DOC | MANUAL | EXTERNAL
+//    ProjectEntity.role:       DEVELOPER | OWNER | GC | ARCHITECT | ENGINEER
+//                              | BROKER | TENANT | LENDER | MUNICIPALITY |
+//                              AGENCY | OTHER
+//    ProjectTimelineEvent.eventType:
+//                              SIGNAL_ATTACHED | SIGNAL_DETACHED |
+//                              ENTITY_ATTACHED | ENTITY_REMOVED |
+//                              PARCEL_ATTACHED | STATE_TRANSITION |
+//                              PROBABILITY_UPDATE | MANUAL_NOTE |
+//                              MERGE_INTO | MERGE_RECEIVED | REVIEW_ACTION
+//
+//  All six dependent models cascade-delete from Project so a single project
+//  removal is clean. Projects themselves should be soft-deleted via
+//  reviewStatus=REJECTED rather than hard-deleted.
+// ──────────────────────────────────────────────────────────────────────────────
+
+model Project {
+  id                    String   @id @default(cuid())
+
+  workingTitle          String
+  jurisdiction          String?
+
+  lifecycleState        String   @default("EMERGING")
+  confidence            String   @default("LOW")
+  reviewStatus          String   @default("AUTO_AGGREGATED")
+  emergenceProbability  Float?
+
+  firstSignalAt         DateTime?
+  lastSignalAt          DateTime?
+  estimatedStart        DateTime?
+  estimatedCompletion   DateTime?
+
+  estimatedValue        Float?
+  estimatedSqft         Int?
+  projectType           String?
+
+  source                String?
+  notes                 String?
+
+  mergedIntoProjectId   String?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  signals               ProjectSignal[]
+  entities              ProjectEntity[]
+  timelineEvents        ProjectTimelineEvent[]
+  stateTransitions      ProjectStateTransition[]
+  parcels               ProjectParcel[]
+  probabilitySnapshots  ProjectProbabilitySnapshot[]
+
+  mergedInto            Project?  @relation("ProjectMergeTarget", fields: [mergedIntoProjectId], references: [id], onDelete: SetNull)
+  absorbedProjects      Project[] @relation("ProjectMergeTarget")
+
+  @@index([lifecycleState])
+  @@index([reviewStatus])
+  @@index([jurisdiction])
+  @@index([lastSignalAt])
+  @@index([emergenceProbability])
+  @@index([mergedIntoProjectId])
+}
+
+model ProjectSignal {
+  id                       String   @id @default(cuid())
+  projectId                String
+
+  signalKind               String
+
+  sourceMarketSignalId     String?
+  sourceRelationshipEdgeId String?
+  sourceMarketLeadId       String?
+  sourceMarketSourceDocId  String?
+  sourceExternalRef        String?
+
+  attachReason             String
+  attachScore              Float
+  attachConfidence         String   @default("MEDIUM")
+  factorJson               String?
+
+  attachedAt               DateTime @default(now())
+  detachedAt               DateTime?
+  detachedReason           String?
+  detachedBy               String?
+
+  updatedAt                DateTime @updatedAt
+
+  project                  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([sourceMarketSignalId])
+  @@index([sourceRelationshipEdgeId])
+  @@index([sourceMarketLeadId])
+  @@index([sourceMarketSourceDocId])
+  @@index([signalKind])
+  @@index([attachedAt])
+}
+
+model ProjectEntity {
+  id            String   @id @default(cuid())
+  projectId     String
+  entityId      String
+  role          String
+
+  confidence    String   @default("MEDIUM")
+  attachReason  String
+
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+
+  removed       Boolean  @default(false)
+  removedReason String?
+  removedBy     String?
+
+  attachedAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, entityId, role])
+  @@index([projectId])
+  @@index([entityId])
+  @@index([role])
+  @@index([removed])
+}
+
+model ProjectTimelineEvent {
+  id            String   @id @default(cuid())
+  projectId     String
+
+  eventType     String
+  occurredAt    DateTime
+  recordedAt    DateTime @default(now())
+
+  summary       String
+  payloadJson   String?
+
+  sourceRefKind String?
+  sourceRefId   String?
+
+  actorUserId   String?
+  actorEmail    String?
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, occurredAt])
+  @@index([eventType])
+  @@index([sourceRefId])
+}
+
+model ProjectStateTransition {
+  id                   String   @id @default(cuid())
+  projectId            String
+
+  fromState            String
+  toState              String
+  reason               String
+
+  triggerSignalRefKind String?
+  triggerSignalRefId   String?
+
+  actorUserId          String?
+  actorEmail           String?
+
+  occurredAt           DateTime @default(now())
+
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, occurredAt])
+  @@index([toState])
+}
+
+model ProjectParcel {
+  id            String   @id @default(cuid())
+  projectId     String
+
+  parcelId      String
+  parcelSource  String
+  address       String?
+  jurisdiction  String?
+
+  lat           Float?
+  lng           Float?
+  areaSqft      Float?
+
+  attachReason  String
+  confidence    String   @default("MEDIUM")
+
+  attachedAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, parcelId, parcelSource])
+  @@index([projectId])
+  @@index([parcelId])
+  @@index([jurisdiction])
+}
+
+model ProjectProbabilitySnapshot {
+  id             String   @id @default(cuid())
+  projectId      String
+
+  probability    Float
+  lifecycleState String
+  factorsJson    String
+  computedAt     DateTime @default(now())
+
+  actorUserId    String?
+  actorEmail     String?
+  reason         String?
+
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, computedAt])
+}
+
 model EntityWatchlistSeed {
   id              String   @id @default(cuid())
 
