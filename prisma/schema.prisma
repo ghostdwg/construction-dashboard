@@ -74,32 +74,32 @@ model Trade {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  bidTrades        BidTrade[]
-  subTrades        SubcontractorTrade[]
-  scopeItems       ScopeItem[]
-  tradeAssignments ScopeTradeAssignment[]
-  preferredSubs    PreferredSub[]
-  levelingRows     LevelingRow[]
-  specSections         SpecSection[]  @relation("SpecSectionTrade")
-  matchedSpecSections  SpecSection[]  @relation("MatchedSpecSection")
-  drawingSheets        DrawingSheet[] @relation("DrawingSheetTrade")
-  matchedDrawingSheets DrawingSheet[] @relation("MatchedDrawingSheet")
+  bidTrades            BidTrade[]
+  subTrades            SubcontractorTrade[]
+  scopeItems           ScopeItem[]
+  tradeAssignments     ScopeTradeAssignment[]
+  preferredSubs        PreferredSub[]
+  levelingRows         LevelingRow[]
+  specSections         SpecSection[]          @relation("SpecSectionTrade")
+  matchedSpecSections  SpecSection[]          @relation("MatchedSpecSection")
+  drawingSheets        DrawingSheet[]         @relation("DrawingSheetTrade")
+  matchedDrawingSheets DrawingSheet[]         @relation("MatchedDrawingSheet")
 }
 
 model Bid {
-  id          Int       @id @default(autoincrement())
-  projectName String
-  location    String?
-  description String?
-  scope       String    @default("")
-  status        String    @default("draft")
-  workflowType  String    @default("BID")   // "BID" | "PROJECT"
-  projectType ProjectType @default(PRIVATE)
+  id                  Int         @id @default(autoincrement())
+  projectName         String
+  location            String?
+  description         String?
+  scope               String      @default("")
+  status              String      @default("draft")
+  workflowType        String      @default("BID") // "BID" | "PROJECT"
+  projectType         ProjectType @default(PRIVATE)
   dueDate             DateTime?
   complianceChecklist String?
-  createdById         String?   // Auth Wall — nullable, backfill to user 1 when multi-tenant
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdById         String? // Auth Wall — nullable, backfill to user 1 when multi-tenant
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
   // Module INT1 — Job Intake (Wing 1 project context capture)
   // String fields validated in API layer rather than enum (SQLite-friendly).
@@ -112,12 +112,12 @@ model Bid {
   stories            Int?
   ldAmountPerDay     Float?
   ldCapAmount        Float?
-  occupiedSpace      Boolean   @default(false)
-  phasingRequired    Boolean   @default(false)
+  occupiedSpace      Boolean @default(false)
+  phasingRequired    Boolean @default(false)
   siteConstraints    String?
   estimatorNotes     String?
   scopeBoundaryNotes String?
-  veInterest         Boolean   @default(false)
+  veInterest         Boolean @default(false)
   dbeGoalPercent     Float?
 
   // Module H4 — Schedule Seed
@@ -126,49 +126,49 @@ model Bid {
 
   // Module H6 — Budget Creation
   // JSON: Array<{ label: string; costCode: string; amount: number }>
-  budgetGcLines         String?
+  budgetGcLines String?
 
   // Tier F F2 — Procore REST API
-  procoreProjectId      String?
+  procoreProjectId String?
 
-  bidTrades        BidTrade[]
-  selections       BidInviteSelection[]
-  exportBatches    ExportBatch[]
-  scopeItems       ScopeItem[]
-  aiExportBatches  AiExportBatch[]
-  gapFindings      AiGapFinding[]
-  outreachLogs     OutreachLog[]
-  estimateUploads     EstimateUpload[]
-  levelingSession     LevelingSession?
-  generatedQuestions  GeneratedQuestion[]
-  specBooks           SpecBook[]
-  drawingUploads      DrawingUpload[]
-  addendums           AddendumUpload[]
-  intelligenceBrief   BidIntelligenceBrief?
-  submission          BidSubmission?
-  buyoutItems         BuyoutItem[]
-  submittalItems              SubmittalItem[]
-  submittalPackages           SubmittalPackage[]
-  distributionTemplates       SubmittalDistributionTemplate[]
-  projectContacts             ProjectContact[]
-  scheduleActivities  ScheduleActivity[]
-  schedules           Schedule[]
-  meetings            Meeting[]
-  meetingActionItems  MeetingActionItem[]
-  decisions           BidDecision[]
-  procorePushes       ProcorePush[]
-  rfiItems            RfiItem[]
-  backgroundJobs      BackgroundJob[]
-  marketLeads         MarketLead[]
+  bidTrades             BidTrade[]
+  selections            BidInviteSelection[]
+  exportBatches         ExportBatch[]
+  scopeItems            ScopeItem[]
+  aiExportBatches       AiExportBatch[]
+  gapFindings           AiGapFinding[]
+  outreachLogs          OutreachLog[]
+  estimateUploads       EstimateUpload[]
+  levelingSession       LevelingSession?
+  generatedQuestions    GeneratedQuestion[]
+  specBooks             SpecBook[]
+  drawingUploads        DrawingUpload[]
+  addendums             AddendumUpload[]
+  intelligenceBrief     BidIntelligenceBrief?
+  submission            BidSubmission?
+  buyoutItems           BuyoutItem[]
+  submittalItems        SubmittalItem[]
+  submittalPackages     SubmittalPackage[]
+  distributionTemplates SubmittalDistributionTemplate[]
+  projectContacts       ProjectContact[]
+  scheduleActivities    ScheduleActivity[]
+  schedules             Schedule[]
+  meetings              Meeting[]
+  meetingActionItems    MeetingActionItem[]
+  decisions             BidDecision[]
+  procorePushes         ProcorePush[]
+  rfiItems              RfiItem[]
+  backgroundJobs        BackgroundJob[]
+  marketLeads           MarketLead[]
 }
 
 model BidSubmission {
-  id                   Int       @id @default(autoincrement())
-  bidId                Int       @unique
-  submittedAt          DateTime  @default(now())
-  submittedBy          String?
-  ourBidAmount         Float?
-  notes                String?
+  id           Int      @id @default(autoincrement())
+  bidId        Int      @unique
+  submittedAt  DateTime @default(now())
+  submittedBy  String?
+  ourBidAmount Float?
+  notes        String?
 
   // Frozen snapshots (JSON)
   briefSnapshot        String?
@@ -179,15 +179,15 @@ model BidSubmission {
   intelligenceSnapshot String?
 
   // Outcome fields (D2)
-  outcome              String?
-  outcomeAt            DateTime?
-  winningBidAmount     Float?
-  ourRank              Int?
-  totalBidders         Int?
-  lostReason           String?
-  lostReasonNote       String?
-  lessonsLearned       String?
-  outcomeNotes         String?
+  outcome          String?
+  outcomeAt        DateTime?
+  winningBidAmount Float?
+  ourRank          Int?
+  totalBidders     Int?
+  lostReason       String?
+  lostReasonNote   String?
+  lessonsLearned   String?
+  outcomeNotes     String?
 
   bid Bid @relation(fields: [bidId], references: [id])
 }
@@ -203,13 +203,13 @@ model BidTrade {
   quotesReceivedAt DateTime?
   rfqNotes         String?
 
-  bid                Bid                 @relation(fields: [bidId], references: [id])
-  trade              Trade               @relation(fields: [tradeId], references: [id])
-  buyoutItem             BuyoutItem?
-  submittalItems         SubmittalItem[]
-  submittalPackages      SubmittalPackage[]
-  distributionTemplates  SubmittalDistributionTemplate[]
-  scheduleActivities     ScheduleActivity[]
+  bid                   Bid                             @relation(fields: [bidId], references: [id])
+  trade                 Trade                           @relation(fields: [tradeId], references: [id])
+  buyoutItem            BuyoutItem?
+  submittalItems        SubmittalItem[]
+  submittalPackages     SubmittalPackage[]
+  distributionTemplates SubmittalDistributionTemplate[]
+  scheduleActivities    ScheduleActivity[]
 
   @@unique([bidId, tradeId])
 }
@@ -220,32 +220,32 @@ model BidTrade {
 // contractStatus values (validated in API, not enum for SQLite friendliness):
 //   PENDING | LOI_SENT | CONTRACT_SENT | CONTRACT_SIGNED | PO_ISSUED | ACTIVE | CLOSED
 model BuyoutItem {
-  id                Int       @id @default(autoincrement())
-  bidId             Int
-  bidTradeId        Int       @unique
-  subcontractorId   Int?
+  id              Int  @id @default(autoincrement())
+  bidId           Int
+  bidTradeId      Int  @unique
+  subcontractorId Int?
 
   // Commitment
   committedAmount   Float?
   originalBidAmount Float?
 
   // Contract lifecycle
-  contractStatus    String    @default("PENDING")
-  loiSentAt         DateTime?
-  contractSentAt    DateTime?
-  contractSignedAt  DateTime?
-  poNumber          String?
-  poIssuedAt        DateTime?
+  contractStatus   String    @default("PENDING")
+  loiSentAt        DateTime?
+  contractSentAt   DateTime?
+  contractSignedAt DateTime?
+  poNumber         String?
+  poIssuedAt       DateTime?
 
   // Financial tracking
-  changeOrderAmount Float?    @default(0)
-  paidToDate        Float?    @default(0)
-  retainagePercent  Float?    @default(5)
+  changeOrderAmount Float? @default(0)
+  paidToDate        Float? @default(0)
+  retainagePercent  Float? @default(5)
 
-  notes             String?
+  notes String?
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   bid           Bid            @relation(fields: [bidId], references: [id], onDelete: Cascade)
   bidTrade      BidTrade       @relation(fields: [bidTradeId], references: [id], onDelete: Cascade)
@@ -266,13 +266,13 @@ model Subcontractor {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tier            String  @default("new")
-  projectTypes    String  @default("")
-  region          String?
-  lastBidDate     DateTime?
-  internalNotes   String?
-  doNotUse        Boolean  @default(false)
-  doNotUseReason  String?
+  tier           String    @default("new")
+  projectTypes   String    @default("")
+  region         String?
+  lastBidDate    DateTime?
+  internalNotes  String?
+  doNotUse       Boolean   @default(false)
+  doNotUseReason String?
 
   // INTERNAL ONLY — never expose in AI prompts, recipient exports, or sub-facing artifacts
   isPreferred     Boolean @default(false)
@@ -379,11 +379,11 @@ model ScopeTradeAssignment {
 }
 
 model ExportBatch {
-  id          Int      @id @default(autoincrement())
-  bidId       Int
-  exportedAt  DateTime @default(now())
-  rowCount    Int
-  fileName    String
+  id         Int      @id @default(autoincrement())
+  bidId      Int
+  exportedAt DateTime @default(now())
+  rowCount   Int
+  fileName   String
 
   bid Bid @relation(fields: [bidId], references: [id])
 }
@@ -417,33 +417,33 @@ model AiGapFinding {
   reviewNotes     String?
   createdAt       DateTime @default(now())
 
-  bid                Bid            @relation(fields: [bidId], references: [id])
-  aiExportBatch      AiExportBatch? @relation(fields: [aiExportBatchId], references: [id])
+  bid                Bid                 @relation(fields: [bidId], references: [id])
+  aiExportBatch      AiExportBatch?      @relation(fields: [aiExportBatchId], references: [id])
   generatedQuestions GeneratedQuestion[]
 }
 
 model GeneratedQuestion {
-  id             Int         @id @default(autoincrement())
-  rfiNumber      Int?
-  gapFindingId   Int?
-  bidId          Int?
-  levelingRowId  Int?
-  tradeName      String?
-  questionText   String
-  isInternal     Boolean     @default(true)
-  status         RfiStatus   @default(OPEN)
-  priority       RfiPriority @default(MEDIUM)
-  approvedAt     DateTime?
-  sentAt         DateTime?
-  responseText   String?
-  respondedAt    DateTime?
-  respondedBy    String?
-  impactFlag     Boolean     @default(false)
-  impactNote     String?
-  sourceRef      String?
-  dueDate        DateTime?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id            Int         @id @default(autoincrement())
+  rfiNumber     Int?
+  gapFindingId  Int?
+  bidId         Int?
+  levelingRowId Int?
+  tradeName     String?
+  questionText  String
+  isInternal    Boolean     @default(true)
+  status        RfiStatus   @default(OPEN)
+  priority      RfiPriority @default(MEDIUM)
+  approvedAt    DateTime?
+  sentAt        DateTime?
+  responseText  String?
+  respondedAt   DateTime?
+  respondedBy   String?
+  impactFlag    Boolean     @default(false)
+  impactNote    String?
+  sourceRef     String?
+  dueDate       DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   gapFinding   AiGapFinding? @relation(fields: [gapFindingId], references: [id])
   bid          Bid?          @relation(fields: [bidId], references: [id])
@@ -515,27 +515,27 @@ enum ParseStatus {
 }
 
 model EstimateUpload {
-  id                  Int         @id @default(autoincrement())
-  bidId               Int
-  subcontractorId     Int
-  fileName            String
-  fileType            String
-  fileSize            Int
-  rawFilePath         String
-  scopeLines          String      @default("")
-  pricingData         String      @default("")
-  parseStatus         ParseStatus @default(pending)
-  parseError          String?
-  sanitizedText       String?
-  sanitizationStatus  String?
-  redactionCount      Int?
-  flaggedLines        String?
-  subToken            String?
-  approvedForAi       Boolean     @default(false)
-  parsedTotal         Float?
-  parsedLineCount     Int?
-  uploadedAt          DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  id                 Int         @id @default(autoincrement())
+  bidId              Int
+  subcontractorId    Int
+  fileName           String
+  fileType           String
+  fileSize           Int
+  rawFilePath        String
+  scopeLines         String      @default("")
+  pricingData        String      @default("")
+  parseStatus        ParseStatus @default(pending)
+  parseError         String?
+  sanitizedText      String?
+  sanitizationStatus String?
+  redactionCount     Int?
+  flaggedLines       String?
+  subToken           String?
+  approvedForAi      Boolean     @default(false)
+  parsedTotal        Float?
+  parsedLineCount    Int?
+  uploadedAt         DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
   bid           Bid           @relation(fields: [bidId], references: [id])
   subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
@@ -589,29 +589,29 @@ model SpecBook {
 }
 
 model SpecSection {
-  id                 Int      @id @default(autoincrement())
-  csiCanonicalTitle  String?          // enriched from CsiMasterformat on split
-  specBookId     Int
-  csiNumber      String
-  csiTitle       String
-  rawText        String   @default("")
-  tradeId        Int?
-  matchedTradeId Int?
-  source         String?
-  covered        Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  id                Int      @id @default(autoincrement())
+  csiCanonicalTitle String? // enriched from CsiMasterformat on split
+  specBookId        Int
+  csiNumber         String
+  csiTitle          String
+  rawText           String   @default("")
+  tradeId           Int?
+  matchedTradeId    Int?
+  source            String?
+  covered           Boolean  @default(false)
+  createdAt         DateTime @default(now())
 
   // Phase 5A: AI extraction results (JSON blob from Claude analysis)
   // Contains: submittals, warranties, training, testing, closeout, products, performance
-  aiExtractions  String?
+  aiExtractions String?
 
   // Phase 5A: per-section PDF split (Procore-style)
   // Each section extracted as its own PDF file for download/preview/AI analysis
-  pdfPath        String?   // Server path to the split PDF
-  pdfFileName    String?   // Display filename (e.g., "03_30_00_cast_in_place_concrete.pdf")
-  pageStart      Int?      // 1-indexed start page in original spec book
-  pageEnd        Int?      // 1-indexed end page
-  pageCount      Int?
+  pdfPath     String? // Server path to the split PDF
+  pdfFileName String? // Display filename (e.g., "03_30_00_cast_in_place_concrete.pdf")
+  pageStart   Int? // 1-indexed start page in original spec book
+  pageEnd     Int? // 1-indexed end page
+  pageCount   Int?
 
   specBook       SpecBook        @relation(fields: [specBookId], references: [id], onDelete: Cascade)
   trade          Trade?          @relation("SpecSectionTrade", fields: [tradeId], references: [id])
@@ -633,13 +633,13 @@ model DrawingUpload {
 
   // Discipline tag: FULLSET | GENERAL | CIVIL | ARCH | STRUCT | MECH | ELEC | PLUMB | INTERIOR | FP
   // Validated in API, not enum for SQLite friendliness.
-  discipline String   @default("FULLSET")
+  discipline String @default("FULLSET")
 
   // AI analysis fields
-  analysisStatus      String?   // "processing" | "ready" | "error"
-  analysisTier        Int?      // 1 | 2 | 3
-  analysisModel       String?   // "haiku" | "sonnet" | "opus"
-  analysisJson        String?   // JSON result blob
+  analysisStatus      String? // "processing" | "ready" | "error"
+  analysisTier        Int? // 1 | 2 | 3
+  analysisModel       String? // "haiku" | "sonnet" | "opus"
+  analysisJson        String? // JSON result blob
   analysisGeneratedAt DateTime?
 
   bid    Bid            @relation(fields: [bidId], references: [id])
@@ -712,20 +712,20 @@ model DrawingSheet {
 // CSV import/export. Typically one package per trade (Concrete, Masonry,
 // Electrical). Auto-created when AI generator runs; user can rename/merge.
 model SubmittalPackage {
-  id            Int      @id @default(autoincrement())
+  id            Int    @id @default(autoincrement())
   bidId         Int
-  packageNumber String            // "PKG-01", "PKG-02" — unique per bid
-  name          String            // "Concrete", "Electrical", "HVAC Closeout"
-  status        String   @default("DRAFT")  // DRAFT | OPEN | CLOSED
+  packageNumber String // "PKG-01", "PKG-02" — unique per bid
+  name          String // "Concrete", "Electrical", "HVAC Closeout"
+  status        String @default("DRAFT") // DRAFT | OPEN | CLOSED
 
   // Optional 1:1 link to a bid trade (most packages mirror trades)
-  bidTradeId    Int?
+  bidTradeId Int?
 
   // Package-level defaults (items in package inherit unless overridden)
-  responsibleContractor   String?
-  submittalManager        String?
-  defaultReviewers        String?   // JSON array: ["GC PM", "Architect"]
-  defaultDistribution     String?   // JSON array: ["Owner Rep", "Inspector"]
+  responsibleContractor String?
+  submittalManager      String?
+  defaultReviewers      String? // JSON array: ["GC PM", "Architect"]
+  defaultDistribution   String? // JSON array: ["Owner Rep", "Inspector"]
 
   // Orchestrator — timing defaults inherited by items lacking individual overrides
   defaultLeadTimeDays       Int?
@@ -733,20 +733,20 @@ model SubmittalPackage {
   defaultResubmitBufferDays Int?
 
   // Orchestrator — schedule linkage + risk + export readiness
-  linkedActivityId  String?
-  riskStatus        String   @default("NONE")   // NONE | AT_RISK | BLOCKED
-  readyForExport    Boolean  @default(false)
-  releasePhase      String?  // Preconstruction | Early Construction | Mid Construction | Closeout
-  targetIssueDate   DateTime? // when GC plans to issue the package to sub
+  linkedActivityId   String?
+  riskStatus         String    @default("NONE") // NONE | AT_RISK | BLOCKED
+  readyForExport     Boolean   @default(false)
+  releasePhase       String? // Preconstruction | Early Construction | Mid Construction | Closeout
+  targetIssueDate    DateTime? // when GC plans to issue the package to sub
   requiredReturnDate DateTime? // when GC needs it back from sub/AOR
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bid             Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  bidTrade        BidTrade?            @relation(fields: [bidTradeId], references: [id])
-  linkedActivity  ScheduleActivityV2?  @relation(fields: [linkedActivityId], references: [id], onDelete: SetNull)
-  items           SubmittalItem[]
+  bid            Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidTrade       BidTrade?           @relation(fields: [bidTradeId], references: [id])
+  linkedActivity ScheduleActivityV2? @relation(fields: [linkedActivityId], references: [id], onDelete: SetNull)
+  items          SubmittalItem[]
 
   @@unique([bidId, packageNumber])
   @@index([bidId])
@@ -760,71 +760,71 @@ model SubmittalPackage {
 // section titles against the official MasterFormat naming.
 model CsiMasterformat {
   id             Int    @id @default(autoincrement())
-  csiNumber      String @unique    // "03 30 00"
-  canonicalTitle String              // "Cast-in-Place Concrete"
-  division       String              // "03"
+  csiNumber      String @unique // "03 30 00"
+  canonicalTitle String // "Cast-in-Place Concrete"
+  division       String // "03"
 
   @@index([division])
 }
 
 model SubmittalItem {
-  id               Int       @id @default(autoincrement())
-  bidId            Int
-  bidTradeId       Int?
-  specSectionId    Int?
-  packageId        Int?      // Phase 5G-3.5 — optional FK to SubmittalPackage
+  id            Int  @id @default(autoincrement())
+  bidId         Int
+  bidTradeId    Int?
+  specSectionId Int?
+  packageId     Int? // Phase 5G-3.5 — optional FK to SubmittalPackage
 
-  submittalNumber  String?
-  title            String
-  description      String?
-  type             String    @default("OTHER")
+  submittalNumber String?
+  title           String
+  description     String?
+  type            String  @default("OTHER")
 
   // Provenance — "manual" | "regex_seed" | "ai_extraction"
-  source           String    @default("manual")
+  source String @default("manual")
 
   // Lifecycle
-  status           String    @default("PENDING")
-  requiredBy       DateTime?
-  requestedAt      DateTime?
-  receivedAt       DateTime?
-  reviewedAt       DateTime?
-  approvedAt       DateTime?
-  reviewRound      Int       @default(1)
+  status      String    @default("PENDING")
+  requiredBy  DateTime?
+  requestedAt DateTime?
+  receivedAt  DateTime?
+  reviewedAt  DateTime?
+  approvedAt  DateTime?
+  reviewRound Int       @default(1)
 
   // Attribution
   responsibleSubId Int?
   reviewer         String?
 
-  notes            String?
+  notes String?
 
   // AI Organizer — set by organizeSubmittalsWithAi()
-  priority         String?   // HIGH | MEDIUM | LOW
-  releasePhase     String?   // Preconstruction | Early Construction | Mid Construction | Closeout
+  priority     String? // HIGH | MEDIUM | LOW
+  releasePhase String? // Preconstruction | Early Construction | Mid Construction | Closeout
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // GWX-006 — Audit attribution: which BackgroundJob created this item.
   // Null for manually-created items. Set by generateSubmittalsFromAiAnalysis
   // when called from the sidecar webhook callback.
-  sourceJobId      String?
+  sourceJobId String?
 
   // Phase 5G-2 — Schedule-tied due dates
   // Backward math: submitByDate = linkedActivity.startDate - leadTimeDays - reviewBufferDays - resubmitBufferDays
-  linkedActivityId    String?   // FK to ScheduleActivityV2
-  leadTimeDays        Int       @default(0)    // mfr delivery lead time (working days)
-  reviewBufferDays    Int       @default(21)   // A/E review window per AIA A201 §4.2.7
-  resubmitBufferDays  Int       @default(7)    // one resubmission cycle buffer
-  requiredOnSiteDate  DateTime?               // derived: linkedActivity.startDate - leadTimeDays
-  submitByDate        DateTime?               // derived: requiredOnSiteDate - reviewBuffer - resubmitBuffer
+  linkedActivityId   String? // FK to ScheduleActivityV2
+  leadTimeDays       Int       @default(0) // mfr delivery lead time (working days)
+  reviewBufferDays   Int       @default(21) // A/E review window per AIA A201 §4.2.7
+  resubmitBufferDays Int       @default(7) // one resubmission cycle buffer
+  requiredOnSiteDate DateTime? // derived: linkedActivity.startDate - leadTimeDays
+  submitByDate       DateTime? // derived: requiredOnSiteDate - reviewBuffer - resubmitBuffer
 
-  bid            Bid               @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  bidTrade       BidTrade?         @relation(fields: [bidTradeId], references: [id])
-  specSection    SpecSection?      @relation(fields: [specSectionId], references: [id])
-  responsibleSub Subcontractor?    @relation(fields: [responsibleSubId], references: [id])
-  package        SubmittalPackage? @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  bid            Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidTrade       BidTrade?           @relation(fields: [bidTradeId], references: [id])
+  specSection    SpecSection?        @relation(fields: [specSectionId], references: [id])
+  responsibleSub Subcontractor?      @relation(fields: [responsibleSubId], references: [id])
+  package        SubmittalPackage?   @relation(fields: [packageId], references: [id], onDelete: SetNull)
   linkedActivity ScheduleActivityV2? @relation(fields: [linkedActivityId], references: [id], onDelete: SetNull)
-  sourceJob      BackgroundJob?    @relation(fields: [sourceJobId], references: [id], onDelete: SetNull)
+  sourceJob      BackgroundJob?      @relation(fields: [sourceJobId], references: [id], onDelete: SetNull)
 
   @@index([bidId])
   @@index([specSectionId])
@@ -842,14 +842,14 @@ model SubmittalItem {
 // Routing panel on the Submittals tab. Override per submittal is via the
 // item's own reviewer field or the package's responsibleContractor field.
 model SubmittalDistributionTemplate {
-  id                    Int       @id @default(autoincrement())
-  bidId                 Int
-  bidTradeId            Int?      // null = bid-wide fallback
+  id         Int  @id @default(autoincrement())
+  bidId      Int
+  bidTradeId Int? // null = bid-wide fallback
 
-  responsibleContractor String?   // default sub/vendor responsible for submittals
-  submittalManager      String?   // GC role/person who manages the package
-  reviewers             String    @default("[]")   // JSON: ["Architect", "MEP Eng"]
-  distribution          String    @default("[]")   // JSON: ["Owner Rep", "Inspector"]
+  responsibleContractor String? // default sub/vendor responsible for submittals
+  submittalManager      String? // GC role/person who manages the package
+  reviewers             String  @default("[]") // JSON: ["Architect", "MEP Eng"]
+  distribution          String  @default("[]") // JSON: ["Owner Rep", "Inspector"]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -870,20 +870,20 @@ model SubmittalDistributionTemplate {
 //   OWNER | OWNER_REP | ARCHITECT | ENGINEER |
 //   INTERNAL_PM | INTERNAL_ESTIMATOR | INTERNAL_SUPER | OTHER
 model ProjectContact {
-  id        Int      @id @default(autoincrement())
-  bidId     Int
+  id    Int @id @default(autoincrement())
+  bidId Int
 
-  role      String   @default("OTHER")
+  role String @default("OTHER")
 
-  name      String
-  company   String?
-  title     String?
-  email     String?
-  phone     String?
-  notes     String?
+  name    String
+  company String?
+  title   String?
+  email   String?
+  phone   String?
+  notes   String?
 
   // Within a role, primary contacts sort first. Multiple primaries allowed.
-  isPrimary Boolean  @default(false)
+  isPrimary Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -906,23 +906,23 @@ model ProjectContact {
 // predecessorIds is a comma-separated list of activityId strings (Primavera
 // style — e.g. "A1010,A1020"). Only Finish-to-Start is supported in v1.
 model ScheduleActivity {
-  id             Int       @id @default(autoincrement())
-  bidId          Int
-  bidTradeId     Int?
+  id         Int  @id @default(autoincrement())
+  bidId      Int
+  bidTradeId Int?
 
-  activityId     String    // "A1010" style
-  name           String
-  kind           String    @default("CONSTRUCTION")
-  sequence       Int       @default(0)
+  activityId String // "A1010" style
+  name       String
+  kind       String @default("CONSTRUCTION")
+  sequence   Int    @default(0)
 
   durationDays   Int       @default(5)
   startDate      DateTime?
   finishDate     DateTime?
   predecessorIds String?
 
-  notes          String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   bid      Bid       @relation(fields: [bidId], references: [id], onDelete: Cascade)
   bidTrade BidTrade? @relation(fields: [bidTradeId], references: [id])
@@ -949,7 +949,7 @@ model Schedule {
   baselinedAt     DateTime?
   weatherMode     String    @default("BUFFER")
   weatherStation  String?
-  weatherBaseline String?   // JSON: { stationId, annualDays, monthlyDays[] }
+  weatherBaseline String? // JSON: { stationId, annualDays, monthlyDays[] }
   activeLayers    String    @default("[]") // JSON: string[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -994,10 +994,10 @@ model ScheduleActivityV2 {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  predecessors       ScheduleDependency[] @relation("SuccessorActivity")
-  successors         ScheduleDependency[] @relation("PredecessorActivity")
-  submittals         SubmittalItem[]
-  submittalPackages  SubmittalPackage[]
+  predecessors      ScheduleDependency[] @relation("SuccessorActivity")
+  successors        ScheduleDependency[] @relation("PredecessorActivity")
+  submittals        SubmittalItem[]
+  submittalPackages SubmittalPackage[]
 
   @@index([scheduleId])
   @@index([scheduleId, sortOrder])
@@ -1013,7 +1013,7 @@ model ScheduleDependency {
   lag           Int    @default(0)
 
   predecessor ScheduleActivityV2 @relation("PredecessorActivity", fields: [predecessorId], references: [id], onDelete: Cascade)
-  successor   ScheduleActivityV2 @relation("SuccessorActivity",   fields: [successorId],   references: [id], onDelete: Cascade)
+  successor   ScheduleActivityV2 @relation("SuccessorActivity", fields: [successorId], references: [id], onDelete: Cascade)
 
   @@unique([predecessorId, successorId, type])
   @@index([successorId])
@@ -1026,7 +1026,7 @@ model ScheduleVersion {
   scheduleId  String
   schedule    Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   versionName String
-  snapshot    String   // JSON
+  snapshot    String // JSON
   createdAt   DateTime @default(now())
 
   @@index([scheduleId])
@@ -1068,16 +1068,16 @@ model AppSetting {
 //
 // callKey aligns with AI_CALL_DEFINITIONS in aiTokenConfig.ts.
 model AiUsageLog {
-  id              Int       @id @default(autoincrement())
-  callKey         String
-  model           String
-  inputTokens     Int
-  outputTokens   Int
-  costUsd         Float
-  bidId           Int?
-  status          String    @default("ok") // "ok" | "error"
-  errorMessage    String?
-  createdAt       DateTime  @default(now())
+  id           Int      @id @default(autoincrement())
+  callKey      String
+  model        String
+  inputTokens  Int
+  outputTokens Int
+  costUsd      Float
+  bidId        Int?
+  status       String   @default("ok") // "ok" | "error"
+  errorMessage String?
+  createdAt    DateTime @default(now())
 
   @@index([callKey])
   @@index([createdAt])
@@ -1114,22 +1114,22 @@ model Meeting {
   audioFileName       String?
   durationSeconds     Int?
   transcriptionSource String?
-  transcriptionJobId  String?   // AssemblyAI transcript_id or WhisperX job id
-  rawTranscript       String?   // full JSON blob from transcription service
-  transcript          String?   // speaker-labeled formatted text for display + Claude
-  processingMode      String    @default("AUTO")  // AUTO | MANUAL | VTT_ONLY | AUDIO_ONLY | HYBRID
-  speakerMapping      String?   // JSON: { clusters: [...], mapping: {} } — populated after diarization
-  vttContent          String?   // Teams VTT text stored during HYBRID processing; cleared after merge
-  summary             String?   // Claude-generated 2-3 sentence overview (§3)
-  keyDecisions        String    @default("[]")   // JSON: string[]                       (§4)
-  risks               String    @default("[]")   // JSON: { description, severity }[]    (legacy)
-  followUpItems       String    @default("[]")   // JSON: string[]                       (legacy)
+  transcriptionJobId  String? // AssemblyAI transcript_id or WhisperX job id
+  rawTranscript       String? // full JSON blob from transcription service
+  transcript          String? // speaker-labeled formatted text for display + Claude
+  processingMode      String    @default("AUTO") // AUTO | MANUAL | VTT_ONLY | AUDIO_ONLY | HYBRID
+  speakerMapping      String? // JSON: { clusters: [...], mapping: {} } — populated after diarization
+  vttContent          String? // Teams VTT text stored during HYBRID processing; cleared after merge
+  summary             String? // Claude-generated 2-3 sentence overview (§3)
+  keyDecisions        String    @default("[]") // JSON: string[]                       (§4)
+  risks               String    @default("[]") // JSON: { description, severity }[]    (legacy)
+  followUpItems       String    @default("[]") // JSON: string[]                       (legacy)
   // ── 8-section analysis output fields ──────────────────────────────────────
-  openIssues          String    @default("[]")   // JSON: MeetingOpenIssue[]             (§6)
-  redFlags            String    @default("[]")   // JSON: MeetingRedFlag[]               (§7)
+  openIssues          String    @default("[]") // JSON: MeetingOpenIssue[]             (§6)
+  redFlags            String    @default("[]") // JSON: MeetingRedFlag[]               (§7)
   reviewStatus        String    @default("DRAFT") // "DRAFT" | "IN_REVIEW" | "PUBLISHED"
   publishedAt         DateTime?
-  analysisVersion     Int       @default(0)      // increments on each re-analysis
+  analysisVersion     Int       @default(0) // increments on each re-analysis
   uploadedAt          DateTime?
   analyzedAt          DateTime?
   createdAt           DateTime  @default(now())
@@ -1147,19 +1147,19 @@ model Meeting {
 // (SPEAKER_A, SPEAKER_B) are resolved to real names by the user post-upload.
 // Optionally linked to a ProjectContact for cross-meeting context.
 model MeetingParticipant {
-  id               Int      @id @default(autoincrement())
+  id               Int     @id @default(autoincrement())
   meetingId        Int
   name             String
   role             String?
   company          String?
-  speakerLabel     String?  // "SPEAKER_A" / "ROOM_SPK_1" from diarization
-  speakerType      String?  // "REMOTE" | "IN_ROOM" | "UNKNOWN"
-  confidence       Float?   // 0.0–1.0 identity confidence from AI inference
-  isGcTeam         Boolean  @default(false) // GC team member — drives §8 bold + filter
+  speakerLabel     String? // "SPEAKER_A" / "ROOM_SPK_1" from diarization
+  speakerType      String? // "REMOTE" | "IN_ROOM" | "UNKNOWN"
+  confidence       Float? // 0.0–1.0 identity confidence from AI inference
+  isGcTeam         Boolean @default(false) // GC team member — drives §8 bold + filter
   projectContactId Int?
 
-  meeting        Meeting         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  projectContact ProjectContact? @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
+  meeting        Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  projectContact ProjectContact?     @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
   actionItems    MeetingActionItem[]
 
   @@index([meetingId])
@@ -1170,27 +1170,27 @@ model MeetingParticipant {
 // priority values: LOW | MEDIUM | HIGH | CRITICAL
 // status values:   OPEN | IN_PROGRESS | CLOSED | DEFERRED
 model MeetingActionItem {
-  id             Int       @id @default(autoincrement())
-  bidId          Int
-  meetingId      Int?      // null for manually created tasks
-  source         String    @default("meeting")  // "meeting" | "manual"
-  description    String
-  assignedToId   Int?      // FK to MeetingParticipant
-  assignedToName String?   // denormalized — survives participant edits
-  dueDate        DateTime?
-  priority       String    @default("MEDIUM")
-  status         String    @default("OPEN")
-  sourceText     String?   // paraphrased evidence excerpt from transcript
-  isGcTask       Boolean   @default(false) // GC team task — populates §8
-  carriedFromDate String?  // ISO date of meeting where this first appeared
-  closedAt       DateTime?
-  notes          String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id              Int       @id @default(autoincrement())
+  bidId           Int
+  meetingId       Int? // null for manually created tasks
+  source          String    @default("meeting") // "meeting" | "manual"
+  description     String
+  assignedToId    Int? // FK to MeetingParticipant
+  assignedToName  String? // denormalized — survives participant edits
+  dueDate         DateTime?
+  priority        String    @default("MEDIUM")
+  status          String    @default("OPEN")
+  sourceText      String? // paraphrased evidence excerpt from transcript
+  isGcTask        Boolean   @default(false) // GC team task — populates §8
+  carriedFromDate String? // ISO date of meeting where this first appeared
+  closedAt        DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  bid        Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  meeting    Meeting?             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  assignedTo MeetingParticipant?  @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  bid        Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meeting    Meeting?            @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignedTo MeetingParticipant? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
 
   @@index([bidId])
   @@index([meetingId])
@@ -1212,7 +1212,7 @@ model BidDecision {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  bid       Bid       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
 
   @@index([bidId])
 }
@@ -1228,14 +1228,14 @@ model BidDecision {
 // errors is a JSON array of short error strings (one per failed item, max 50).
 
 model ProcorePush {
-  id        Int      @id @default(autoincrement())
-  bidId     Int
-  pushType  String
-  pushedAt  DateTime @default(now())
-  created   Int      @default(0)
-  updated   Int      @default(0)
-  skipped   Int      @default(0)
-  errors    String?
+  id       Int      @id @default(autoincrement())
+  bidId    Int
+  pushType String
+  pushedAt DateTime @default(now())
+  created  Int      @default(0)
+  updated  Int      @default(0)
+  skipped  Int      @default(0)
+  errors   String?
 
   bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
 
@@ -1250,20 +1250,20 @@ model ProcorePush {
 // syncedAt tracks when this record was last pulled from Procore.
 
 model RfiItem {
-  id            Int       @id @default(autoincrement())
-  bidId         Int
-  procoreRfiId  Int?
-  number        String
-  title         String
-  question      String?
-  answer        String?
-  status        String    @default("open")
-  priority      String?
-  assigneeName  String?
-  dueDate       DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  syncedAt      DateTime?
+  id           Int       @id @default(autoincrement())
+  bidId        Int
+  procoreRfiId Int?
+  number       String
+  title        String
+  question     String?
+  answer       String?
+  status       String    @default("open")
+  priority     String?
+  assigneeName String?
+  dueDate      DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  syncedAt     DateTime?
 
   bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
 
@@ -1285,47 +1285,47 @@ model RfiItem {
 //
 // triggerSource: "user" | "automation" | "webhook"
 model BackgroundJob {
-  id            String    @id @default(cuid())
-  jobType       String
-  status        String    @default("queued")
+  id      String @id @default(cuid())
+  jobType String
+  status  String @default("queued")
 
   // Context — which bid/document this job is about
-  bidId         Int?
-  relatedId     String?   // specBookId, drawingUploadId, meetingId as string
+  bidId     Int?
+  relatedId String? // specBookId, drawingUploadId, meetingId as string
 
   // Sidecar reference — external job_id for progress polling while sidecar lives
   externalJobId String?
 
   // Input metadata (lightweight summary, not full payload)
-  inputSummary  String?   // e.g. "32 sections, tier 2"
+  inputSummary String? // e.g. "32 sections, tier 2"
 
   // Result metadata (set on complete)
-  resultSummary String?   // e.g. "32 sections saved, $1.42"
-  artifactType  String?   // "spec_sections" | "drawing_sheets" etc.
+  resultSummary String? // e.g. "32 sections saved, $1.42"
+  artifactType  String? // "spec_sections" | "drawing_sheets" etc.
 
   // Error detail (set on failed)
-  errorMessage  String?
+  errorMessage String?
 
   // Lifecycle timestamps
-  createdAt     DateTime  @default(now())
-  startedAt     DateTime?
-  completedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
 
   // Operational metadata
-  retryCount    Int       @default(0)
-  triggerSource String    @default("user")
+  retryCount    Int    @default(0)
+  triggerSource String @default("user")
 
   // Off-peak queueing — worker only picks up jobs where runAfter <= now()
-  runAfter      DateTime?
+  runAfter DateTime?
 
   // GWX-005.1 — Atomic duplicate prevention
   // Active (queued/running) jobs hold activeSlot=1; terminal jobs clear it to null.
   // The @@unique below enforces at most one active job per (bidId, jobType) at the
   // DB level. SQLite treats NULLs as distinct in unique indexes, so terminal rows
   // (activeSlot=null) never conflict with each other.
-  activeSlot    Int?      @default(1)
+  activeSlot Int? @default(1)
 
-  bid            Bid?           @relation(fields: [bidId], references: [id], onDelete: SetNull)
+  bid            Bid?            @relation(fields: [bidId], references: [id], onDelete: SetNull)
   submittalItems SubmittalItem[]
 
   @@unique([bidId, jobType, activeSlot])
@@ -1343,15 +1343,15 @@ model BackgroundJob {
 // the raw JSON body for replay/debugging.
 
 model ProcoreWebhookEvent {
-  id           Int      @id @default(autoincrement())
-  receivedAt   DateTime @default(now())
+  id           Int       @id @default(autoincrement())
+  receivedAt   DateTime  @default(now())
   eventType    String
   resourceType String
   resourceId   Int?
   projectId    Int?
   companyId    Int?
   payload      String
-  processed    Boolean  @default(false)
+  processed    Boolean   @default(false)
   processedAt  DateTime?
   error        String?
 
@@ -1371,28 +1371,28 @@ model MarketLead {
   id              String    @id @default(cuid())
   title           String
   leadType        String    @default("MANUAL")
-  source          String?   // "beeline" | "city_hall" | "blue_book" | "county_records" | "manual"
+  source          String? // "beeline" | "city_hall" | "blue_book" | "county_records" | "manual"
   sourceUrl       String?
-  sourceDocId     String?   // FK to MarketSourceDoc when auto-detected
+  sourceDocId     String? // FK to MarketSourceDoc when auto-detected
   status          String    @default("NEW")
   confidence      String    @default("MEDIUM")
-  aiScore         Int?      // 0–100 overall signal strength
+  aiScore         Int? // 0–100 overall signal strength
   location        String?
-  jurisdiction    String?   // city or county
-  projectType     String?   // building use / type
+  jurisdiction    String? // city or county
+  projectType     String? // building use / type
   estimatedValue  Float?
-  rawText         String?   // original scraped content
-  aiSummary       String?   // Claude-generated one-paragraph brief
-  aiInsights      String?   // JSON: { strengths: string[], risks: string[], angle: string }
+  rawText         String? // original scraped content
+  aiSummary       String? // Claude-generated one-paragraph brief
+  aiInsights      String? // JSON: { strengths: string[], risks: string[], angle: string }
   detectedAt      DateTime  @default(now())
-  promotedToBidId Int?      // set when user promotes this lead to an active pursuit
+  promotedToBidId Int? // set when user promotes this lead to an active pursuit
   promotedAt      DateTime?
   notes           String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   signals     MarketSignal[]
-  promotedBid Bid?           @relation(fields: [promotedToBidId], references: [id], onDelete: SetNull)
+  promotedBid Bid?             @relation(fields: [promotedToBidId], references: [id], onDelete: SetNull)
   sourceDoc   MarketSourceDoc? @relation(fields: [sourceDocId], references: [id], onDelete: SetNull)
 
   @@index([status])
@@ -1411,16 +1411,16 @@ model MarketLead {
 model MarketSignal {
   id               String    @id @default(cuid())
   leadId           String?
-  sourceDocId      String?   // FK to MarketSourceDoc when auto-detected
-  signalType       String    // PERMIT | MEETING_MINUTE | PLAN_ROOM_* | ...
-  signalSubtype    String?   // SUP_CUP | REZONING | PLAT | VARIANCE | SITE_PLAN | ... (P&Z item types)
+  sourceDocId      String? // FK to MarketSourceDoc when auto-detected
+  signalType       String // PERMIT | MEETING_MINUTE | PLAN_ROOM_* | ...
+  signalSubtype    String? // SUP_CUP | REZONING | PLAT | VARIANCE | SITE_PLAN | ... (P&Z item types)
   source           String?
   sourceUrl        String?
   sourceDate       DateTime?
   headline         String
   rawText          String?
-  metadata         String?   // JSON: source-specific fields (permit no., parcel id, etc.)
-  aiRelevanceScore Int?      // 0–100
+  metadata         String? // JSON: source-specific fields (permit no., parcel id, etc.)
+  aiRelevanceScore Int? // 0–100
   nextMeetingDate  DateTime? // Set when status=CONTINUED — watch the next agenda
   createdAt        DateTime  @default(now())
 
@@ -1441,36 +1441,36 @@ model MarketSignal {
 //
 // sourceType: city_council | planning_commission | permit_feed | rss
 model MarketSource {
-  id                    String    @id @default(cuid())
-  name                  String
-  jurisdiction          String
-  url                   String
-  sourceType            String    @default("city_council")
-  isActive              Boolean   @default(true)
-  lastScannedAt         DateTime?
-  docsProcessed         Int       @default(0)
+  id                     String    @id @default(cuid())
+  name                   String
+  jurisdiction           String
+  url                    String
+  sourceType             String    @default("city_council")
+  isActive               Boolean   @default(true)
+  lastScannedAt          DateTime?
+  docsProcessed          Int       @default(0)
   // Tuning knobs — applied per-source during scrape persist
-  dateFrom              DateTime?    // skip docs older than this
-  dateTo                DateTime?    // skip docs newer than this
-  minRelevanceScore     Int       @default(60)   // drop signals below this score
-  minEstimatedValue     Float?       // drop leads below this value (null = no floor)
-  projectTypeAllowlist  String?      // CSV: commercial,industrial,institutional (null = all)
+  dateFrom               DateTime? // skip docs older than this
+  dateTo                 DateTime? // skip docs newer than this
+  minRelevanceScore      Int       @default(60) // drop signals below this score
+  minEstimatedValue      Float? // drop leads below this value (null = no floor)
+  projectTypeAllowlist   String? // CSV: commercial,industrial,institutional (null = all)
   // Ollama prefilter (cost control) — runs local LLM on the GPU PC first to
   // strip boilerplate before Claude. Modes: off | large | always.
   // "large" triggers when extracted doc length exceeds prefilterCharThreshold.
-  prefilterMode         String    @default("off")
-  prefilterCharThreshold Int      @default(30000)
-  prefilterModel        String?   // null = use sidecar OLLAMA_MODEL default
+  prefilterMode          String    @default("off")
+  prefilterCharThreshold Int       @default(30000)
+  prefilterModel         String? // null = use sidecar OLLAMA_MODEL default
   // Publish-cadence learning + smart polling
-  publishCadenceDays    Int?      // median days between consecutive docs
-  cadenceConfidence     String?   // LOW (<5 samples) | MEDIUM (5-15) | HIGH (>15)
-  cadenceSampleSize     Int?      // number of date-deltas the cadence is derived from
-  lastDocSeenAt         DateTime? // documentDate of the most recent doc on file
-  nextExpectedAt        DateTime? // when smart polling should fire next
-  backfillYears         Int?      // how far back we've intentionally backfilled
-  backfillCompletedAt   DateTime? // null = no backfill done yet
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  publishCadenceDays     Int? // median days between consecutive docs
+  cadenceConfidence      String? // LOW (<5 samples) | MEDIUM (5-15) | HIGH (>15)
+  cadenceSampleSize      Int? // number of date-deltas the cadence is derived from
+  lastDocSeenAt          DateTime? // documentDate of the most recent doc on file
+  nextExpectedAt         DateTime? // when smart polling should fire next
+  backfillYears          Int? // how far back we've intentionally backfilled
+  backfillCompletedAt    DateTime? // null = no backfill done yet
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   docs MarketSourceDoc[]
 
@@ -1483,21 +1483,21 @@ model MarketSource {
 // the scraper has processed under a given source — prevents re-scanning the
 // same minutes/agenda PDF on subsequent runs.
 model MarketSourceDoc {
-  id            String    @id @default(cuid())
-  sourceId      String
-  docUrl        String    // canonical URL (query string stripped) — dedup key
-  docUrlFull    String?   // original URL incl. query string, kept for re-fetch
-  title         String?   // link text from listing page (e.g. "April 13 P&Z Minutes")
-  scannedAt     DateTime  @default(now())
-  signalsFound  Int       @default(0)
-  jurisdiction  String?
-  documentDate  DateTime?
-  rawText       String?   // full extracted text — for traceability + future re-analysis
-  charCount     Int       @default(0)
-  costUsd       Float     @default(0)
-  error         String?
+  id           String    @id @default(cuid())
+  sourceId     String
+  docUrl       String // canonical URL (query string stripped) — dedup key
+  docUrlFull   String? // original URL incl. query string, kept for re-fetch
+  title        String? // link text from listing page (e.g. "April 13 P&Z Minutes")
+  scannedAt    DateTime  @default(now())
+  signalsFound Int       @default(0)
+  jurisdiction String?
+  documentDate DateTime?
+  rawText      String? // full extracted text — for traceability + future re-analysis
+  charCount    Int       @default(0)
+  costUsd      Float     @default(0)
+  error        String?
 
-  source   MarketSource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  source   MarketSource        @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   leads    MarketLead[]
   signals  MarketSignal[]
   analyses MarketDocAnalysis[]
@@ -1515,8 +1515,8 @@ model MarketSourceDoc {
 model MarketDocAnalysis {
   id              String    @id @default(cuid())
   docId           String
-  engine          String    // "claude" | "ollama"
-  modelName       String    // e.g. "claude-sonnet-4-6" or "qwen2.5:14b"
+  engine          String // "claude" | "ollama"
+  modelName       String // e.g. "claude-sonnet-4-6" or "qwen2.5:14b"
   status          String    @default("queued") // queued | running | complete | failed
   requestedAt     DateTime  @default(now())
   startedAt       DateTime?
@@ -1525,7 +1525,7 @@ model MarketDocAnalysis {
   costUsd         Float     @default(0)
   signalsCount    Int       @default(0) // number of signal items in response
   leadsCount      Int       @default(0) // number of lead items in response
-  rawResponseJson String?   // full JSON the engine returned (for diff/compare)
+  rawResponseJson String? // full JSON the engine returned (for diff/compare)
   errorMessage    String?
   triggerSource   String    @default("user") // user | automation | retry
 
@@ -1542,7 +1542,7 @@ model MarketDocAnalysis {
 // fromType / toType: GC | ARCHITECT | OWNER | DEVELOPER | ENGINEER | BROKER
 // relationshipType:  DESIGNED | BUILT | PARTNERED | COMPETING | OWNED
 model RelationshipEdge {
-  id               String    @id @default(cuid())
+  id               String   @id @default(cuid())
   fromType         String
   fromName         String
   toType           String
@@ -1554,10 +1554,10 @@ model RelationshipEdge {
   location         String?
   source           String?
   sourceUrl        String?
-  confidence       String    @default("MEDIUM")
+  confidence       String   @default("MEDIUM")
   notes            String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   // ── Phase MI-1 additive entity-link columns ──────────────────────────────
   // Populated by the future resolver (MI-2) and backfill (MI-3). NULL on
@@ -1603,26 +1603,26 @@ model RelationshipEdge {
 // ────────────────────────────────────────────────────────────────────────────
 
 model Entity {
-  id             String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Canonical naming. normalizedName is the dedup key: lowercased,
   // suffix-stripped ("LLC", "Inc", "Corp", "Company", "The"), whitespace
   // and punctuation removed. See lib/services/entityResolver/normalize.ts
   // (added in MI-2 PR) for the exact algorithm.
-  canonicalName  String   // "Hubbell Realty Company"
-  normalizedName String   @unique // "hubbellrealty"
+  canonicalName  String // "Hubbell Realty Company"
+  normalizedName String @unique // "hubbellrealty"
   entityType     String
 
   // Workflow + provenance
-  reviewStatus   String   @default("AUTO")
-  confidence     String   @default("MEDIUM")
-  source         String?  // "watchlist_seed" | "resolver" | "manual" | "backfill"
-  notes          String?
+  reviewStatus String  @default("AUTO")
+  confidence   String  @default("MEDIUM")
+  source       String? // "watchlist_seed" | "resolver" | "manual" | "backfill"
+  notes        String?
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  aliases             EntityAlias[]
+  aliases               EntityAlias[]
   outgoingRelationships EntityRelationship[] @relation("EntityRelationshipFrom")
   incomingRelationships EntityRelationship[] @relation("EntityRelationshipTo")
 
@@ -1631,17 +1631,17 @@ model Entity {
 }
 
 model EntityAlias {
-  id              String   @id @default(cuid())
+  id              String  @id @default(cuid())
   entityId        String
-  alias           String   // "Hubbell"
-  normalizedAlias String   // "hubbell" — same normalizer as Entity.normalizedName
-  confidence      String   @default("MEDIUM")
-  source          String?  // "watchlist" | "backfill" | "manual"
+  alias           String // "Hubbell"
+  normalizedAlias String // "hubbell" — same normalizer as Entity.normalizedName
+  confidence      String  @default("MEDIUM")
+  source          String? // "watchlist" | "backfill" | "manual"
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  entity          Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
 
   @@unique([entityId, normalizedAlias])
   @@index([normalizedAlias])
@@ -1649,40 +1649,40 @@ model EntityAlias {
 }
 
 model EntityRelationship {
-  id               String   @id @default(cuid())
+  id               String @id @default(cuid())
   fromEntityId     String
   toEntityId       String
   relationshipType String
 
   // Project / lead / signal context (denormalized — no Project aggregate yet).
   // Populated where the relationship was observed in a project-scoped context.
-  projectName      String?
-  projectValue     Float?
-  projectYear      Int?
-  projectAddress   String?
-  jurisdiction     String?
-  sourceDocId      String?  // loose pointer to MarketSourceDoc.id when applicable
-  leadId           String?  // loose pointer to MarketLead.id when applicable
-  signalId         String?  // loose pointer to MarketSignal.id when applicable
-  legacyEdgeId     String?  // points back to RelationshipEdge.id for backfilled rows
+  projectName    String?
+  projectValue   Float?
+  projectYear    Int?
+  projectAddress String?
+  jurisdiction   String?
+  sourceDocId    String? // loose pointer to MarketSourceDoc.id when applicable
+  leadId         String? // loose pointer to MarketLead.id when applicable
+  signalId       String? // loose pointer to MarketSignal.id when applicable
+  legacyEdgeId   String? // points back to RelationshipEdge.id for backfilled rows
 
   // Provenance + confidence + workflow
-  source           String?  // "permit" | "meeting_minute" | "press" | "manual" | "backfill"
-  sourceUrl        String?
-  confidence       String   @default("MEDIUM")
-  reviewStatus     String   @default("AUTO")
-  notes            String?
+  source       String? // "permit" | "meeting_minute" | "press" | "manual" | "backfill"
+  sourceUrl    String?
+  confidence   String  @default("MEDIUM")
+  reviewStatus String  @default("AUTO")
+  notes        String?
 
   // Observation lifecycle — distinct from row-level created/updated. A
   // relationship may be observed multiple times before being collapsed.
-  firstObservedAt  DateTime @default(now())
-  lastObservedAt   DateTime @default(now())
+  firstObservedAt DateTime @default(now())
+  lastObservedAt  DateTime @default(now())
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  fromEntity       Entity   @relation("EntityRelationshipFrom", fields: [fromEntityId], references: [id], onDelete: Cascade)
-  toEntity         Entity   @relation("EntityRelationshipTo",   fields: [toEntityId],   references: [id], onDelete: Cascade)
+  fromEntity Entity @relation("EntityRelationshipFrom", fields: [fromEntityId], references: [id], onDelete: Cascade)
+  toEntity   Entity @relation("EntityRelationshipTo", fields: [toEntityId], references: [id], onDelete: Cascade)
 
   @@index([fromEntityId])
   @@index([toEntityId])
@@ -1732,42 +1732,43 @@ model EntityRelationship {
 // ──────────────────────────────────────────────────────────────────────────────
 
 model Project {
-  id                    String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  workingTitle          String
-  jurisdiction          String?
+  workingTitle String
+  jurisdiction String?
 
-  lifecycleState        String   @default("EMERGING")
-  confidence            String   @default("LOW")
-  reviewStatus          String   @default("AUTO_AGGREGATED")
-  emergenceProbability  Float?
+  lifecycleState       String @default("EMERGING")
+  confidence           String @default("LOW")
+  reviewStatus         String @default("AUTO_AGGREGATED")
+  emergenceProbability Float?
 
-  firstSignalAt         DateTime?
-  lastSignalAt          DateTime?
-  estimatedStart        DateTime?
-  estimatedCompletion   DateTime?
+  firstSignalAt       DateTime?
+  lastSignalAt        DateTime?
+  estimatedStart      DateTime?
+  estimatedCompletion DateTime?
 
-  estimatedValue        Float?
-  estimatedSqft         Int?
-  projectType           String?
+  estimatedValue Float?
+  estimatedSqft  Int?
+  projectType    String?
 
-  source                String?
-  notes                 String?
+  source String?
+  notes  String?
 
-  mergedIntoProjectId   String?
+  mergedIntoProjectId String?
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  signals               ProjectSignal[]
-  entities              ProjectEntity[]
-  timelineEvents        ProjectTimelineEvent[]
-  stateTransitions      ProjectStateTransition[]
-  parcels               ProjectParcel[]
-  probabilitySnapshots  ProjectProbabilitySnapshot[]
+  signals              ProjectSignal[]
+  entities             ProjectEntity[]
+  timelineEvents       ProjectTimelineEvent[]
+  stateTransitions     ProjectStateTransition[]
+  parcels              ProjectParcel[]
+  parcelEntities       ParcelProject[]
+  probabilitySnapshots ProjectProbabilitySnapshot[]
 
-  mergedInto            Project?  @relation("ProjectMergeTarget", fields: [mergedIntoProjectId], references: [id], onDelete: SetNull)
-  absorbedProjects      Project[] @relation("ProjectMergeTarget")
+  mergedInto       Project?  @relation("ProjectMergeTarget", fields: [mergedIntoProjectId], references: [id], onDelete: SetNull)
+  absorbedProjects Project[] @relation("ProjectMergeTarget")
 
   @@index([lifecycleState])
   @@index([reviewStatus])
@@ -1778,10 +1779,10 @@ model Project {
 }
 
 model ProjectSignal {
-  id                       String   @id @default(cuid())
-  projectId                String
+  id        String @id @default(cuid())
+  projectId String
 
-  signalKind               String
+  signalKind String
 
   sourceMarketSignalId     String?
   sourceRelationshipEdgeId String?
@@ -1789,19 +1790,19 @@ model ProjectSignal {
   sourceMarketSourceDocId  String?
   sourceExternalRef        String?
 
-  attachReason             String
-  attachScore              Float
-  attachConfidence         String   @default("MEDIUM")
-  factorJson               String?
+  attachReason     String
+  attachScore      Float
+  attachConfidence String  @default("MEDIUM")
+  factorJson       String?
 
-  attachedAt               DateTime @default(now())
-  detachedAt               DateTime?
-  detachedReason           String?
-  detachedBy               String?
+  attachedAt     DateTime  @default(now())
+  detachedAt     DateTime?
+  detachedReason String?
+  detachedBy     String?
 
-  updatedAt                DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
-  project                  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([sourceMarketSignalId])
@@ -1813,25 +1814,25 @@ model ProjectSignal {
 }
 
 model ProjectEntity {
-  id            String   @id @default(cuid())
-  projectId     String
-  entityId      String
-  role          String
+  id        String @id @default(cuid())
+  projectId String
+  entityId  String
+  role      String
 
-  confidence    String   @default("MEDIUM")
-  attachReason  String
+  confidence   String @default("MEDIUM")
+  attachReason String
 
-  firstSeenAt   DateTime @default(now())
-  lastSeenAt    DateTime @default(now())
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
 
-  removed       Boolean  @default(false)
+  removed       Boolean @default(false)
   removedReason String?
   removedBy     String?
 
-  attachedAt    DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  attachedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, entityId, role])
   @@index([projectId])
@@ -1841,23 +1842,23 @@ model ProjectEntity {
 }
 
 model ProjectTimelineEvent {
-  id            String   @id @default(cuid())
-  projectId     String
+  id        String @id @default(cuid())
+  projectId String
 
-  eventType     String
-  occurredAt    DateTime
-  recordedAt    DateTime @default(now())
+  eventType  String
+  occurredAt DateTime
+  recordedAt DateTime @default(now())
 
-  summary       String
-  payloadJson   String?
+  summary     String
+  payloadJson String?
 
   sourceRefKind String?
   sourceRefId   String?
 
-  actorUserId   String?
-  actorEmail    String?
+  actorUserId String?
+  actorEmail  String?
 
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, occurredAt])
   @@index([eventType])
@@ -1865,97 +1866,509 @@ model ProjectTimelineEvent {
 }
 
 model ProjectStateTransition {
-  id                   String   @id @default(cuid())
-  projectId            String
+  id        String @id @default(cuid())
+  projectId String
 
-  fromState            String
-  toState              String
-  reason               String
+  fromState String
+  toState   String
+  reason    String
 
   triggerSignalRefKind String?
   triggerSignalRefId   String?
 
-  actorUserId          String?
-  actorEmail           String?
+  actorUserId String?
+  actorEmail  String?
 
-  occurredAt           DateTime @default(now())
+  occurredAt DateTime @default(now())
 
-  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, occurredAt])
   @@index([toState])
 }
 
 model ProjectParcel {
-  id            String   @id @default(cuid())
-  projectId     String
+  id        String @id @default(cuid())
+  projectId String
 
-  parcelId      String
-  parcelSource  String
-  address       String?
-  jurisdiction  String?
+  parcelId     String
+  parcelSource String
+  address      String?
+  jurisdiction String?
 
-  lat           Float?
-  lng           Float?
-  areaSqft      Float?
+  lat      Float?
+  lng      Float?
+  areaSqft Float?
 
-  attachReason  String
-  confidence    String   @default("MEDIUM")
+  attachReason String
+  confidence   String @default("MEDIUM")
 
-  attachedAt    DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  // ── Phase MI-7 additive parcel-entity link ───────────────────────────────
+  // Populated by the MI-7 resolver / backfill as it resolves free-text
+  // parcelId strings into canonical Parcel rows. NULL on existing rows; reads
+  // continue to function via the (parcelId, parcelSource) free-text columns
+  // above (dual-read pattern, mirrors MI-1's RelationshipEdge augmentation).
+  canonicalParcelId        String?
+  parcelResolverVersion    String?
+  parcelResolverConfidence String?
 
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  attachedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project         Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  canonicalParcel Parcel? @relation(fields: [canonicalParcelId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, parcelId, parcelSource])
   @@index([projectId])
   @@index([parcelId])
   @@index([jurisdiction])
+  @@index([canonicalParcelId])
 }
 
 model ProjectProbabilitySnapshot {
-  id             String   @id @default(cuid())
-  projectId      String
+  id        String @id @default(cuid())
+  projectId String
 
   probability    Float
   lifecycleState String
   factorsJson    String
   computedAt     DateTime @default(now())
 
-  actorUserId    String?
-  actorEmail     String?
-  reason         String?
+  actorUserId String?
+  actorEmail  String?
+  reason      String?
 
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, computedAt])
 }
 
 model EntityWatchlistSeed {
-  id              String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Raw + normalized form of the canonical name as it appears in the
   // immutable seed source (docs/sources/ENTITIES_WATCHLIST.md). MI-3 backfill
   // reads these rows to materialize Entity rows + EntityAlias rows.
-  rawName         String   // "Hubbell Realty Company"
-  normalizedName  String   // "hubbellrealty"
+  rawName        String // "Hubbell Realty Company"
+  normalizedName String // "hubbellrealty"
 
-  entityType      String   // matches Entity.entityType pseudo-enum
-  category        String?  // markdown section heading: "Developers / Owners",
-                           // "Corporates (likely repeat capital projects)",
-                           // "General Contractors (regional + national active in DSM)"
-  seedSource      String   @default("docs/sources/ENTITIES_WATCHLIST.md")
+  entityType String // matches Entity.entityType pseudo-enum
+  category   String? // markdown section heading: "Developers / Owners",
+  // "Corporates (likely repeat capital projects)",
+  // "General Contractors (regional + national active in DSM)"
+  seedSource String  @default("docs/sources/ENTITIES_WATCHLIST.md")
 
-  notes           String?  // free-text context carried over from the markdown
+  notes String? // free-text context carried over from the markdown
 
-  reviewStatus    String   @default("AUTO") // AUTO | VERIFIED | REJECTED
+  reviewStatus String @default("AUTO") // AUTO | VERIFIED | REJECTED
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([normalizedName])
   @@index([entityType])
   @@index([reviewStatus])
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Market Intelligence: Parcel Memory + Spatial Emergence Intelligence (MI-7)
+//
+//  Persistent geographic market memory. Construction emergence is fundamentally
+//  geographic pressure evolving over time; the platform must model not only
+//  WHO / WHAT / WHEN (entities, signals, projects, timeline) but WHERE.
+//
+//  Schema-only here. Services in lib/services/parcelMemory ship in the same
+//  PR but do not mutate ingestion paths. Live ingestion hookup, backfill, and
+//  spatial UI follow in MI-7 PR-2 and MI-7 PR-3 respectively.
+//
+//  All ten models are additive. The only existing-table change is the
+//  augmentation of ProjectParcel with three nullable columns (canonical link,
+//  resolver version, confidence) — strict dual-read; older rows untouched.
+//
+//  Pseudo-enum field values (validated in app code, not in Prisma):
+//    Parcel.parcelKind:        ASSESSOR | LEGAL | ADDRESS_ONLY | UTILITY |
+//                              CORRIDOR | UNKNOWN
+//    Parcel.reviewStatus:      AUTO | AUTO_MATCHED | PENDING_REVIEW |
+//                              VERIFIED | REJECTED | MERGED
+//    Parcel.confidence:        LOW | MEDIUM | HIGH | VERIFIED
+//    ParcelAlias.aliasKind:    LEGAL_DESCRIPTION | ASSESSOR_NAME |
+//                              ADDRESS | UTILITY_REF | INFORMAL | OTHER
+//    ParcelOwnershipPeriod.transferKind:
+//                              SALE | INHERITANCE | FORECLOSURE |
+//                              ASSEMBLAGE | SPLIT | UNKNOWN
+//    ParcelAdjacency.adjacencyKind:
+//                              SHARED_BOUNDARY | ACROSS_STREET | CORRIDOR |
+//                              SAME_BLOCK | NEARBY | INFERRED
+//    ParcelSignal.signalKind:  MARKET_SIGNAL | RELATIONSHIP_EDGE |
+//                              MARKET_LEAD | SOURCE_DOC | MANUAL | EXTERNAL
+//    ParcelZoningContext.zoningKind:
+//                              CURRENT | PROPOSED | OVERLAY | HISTORICAL |
+//                              SUBJECT_OF_REZONING
+//    ParcelUtilityContext.utilityKind:
+//                              WATER | SEWER | STORM | ELECTRIC | GAS |
+//                              FIBER | OTHER
+//    ParcelUtilityContext.availability:
+//                              AVAILABLE | PROPOSED | UNDER_CONSTRUCTION |
+//                              INSUFFICIENT | UNKNOWN
+//
+//  Cascades: ParcelAlias / ParcelOwnershipPeriod / ParcelSignal / ParcelProject /
+//  ParcelAdjacency / ParcelJurisdiction / ParcelUtilityContext /
+//  ParcelZoningContext / ParcelPressureSnapshot all CASCADE from Parcel.
+//  Parcel itself should be soft-deleted via reviewStatus=REJECTED rather than
+//  hard-deleted; merges follow MI-7 PR-3 governance.
+// ──────────────────────────────────────────────────────────────────────────────
+
+model Parcel {
+  id String @id @default(cuid())
+
+  // Canonical naming + identity. canonicalRef is the operator-facing label;
+  // normalizedRef is the dedup key (lowercased alphanumeric form produced by
+  // lib/services/parcelMemory/normalize.ts).
+  canonicalRef  String // "Polk Co Parcel 010-12345-678" | "5301 Mills Civic Pkwy"
+  normalizedRef String @unique
+  parcelKind    String @default("UNKNOWN")
+
+  // Optional canonical descriptors. May be NULL when the parcel is known only
+  // by an address or by an assessor name; the resolver fills these in over
+  // time as additional signals arrive.
+  assessorParcelId String? // "010-12345-678"
+  legalDescription String?
+  primaryAddress   String?
+  jurisdiction     String? // city / county / metro
+  state            String? // two-letter; optional but indexed
+
+  // Geographic centroid (when known). Avoid raw geometry storage — Turso
+  // doesn't have postgis. Boundary geometry is deferred to MI-7 PR-3 maps.
+  centroidLat Float?
+  centroidLng Float?
+  areaSqft    Float?
+
+  // Workflow + provenance
+  reviewStatus String  @default("AUTO") // AUTO | AUTO_MATCHED | PENDING_REVIEW | VERIFIED | REJECTED | MERGED
+  confidence   String  @default("MEDIUM") // LOW | MEDIUM | HIGH | VERIFIED
+  source       String? // "permit_feed" | "assessor" | "manual" | "backfill"
+  notes        String?
+
+  // Soft-merge target. When two Parcel rows are operator-merged, the absorbed
+  // row keeps reviewStatus=MERGED and mergedIntoParcelId pointing at the
+  // winner; loose pointers in ProjectParcel.canonicalParcelId continue to
+  // resolve correctly via the relation walk.
+  mergedIntoParcelId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  aliases             ParcelAlias[]
+  ownershipPeriods    ParcelOwnershipPeriod[]
+  signals             ParcelSignal[]
+  projectLinks        ParcelProject[]
+  outgoingAdjacencies ParcelAdjacency[]        @relation("ParcelAdjacencyFrom")
+  incomingAdjacencies ParcelAdjacency[]        @relation("ParcelAdjacencyTo")
+  jurisdictions       ParcelJurisdiction[]
+  utilityContexts     ParcelUtilityContext[]
+  zoningContexts      ParcelZoningContext[]
+  pressureSnapshots   ParcelPressureSnapshot[]
+
+  mergedInto      Parcel?  @relation("ParcelMergeTarget", fields: [mergedIntoParcelId], references: [id], onDelete: SetNull)
+  absorbedParcels Parcel[] @relation("ParcelMergeTarget")
+
+  // Legacy ProjectParcel rows that have been resolved to this canonical parcel.
+  legacyProjectParcels ProjectParcel[]
+
+  @@index([parcelKind])
+  @@index([reviewStatus])
+  @@index([jurisdiction])
+  @@index([state])
+  @@index([assessorParcelId])
+  @@index([primaryAddress])
+  @@index([mergedIntoParcelId])
+}
+
+model ParcelAlias {
+  id              String  @id @default(cuid())
+  parcelId        String
+  alias           String // raw form — "5301 Mills Civic Pkwy" | "Polk 010-12345-678"
+  normalizedAlias String // dedup key (same normalizer as Parcel.normalizedRef)
+  aliasKind       String  @default("INFORMAL")
+  confidence      String  @default("MEDIUM")
+  source          String? // "permit" | "minutes" | "assessor" | "backfill" | "manual"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@unique([parcelId, normalizedAlias])
+  @@index([normalizedAlias])
+  @@index([parcelId])
+  @@index([aliasKind])
+}
+
+// Temporal ownership continuity. One row per (parcel, owner-entity, period).
+// Periods may be open-ended (ownedTo = NULL = current). Owners are linked to
+// Entity (MI-1) via ownerEntityId, but ownerNameRaw is kept for cases where
+// the resolver hasn't matched yet.
+model ParcelOwnershipPeriod {
+  id       String @id @default(cuid())
+  parcelId String
+
+  ownerEntityId String?
+  ownerNameRaw  String
+
+  ownedFrom DateTime
+  ownedTo   DateTime?
+
+  transferKind  String  @default("UNKNOWN")
+  transferValue Float? // sale price when known
+  source        String? // "assessor" | "deed" | "press" | "manual"
+  sourceUrl     String?
+  confidence    String  @default("MEDIUM")
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, ownedFrom])
+  @@index([ownerEntityId])
+  @@index([ownedTo])
+}
+
+// Loose attachment of any signal kind to a canonical parcel. The exact
+// source row (MarketSignal / RelationshipEdge / MarketLead / etc.) is
+// referenced via loose pointers so the parcel-memory layer can stay
+// additive and not require an existing FK on every signal table.
+model ParcelSignal {
+  id       String @id @default(cuid())
+  parcelId String
+
+  signalKind String
+
+  sourceMarketSignalId     String?
+  sourceRelationshipEdgeId String?
+  sourceMarketLeadId       String?
+  sourceMarketSourceDocId  String?
+  sourceExternalRef        String?
+
+  // What about this signal made the system attach it to this parcel? Examples:
+  // "permit metadata parcel id match" | "address normalized match" |
+  // "legal description match" | "manual operator attach".
+  attachReason     String
+  attachScore      Float   @default(0)
+  attachConfidence String  @default("MEDIUM")
+  factorJson       String?
+
+  // Recorded once per (parcel, source row) — re-observed signals advance
+  // lastObservedAt instead of inserting a duplicate row.
+  firstObservedAt DateTime @default(now())
+  lastObservedAt  DateTime @default(now())
+
+  // Soft-detach via timestamp — preserves source lineage. Mirrors MI-6
+  // ProjectSignal pattern.
+  detachedAt     DateTime?
+  detachedReason String?
+  detachedBy     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId])
+  @@index([signalKind])
+  @@index([sourceMarketSignalId])
+  @@index([sourceRelationshipEdgeId])
+  @@index([sourceMarketLeadId])
+  @@index([sourceMarketSourceDocId])
+  @@index([firstObservedAt])
+}
+
+// Canonical Parcel ↔ Project link. Distinct from the legacy ProjectParcel
+// model — that one holds free-text parcelIds attached during MI-6 aggregation
+// and is preserved unchanged. ParcelProject is the MI-7 canonical link, with
+// FK integrity on both sides.
+model ParcelProject {
+  id        String @id @default(cuid())
+  parcelId  String
+  projectId String
+
+  attachReason String
+  confidence   String @default("MEDIUM")
+  // "primary" means this parcel is THE site for the project; secondary parcels
+  // are supporting (corridor, easement, adjacent acquisition, etc.).
+  role         String @default("primary")
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  detachedAt     DateTime?
+  detachedReason String?
+  detachedBy     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcel  Parcel  @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([parcelId, projectId, role])
+  @@index([parcelId])
+  @@index([projectId])
+  @@index([role])
+}
+
+// Spatial graph of neighbor relationships. Symmetric in principle but stored
+// directionally so the platform can express asymmetric relationships like
+// "ACROSS_STREET from a corridor parcel onto a back-lot". inferConfidence
+// reflects how strong the spatial-inference is — pixel-perfect parcel-boundary
+// shares score VERIFIED, while heuristic same-block guesses score LOW.
+model ParcelAdjacency {
+  id            String @id @default(cuid())
+  fromParcelId  String
+  toParcelId    String
+  adjacencyKind String @default("INFERRED")
+
+  // Optional spatial descriptors when known.
+  approxDistanceFt Float?
+  bearingDegrees   Float? // 0..360, optional
+
+  source       String? // "assessor_boundary" | "address_grid" | "manual" | "backfill"
+  confidence   String  @default("LOW")
+  reviewStatus String  @default("AUTO") // AUTO | VERIFIED | REJECTED
+  notes        String?
+
+  firstObservedAt DateTime @default(now())
+  lastObservedAt  DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fromParcel Parcel @relation("ParcelAdjacencyFrom", fields: [fromParcelId], references: [id], onDelete: Cascade)
+  toParcel   Parcel @relation("ParcelAdjacencyTo", fields: [toParcelId], references: [id], onDelete: Cascade)
+
+  @@unique([fromParcelId, toParcelId, adjacencyKind])
+  @@index([fromParcelId])
+  @@index([toParcelId])
+  @@index([adjacencyKind])
+}
+
+// Jurisdiction continuity. Most parcels stay in one jurisdiction forever;
+// some are annexed, deannexed, or rezoned-out. Each row is a (parcel, jur,
+// period) tuple. Open-ended periods (effectiveTo = NULL) are the current
+// state.
+model ParcelJurisdiction {
+  id       String @id @default(cuid())
+  parcelId String
+
+  jurisdiction     String // "City of West Des Moines" | "Polk County" | "Iowa DOT"
+  jurisdictionKind String @default("MUNICIPALITY") // MUNICIPALITY | COUNTY | STATE | OVERLAY | UTILITY_DISTRICT
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  source     String? // "assessor" | "annexation" | "manual" | "backfill"
+  confidence String  @default("MEDIUM")
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, effectiveFrom])
+  @@index([jurisdiction])
+  @@index([effectiveTo])
+}
+
+// Per-utility availability context. One row per (parcel, utilityKind, period).
+// Periods are bounded the same way as jurisdictions; AVAILABLE → PROPOSED →
+// UNDER_CONSTRUCTION → AVAILABLE state transitions are common in growth
+// corridors and the row history captures that evolution.
+model ParcelUtilityContext {
+  id       String @id @default(cuid())
+  parcelId String
+
+  utilityKind  String // WATER | SEWER | STORM | ELECTRIC | GAS | FIBER | OTHER
+  availability String  @default("UNKNOWN")
+  providerName String?
+  capacity     String? // free-text — "12-inch water main" | "300 amp service"
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  source     String?
+  confidence String  @default("MEDIUM")
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, utilityKind, effectiveFrom])
+  @@index([availability])
+}
+
+// Per-zoning context. Same period pattern. zoningKind distinguishes CURRENT
+// zoning from a PROPOSED rezoning request (entitlement signal) and from
+// HISTORICAL records preserved for continuity.
+model ParcelZoningContext {
+  id       String @id @default(cuid())
+  parcelId String
+
+  zoningCode  String // "C-2" | "M-1" | "PUD" | "MIXED_USE"
+  zoningKind  String  @default("CURRENT")
+  overlayCode String? // e.g. floodplain overlay, TIF district
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  // When this row represents a PROPOSED rezoning request, link it back to the
+  // signal that introduced it for explainability.
+  triggerSignalRefKind String?
+  triggerSignalRefId   String?
+
+  source     String?
+  confidence String  @default("MEDIUM")
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, effectiveFrom])
+  @@index([zoningCode])
+  @@index([zoningKind])
+}
+
+// Time series of computed pressure scores. Append-only; never overwritten.
+// Each row captures the full factor breakdown that produced the score so the
+// system can answer "WHY is this parcel under pressure right now?" at any
+// past point in time.
+model ParcelPressureSnapshot {
+  id       String @id @default(cuid())
+  parcelId String
+
+  pressureScore   Float // 0..1 composite
+  // factorsJson is a stringified Record<factorName, score> + supporting
+  // breakdown (contributing project ids, entity ids, adjacency ids, etc.).
+  factorsJson     String
+  // Pressure-engine version that produced this snapshot. Lets future engine
+  // upgrades selectively re-evaluate historical pressure.
+  pressureVersion String @default("v1")
+
+  computedAt DateTime @default(now())
+  reason     String? // "scheduled" | "signal_attached" | "manual" | "backfill"
+
+  actorUserId String?
+  actorEmail  String?
+
+  parcel Parcel @relation(fields: [parcelId], references: [id], onDelete: Cascade)
+
+  @@index([parcelId, computedAt])
+  @@index([pressureScore])
 }
 
 // ── Integration Credentials Vault ───────────────────────────────────────────
@@ -1969,18 +2382,18 @@ model EntityWatchlistSeed {
 // AI/prompt-building code is forbidden from importing the vault (enforced
 // by ESLint no-restricted-imports rule). See docs/architecture/CREDENTIALS.md.
 model IntegrationCredential {
-  id              String    @id @default(cuid())
-  service         String    // "beeline" | "blue_book" | "constructconnect" | "isqft"
-  field           String    // "username" | "password" | "api_key" | "totp_secret"
-  encryptedValue  String    // base64 ciphertext
-  iv              String    // base64 nonce (12 bytes for GCM)
-  authTag         String    // base64 GCM auth tag
-  algorithm       String    @default("aes-256-gcm")
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  lastTestedAt    DateTime?
-  lastTestStatus  String?   // 'success' | 'failed' | null
-  lastTestError   String?
+  id             String    @id @default(cuid())
+  service        String // "beeline" | "blue_book" | "constructconnect" | "isqft"
+  field          String // "username" | "password" | "api_key" | "totp_secret"
+  encryptedValue String // base64 ciphertext
+  iv             String // base64 nonce (12 bytes for GCM)
+  authTag        String // base64 GCM auth tag
+  algorithm      String    @default("aes-256-gcm")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  lastTestedAt   DateTime?
+  lastTestStatus String? // 'success' | 'failed' | null
+  lastTestError  String?
 
   @@unique([service, field])
   @@index([service])
