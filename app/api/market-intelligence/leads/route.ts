@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import {
+  fireAndForgetIngest,
+  processNewMarketLead,
+} from "@/lib/services/liveIngestion";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -39,6 +43,13 @@ export async function POST(request: Request) {
       notes: notes?.trim() || null,
     },
   });
+
+  // Phase MI-5 — live emergence ingestion. Route the freshly-created lead
+  // through the resolver + project aggregator. Fire-and-forget: the lead
+  // creation isn't gated on emergence processing, and any failure is
+  // surfaced to logs (the MI-6 PR2 backfill picks up missed signals
+  // idempotently).
+  fireAndForgetIngest(processNewMarketLead(lead.id), `processNewMarketLead(${lead.id})`);
 
   return Response.json(lead, { status: 201 });
 }
