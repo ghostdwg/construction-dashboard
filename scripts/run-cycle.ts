@@ -16,6 +16,11 @@
 //   0 — runner succeeded OR was preempted by another holder
 //   1 — bad args
 //   2 — runner failed (lease finalized as failed)
+//
+// O1.5.a — wrapped body in async main() + .catch(). The original version
+// used top-level await, which fails under tsx CJS mode when package.json
+// has no "type": "module". This pattern matches the working backfill
+// scripts (scripts/backfill-entity-graph.ts, etc.).
 
 import "@/lib/runners/registry";  // side-effect: register built-in runners
 import { getRunner, listRunners, runCycle } from "@/lib/runners";
@@ -31,46 +36,55 @@ function hasFlag(name: string): boolean {
   return args.includes(`--${name}`);
 }
 
-if (hasFlag("list")) {
-  const runners = listRunners();
-  console.log(`[run-cycle] ${runners.length} registered runner(s):`);
-  for (const r of runners) {
-    console.log(`  - ${r.name.padEnd(30)} granularity=${r.windowGranularity} lease=${r.leaseSeconds}s retry=${r.retryOnFailure}`);
+async function main(): Promise<number> {
+  if (hasFlag("list")) {
+    const runners = listRunners();
+    console.log(`[run-cycle] ${runners.length} registered runner(s):`);
+    for (const r of runners) {
+      console.log(`  - ${r.name.padEnd(30)} granularity=${r.windowGranularity} lease=${r.leaseSeconds}s retry=${r.retryOnFailure}`);
+    }
+    return 0;
   }
-  process.exit(0);
+
+  const runnerName = getFlag("runner");
+  if (!runnerName) {
+    console.error("[run-cycle] FATAL: --runner=<name> is required (or --list).");
+    return 1;
+  }
+
+  const def = getRunner(runnerName);
+  if (!def) {
+    console.error(`[run-cycle] FATAL: runner "${runnerName}" not registered.`);
+    console.error("  Run with --list to see available runners.");
+    return 1;
+  }
+
+  const windowKey = getFlag("window-key");
+  const trigger = (getFlag("trigger") ?? "manual") as
+    | "scheduled" | "manual" | "backfill" | "replay";
+  const dryRun = hasFlag("dry-run");
+
+  if (def.windowGranularity === "manual" && !windowKey) {
+    console.error(`[run-cycle] FATAL: runner "${runnerName}" has granularity=manual; --window-key=<key> required.`);
+    return 1;
+  }
+
+  console.log(`[run-cycle] runner=${runnerName} trigger=${trigger}${dryRun ? " dry-run" : ""}`);
+  const result = await runCycle(def, {
+    triggerReason: trigger,
+    windowKey,
+    dryRun,
+  });
+
+  console.log(`[run-cycle] status=${result.status} preempted=${result.preempted} durationMs=${result.durationMs}`);
+  if (result.error) console.error(`[run-cycle] error: ${result.error}`);
+
+  return result.ok ? 0 : 2;
 }
 
-const runnerName = getFlag("runner");
-if (!runnerName) {
-  console.error("[run-cycle] FATAL: --runner=<name> is required (or --list).");
-  process.exit(1);
-}
-
-const def = getRunner(runnerName);
-if (!def) {
-  console.error(`[run-cycle] FATAL: runner "${runnerName}" not registered.`);
-  console.error("  Run with --list to see available runners.");
-  process.exit(1);
-}
-
-const windowKey = getFlag("window-key");
-const trigger = (getFlag("trigger") ?? "manual") as
-  | "scheduled" | "manual" | "backfill" | "replay";
-const dryRun = hasFlag("dry-run");
-
-if (def.windowGranularity === "manual" && !windowKey) {
-  console.error(`[run-cycle] FATAL: runner "${runnerName}" has granularity=manual; --window-key=<key> required.`);
-  process.exit(1);
-}
-
-console.log(`[run-cycle] runner=${runnerName} trigger=${trigger}${dryRun ? " dry-run" : ""}`);
-const result = await runCycle(def, {
-  triggerReason: trigger,
-  windowKey,
-  dryRun,
-});
-
-console.log(`[run-cycle] status=${result.status} preempted=${result.preempted} durationMs=${result.durationMs}`);
-if (result.error) console.error(`[run-cycle] error: ${result.error}`);
-
-process.exit(result.ok ? 0 : 2);
+main()
+  .then((code) => process.exit(code))
+  .catch((err) => {
+    console.error("[run-cycle] FATAL unhandled error:", err);
+    process.exit(2);
+  });

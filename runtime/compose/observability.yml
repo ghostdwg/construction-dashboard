@@ -64,8 +64,16 @@ services:
     expose:
       - "9090"
     networks:
+      # O1.5.a — Prometheus joins the SAME network as app/sidecar/worker
+      # (defined in base.yml as `neuroglitch`) so it can resolve `app:3000`
+      # via Docker's embedded DNS. Previous design declared an external
+      # network `groundworx_app` that never existed; under Docker Compose
+      # the actual app network is project-prefixed at runtime
+      # (neuroglitch / neuroglitch-staging), so a static external reference
+      # could not work for both tiers. Joining the base.yml-defined
+      # network makes the overlay work in any tier without pre-staging.
       - groundworx_observability
-      - groundworx_app  # so it can scrape app:/metrics
+      - neuroglitch
 
   grafana:
     image: grafana/grafana:10.4.2
@@ -98,6 +106,11 @@ volumes:
 networks:
   groundworx_observability:
     name: groundworx_observability
-  groundworx_app:
-    external: true
-    name: groundworx_app
+  # O1.5.a — `neuroglitch` is defined in runtime/compose/base.yml. Docker
+  # Compose merges overlays additively, so declaring it here lets the
+  # overlay file reference the network by its base.yml short name. At
+  # runtime Docker prefixes with the project name (neuroglitch /
+  # neuroglitch-staging), and prometheus can resolve `app:3000` via
+  # Docker's embedded DNS within the same project network.
+  neuroglitch:
+    driver: bridge

@@ -4,9 +4,17 @@
 //
 //   1. Auth gate. AUTH_DISABLED=true → all requests pass through (solo dev).
 //      Auth enabled → unauthenticated requests to protected routes redirect
-//      to /login. Public routes: /login, /api/auth/*, /api/health,
+//      to /login. Public routes: /login, /api/auth/*, /api/health, /metrics,
 //      /api/jobs/run-due (worker token auth handled in the route),
 //      /_next/*, favicon.
+//
+//      /metrics (Phase O1.5.a): the Prometheus scrape endpoint is exempt
+//      from auth because the Prometheus sidecar in the same Compose project
+//      scrapes it on a schedule and cannot present a session cookie. The
+//      endpoint exposes only operational counters/histograms (no PII, no
+//      cognition state), and should be reachable only from the internal
+//      observability network in deployed environments (caddy / firewall
+//      enforcement is the secondary boundary).
 //
 //   2. X-App-Env response header. Injected at request time so the value
 //      reflects the *runtime* APP_ENV (from the tier env_file), not whatever
@@ -42,6 +50,7 @@ export default auth((req) => {
     pathname === "/login" ||
     pathname.startsWith("/api/auth/") ||
     pathname === "/api/health" ||
+    pathname === "/metrics" ||                // Prometheus scrape (O1.5.a)
     pathname === "/api/jobs/run-due" ||      // worker token auth — see route
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico";

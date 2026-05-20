@@ -148,9 +148,21 @@ function checkMigrationFolderConsistency() {
   } catch (err) {
     return record("migration folder readable", "FAIL", err.message);
   }
+  // Canonical migration rule (Phase O1.5.a, aligned with
+  // apply-turso-migrations.mjs and replay-validation.mjs):
+  // directory starts with a digit AND contains migration.sql.
+  // This filter must match Prisma CLI's behavior so all four tools
+  // agree on the migration set count.
   const dirs = entries
     .filter((e) => /^\d/.test(e))
-    .filter((e) => statSync(join(MIGRATIONS_DIR, e)).isDirectory());
+    .filter((e) => {
+      try {
+        if (!statSync(join(MIGRATIONS_DIR, e)).isDirectory()) return false;
+        return statSync(join(MIGRATIONS_DIR, e, "migration.sql")).isFile();
+      } catch {
+        return false;
+      }
+    });
   if (dirs.length === 0) return record("migration folder readable", "FAIL", "no migration dirs");
   record("migration folder readable", "PASS", `${dirs.length} migrations on disk`);
   return dirs;

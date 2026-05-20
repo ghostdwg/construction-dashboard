@@ -111,11 +111,27 @@ function listMigrations() {
   } catch (err) {
     fail(`Cannot read migrations dir ${MIGRATIONS_DIR}: ${err.message}`);
   }
+  // Migration name rule (Phase O1.5.a): match Prisma's actual behavior —
+  // any subdirectory of prisma/migrations that contains a migration.sql
+  // file. Previously this used /^\d{14}_/ (strict 14-digit timestamp),
+  // which silently SKIPPED three legacy short-prefix migrations
+  // (20260426_*, 20260427_*). Prisma CLI applies them; this runner
+  // didn't. The mismatch caused validate-staging.mjs to report parity
+  // failures even though the local migration set was complete.
+  //
+  // The corrected rule:
+  //   1. directory starts with a digit (any timestamp format)
+  //   2. AND contains a migration.sql file
+  //
+  // This matches `replay-validation.mjs` and `migration-lint.mjs`,
+  // making all three tools agree on the canonical migration set.
   return entries
-    .filter((e) => /^\d{14}_/.test(e))
+    .filter((e) => /^\d/.test(e))
     .filter((e) => {
       try {
-        return statSync(join(MIGRATIONS_DIR, e)).isDirectory();
+        if (!statSync(join(MIGRATIONS_DIR, e)).isDirectory()) return false;
+        // Require migration.sql to be present (Prisma's actual rule).
+        return statSync(join(MIGRATIONS_DIR, e, "migration.sql")).isFile();
       } catch {
         return false;
       }
