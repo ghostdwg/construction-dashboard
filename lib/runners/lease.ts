@@ -15,6 +15,7 @@ import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import type { RunnerInstanceId, RunnerLeaseState } from "./types";
+import { isUniqueConstraintError } from "./uniqueConstraintError";
 
 export interface ClaimLeaseInput {
   cycleName: string;
@@ -89,8 +90,13 @@ export async function claimLease(input: ClaimLeaseInput): Promise<ClaimLeaseResu
       },
     };
   } catch (err: unknown) {
-    const code = (err as { code?: string })?.code;
-    if (code === "P2002") {
+    // O1.5.d — Normalize duplicate-claim across Prisma P2002, libsql
+    // LibsqlError (code/rawCode), and message-pattern fallback. Before
+    // O1.5.d this branch only matched P2002, so libsql's untranslated
+    // SQLITE_CONSTRAINT_UNIQUE shape leaked through as `db_error` and
+    // the dispatcher emitted an ERROR audit + exit 2. See
+    // lib/runners/uniqueConstraintError.ts for the full detection table.
+    if (isUniqueConstraintError(err)) {
       return { ok: false, reason: "already_held" };
     }
     return {
