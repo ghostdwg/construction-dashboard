@@ -66,21 +66,12 @@ services:
     image: ghcr.io/ghostdwg/groundworx-worker:<staging-sha>
     env_file:
       - /opt/neuroglitch/.env.staging
-    environment:
-      # O1.5.a — Worker calls the app's internal service hostname, NOT the
-      # public DNS in /opt/neuroglitch/.env.staging APP_URL. The shared env
-      # file's APP_URL is used by the app itself for auth callback URLs and
-      # similar absolute-URL needs; the worker must route through the
-      # Compose-internal network to avoid an internal→external→internal
-      # round trip that fails when Caddy / DNS aren't fully wired (and
-      # also adds latency + a brittle failure mode when they are).
-      #
-      # `app` resolves to the staging app container via Docker's embedded
-      # DNS within the `neuroglitch` network (compose project name
-      # neuroglitch-staging → effective network neuroglitch-staging_neuroglitch
-      # — Docker's short-name resolution still works for services in the same
-      # compose project).
-      APP_URL: http://app:3000
+    # O1.5.b — The worker APP_URL=http://app:3000 override LIVES IN
+    # overrides/staging.active.yml (the activatable file). It used to live
+    # here too (O1.5.a) but that was a misroute: this file is a documentation
+    # placeholder per the header above and is never invoked by the staging
+    # activation runbook. Removed here to eliminate the duplicate authority
+    # / drift risk.
 
   # NOTE: caddy, landing, hello, api are defined in base.yml but NOT modified
   # here, and the staging deploy command does NOT include them in the

@@ -72,6 +72,27 @@ services:
     image: ghcr.io/ghostdwg/groundworx-worker:${APP_SHA:?APP_SHA must be set to the staging deploy SHA}
     env_file:
       - /opt/neuroglitch/.env.staging
+    environment:
+      # O1.5.b — Worker calls the app over the Compose-internal network, NOT
+      # via APP_URL from /opt/neuroglitch/.env.staging (which is the public
+      # FQDN used by the app itself for auth callback absolute URLs). Routing
+      # the worker through the public edge during isolated Phase 6.a (before
+      # the shared Caddy edge is wired in Phase 6.b) would force an
+      # internal→external→internal round trip that fails when DNS / Caddy
+      # aren't ready, and adds latency + a brittle failure surface when they
+      # are.
+      #
+      # Service name `app` resolves to the staging app container via Docker's
+      # embedded DNS within the staging project's `neuroglitch` network
+      # (project name `neuroglitch-staging` → effective Docker network
+      # `neuroglitch-staging_neuroglitch`). Short-name resolution still works
+      # inside the same Compose project.
+      #
+      # NOTE: this override was originally landed in O1.5.a against the
+      # PLACEHOLDER `overrides/staging.yml`, which the activation runbook
+      # never invokes. O1.5.b ports it to this file (the actually-activatable
+      # one) so the fix takes effect on the next staging recreate.
+      APP_URL: http://app:3000
 
   # caddy, landing, hello, api: NOT redefined here. They remain defined in
   # base.yml but the staging deploy command does not start them. Production's

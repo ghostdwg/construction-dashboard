@@ -8,13 +8,51 @@ Phase R3 populated this folder with a reconstruction of the live production comp
 
 ```text
 compose/
-├── README.md           this file
-├── TOPOLOGY.md         descriptive snapshot of current production runtime
-├── base.yml            canonical service topology (RECONSTRUCTED — see warning below)
+├── README.md             this file
+├── TOPOLOGY.md           descriptive snapshot of current production runtime
+├── base.yml              canonical service topology (RECONSTRUCTED — see warning below)
+├── observability.yml     Loki/Promtail/Prometheus/Grafana overlay (O1.2, ACTIVATABLE)
 └── overrides/
-    ├── README.md       override invocation pattern
-    ├── production.yml  placeholder production tier override
-    └── staging.yml     placeholder staging tier override
+    ├── README.md         override invocation pattern
+    ├── production.yml    R3 PLACEHOLDER — production tier override (literal <sha>; not deployable until R7)
+    ├── staging.yml       R3 PLACEHOLDER — staging tier override (literal <staging-sha>; superseded by staging.active.yml)
+    └── staging.active.yml R6 ACTIVATABLE — staging tier override (${APP_SHA} substitution; used by the activation runbook)
+```
+
+### File authority at a glance
+
+| File | Phase | Activatable today? | Image syntax | Used by |
+|---|---|---|---|---|
+| `base.yml` | R3 | No (requires tier overlay) | — | every invocation |
+| `overrides/production.yml` | R3 | No (literal `<sha>`) | `:<sha>` placeholder | pending R7 cutover |
+| `overrides/staging.yml` | R3 | No (literal `<staging-sha>`) | `:<staging-sha>` placeholder | documentation only |
+| `overrides/staging.active.yml` | R6 | **Yes** | `:${APP_SHA:?...}` env substitution | `runtime/runbooks/staging-first-activation.md` |
+| `observability.yml` | O1.2 | **Yes** (additive overlay) | pinned versions | `runtime/runbooks/staging-activation-full.md` |
+
+### Canonical invocations (O1.5.b)
+
+```text
+# Staging — isolated activation (Phase 6.a)
+APP_SHA=<sha> docker compose \
+  -f runtime/compose/base.yml \
+  -f runtime/compose/overrides/staging.active.yml \
+  -p neuroglitch-staging \
+  up -d --force-recreate app sidecar worker
+
+# Staging — with observability stack
+APP_SHA=<sha> docker compose \
+  -f runtime/compose/base.yml \
+  -f runtime/compose/overrides/staging.active.yml \
+  -f runtime/compose/observability.yml \
+  -p neuroglitch-staging \
+  up -d
+
+# Production — pending R7 cutover; uses the placeholder file until then
+docker compose \
+  -f runtime/compose/base.yml \
+  -f runtime/compose/overrides/production.yml \
+  -p neuroglitch \
+  up -d --force-recreate
 ```
 
 ## ⚠ Verification warning

@@ -8,22 +8,43 @@ This document does not contain executable commands. It describes the **rules** t
 
 ## 1. Layering rules
 
-GroundWorX Compose is structured in **exactly two layers** per tier:
+GroundWorX Compose is structured in **two required layers** per tier, plus an optional operationally-additive observability overlay:
 
-| Layer | File | Responsibility |
-|---|---|---|
-| **Base** | `runtime/compose/base.yml` | Service topology — what services exist, how they depend on each other, what networks they share, what volumes they mount, what healthchecks they run, how they restart. Tier-agnostic. |
-| **Tier override** | `runtime/compose/overrides/<tier>.yml` | Tier-specific values — image tags, env_file paths, volume bind sources, host port publishing, Caddyfile bind source. Plus any tier-only services or settings. |
+| Layer | File | Responsibility | Required? |
+|---|---|---|---|
+| **Base** | `runtime/compose/base.yml` | Service topology — what services exist, how they depend on each other, what networks they share, what volumes they mount, what healthchecks they run, how they restart. Tier-agnostic. | Yes |
+| **Tier overlay** | `runtime/compose/overrides/<tier>.yml` (or `<tier>.active.yml` for staging) | Tier-specific values — image tags, env_file paths, volume bind sources, host port publishing, Caddyfile bind source. Plus any tier-only services or settings. | Yes |
+| **Observability overlay** | `runtime/compose/observability.yml` | Adds Loki, Promtail, Prometheus, Grafana to the stack and joins Prometheus to the `neuroglitch` network so it can scrape `app:3000/metrics`. Does NOT redefine `app`/`sidecar`/`worker`. | Optional (per §10) |
 
-No third layer. Operator-personal overrides do not exist; if an operator needs to test something locally, they author a fourth file under `runtime/compose/overrides/local.yml` (Phase R3+ if needed) — never editing `base.yml` or a tier override in place.
+Operator-personal overrides do not exist; if an operator needs to test something locally, they author a fourth file under `runtime/compose/overrides/local.yml` (Phase R3+ if needed) — never editing `base.yml` or a tier overlay in place.
 
-Invocation is always:
+Standard tier invocation (no observability):
 
 ```text
-docker compose -f base.yml -f overrides/<tier>.yml -p <project-name> up -d [services...]
+docker compose -f base.yml -f overrides/<tier-overlay>.yml -p <project-name> up -d [services...]
 ```
 
-Order matters: `base.yml` first, override second. Compose merges left-to-right; the override's values win on conflict.
+Full activation graph (with observability):
+
+```text
+docker compose \
+  -f base.yml \
+  -f overrides/<tier-overlay>.yml \
+  -f observability.yml \
+  -p <project-name> \
+  up -d
+```
+
+Order matters: `base.yml` first, tier overlay second, observability overlay last. Compose merges left-to-right; later overlays' values win on conflict. The observability overlay does not collide with tier overlays today — it only adds services and an additional network.
+
+### Staging overlay selection
+
+Two staging overlays are committed; only one is activatable:
+
+- `overrides/staging.yml` — R3 PLACEHOLDER. Literal `:<staging-sha>` image strings. Documentation only; never invoked by any runbook or deploy script.
+- `overrides/staging.active.yml` — R6 ACTIVATABLE. Uses `${APP_SHA:?...}` substitution. This is the overlay every staging activation must use.
+
+Worker `APP_URL=http://app:3000` is set exclusively in `staging.active.yml`. Setting it elsewhere creates dead duplicate authority — see §10 below and the [overrides/README.md](../compose/overrides/README.md) APP_URL authority note.
 
 ---
 
@@ -179,9 +200,34 @@ This rule exists because edits to the live file on the host are invisible to Git
 ## 9. Canonical references
 
 - `runtime/compose/base.yml` — the base layer this document governs.
-- `runtime/compose/overrides/production.yml`, `staging.yml` — the tier overrides.
+- `runtime/compose/overrides/production.yml`, `staging.yml` (R3 placeholders), `staging.active.yml` (R6 activatable) — the tier overlays.
+- `runtime/compose/observability.yml` — operationally-additive Loki/Promtail/Prometheus/Grafana overlay (O1.2).
 - `runtime/compose/TOPOLOGY.md` — descriptive snapshot of current production topology.
 - `runtime/runbooks/environment-promotion.md` — the per-deploy procedure that invokes the compose stack.
-- `runtime/runbooks/staging-bootstrap.md` — the one-time provisioning that activates `staging.yml`.
+- `runtime/runbooks/staging-first-activation.md` — Phase R6 isolated-activation runbook (uses `staging.active.yml`).
+- `runtime/runbooks/staging-bootstrap.md` — earlier R3 provisioning notes.
 - `Migration/Production Runtime Assessment.txt` — authoritative description of current production runtime.
 - `Migration/WORKSPACE_NORMALIZATION_SINGLE_REPO.md` §4, §7 — staging strategy and phase plan.
+
+---
+
+## 10. Observability overlay (O1.2)
+
+`runtime/compose/observability.yml` is sanctioned as an **operationally-additive** overlay. It is the only file outside the base + tier-overlay pair that the deploy invocation may include, and it is governed by these rules:
+
+1. **Additive only.** The overlay declares its own services (`loki`, `promtail`, `prometheus`, `grafana`) and a dedicated network (`groundworx_observability`). It MUST NOT redefine any service from `base.yml`. The one cross-layer reference it makes is joining `prometheus` to the base-declared `neuroglitch` network so it can resolve `app:3000` for the `/metrics` scrape — that connection is the entire reason the overlay exists.
+
+2. **No tier-specific values.** The overlay reads no host paths and pins explicit image versions. It works identically against the production project (`-p neuroglitch`) and the staging project (`-p neuroglitch-staging`). Tier-specific concerns (retention windows, alert routing) live inside the configuration files under `runtime/observability/`, not in the compose overlay.
+
+3. **Optional at the tier level.** Staging activation Phase 6.a (isolated) MAY run without observability. The staging-activation-full runbook brings it up once the base activation has been validated. Production activation MUST include it after Phase R7 cutover.
+
+4. **No collision authority.** If a future need creates a real conflict between the observability overlay and a tier overlay, that signals a missing service in `base.yml`, not a justification to redefine services in the overlay.
+
+5. **CI validation.** `.github/workflows/runtime-compose-lint.yml` validates every meaningful invocation graph:
+   - `base + production`
+   - `base + staging` (R3 placeholder)
+   - `base + staging.active` (R6 activatable)
+   - `base + staging.active + observability`
+   - `base + production + observability`
+
+   Any PR that breaks any of these renders fails CI.

@@ -50,7 +50,7 @@ jobs:
             config > /dev/null
           echo "OK: base.yml + overrides/production.yml renders cleanly"
 
-      - name: Validate base + staging override
+      - name: Validate base + staging.yml (R3 placeholder)
         run: |
           docker compose \
             -f runtime/compose/base.yml \
@@ -58,6 +58,43 @@ jobs:
             -p neuroglitch-staging \
             config > /dev/null
           echo "OK: base.yml + overrides/staging.yml renders cleanly"
+          echo "(staging.yml is the R3 documentation placeholder; staging.active.yml is the activatable overlay — validated next.)"
+
+      - name: Validate base + staging.active.yml (R6 activatable)
+        env:
+          # staging.active.yml uses ${APP_SHA:?...} substitution. Inject a
+          # dummy SHA so `docker compose config` resolves the reference; we
+          # are validating YAML structure, not image pullability.
+          APP_SHA: cilint
+        run: |
+          docker compose \
+            -f runtime/compose/base.yml \
+            -f runtime/compose/overrides/staging.active.yml \
+            -p neuroglitch-staging \
+            config > /dev/null
+          echo "OK: base.yml + overrides/staging.active.yml renders cleanly"
+
+      - name: Validate base + staging.active.yml + observability overlay
+        env:
+          APP_SHA: cilint
+        run: |
+          docker compose \
+            -f runtime/compose/base.yml \
+            -f runtime/compose/overrides/staging.active.yml \
+            -f runtime/compose/observability.yml \
+            -p neuroglitch-staging \
+            config > /dev/null
+          echo "OK: full staging activation graph (base + staging.active + observability) renders cleanly"
+
+      - name: Validate base + production + observability overlay
+        run: |
+          docker compose \
+            -f runtime/compose/base.yml \
+            -f runtime/compose/overrides/production.yml \
+            -f runtime/compose/observability.yml \
+            -p neuroglitch \
+            config > /dev/null
+          echo "OK: full production activation graph (base + production + observability) renders cleanly"
 
       - name: Lint base only (no override)
         run: |
