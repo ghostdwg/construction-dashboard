@@ -186,6 +186,25 @@ const ingestionPipelineErrorCounter = registerCounter(
   ["label"]
 );
 
+// O2.2 PR3 — count of signals dropped by the deterministic heuristic
+// classifier (signalHeuristics.ts). Suppressed signals never become
+// MarketSignal rows so they don't appear in ingestion_processed; this
+// counter surfaces them for hygiene observability.
+const signalsSuppressedCounter = registerCounter(
+  "neuroglitch_signals_suppressed_total",
+  "Count of signals dropped by deterministic heuristic classifier, by classification.",
+  ["classification"]
+);
+
+// O2.2 PR3 — count of signals classified at each band (persisted ones
+// only — SUPPRESSED is captured separately above). Same source-of-truth
+// as the heuristicsClassification column on MarketSignal.
+const signalsClassifiedCounter = registerCounter(
+  "neuroglitch_signals_classified_total",
+  "Count of signals classified into a persisted band, by classification.",
+  ["classification"]
+);
+
 // ── Public emission helpers ────────────────────────────────────────────────
 
 export function recordAuditEmission(category: AuditCategory, severity: AuditSeverity): void {
@@ -234,6 +253,14 @@ export function recordAlertFired(severity: string, triggerKind: string): void {
 
 export function recordIngestionPipelineError(label: string): void {
   incCounter(ingestionPipelineErrorCounter, { label });
+}
+
+export function recordSignalSuppression(classification: string): void {
+  incCounter(signalsSuppressedCounter, { classification });
+}
+
+export function recordSignalClassification(classification: string): void {
+  incCounter(signalsClassifiedCounter, { classification });
 }
 
 // ── Renderer ───────────────────────────────────────────────────────────────

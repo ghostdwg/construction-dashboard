@@ -2,6 +2,10 @@ import { prisma } from "@/lib/prisma";
 
 const VALID_TYPES = ["city_council", "planning_commission", "permit_feed", "rss", "energov"];
 const VALID_PREFILTER_MODES = ["off", "large", "always"];
+// O2.2 PR3: operator can reset a STALE_PUBLISH or OPERATOR_REVIEW source back
+// to HEALTHY via PATCH. Automation never sets HEALTHY → OPERATOR_REVIEW; only
+// operators do.
+const VALID_PUBLISH_STATUSES = ["HEALTHY", "STALE_PUBLISH", "OPERATOR_REVIEW"];
 
 function parseDate(v: unknown): Date | null | undefined {
   if (v === undefined) return undefined;
@@ -157,6 +161,19 @@ export async function PATCH(request: Request) {
   if (body.prefilterModel !== undefined) {
     data.prefilterModel = typeof body.prefilterModel === "string" && body.prefilterModel.trim()
       ? body.prefilterModel.trim() : null;
+  }
+  // O2.2 PR3: allow operator reset of publishStatus + consecutiveEmptyRuns.
+  if (body.publishStatus !== undefined) {
+    if (!VALID_PUBLISH_STATUSES.includes(body.publishStatus)) {
+      return Response.json({ error: `publishStatus must be one of: ${VALID_PUBLISH_STATUSES.join(", ")}` }, { status: 400 });
+    }
+    data.publishStatus = body.publishStatus;
+    // Resetting to HEALTHY clears the empty-run counter — the source gets
+    // a fresh shot at proving itself before re-triggering dormancy detection.
+    if (body.publishStatus === "HEALTHY") {
+      data.consecutiveEmptyRuns = 0;
+      data.lastEmptyRunAt = null;
+    }
   }
 
   try {

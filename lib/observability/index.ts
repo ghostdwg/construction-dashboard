@@ -49,6 +49,8 @@ export {
   recordRunnerCycleDuration,
   recordAlertFired,
   recordIngestionPipelineError,
+  recordSignalSuppression,
+  recordSignalClassification,
   renderPrometheus,
   resetMetrics,
 } from "./metrics";

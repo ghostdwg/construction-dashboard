@@ -14,6 +14,8 @@ type RecentDoc = {
   title: string | null;
 };
 
+type PublishStatus = "HEALTHY" | "STALE_PUBLISH" | "OPERATOR_REVIEW";
+
 type Source = {
   id: string;
   name: string;
@@ -31,6 +33,11 @@ type Source = {
   prefilterMode: "off" | "large" | "always";
   prefilterCharThreshold: number;
   prefilterModel: string | null;
+  // O2.2 PR3 — cadence governance state.
+  publishStatus: PublishStatus;
+  consecutiveEmptyRuns: number;
+  publishCadenceDays: number | null;
+  cadenceConfidence: "LOW" | "MEDIUM" | "HIGH" | null;
   docs: RecentDoc[];
   _count: { docs: number };
 };
@@ -53,6 +60,10 @@ type ScrapeResult = {
   signalsDroppedProjectType: number;
   leadsDroppedValue: number;
   totalCostUsd: number;
+  // O2.2 PR3 — hygiene + cadence summary (optional for backward compat).
+  signalsSuppressedHeuristics?: number;
+  publishStatus?: PublishStatus;
+  heuristicsApplied?: boolean;
   error?: string;
 };
 
@@ -188,6 +199,19 @@ export default function SourcesPanel() {
     });
   }
 
+  // O2.2 PR3 — reset publishStatus back to HEALTHY (operator override after
+  // dormancy detection wrongly suspended a known-good source).
+  async function resetPublishStatus(s: Source) {
+    setSources((prev) => prev.map((p) => p.id === s.id
+      ? { ...p, publishStatus: "HEALTHY" as PublishStatus, consecutiveEmptyRuns: 0 }
+      : p));
+    await fetch("/api/market-intelligence/sources", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: s.id, publishStatus: "HEALTHY" }),
+    });
+  }
+
   return (
     <div
       className="border border-[var(--line)] rounded-[var(--radius)] overflow-hidden"
@@ -266,6 +290,7 @@ export default function SourcesPanel() {
                 onExpand={() => setExpanded(isExpanded ? null : src.id)}
                 onScrape={(override) => runScrape(src.id, override)}
                 onToggleActive={() => toggleActive(src)}
+                onResetPublishStatus={() => resetPublishStatus(src)}
               />
             );
           })}
@@ -493,7 +518,7 @@ function AddSourceForm({ onAdded }: { onAdded: () => void }) {
 // ── Source row ──────────────────────────────────────────────────────────────
 
 function SourceRow({
-  source: src, isScraping, result, isExpanded, onExpand, onScrape, onToggleActive,
+  source: src, isScraping, result, isExpanded, onExpand, onScrape, onToggleActive, onResetPublishStatus,
 }: {
   source: Source;
   isScraping: boolean;
@@ -502,6 +527,7 @@ function SourceRow({
   onExpand: () => void;
   onScrape: (override?: { dateFrom?: string; dateTo?: string; maxDocs?: number }) => void;
   onToggleActive: () => void;
+  onResetPublishStatus: () => void;
 }) {
   const [overrideOpen, setOverrideOpen]     = useState(false);
   const [overrideFrom, setOverrideFrom]     = useState("");
@@ -576,6 +602,23 @@ function SourceRow({
             {!src.isActive && (
               <span style={{ ...chipBase, color: "var(--text-dim)", background: "rgba(255,255,255,0.04)" }}>paused</span>
             )}
+            {/* O2.2 PR3 — publishStatus badge. HEALTHY is the default and not surfaced. */}
+            {src.publishStatus === "STALE_PUBLISH" && (
+              <span
+                style={{ ...chipBase, color: "#ffcc72", background: "rgba(245,166,35,0.1)", borderColor: "rgba(245,166,35,0.25)" }}
+                title={`${src.consecutiveEmptyRuns} consecutive empty runs past expected publish — auto-paused by dormancy detection. Click "Mark healthy" to reset.`}
+              >
+                stale · {src.consecutiveEmptyRuns} empty
+              </span>
+            )}
+            {src.publishStatus === "OPERATOR_REVIEW" && (
+              <span
+                style={{ ...chipBase, color: "var(--red)", background: "rgba(255,80,80,0.08)", borderColor: "rgba(255,80,80,0.25)" }}
+                title="Held by operator review — runner will not auto-poll until reset."
+              >
+                operator review
+              </span>
+            )}
           </div>
           <p className="text-[11px]" style={{ color: "var(--text-dim)" }}>{src.jurisdiction}</p>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -615,6 +658,16 @@ function SourceRow({
           </div>
         </div>
         <div className="shrink-0 flex items-center gap-1.5">
+          {(src.publishStatus === "STALE_PUBLISH" || src.publishStatus === "OPERATOR_REVIEW") && (
+            <button
+              onClick={onResetPublishStatus}
+              className="font-mono text-[10px] uppercase tracking-[0.07em] px-2 py-1.5 rounded transition-colors"
+              style={{ color: "#ffcc72", border: "1px solid rgba(245,166,35,0.3)", background: "rgba(245,166,35,0.05)" }}
+              title="Reset publishStatus → HEALTHY and clear empty-run counter."
+            >
+              Mark healthy
+            </button>
+          )}
           <button onClick={onToggleActive}
             className="font-mono text-[10px] uppercase tracking-[0.07em] px-2 py-1.5 rounded transition-colors"
             style={{ color: "var(--text-dim)", border: "1px solid var(--line)" }}>

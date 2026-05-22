@@ -1422,6 +1422,15 @@ model MarketSignal {
   metadata         String? // JSON: source-specific fields (permit no., parcel id, etc.)
   aiRelevanceScore Int? // 0–100
   nextMeetingDate  DateTime? // Set when status=CONTINUED — watch the next agenda
+  // ── Phase O2.2 PR3 — heuristic classifier output (signalHeuristics.ts) ───
+  // Populated when persistSidecarPayload runs the deterministic classifier.
+  // Null when skipHeuristics was true OR when the row pre-dates PR3.
+  // SUPPRESSED is NEVER persisted (heuristicsClassification ∈ {HIGH_EMERGENCE,
+  // MEDIUM_EMERGENCE, LOW_EMERGENCE} or null).
+  heuristicsJson           String? // JSON array of HeuristicFactor
+  heuristicsVersion        String? // e.g. "v1"
+  heuristicsScore          Float?  // clamped [0, 1]
+  heuristicsClassification String?
   createdAt        DateTime  @default(now())
 
   lead      MarketLead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
@@ -1433,6 +1442,7 @@ model MarketSignal {
   @@index([createdAt])
   @@index([sourceDocId])
   @@index([nextMeetingDate])
+  @@index([heuristicsClassification])
 }
 
 // MarketSource: a configured ingestion endpoint (city council minutes page,
