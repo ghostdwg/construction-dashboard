@@ -18,6 +18,11 @@
       "cron": "0 8 * * *",
       "runner": "forecast-daily",
       "trigger": "scheduled"
+    },
+    {
+      "cron": "30 * * * *",
+      "runner": "alert-eval",
+      "trigger": "scheduled"
     }
   ]
 }

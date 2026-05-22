@@ -60,6 +60,10 @@ export {
   recordForecastTrajectoryShift,
   setForecastHighEmergenceCount,
   setForecastOverriddenCount,
+  recordAlertCandidate,
+  recordAlertSuppressed,
+  recordAlertPersisted,
+  setAlertsUnreadCount,
   renderPrometheus,
   resetMetrics,
 } from "./metrics";

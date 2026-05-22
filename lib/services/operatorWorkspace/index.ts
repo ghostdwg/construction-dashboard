@@ -103,3 +103,40 @@ export {
 } from "./intelligenceSurfaces";
 
 export { emitWorkspaceAudit } from "./audit";
+
+// O2.2 PR8 — alert evaluation runtime
+export {
+  NORMALIZED_ALERT_SEVERITIES,
+  SEVERITY_NORMALIZATION_VERSION,
+  normalizeSeverity,
+  normalizeSeverityDetailed,
+  normalizedSeverityRank,
+  pickHigherSeverity,
+  type NormalizedAlertSeverity,
+  type NormalizeSeverityDetail,
+} from "./alertSeverityNormalize";
+
+export {
+  RUNNER_ALERTS_VERSION,
+  RUNNER_TRIGGER_KINDS,
+  DETECTORS,
+  buildFingerprint,
+  isInCooldown,
+  persistRunnerAlert,
+  detectorConfig,
+  emptySummary,
+  detectNewHighEmergence,
+  detectTrajectoryShiftToAccelerating,
+  detectTrajectoryShiftToDecaying,
+  detectStaleRecovery,
+  detectForecastOverride,
+  detectSourceDegradation,
+  detectSuppressionAnomaly,
+  detectGovernanceBurst,
+  detectRecurringDeveloper,
+  type RunnerTriggerKind,
+  type AlertCandidate,
+  type RunnerAlertContext,
+  type RunnerAlertSummary,
+  type PersistRunnerAlertResult,
+} from "./runnerAlerts";

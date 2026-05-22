@@ -295,6 +295,36 @@ const forecastOverriddenGauge = registerGauge(
   []
 );
 
+// ── O2.2 PR8 — Alert evaluation runtime metrics ───────────────────────────
+//
+// `neuroglitch_alerts_fired_total` already exists from O1.2 — incremented
+// when an alert is recorded. PR8 adds detector-level counters + cooldown
+// visibility + a gauge for unread alerts.
+
+const alertsCandidatesCounter = registerCounter(
+  "neuroglitch_alerts_candidates_total",
+  "Count of alert candidates produced by detectors, by trigger kind (pre-cooldown).",
+  ["trigger_kind"]
+);
+
+const alertsSuppressedCounter = registerCounter(
+  "neuroglitch_alerts_suppressed_total",
+  "Count of alert candidates suppressed before persistence, by trigger kind + reason.",
+  ["trigger_kind", "reason"]
+);
+
+const alertsPersistedCounter = registerCounter(
+  "neuroglitch_alerts_persisted_total",
+  "Count of AlertEvent rows persisted by the runner, by trigger kind + severity.",
+  ["trigger_kind", "severity"]
+);
+
+const alertsUnreadGauge = registerGauge(
+  "neuroglitch_alerts_unread_count",
+  "Number of AlertEvent rows with reviewStatus=UNREAD, by severity.",
+  ["severity"]
+);
+
 // ── Public emission helpers ────────────────────────────────────────────────
 
 export function recordAuditEmission(category: AuditCategory, severity: AuditSeverity): void {
@@ -389,6 +419,23 @@ export function setForecastHighEmergenceCount(subjectKind: string, count: number
 
 export function setForecastOverriddenCount(count: number): void {
   setGauge(forecastOverriddenGauge, count, {});
+}
+
+// O2.2 PR8 — alert runtime helpers
+export function recordAlertCandidate(triggerKind: string): void {
+  incCounter(alertsCandidatesCounter, { trigger_kind: triggerKind });
+}
+
+export function recordAlertSuppressed(triggerKind: string, reason: "cooldown" | "dry_run" | "detector_error"): void {
+  incCounter(alertsSuppressedCounter, { trigger_kind: triggerKind, reason });
+}
+
+export function recordAlertPersisted(triggerKind: string, severity: string): void {
+  incCounter(alertsPersistedCounter, { trigger_kind: triggerKind, severity });
+}
+
+export function setAlertsUnreadCount(severity: string, count: number): void {
+  setGauge(alertsUnreadGauge, count, { severity });
 }
 
 // ── Renderer ───────────────────────────────────────────────────────────────
