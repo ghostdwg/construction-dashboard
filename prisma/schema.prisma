@@ -1469,14 +1469,39 @@ model MarketSource {
   nextExpectedAt         DateTime? // when smart polling should fire next
   backfillYears          Int? // how far back we've intentionally backfilled
   backfillCompletedAt    DateTime? // null = no backfill done yet
+  // ── Phase O2.2 PR2 — cadence intelligence governance ─────────────────────
+  // publishStatus: HEALTHY (default) | STALE_PUBLISH (N consecutive empty
+  // runs past expected publish) | OPERATOR_REVIEW (manual hold). The runner
+  // skips non-HEALTHY sources except on explicit operator force.
+  publishStatus          String    @default("HEALTHY")
+  consecutiveEmptyRuns   Int       @default(0)
+  lastEmptyRunAt         DateTime?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  docs MarketSourceDoc[]
+  docs           MarketSourceDoc[]
+  cadenceSamples MarketSourceCadenceSample[]
 
   @@index([sourceType])
   @@index([isActive])
   @@index([nextExpectedAt])
+  @@index([publishStatus])
+}
+
+// Phase O2.2 PR2 — rolling sample of doc dates per source used to estimate
+// publishCadenceDays + cadenceConfidence. Kept small (caller caps at last
+// 20 per source) to avoid bloat. New samples are appended on every scrape
+// that finds new docs; pruning happens in lib/services/marketIntelligence/
+// sourceCadence.ts after the median is recomputed.
+model MarketSourceCadenceSample {
+  id         String   @id @default(cuid())
+  sourceId   String
+  docDate    DateTime
+  observedAt DateTime @default(now())
+
+  source MarketSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId, docDate])
 }
 
 // MarketSourceDoc: per-document dedup record. Each row is one document URL
