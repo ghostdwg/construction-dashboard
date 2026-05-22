@@ -146,7 +146,7 @@ EXTRACT_PROMPT = """Analyze the following document and return a JSON object with
   "signals": [
     {
       "signal_type": "MEETING_MINUTE",
-      "signal_subtype": "<SUP_CUP|REZONING|PLAT|VARIANCE|SITE_PLAN|COMPREHENSIVE_PLAN|ANNEXATION|TIF|BOND|PERMIT_AWARD|CONTRACT_AWARD|OTHER>",
+      "signal_subtype": "<SUP_CUP|REZONING|PLAT|VARIANCE|SITE_PLAN|COMPREHENSIVE_PLAN|ANNEXATION|TIF|BOND|PERMIT_AWARD|CONTRACT_AWARD|UTILITY_EXPANSION|CORRIDOR_STUDY|INFRASTRUCTURE_PLAN|INDUSTRIAL_REZONING|CODE_ADOPTION|ORDINANCE_CHANGE|ZONING_REWRITE|DENSITY_EXPANSION|TIF_APPROVAL|MORATORIUM|INFRASTRUCTURE_FUNDING|OTHER>",
       "next_meeting_date": "<ISO date YYYY-MM-DD if this item was CONTINUED to a specific future date, else null>",
       "headline": "<50-char max title for this project/item>",
       "description": "<2-3 sentence summary of what was approved/discussed>",
@@ -184,8 +184,39 @@ Rules:
   = variance from a code requirement. SITE_PLAN = site plan review. ANNEXATION =
   bringing land into the city. TIF = tax increment financing district item.
   BOND = bond authorization. PERMIT_AWARD = building permit explicitly granted.
-  CONTRACT_AWARD = construction contract awarded to a specific GC. OTHER for items
-  that don't fit but are still construction-relevant.
+  CONTRACT_AWARD = construction contract awarded to a specific GC.
+  UTILITY_EXPANSION = sewer extension, water main, lift station, treatment
+  plant capacity, water tower, sanitary district expansion — anything that
+  materially extends municipal utility service area or capacity.
+  CORRIDOR_STUDY = formal corridor study or growth-corridor planning document
+  (e.g. "Northwest Corridor Study", transportation corridor plan).
+  INFRASTRUCTURE_PLAN = capital improvement plan (CIP) line items,
+  transportation improvement plans, streetscape improvement programs,
+  comprehensive infrastructure planning — distinct from a single utility
+  extension (use UTILITY_EXPANSION for those).
+  INDUSTRIAL_REZONING = a REZONING item where the target zoning class is
+  industrial / manufacturing / warehouse / distribution / logistics. Prefer
+  this over plain REZONING when the industrial nature is explicit.
+  CODE_ADOPTION = adoption of a new building / residential / fire / plumbing
+  / mechanical / energy code (IBC, IRC, IFC, IPC, IMC, IECC, etc.).
+  ORDINANCE_CHANGE = generic ordinance amendment that doesn't fit a more
+  specific governance subtype below. Use the more specific one when applicable.
+  ZONING_REWRITE = COMPREHENSIVE zoning-code rewrite or text amendment that
+  reshapes the zoning framework city-wide — distinct from REZONING (which is
+  a single-parcel zoning change). Examples: "Comprehensive Zoning Ordinance
+  Update", "Zoning Text Amendment Chapter 10", new zoning ordinance adoption.
+  DENSITY_EXPANSION = density-allowance increase: ADU policy, height limit
+  raised, FAR increased, density bonus introduced, "missing middle" policy.
+  TIF_APPROVAL = a NEW TIF DISTRICT is approved/established/extended, OR an
+  existing one expanded. Distinct from the generic TIF subtype (which is for
+  any TIF-related item).
+  MORATORIUM = imposition of a moratorium or temporary pause/prohibition on
+  development (or a category thereof). Positive signal even though it pauses
+  dev — indicates impending policy shift.
+  INFRASTRUCTURE_FUNDING = funding actually AWARDED for infrastructure (grant
+  award, capital appropriation, ARPA disbursement). Distinct from BOND
+  (which is bond AUTHORIZATION — funding mechanism approved, not awarded).
+  OTHER for items that don't fit but are still construction-relevant.
 - status uppercase: APPROVED | CONTINUED | DENIED | DISCUSSED_NO_VOTE | WITHDRAWN.
   CONTINUED means the item was tabled to a future meeting (set next_meeting_date
   if mentioned).

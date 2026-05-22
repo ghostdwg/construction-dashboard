@@ -1,4 +1,14 @@
 import { prisma } from "@/lib/prisma";
+import {
+  classifySignal,
+  type SignalContext,
+  type HeuristicResult,
+  type SignalClassification,
+} from "./signalHeuristics";
+import {
+  recordSignalSuppression,
+  recordSignalClassification,
+} from "@/lib/observability";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -179,7 +189,17 @@ function normalizeConfidence(raw: string | null | undefined): string {
 const VALID_SUBTYPES = new Set([
   "SUP_CUP", "REZONING", "PLAT", "VARIANCE", "SITE_PLAN",
   "COMPREHENSIVE_PLAN", "ANNEXATION", "TIF", "BOND",
-  "PERMIT_AWARD", "CONTRACT_AWARD", "OTHER",
+  "PERMIT_AWARD", "CONTRACT_AWARD",
+  // O2.2 PR5 — high-emergence infrastructure subtypes.
+  "UTILITY_EXPANSION", "CORRIDOR_STUDY", "INFRASTRUCTURE_PLAN", "INDUSTRIAL_REZONING",
+  // O2.2 PR6 — governance-emergence subtypes. Mirror the SYSTEM_PROMPT
+  // extension in sidecar/routers/market.py. signalHeuristics.ts (v2) has
+  // matched boost weights: ZONING_REWRITE +0.35, INFRASTRUCTURE_FUNDING +0.35,
+  // DENSITY_EXPANSION/TIF_APPROVAL +0.30, CODE_ADOPTION +0.20,
+  // MORATORIUM/ORDINANCE_CHANGE +0.15.
+  "CODE_ADOPTION", "ORDINANCE_CHANGE", "ZONING_REWRITE", "DENSITY_EXPANSION",
+  "TIF_APPROVAL", "MORATORIUM", "INFRASTRUCTURE_FUNDING",
+  "OTHER",
 ]);
 function normalizeSignalSubtype(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -228,6 +248,21 @@ export type PersistResult = {
   signalsDroppedRelevance: number;
   signalsDroppedProjectType: number;
   leadsDroppedValue: number;
+  // O2.2 PR1: row IDs of freshly-created rows, exposed so the scrape bridge
+  // (lib/services/marketIntelligence/scrapeOneSource.ts) can hand each one to
+  // liveIngestion.processNewMarket{Signal,Lead}/processNewRelationshipEdge.
+  // Empty arrays when nothing was created. Order matches insertion order.
+  createdSignalIds: string[];
+  createdLeadIds: string[];
+  createdEdgeIds: string[];
+  // O2.2 PR3: signals dropped by the deterministic heuristic classifier
+  // (signalHeuristics.ts). These never become MarketSignal rows but are
+  // surfaced in the audit summary for explainability. Always SUPPRESSED.
+  signalsSuppressedHeuristics: number;
+  /** Per-classification persisted count (excludes SUPPRESSED — see
+   *  signalsSuppressedHeuristics for that). When skipHeuristics is true,
+   *  all classifications are null and this map is empty. */
+  classifiedByBand: Partial<Record<SignalClassification, number>>;
 };
 
 export async function persistSidecarPayload(args: {
@@ -239,6 +274,15 @@ export async function persistSidecarPayload(args: {
   sourceLabel: string;
   sourceDocId?: string | null;
   tuning?: SourceTuning;
+  // O2.2 PR3: heuristic classifier integration. When `skipHeuristics` is
+  // true the classifier is bypassed entirely (debug/operator-override mode).
+  // When false (default), each signal is classified; SUPPRESSED signals
+  // are dropped before persistence; persisted signals get heuristics columns.
+  skipHeuristics?: boolean;
+  heuristicsContext?: SignalContext;
+  /** Per-doc packet hash (sha256-16). Passed verbatim to classifySignal so
+   *  the DUPLICATE_PACKET detector can fire for every signal sharing this doc. */
+  docPacketHash?: string | null;
 }): Promise<PersistResult> {
   const sourceDate =
     args.documentDate && !Number.isNaN(Date.parse(args.documentDate))
@@ -255,6 +299,11 @@ export async function persistSidecarPayload(args: {
   let signalsDroppedRelevance = 0;
   let signalsDroppedProjectType = 0;
   let leadsDroppedValue = 0;
+  let signalsSuppressedHeuristics = 0;
+  const classifiedByBand: Partial<Record<SignalClassification, number>> = {};
+  const createdSignalIds: string[] = [];
+  const createdLeadIds: string[] = [];
+  const createdEdgeIds: string[] = [];
 
   for (const s of args.signals) {
     const relevance = typeof s.relevance_score === "number" ? s.relevance_score : null;
@@ -271,6 +320,41 @@ export async function persistSidecarPayload(args: {
     }
 
     const signalType = normalizeSignalType(s.signal_type);
+    const subtypeNormalized = normalizeSignalSubtype(s.signal_subtype);
+
+    // ── O2.2 PR3: deterministic heuristic classifier ──────────────────────
+    let heuristicResult: HeuristicResult | null = null;
+    if (!args.skipHeuristics) {
+      heuristicResult = classifySignal({
+        headline: s.headline ?? "",
+        signalType,
+        signalSubtype: subtypeNormalized,
+        rawText: s.description ?? null,
+        metadata: {
+          owner_name: s.owner_name ?? null,
+          architect_name: s.architect_name ?? null,
+          gc_names: s.gc_names ?? [],
+          sub_names: s.sub_names ?? [],
+          estimated_value: s.estimated_value ?? null,
+          project_type: s.project_type ?? null,
+          location: s.location ?? null,
+        },
+        documentDate: sourceDate,
+        jurisdiction: args.jurisdiction,
+        docPacketHash: args.docPacketHash ?? null,
+        context: args.heuristicsContext,
+      });
+
+      if (heuristicResult.shouldDrop) {
+        signalsSuppressedHeuristics += 1;
+        recordSignalSuppression(heuristicResult.classification);
+        continue;
+      }
+
+      classifiedByBand[heuristicResult.classification] =
+        (classifiedByBand[heuristicResult.classification] ?? 0) + 1;
+      recordSignalClassification(heuristicResult.classification);
+    }
     // Lead auto-create gates: relevance threshold AND (if minValue set) estimated value
     const meetsLeadRelevance = (relevance ?? 0) >= Math.max(minRelevance, 60);
     const estValue = typeof s.estimated_value === "number" ? s.estimated_value : null;
@@ -307,21 +391,21 @@ export async function persistSidecarPayload(args: {
       });
       leadId = lead.id;
       leadsCreated += 1;
+      createdLeadIds.push(lead.id);
     }
 
     // Normalize Phase 5K fields: subtype (uppercase, valid enum) + next-meeting date
-    const subtype = normalizeSignalSubtype(s.signal_subtype);
     const nextMtg = s.next_meeting_date && !Number.isNaN(Date.parse(s.next_meeting_date))
       ? new Date(s.next_meeting_date)
       : null;
     const statusNormalized = normalizeStatus(s.status);
 
-    await prisma.marketSignal.create({
+    const created = await prisma.marketSignal.create({
       data: {
         leadId,
         sourceDocId: args.sourceDocId ?? null,
         signalType,
-        signalSubtype: subtype,
+        signalSubtype: subtypeNormalized,
         source: args.sourceLabel,
         sourceUrl: args.sourceUrl,
         sourceDate,
@@ -339,13 +423,19 @@ export async function persistSidecarPayload(args: {
         }),
         aiRelevanceScore: relevance,
         nextMeetingDate: nextMtg,
+        // O2.2 PR3: persist the heuristic verdict alongside the row.
+        heuristicsJson:           heuristicResult ? JSON.stringify(heuristicResult.factors) : null,
+        heuristicsVersion:        heuristicResult?.heuristicsVersion ?? null,
+        heuristicsScore:          heuristicResult?.score ?? null,
+        heuristicsClassification: heuristicResult?.classification ?? null,
       },
     });
     signalsCreated += 1;
+    createdSignalIds.push(created.id);
   }
 
   for (const r of args.relationships) {
-    await prisma.relationshipEdge.create({
+    const edge = await prisma.relationshipEdge.create({
       data: {
         fromType: r.from_type?.toUpperCase() || "GC",
         fromName: r.from_name?.trim() || "Unknown",
@@ -361,6 +451,7 @@ export async function persistSidecarPayload(args: {
       },
     });
     relationshipsCreated += 1;
+    createdEdgeIds.push(edge.id);
   }
 
   return {
@@ -370,5 +461,10 @@ export async function persistSidecarPayload(args: {
     signalsDroppedRelevance,
     signalsDroppedProjectType,
     leadsDroppedValue,
+    createdSignalIds,
+    createdLeadIds,
+    createdEdgeIds,
+    signalsSuppressedHeuristics,
+    classifiedByBand,
   };
 }
