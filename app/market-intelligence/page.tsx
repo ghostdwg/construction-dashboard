@@ -4,6 +4,8 @@ import NewLeadButton from "./NewLeadButton";
 import ScanPanel from "./ScanPanel";
 import SourcesPanel from "./SourcesPanel";
 import DiscoverPanel from "./DiscoverPanel";
+import ActivationSummary from "./ActivationSummary";
+import RunnerSummary from "./RunnerSummary";
 
 // ── Status + type chip maps ──────────────────────────────────────────────────
 
@@ -199,6 +201,9 @@ export default async function MarketIntelligencePage() {
 
         {/* ── Left column ─────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 flex flex-col gap-5">
+
+          {/* O2.2 PR5 — autonomous cadence activation summary */}
+          <ActivationSummary />
 
           {/* Discover Sources by radius */}
           <DiscoverPanel />
@@ -408,6 +413,9 @@ export default async function MarketIntelligencePage() {
           className="w-[300px] shrink-0 flex flex-col gap-4"
           style={{ position: "sticky", top: 0, height: "calc(100vh - 62px)", overflowY: "auto" }}
         >
+          {/* O2.2 PR6 — autonomous runner status */}
+          <RunnerSummary />
+
           {/* Pipeline Health */}
           <div
             className="rounded-[var(--radius)] border border-[var(--line)] overflow-hidden"

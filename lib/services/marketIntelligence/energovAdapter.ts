@@ -17,6 +17,11 @@ export type EnergovScrapeResult = {
   leadsCreated: number;
   highValueRecords: number;
   rawRecordsReturned: number;
+  // O2.2 PR1: row IDs of freshly-created rows, exposed so the scrape bridge
+  // can hand each one to liveIngestion. EnerGov never produces relationship
+  // edges (structured permit data only), so no createdEdgeIds field.
+  createdSignalIds: string[];
+  createdLeadIds: string[];
 };
 
 type EnergovRecord = {
@@ -101,6 +106,8 @@ export async function scrapeEnergovSource(args: {
 
   let signalsCreated = 0;
   let leadsCreated = 0;
+  const createdSignalIds: string[] = [];
+  const createdLeadIds: string[] = [];
 
   for (const rec of data.records) {
     const score = tier0Relevance(rec);
@@ -152,9 +159,10 @@ export async function scrapeEnergovSource(args: {
       });
       leadId = lead.id;
       leadsCreated += 1;
+      createdLeadIds.push(lead.id);
     }
 
-    await prisma.marketSignal.create({
+    const created = await prisma.marketSignal.create({
       data: {
         leadId,
         signalType: "PERMIT",
@@ -180,6 +188,7 @@ export async function scrapeEnergovSource(args: {
       },
     });
     signalsCreated += 1;
+    createdSignalIds.push(created.id);
   }
 
   return {
@@ -188,5 +197,7 @@ export async function scrapeEnergovSource(args: {
     leadsCreated,
     highValueRecords: data.stats.high_value_records,
     rawRecordsReturned: data.stats.raw_records_returned,
+    createdSignalIds,
+    createdLeadIds,
   };
 }
