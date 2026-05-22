@@ -105,3 +105,26 @@ export {
 } from "./writer";
 
 export { emitForecastAudit } from "./audit";
+
+// O2.2 PR7 — context-assembly + subject-selection helpers for the
+// forecast-daily runner.
+export {
+  buildForecastSubjectContext,
+  selectActiveForecastSubjects,
+  type BuildContextOptions,
+  type ActiveForecastSubject,
+  type SelectActiveForecastSubjectsOptions,
+} from "./buildContext";
+
+export {
+  checkForecastGates,
+  FORECAST_GATES_VERSION,
+  MIN_MARKET_SIGNALS,
+  MIN_PROJECTS,
+  MIN_SOURCES_WITH_CADENCE,
+  RECENT_RUNNER_ERROR_WINDOW_HOURS,
+  GATING_RUNNER_NAMES,
+  type GateName,
+  type GateResult,
+  type ForecastGatesReport,
+} from "./forecastGates";

@@ -26,6 +26,8 @@
     "verify:market-sources:dry-run": "tsx scripts/verify-market-sources.ts --dry-run",
     "activation:report": "tsx scripts/activation-report.ts",
     "activation:report:json": "tsx scripts/activation-report.ts --json",
+    "forecast:gate-check": "tsx scripts/forecast-gate-check.ts",
+    "forecast:gate-check:json": "tsx scripts/forecast-gate-check.ts --json",
     "backfill:entity-graph": "tsx scripts/backfill-entity-graph.ts",
     "backfill:entity-graph:dry-run": "tsx scripts/backfill-entity-graph.ts --dry-run",
     "backfill:entity-graph:report-only": "tsx scripts/backfill-entity-graph.ts --report-only",

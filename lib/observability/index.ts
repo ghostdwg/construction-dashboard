@@ -55,6 +55,11 @@ export {
   recordRunnerScrapeFailure,
   setRunnerDueSources,
   setRunnerStaleSourceCount,
+  recordForecastRecomputed,
+  recordForecastFailure,
+  recordForecastTrajectoryShift,
+  setForecastHighEmergenceCount,
+  setForecastOverriddenCount,
   renderPrometheus,
   resetMetrics,
 } from "./metrics";

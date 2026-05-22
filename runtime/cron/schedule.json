@@ -1,5 +1,8 @@
 {
-  "_comment": "O2.2 PR4 — cron schedule for the autonomous cadence runtime. Operator-editable. Restart cron container after changes. See runtime/cron/README.md and runtime/runbooks/o2.2-first-live-activation.md.",
+  "_comment": "O2.2 PR4+PR7 — cron schedule for the autonomous cadence + forecast runtime. Operator-editable. Restart cron container after changes. See runtime/cron/README.md and runtime/runbooks/o2.2-first-live-activation.md.",
+  "_notes": {
+    "forecast-daily": "Runs at 08:00 UTC = 03:00 CDT / 02:00 CST. Soft-gated: if forecastGates do not pass, the cycle no-ops + audits. Operators can pre-check via `npm run forecast:gate-check`."
+  },
   "schedules": [
     {
       "cron": "*/15 * * * *",
@@ -9,6 +12,11 @@
     {
       "cron": "0 * * * *",
       "runner": "municipal-agenda-ingestion",
+      "trigger": "scheduled"
+    },
+    {
+      "cron": "0 8 * * *",
+      "runner": "forecast-daily",
       "trigger": "scheduled"
     }
   ]

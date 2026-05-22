@@ -259,6 +259,42 @@ const runnerStaleSourceCountGauge = registerGauge(
   ["publish_status"]
 );
 
+// ── O2.2 PR7 — Forecast runtime observability ─────────────────────────────
+//
+// Per-subject counters for the forecast-daily runner. recordForecastDuration
+// already exists from O1.2 (histogram). These add the count + per-subject
+// failure metric + trajectory-shift visibility.
+
+const forecastRecomputedCounter = registerCounter(
+  "neuroglitch_forecast_recomputed_total",
+  "Count of subjects whose forecast was recomputed, by subject kind + decision.",
+  ["subject_kind", "decision"]
+);
+
+const forecastFailuresCounter = registerCounter(
+  "neuroglitch_forecast_failures_total",
+  "Count of per-subject forecast failures inside a forecast-daily cycle, by subject kind.",
+  ["subject_kind"]
+);
+
+const forecastTrajectoryShiftsCounter = registerCounter(
+  "neuroglitch_forecast_trajectory_shifts_total",
+  "Count of trajectory transitions detected during forecast recompute, by from-state and to-state.",
+  ["from", "to"]
+);
+
+const forecastHighEmergenceGauge = registerGauge(
+  "neuroglitch_forecast_high_emergence_count",
+  "Number of subjects whose latest EmergenceScore is >= 0.70 (HIGH band).",
+  ["subject_kind"]
+);
+
+const forecastOverriddenGauge = registerGauge(
+  "neuroglitch_forecast_overridden_count",
+  "Number of ForecastSnapshots whose reviewStatus is OVERRIDDEN.",
+  []
+);
+
 // ── Public emission helpers ────────────────────────────────────────────────
 
 export function recordAuditEmission(category: AuditCategory, severity: AuditSeverity): void {
@@ -332,6 +368,27 @@ export function setRunnerDueSources(runner: string, count: number): void {
 
 export function setRunnerStaleSourceCount(publishStatus: string, count: number): void {
   setGauge(runnerStaleSourceCountGauge, count, { publish_status: publishStatus });
+}
+
+// O2.2 PR7 — forecast runtime helpers
+export function recordForecastRecomputed(subjectKind: string, decision: "recorded" | "skipped_unchanged" | "skipped_no_data"): void {
+  incCounter(forecastRecomputedCounter, { subject_kind: subjectKind, decision });
+}
+
+export function recordForecastFailure(subjectKind: string): void {
+  incCounter(forecastFailuresCounter, { subject_kind: subjectKind });
+}
+
+export function recordForecastTrajectoryShift(from: string, to: string): void {
+  incCounter(forecastTrajectoryShiftsCounter, { from, to });
+}
+
+export function setForecastHighEmergenceCount(subjectKind: string, count: number): void {
+  setGauge(forecastHighEmergenceGauge, count, { subject_kind: subjectKind });
+}
+
+export function setForecastOverriddenCount(count: number): void {
+  setGauge(forecastOverriddenGauge, count, {});
 }
 
 // ── Renderer ───────────────────────────────────────────────────────────────
