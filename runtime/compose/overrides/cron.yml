@@ -1,0 +1,82 @@
+# ──────────────────────────────────────────────────────────────────────────────
+#  runtime/compose/overrides/cron.yml
+#  Phase O2.2 PR4 — Cron service overlay.
+#
+#  Adds the `cron` service to the topology. The cron container runs
+#  scripts/cron-loop.mjs which reads runtime/cron/schedule.json and spawns
+#  `tsx scripts/run-cycle.ts --runner=<name>` per tick.
+#
+#  INVOCATION (Phase O2.2 PR4 — staging only until soaked):
+#    docker compose \
+#      -f runtime/compose/base.yml \
+#      -f runtime/compose/overrides/staging.yml \
+#      -f runtime/compose/overrides/cron.yml \
+#      -p neuroglitch-staging \
+#      up -d --force-recreate cron
+#
+#  DESIGN:
+#    * Same Docker network as app (`neuroglitch`).
+#    * depends_on app for the readiness gate — the cron-loop spawns
+#      tsx scripts/run-cycle.ts which connects to the SAME DB as the app, so
+#      DB readiness is satisfied by app's healthcheck.
+#    * Uses the SAME image as the app — the cron-loop only needs the lib/
+#      tree + prisma client + scripts/. Setting `image:` here keeps the build
+#      pipeline consistent (one image, two entrypoints).
+#    * Mounts the runtime/cron/ directory so operators can edit schedule.json
+#      without rebuilding the image (still requires container restart to load).
+#    * Restart policy: unless-stopped — same as worker. If the loop crashes,
+#      Docker brings it back; the next-minute alignment means at most ~60s
+#      of cadence loss.
+#
+#  STATUS: PR4 ships this overlay. Activation is operator-gated:
+#    1. Build images.
+#    2. `docker compose ... up -d cron` on staging.
+#    3. Tail logs for 24h: `docker compose logs -f cron`.
+#    4. Verify processed > 0 on the Grafana intelligence-throughput dashboard.
+#    5. Once stable, layer the overlay into production compose invocation.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  cron:
+    # Tier overrides (staging.yml / production.yml) set the actual image tag.
+    # For local-dev compose invocations, build from runtime/cron/Dockerfile:
+    #   docker compose -f runtime/compose/overrides/cron.yml build cron
+    image: ghcr.io/ghostdwg/groundworx-cron:<sha>
+    build:
+      context: ../../..
+      dockerfile: runtime/cron/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    # The cron-loop reads /app/runtime/cron/schedule.json by default. Mount
+    # the host's runtime/cron/ dir as read-only so operators can edit
+    # schedule.json without rebuilding the image.
+    volumes:
+      - type: bind
+        source: ../../cron
+        target: /app/runtime/cron
+        read_only: true
+      # Shared filesystem with app + sidecar — runners may write artifacts.
+      - storage:/storage
+    environment:
+      # Defaults baked in; documented here for operator discoverability.
+      CRON_SCHEDULE_PATH: /app/runtime/cron/schedule.json
+      CRON_TICK_FILE:     /tmp/cron.tick
+      CRON_LOG_PREFIX:    "[cron]"
+    networks:
+      - neuroglitch
+    # Healthcheck baked into the Dockerfile (checks /tmp/cron.tick freshness).
+    # No need to repeat here; compose inherits it from the image.
+
+# This overlay does NOT redefine `app`, `sidecar`, `worker`, or networks —
+# they live in base.yml. The `storage` volume + `neuroglitch` network are
+# referenced by name and resolved from the base file at compose-time.
+volumes:
+  storage:
+    external: false  # base.yml owns the definition; this just references it
+
+networks:
+  neuroglitch:
+    external: false  # base.yml owns the definition

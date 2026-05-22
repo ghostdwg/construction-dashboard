@@ -22,7 +22,8 @@
 // has no "type": "module". This pattern matches the working backfill
 // scripts (scripts/backfill-entity-graph.ts, etc.).
 
-import "@/lib/runners/registry";  // side-effect: register built-in runners
+import "@/lib/runners/registry";                  // side-effect: register built-in runners
+import "@/lib/runners/municipalAgendaIngestion";  // side-effect: register PR4 runner
 import { getRunner, listRunners, runCycle } from "@/lib/runners";
 
 const args = process.argv.slice(2);

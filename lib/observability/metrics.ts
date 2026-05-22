@@ -38,8 +38,19 @@ interface Histogram {
   values: Map<string, { bucketCounts: number[]; sum: number; count: number }>;
 }
 
+// O2.2 PR4 — Gauge type. Like Counter but values are SET (latest value wins)
+// rather than incremented. Used for "current population" metrics like the
+// due-source backlog or the stale-source count.
+interface Gauge {
+  name: string;
+  help: string;
+  labelNames: string[];
+  values: Map<string, number>;
+}
+
 const counters = new Map<string, Counter>();
 const histograms = new Map<string, Histogram>();
+const gauges = new Map<string, Gauge>();
 
 function makeKey(labelNames: string[], labels: LabelValues): string {
   const parts: string[] = [];
@@ -55,6 +66,19 @@ function registerCounter(name: string, help: string, labelNames: string[] = []):
   const counter: Counter = { name, help, labelNames, values: new Map() };
   counters.set(name, counter);
   return counter;
+}
+
+function registerGauge(name: string, help: string, labelNames: string[] = []): Gauge {
+  const existing = gauges.get(name);
+  if (existing) return existing;
+  const gauge: Gauge = { name, help, labelNames, values: new Map() };
+  gauges.set(name, gauge);
+  return gauge;
+}
+
+function setGauge(gauge: Gauge, value: number, labels: LabelValues = {}): void {
+  const key = makeKey(gauge.labelNames, labels);
+  gauge.values.set(key, value);
 }
 
 function registerHistogram(
@@ -205,6 +229,36 @@ const signalsClassifiedCounter = registerCounter(
   ["classification"]
 );
 
+// ── O2.2 PR4 — Runner observability ───────────────────────────────────────
+//
+// Recurring-cycle visibility for the municipal-agenda-ingestion runner (and
+// future agenda-style runners). Counters tick per-source within each cycle;
+// gauges hold the latest-known state of the source pool.
+
+const runnerSourcesProcessedCounter = registerCounter(
+  "neuroglitch_runner_sources_processed_total",
+  "Count of sources successfully scraped by a runner cycle, by runner.",
+  ["runner"]
+);
+
+const runnerScrapeFailuresCounter = registerCounter(
+  "neuroglitch_runner_scrape_failures_total",
+  "Count of source scrapes that threw inside a runner cycle, by runner.",
+  ["runner"]
+);
+
+const runnerDueSourcesGauge = registerGauge(
+  "neuroglitch_runner_due_sources",
+  "Number of MarketSources reported as due at the start of the most recent runner cycle.",
+  ["runner"]
+);
+
+const runnerStaleSourceCountGauge = registerGauge(
+  "neuroglitch_runner_stale_source_count",
+  "Number of MarketSources currently in STALE_PUBLISH or OPERATOR_REVIEW publishStatus.",
+  ["publish_status"]
+);
+
 // ── Public emission helpers ────────────────────────────────────────────────
 
 export function recordAuditEmission(category: AuditCategory, severity: AuditSeverity): void {
@@ -263,6 +317,23 @@ export function recordSignalClassification(classification: string): void {
   incCounter(signalsClassifiedCounter, { classification });
 }
 
+// O2.2 PR4 — runner observability helpers
+export function recordRunnerSourceProcessed(runner: string): void {
+  incCounter(runnerSourcesProcessedCounter, { runner });
+}
+
+export function recordRunnerScrapeFailure(runner: string): void {
+  incCounter(runnerScrapeFailuresCounter, { runner });
+}
+
+export function setRunnerDueSources(runner: string, count: number): void {
+  setGauge(runnerDueSourcesGauge, count, { runner });
+}
+
+export function setRunnerStaleSourceCount(publishStatus: string, count: number): void {
+  setGauge(runnerStaleSourceCountGauge, count, { publish_status: publishStatus });
+}
+
 // ── Renderer ───────────────────────────────────────────────────────────────
 //
 // Emit Prometheus exposition format. Conforms to text-format 0.0.4 — see
@@ -280,6 +351,19 @@ export function renderPrometheus(): string {
       for (const [key, count] of counter.values) {
         const labelStr = renderLabels(counter.labelNames, key);
         lines.push(`${counter.name}${labelStr} ${count}`);
+      }
+    }
+  }
+
+  for (const gauge of gauges.values()) {
+    lines.push(`# HELP ${gauge.name} ${gauge.help}`);
+    lines.push(`# TYPE ${gauge.name} gauge`);
+    if (gauge.values.size === 0) {
+      lines.push(`${gauge.name} 0`);
+    } else {
+      for (const [key, value] of gauge.values) {
+        const labelStr = renderLabels(gauge.labelNames, key);
+        lines.push(`${gauge.name}${labelStr} ${value}`);
       }
     }
   }
@@ -329,4 +413,5 @@ function renderLabels(labelNames: string[], key: string): string {
 export function resetMetrics(): void {
   for (const c of counters.values()) c.values.clear();
   for (const h of histograms.values()) h.values.clear();
+  for (const g of gauges.values()) g.values.clear();
 }

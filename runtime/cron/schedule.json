@@ -1,0 +1,15 @@
+{
+  "_comment": "O2.2 PR4 — cron schedule for the autonomous cadence runtime. Operator-editable. Restart cron container after changes. See runtime/cron/README.md and runtime/runbooks/o2.2-first-live-activation.md.",
+  "schedules": [
+    {
+      "cron": "*/15 * * * *",
+      "runner": "health-check",
+      "trigger": "scheduled"
+    },
+    {
+      "cron": "0 * * * *",
+      "runner": "municipal-agenda-ingestion",
+      "trigger": "scheduled"
+    }
+  ]
+}

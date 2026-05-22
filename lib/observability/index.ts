@@ -51,6 +51,10 @@ export {
   recordIngestionPipelineError,
   recordSignalSuppression,
   recordSignalClassification,
+  recordRunnerSourceProcessed,
+  recordRunnerScrapeFailure,
+  setRunnerDueSources,
+  setRunnerStaleSourceCount,
   renderPrometheus,
   resetMetrics,
 } from "./metrics";
