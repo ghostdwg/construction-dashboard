@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "purpose": "Temporary allow-list of PRE-EXISTING direct external-AI-provider call sites and legacy deploy/storage artifacts, established at base commit e10b799. New entries are prohibited. Entries are REMOVED as each call site migrates behind the P1 AI gateway. This file is documentation + machine input for the P0 guardrails; it changes no runtime behavior.",
+  "ai_providers": [
+    { "path": "lib/services/submittal/organizeWithAi.ts", "reason": "Legacy Anthropic submittal-organize call; migrate to gateway in P1." },
+    { "path": "lib/services/ai/generateBidIntelligenceBrief.ts", "reason": "Legacy Anthropic bid-brief call; migrate to gateway in P1." },
+    { "path": "app/api/bids/[id]/gap-analysis/generate/route.ts", "reason": "Legacy Anthropic gap-analysis call; migrate to gateway in P1." },
+    { "path": "app/api/bids/[id]/intelligence/generate/route.ts", "reason": "Legacy Anthropic bid-intelligence call; migrate to gateway in P1." },
+    { "path": "app/api/bids/[id]/addendums/[addendumId]/delta/route.ts", "reason": "Legacy Anthropic addendum-delta call; migrate to gateway in P1." },
+    { "path": "app/api/bids/[id]/leveling/[rowId]/question/route.ts", "reason": "Legacy Anthropic leveling-question call; migrate to gateway in P1." },
+    { "path": "sidecar/routers/market.py", "reason": "Legacy Anthropic market-intel extraction (public-source); migrate to gateway + default-local in P1/P2." },
+    { "path": "sidecar/services/ai_extractor.py", "reason": "Legacy Anthropic generic extractor; migrate to gateway in P1." },
+    { "path": "sidecar/services/drawing_intelligence.py", "reason": "Legacy Anthropic Claude-Vision on drawings (no redaction); highest-priority gateway + sanitization target." },
+    { "path": "sidecar/services/spec_intelligence.py", "reason": "Legacy Anthropic spec analysis; migrate to gateway in P1." },
+    { "path": "sidecar/services/submittal_intelligence.py", "reason": "Legacy Anthropic submittal generation; migrate to gateway in P1." },
+    { "path": "sidecar/services/schedule_intelligence.py", "reason": "Legacy Anthropic schedule generation; migrate to gateway in P1." },
+    { "path": "sidecar/services/meeting_intelligence.py", "reason": "Legacy Anthropic meeting analysis AND AssemblyAI fallback endpoint; migrate to gateway (P1) + remove auto-fallback (P3)." }
+  ],
+  "deploy_storage": [
+    { "path": "runtime/fly/fly.toml", "status": "blocked-deprecated", "reason": "Latent Fly.io app-deploy path. Running prod app is the local Docker container; do not activate. Prohibited unless explicitly approved." },
+    { "path": "runtime/fly/fly.sidecar.toml", "status": "blocked-deprecated", "reason": "Latent Fly.io sidecar-deploy path; would relocate confidential drawing/spec/meeting processing to cloud. Prohibited unless explicitly approved." },
+    { "path": "lib/storage/blobStore.ts", "status": "legacy-plumbing", "reason": "STORAGE_BACKEND selector; only LocalBlobStore is implemented. S3BlobStore is a future stub and is prohibited unless explicitly approved. Selector left unchanged this phase." }
+  ],
+  "deploy_storage_known": [
+    { "path": ".github/workflows/deploy.yml", "status": "dormant-disabled", "reason": "Pre-existing CI Fly.io deploy steps (flyctl deploy) that are already disabled via `if: false` (Phase R4.5 safety patch). Prohibited-but-not-removed; do not enable. Removal deferred to a later approved phase. Reported as KNOWN-ACTIVE, not a new WOULD-BLOCK." }
+  ]
+}
