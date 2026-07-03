@@ -14,7 +14,8 @@ Models:
 
 import json
 import os
-import anthropic
+
+from services import ai_gateway
 
 # ── Model map ────────────────────────────────────────────────────────────────
 
@@ -293,15 +294,16 @@ def generate_schedule_intelligence(
         raise RuntimeError("ANTHROPIC_API_KEY not configured")
 
     model_id = MODEL_MAP.get(model, MODEL_MAP["sonnet"])
-    client = anthropic.Anthropic(api_key=api_key)
     user_prompt = _build_user_prompt(spec_sections, drawing_analysis)
 
-    response = client.messages.create(
+    result = ai_gateway.create_message(
         model=model_id,
         max_tokens=8_000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
+        api_key=api_key,
     )
+    response = result.raw
 
     raw = response.content[0].text if response.content else ""
     usage = response.usage

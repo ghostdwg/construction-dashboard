@@ -1,5 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
+import { createMessage } from "@/lib/services/ai/gateway";
 import { assembleGapPrompt } from "@/lib/services/ai/assembleGapPrompt";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
@@ -277,8 +277,6 @@ export async function runGapAnalysis(
       "ANTHROPIC_API_KEY is not set — configure it in /settings → AI Configuration (or .env.local)"
     );
 
-  const client = new Anthropic({ apiKey });
-
   for (const bt of bidTrades) {
     const { systemPrompt, userPrompt, estimateCount } = await assembleGapPrompt(
       bidId,
@@ -296,11 +294,12 @@ export async function runGapAnalysis(
       if (specCount === 0) continue;
     }
 
-    const message = await client.messages.create({
+    const { raw: message } = await createMessage({
       model: "claude-sonnet-4-6",
-      max_tokens: await getMaxTokens("gap-analysis"),
+      maxTokens: await getMaxTokens("gap-analysis"),
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
+      apiKey,
     });
 
     await logAiUsage({
