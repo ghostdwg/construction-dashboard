@@ -17,7 +17,7 @@ import os
 import json
 from dataclasses import dataclass
 
-import anthropic
+from services import ai_gateway
 
 
 EXTRACTION_TYPES = {
@@ -121,8 +121,6 @@ def extract_from_section(
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY not configured")
 
-    client = anthropic.Anthropic(api_key=api_key)
-
     prompt = SECTION_PROMPT_TEMPLATE.format(
         section_number=section["section_number"],
         title=section["title"],
@@ -130,12 +128,14 @@ def extract_from_section(
         extract_types=", ".join(sorted(valid_types)),
     )
 
-    response = client.messages.create(
+    result = ai_gateway.create_message(
         model=model,
         max_tokens=2000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
+        api_key=api_key,
     )
+    response = result.raw
 
     # Parse the response
     text = response.content[0].text if response.content else "{}"

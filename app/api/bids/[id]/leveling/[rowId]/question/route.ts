@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import Anthropic from "@anthropic-ai/sdk";
+import { createMessage } from "@/lib/services/ai/gateway";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
@@ -79,8 +79,6 @@ async function draftQuestion({
     return templateQuestion(scopeText);
   }
 
-  const client = new Anthropic({ apiKey });
-
   const divisionContext = division
     ? `CSI Division reference: ${division}\n`
     : "";
@@ -104,10 +102,11 @@ Draft a single, direct question to send to the subcontractor. The question must:
 Return only the question text. No preamble, no explanation.`;
 
   try {
-    const message = await client.messages.create({
+    const { raw: message } = await createMessage({
       model: "claude-sonnet-4-6",
-      max_tokens: await getMaxTokens("leveling-question"),
+      maxTokens: await getMaxTokens("leveling-question"),
       messages: [{ role: "user", content: prompt }],
+      apiKey,
     });
 
     await logAiUsage({

@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { createMessage } from "@/lib/services/ai/gateway";
 import { prisma } from "@/lib/prisma";
 import { assembleReviewPrompt } from "@/lib/services/ai/assembleReviewPrompt";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
@@ -28,13 +28,12 @@ export async function generateBidIntelligence(bidId: number): Promise<{
 
   const { systemPrompt, userPrompt, coverage } = await assembleReviewPrompt(bidId);
 
-  const client = new Anthropic({ apiKey });
-
-  const message = await client.messages.create({
+  const { raw: message } = await createMessage({
     model: "claude-sonnet-4-6",
-    max_tokens: await getMaxTokens("intelligence"),
+    maxTokens: await getMaxTokens("intelligence"),
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
+    apiKey,
   });
 
   await logAiUsage({
