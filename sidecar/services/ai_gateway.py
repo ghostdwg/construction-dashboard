@@ -29,6 +29,21 @@ class AiResult:
     raw: Any  # unmodified provider Message object
 
 
+def build_client(api_key: Optional[str] = None) -> Any:
+    """Construct the sanctioned Anthropic client — identical to what callers
+    built inline before migration: ``anthropic.Anthropic(api_key=api_key)``.
+
+    The ``anthropic`` package is imported lazily (same path ``create_message``
+    uses), so importing this module never requires the package. SDK defaults are
+    preserved exactly: only ``api_key`` is passed through, nothing else. This
+    adds no retries, routing, classification, sanitization, logging, or policy —
+    it is only a client constructor, centralized in the one sanctioned site.
+    """
+    import anthropic  # lazy: only needed to build a real client
+
+    return anthropic.Anthropic(api_key=api_key)
+
+
 def create_message(
     *,
     model: str,
@@ -42,9 +57,7 @@ def create_message(
     """Relay a single Anthropic Messages request unchanged and return the raw
     response plus verbatim usage counts. See module docstring for guarantees."""
     if client is None:
-        import anthropic  # lazy: only needed to build a real client
-
-        client = anthropic.Anthropic(api_key=api_key)
+        client = build_client(api_key)
 
     kwargs = {"model": model, "max_tokens": max_tokens, "messages": messages}
     if system is not None:
@@ -70,3 +83,30 @@ def create_message(
         stop_reason=getattr(raw, "stop_reason", None),
         raw=raw,
     )
+
+
+def provider_api_status_code(exc: BaseException) -> Optional[int]:
+    """Return an HTTP status code ONLY when ``exc`` is a genuine Anthropic
+    ``APIStatusError`` that exposes one; otherwise ``None``.
+
+    This is a TYPE check, not a duck-typed attribute probe: an unrelated
+    exception that merely carries a ``status_code`` attribute (a custom error, a
+    transport error, another provider's error) returns ``None``. It exists so a
+    caller's retry loop can preserve the original "catch only
+    ``anthropic.APIStatusError`` and inspect ``status_code``" semantics while the
+    knowledge of the provider exception type lives here, in the sanctioned
+    gateway — the caller no longer needs to import ``anthropic`` itself.
+
+    The ``anthropic`` package is imported lazily; if it is unavailable the
+    exception cannot be a genuine ``APIStatusError``, so this returns ``None``.
+    It adds no retries, sleeping, or policy — it only classifies an exception.
+    """
+    try:
+        import anthropic  # lazy: only the type object is needed
+    except ImportError:
+        return None
+
+    if isinstance(exc, anthropic.APIStatusError):
+        code = getattr(exc, "status_code", None)
+        return code if isinstance(code, int) else None
+    return None

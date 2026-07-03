@@ -10,6 +10,8 @@ Runnable two ways:
 """
 import os
 import sys
+import types
+import contextlib
 from pathlib import Path
 
 # Put the sidecar root on sys.path so `services.*` imports resolve.
@@ -153,6 +155,162 @@ def test_ai_extractor_parser_and_cost_fidelity():
     # Request fidelity from the caller: model/max_tokens/system forwarded.
     assert captured["max_tokens"] == 2000
     assert "system" in captured and captured["model"]
+
+
+# ===========================================================================
+#  P1B-3B-pre: build_client + provider_api_status_code
+#  anthropic is NOT installed here, so genuine-APIStatusError cases are exercised
+#  by installing a stub `anthropic` module into sys.modules for the duration of
+#  the test. No network, no real package.
+# ===========================================================================
+
+def _make_fake_anthropic():
+    """A minimal stand-in for the anthropic package with the real exception
+    hierarchy shape: APIStatusError (with status_code) < APIError; a transport
+    error (APIConnectionError) that is NOT an APIStatusError; a RateLimitError
+    subclass; and an Anthropic client that records its api_key and calls."""
+    mod = types.ModuleType("anthropic")
+    captured = {"calls": []}
+
+    class APIError(Exception):
+        pass
+
+    class APIStatusError(APIError):
+        def __init__(self, status_code, message="status"):
+            super().__init__(message)
+            self.status_code = status_code
+
+    class RateLimitError(APIStatusError):
+        pass
+
+    class APIConnectionError(APIError):
+        # Transport-layer error — not an APIStatusError even if it carries a code.
+        def __init__(self, status_code=None):
+            super().__init__("connection")
+            self.status_code = status_code
+
+    class Anthropic:
+        def __init__(self, api_key=None, **kwargs):
+            captured["api_key"] = api_key
+            captured["kwargs"] = kwargs
+            self.api_key = api_key
+            self.kwargs = kwargs
+            self.messages = types.SimpleNamespace(create=self._create)
+
+        def _create(self, **kwargs):
+            captured["calls"].append(kwargs)
+            return FakeMessage("built", 3, 4)
+
+    mod.APIError = APIError
+    mod.APIStatusError = APIStatusError
+    mod.RateLimitError = RateLimitError
+    mod.APIConnectionError = APIConnectionError
+    mod.Anthropic = Anthropic
+    mod._captured = captured
+    return mod
+
+
+@contextlib.contextmanager
+def fake_anthropic():
+    """Install the stub anthropic module so lazy `import anthropic` resolves."""
+    fake = _make_fake_anthropic()
+    saved = sys.modules.get("anthropic")
+    sys.modules["anthropic"] = fake
+    try:
+        yield fake
+    finally:
+        if saved is not None:
+            sys.modules["anthropic"] = saved
+        else:
+            sys.modules.pop("anthropic", None)
+
+
+@contextlib.contextmanager
+def no_anthropic():
+    """Force `import anthropic` to raise ImportError deterministically."""
+    saved = sys.modules.get("anthropic")
+    sys.modules["anthropic"] = None  # sentinel → ImportError on import
+    try:
+        yield
+    finally:
+        if saved is not None:
+            sys.modules["anthropic"] = saved
+        else:
+            sys.modules.pop("anthropic", None)
+
+
+# ---- build_client ----------------------------------------------------------
+def test_build_client_constructs_with_api_key():
+    with fake_anthropic() as fake:
+        client = ai_gateway.build_client("k123")
+        assert client.api_key == "k123", "build_client must pass the api key through"
+        assert client.kwargs == {}, "SDK defaults preserved — only api_key passed"
+        assert fake._captured["api_key"] == "k123"
+
+
+def test_create_message_builds_client_when_none():
+    # client=None now routes through build_client; the stub supplies the client.
+    with fake_anthropic() as fake:
+        r = ai_gateway.create_message(
+            model="mZ", max_tokens=5,
+            messages=[{"role": "user", "content": "p"}], api_key="kZ",
+        )
+        assert fake._captured["api_key"] == "kZ"  # build_client received the key
+        assert fake._captured["calls"][0] == {
+            "model": "mZ", "max_tokens": 5,
+            "messages": [{"role": "user", "content": "p"}],
+        }  # request forwarded verbatim, no system/temperature added
+        assert r.text == "built"
+        assert r.usage == {"input_tokens": 3, "output_tokens": 4}
+        assert r.raw.usage.input_tokens == 3
+
+
+def test_create_message_injected_client_no_anthropic():
+    # Lazy import stays valid: an injected client needs no anthropic package.
+    with no_anthropic():
+        fc = FakeClient(message=FakeMessage("ok", 1, 2))
+        r = ai_gateway.create_message(
+            model="m", max_tokens=1,
+            messages=[{"role": "user", "content": "p"}], client=fc,
+        )
+        assert r.text == "ok"
+        assert r.usage == {"input_tokens": 1, "output_tokens": 2}
+
+
+# ---- provider_api_status_code ---------------------------------------------
+def test_provider_status_code_real_apistatuserror():
+    with fake_anthropic() as fake:
+        assert ai_gateway.provider_api_status_code(fake.APIStatusError(429)) == 429
+        assert ai_gateway.provider_api_status_code(fake.APIStatusError(529)) == 529
+        # A genuine subclass (RateLimitError) is still an APIStatusError.
+        assert ai_gateway.provider_api_status_code(fake.RateLimitError(429)) == 429
+
+
+def test_provider_status_code_generic_with_status_code_returns_none():
+    # CRITICAL regression: a custom exception that merely carries status_code=429
+    # is NOT anthropic.APIStatusError → must return None (type-checked, not duck).
+    class Custom(Exception):
+        def __init__(self):
+            super().__init__("x")
+            self.status_code = 429
+
+    with fake_anthropic():  # anthropic importable, but Custom is not its type
+        assert ai_gateway.provider_api_status_code(Custom()) is None
+
+
+def test_provider_status_code_transport_like_returns_none():
+    with fake_anthropic() as fake:
+        # APIConnectionError is not an APIStatusError, even carrying a code.
+        assert ai_gateway.provider_api_status_code(fake.APIConnectionError(status_code=429)) is None
+
+
+def test_provider_status_code_none_when_anthropic_unavailable():
+    with no_anthropic():
+        class Custom(Exception):
+            status_code = 429
+
+        assert ai_gateway.provider_api_status_code(Custom()) is None
+        assert ai_gateway.provider_api_status_code(RuntimeError("x")) is None
 
 
 if __name__ == "__main__":
