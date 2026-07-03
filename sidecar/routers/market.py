@@ -22,13 +22,16 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 import pymupdf
-from anthropic import Anthropic
 from fastapi import APIRouter, HTTPException
 from playwright.async_api import async_playwright
 from pydantic import BaseModel
 
+from services import ai_gateway
+
 router = APIRouter()
-anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
+anthropic = ai_gateway.build_client(
+    os.getenv("ANTHROPIC_API_KEY", "")
+)
 
 MODEL = "claude-sonnet-4-6"
 MAX_TEXT_CHARS = 60_000  # ~15k tokens — enough for a full council session
@@ -413,12 +416,14 @@ async def _scan_text(doc_text: str, jurisdiction_hint: Optional[str], source_dat
     """Run Claude analysis on extracted text. Returns dict with signals/relationships + usage."""
     prompt = EXTRACT_PROMPT + doc_text
     try:
-        response = anthropic.messages.create(
+        result = ai_gateway.create_message(
             model=MODEL,
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
+            client=anthropic,
         )
+        response = result.raw
     except Exception as exc:
         raise HTTPException(500, f"Claude API error: {exc}")
 
