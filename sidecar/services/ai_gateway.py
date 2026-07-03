@@ -55,7 +55,9 @@ def create_message(
     client: Any = None,
 ) -> AiResult:
     """Relay a single Anthropic Messages request unchanged and return the raw
-    response plus verbatim usage counts. See module docstring for guarantees."""
+    response plus verbatim usage counts. If the provider returns ``None`` it is
+    passed through as ``raw=None`` (never dereferenced). See module docstring for
+    guarantees."""
     if client is None:
         client = build_client(api_key)
 
@@ -67,6 +69,18 @@ def create_message(
 
     # Provider errors propagate unchanged (status codes / exception types kept).
     raw = client.messages.create(**kwargs)
+
+    # Transparent passthrough: if the provider returns None, relay it as-is
+    # (raw=None) without dereferencing it, so callers see the same None a direct
+    # SDK call would have returned. Strictly `is None`, not a general falsy check.
+    if raw is None:
+        return AiResult(
+            text="",
+            usage={"input_tokens": 0, "output_tokens": 0},
+            model="",
+            stop_reason=None,
+            raw=None,
+        )
 
     text = "".join(
         getattr(b, "text", "")

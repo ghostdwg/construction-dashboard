@@ -313,6 +313,25 @@ def test_provider_status_code_none_when_anthropic_unavailable():
         assert ai_gateway.provider_api_status_code(RuntimeError("x")) is None
 
 
+# ===========================================================================
+#  P1B-3B-pre2: transparent passthrough when the provider returns None
+# ===========================================================================
+
+def test_create_message_passes_through_none_raw():
+    # Injected client whose messages.create returns None (no exception).
+    fc = FakeClient(message=None)
+    with no_anthropic():  # also proves the None path needs no anthropic package
+        r = ai_gateway.create_message(
+            model="m", max_tokens=1,
+            messages=[{"role": "user", "content": "p"}], client=fc,
+        )
+    assert r.raw is None
+    assert r.text == ""
+    assert r.usage == {"input_tokens": 0, "output_tokens": 0}
+    assert r.model == ""
+    assert r.stop_reason is None
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failures = 0
