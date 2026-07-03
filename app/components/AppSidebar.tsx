@@ -50,6 +50,13 @@ export default function AppSidebar({
         meta={String(counts.projects)}
         active={isActive("/bids")}
       />
+      <SidebarItem
+        href="/portfolio"
+        label="Portfolio"
+        sub="grouped pursuits + projects"
+        meta={String(counts.projects)}
+        active={isActive("/portfolio")}
+      />
 
       {/* ── execution ─────────────────────────────────────────────────── */}
       <SectionLabel label="execution" />
