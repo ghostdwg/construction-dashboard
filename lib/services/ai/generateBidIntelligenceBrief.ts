@@ -252,6 +252,7 @@ export async function generateBidIntelligenceBrief(
       system: prompt.systemPrompt,
       messages: [{ role: "user", content: prompt.userPrompt }],
       apiKey,
+      audit: { feature: "brief", bidId: String(bidId) },
     });
 
     await logAiUsage({

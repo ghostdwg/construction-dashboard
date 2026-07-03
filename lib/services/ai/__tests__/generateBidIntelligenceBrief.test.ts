@@ -68,6 +68,16 @@ describe("generateBidIntelligenceBrief — gateway migration fidelity (P1B-2)", 
     );
   });
 
+  it("passes P2-A0 shadow-scan audit metadata identifying the feature and bid id", async () => {
+    await generateBidIntelligenceBrief(7, "manual");
+
+    expect(h.createMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audit: { feature: "brief", bidId: "7" },
+      })
+    );
+  });
+
   it("preserves repairTruncatedJson: truncated body is repaired and persisted", async () => {
     await generateBidIntelligenceBrief(1, "manual");
 

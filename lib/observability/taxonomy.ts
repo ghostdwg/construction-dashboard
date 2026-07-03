@@ -51,6 +51,7 @@ export const AUDIT_CATEGORIES = [
   "review_action",            // operator review queue actions (verify/reject/dispute)
   "ingestion_pipeline_error", // stdout-only fireAndForget failure path
   "system_health",            // backup verified, scraper failed, etc.
+  "ai_prompt_scan",           // P2-A0 — shadow, non-blocking heuristic prompt scan (gateway.ts)
 ] as const;
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 
