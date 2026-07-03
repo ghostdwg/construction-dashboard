@@ -16,8 +16,11 @@ Every section gets reviewed. Every section gets a severity flag.
 import os
 import re
 import json
-import anthropic
+from typing import Any
+
 import pymupdf
+
+from services import ai_gateway
 
 
 # ── Model routing by CSI division ────────────────────────────────────────────
@@ -111,7 +114,7 @@ The document is {page_count} pages. Here is the text (page breaks marked with [P
 {text}"""
 
 
-def _identify_sections(full_text: str, page_count: int, client: anthropic.Anthropic) -> tuple[list[dict], dict]:
+def _identify_sections(full_text: str, page_count: int, client: Any) -> tuple[list[dict], dict]:
     """
     Pass 1: Send TOC + sampling of full text to Haiku to identify ALL sections.
     Uses a smart truncation strategy: TOC pages + first lines of each page.
@@ -143,7 +146,7 @@ def _identify_sections(full_text: str, page_count: int, client: anthropic.Anthro
     response = None
     for attempt in range(5):
         try:
-            response = client.messages.create(
+            result = ai_gateway.create_message(
                 model=model,
                 max_tokens=8000,  # Enough for 100+ sections
                 system=IDENTIFY_SYSTEM,
@@ -151,10 +154,13 @@ def _identify_sections(full_text: str, page_count: int, client: anthropic.Anthro
                     "role": "user",
                     "content": IDENTIFY_USER.format(text=smart_text, page_count=page_count),
                 }],
+                client=client,
             )
+            response = result.raw
             break
-        except anthropic.APIStatusError as e:
-            if e.status_code in (429, 529) and attempt < 4:
+        except Exception as e:
+            code = ai_gateway.provider_api_status_code(e)
+            if code in (429, 529) and attempt < 4:
                 _time.sleep((attempt + 1) * 5)
                 continue
             raise
@@ -314,7 +320,7 @@ def _analyze_section(
     csi: str,
     title: str,
     section_text: str,
-    client: anthropic.Anthropic,
+    client: Any,
     model_override: str | None = None,
 ) -> tuple[dict, dict]:
     """
@@ -342,7 +348,7 @@ def _analyze_section(
     response = None
     for attempt in range(5):
         try:
-            response = client.messages.create(
+            result = ai_gateway.create_message(
                 model=model,
                 max_tokens=2500,
                 system=ANALYZE_SYSTEM,
@@ -350,10 +356,13 @@ def _analyze_section(
                     "role": "user",
                     "content": ANALYZE_USER.format(csi=csi, title=title, text=section_text[:8000]),
                 }],
+                client=client,
             )
+            response = result.raw
             break
-        except anthropic.APIStatusError as e:
-            if e.status_code in (429, 529) and attempt < 4:
+        except Exception as e:
+            code = ai_gateway.provider_api_status_code(e)
+            if code in (429, 529) and attempt < 4:
                 wait = (attempt + 1) * 5  # 5, 10, 15, 20 seconds
                 _time.sleep(wait)
                 continue
@@ -403,7 +412,7 @@ def analyze_split_sections(
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY not configured")
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = ai_gateway.build_client(api_key)
 
     results = []
     usages = []
@@ -505,7 +514,7 @@ def run_spec_intelligence(
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY not configured")
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = ai_gateway.build_client(api_key)
 
     # Step 1: Extract text with PyMuPDF (fast raw text, not markdown)
     doc = pymupdf.open(pdf_path)
