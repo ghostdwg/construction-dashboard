@@ -7,7 +7,6 @@
     { "path": "lib/services/submittal/organizeWithAi.ts", "reason": "Legacy Anthropic submittal-organize call; migrate to gateway in P1." },
     { "path": "sidecar/routers/market.py", "reason": "Legacy Anthropic market-intel extraction (public-source); migrate to gateway + default-local in P1/P2." },
     { "path": "sidecar/services/drawing_intelligence.py", "reason": "Legacy Anthropic Claude-Vision on drawings (no redaction); highest-priority gateway + sanitization target." },
-    { "path": "sidecar/services/submittal_intelligence.py", "reason": "Legacy Anthropic submittal generation; migrate to gateway in P1." },
     { "path": "sidecar/services/meeting_intelligence.py", "reason": "Legacy Anthropic meeting analysis AND AssemblyAI fallback endpoint; migrate to gateway (P1) + remove auto-fallback (P3)." }
   ],
   "deploy_storage": [

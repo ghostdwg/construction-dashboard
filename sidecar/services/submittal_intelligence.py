@@ -10,7 +10,8 @@ function and are not re-processed here.
 
 import os
 import json
-import anthropic
+
+from services import ai_gateway
 
 SONNET_MODEL = "claude-sonnet-4-6"
 
@@ -74,7 +75,7 @@ def generate_submittal_intelligence(
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY not configured")
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = ai_gateway.build_client(api_key)
 
     # Build compact coverage list
     covered_lines = [
@@ -96,15 +97,18 @@ def generate_submittal_intelligence(
     response = None
     for attempt in range(3):
         try:
-            response = client.messages.create(
+            result = ai_gateway.create_message(
                 model=SONNET_MODEL,
                 max_tokens=4_000,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_content}],
+                client=client,
             )
+            response = result.raw
             break
-        except anthropic.APIStatusError as e:
-            if e.status_code in (429, 529) and attempt < 2:
+        except Exception as e:
+            code = ai_gateway.provider_api_status_code(e)
+            if code in (429, 529) and attempt < 2:
                 _time.sleep((attempt + 1) * 5)
                 continue
             raise
