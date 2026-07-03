@@ -5,7 +5,6 @@
     { "path": "lib/services/ai/gateway.ts", "reason": "SANCTIONED single AI gateway (P1B) — the ONE permitted TypeScript provider-construction site; all callers route through it." },
     { "path": "sidecar/services/ai_gateway.py", "reason": "SANCTIONED single AI gateway (P1B) — the ONE permitted Python provider-construction site; all callers route through it." },
     { "path": "lib/services/submittal/organizeWithAi.ts", "reason": "Legacy Anthropic submittal-organize call; migrate to gateway in P1." },
-    { "path": "app/api/bids/[id]/addendums/[addendumId]/delta/route.ts", "reason": "Legacy Anthropic addendum-delta call; migrate to gateway in P1." },
     { "path": "sidecar/routers/market.py", "reason": "Legacy Anthropic market-intel extraction (public-source); migrate to gateway + default-local in P1/P2." },
     { "path": "sidecar/services/drawing_intelligence.py", "reason": "Legacy Anthropic Claude-Vision on drawings (no redaction); highest-priority gateway + sanitization target." },
     { "path": "sidecar/services/spec_intelligence.py", "reason": "Legacy Anthropic spec analysis; migrate to gateway in P1." },
