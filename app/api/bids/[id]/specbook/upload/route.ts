@@ -5,8 +5,6 @@ import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specP
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
 
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-
 // ── Sidecar integration ────────────────────────────────────────────────────
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
@@ -60,6 +58,48 @@ async function parsePdfViaSidecar(
   } catch (err) {
     console.warn("[specbook/upload] sidecar unavailable, falling back to pdfjs-dist:", err);
     return null;
+  }
+}
+
+// ── In-process PDF fallback (used only when the sidecar is unavailable) ────
+//
+// pdfjs-dist's Node build references DOMMatrix/ImageData/Path2D at module
+// scope (to support canvas rendering) and throws at import time if they're
+// missing. We only ever call getTextContent(), which never touches them, so
+// a no-op shim is enough to let the module load. The shim is installed here,
+// inside the fallback path, rather than at route module scope — the route
+// must import cleanly even in a runtime where these globals don't exist and
+// the fallback is never reached.
+async function parsePdfFallback(
+  buffer: Buffer
+): Promise<Array<{ csiNumber: string; csiTitle: string; rawText: string }>> {
+  try {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    (globalThis as any).DOMMatrix ??= class DOMMatrix {};
+    (globalThis as any).ImageData ??= class ImageData {};
+    (globalThis as any).Path2D ??= class Path2D {};
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+    const pdfDoc = await loadingTask.promise;
+    let rawText = "";
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const page = await pdfDoc.getPage(i);
+      const content = await page.getTextContent();
+      rawText +=
+        content.items
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((item: any) => ("str" in item ? item.str : ""))
+          .join(" ") + "\n";
+    }
+    return parseSpecSections(rawText);
+  } catch (err) {
+    // Never surface the underlying error (module path, parser internals,
+    // document content) to the client — log it server-side and fail with a
+    // fixed, generic message the caller can safely display.
+    console.error("[specbook/upload] pdfjs-dist fallback failed:", err);
+    throw new Error("PDF fallback parser unavailable");
   }
 }
 
@@ -135,19 +175,7 @@ export async function POST(
     } else {
       // Fallback: pdfjs-dist (in-process, may struggle with large files)
       console.log("[specbook/upload] using pdfjs-dist fallback");
-      const loadingTask = getDocument({ data: new Uint8Array(buffer) });
-      const pdfDoc = await loadingTask.promise;
-      let rawText = "";
-      for (let i = 1; i <= pdfDoc.numPages; i++) {
-        const page = await pdfDoc.getPage(i);
-        const content = await page.getTextContent();
-        rawText +=
-          content.items
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .map((item: any) => ("str" in item ? item.str : ""))
-            .join(" ") + "\n";
-      }
-      sections = parseSpecSections(rawText);
+      sections = await parsePdfFallback(buffer);
     }
 
     // Create all sections in one batch using three-state matching

@@ -1327,9 +1327,20 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       const form = new FormData();
       form.append("file", file);
       const res = await fetch(`/api/bids/${bidId}/specbook/upload`, { method: "POST", body: form });
-      const result = await res.json();
+      const text = await res.text();
+      if (!text) {
+        setSpecUploadError(res.ok ? "No response from server" : `Upload failed (${res.status})`);
+        return;
+      }
+      let result: Record<string, unknown>;
+      try {
+        result = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        setSpecUploadError(`Upload failed (${res.status}) — unexpected response format`);
+        return;
+      }
       if (!res.ok) {
-        setSpecUploadError(result.error ?? "Upload failed");
+        setSpecUploadError((result.error as string) ?? "Upload failed");
       } else {
         setSpecData(await safeJson<SpecData>(await fetch(`/api/bids/${bidId}/specbook/gaps`)));
       }
