@@ -18,6 +18,7 @@
     "validate:staging": "node scripts/validate-staging.mjs",
     "lint:migrations": "node scripts/migration-lint.mjs",
     "lint:migrations:all": "node scripts/migration-lint.mjs --since=all",
+    "guardrails:check": "GUARDRAILS_MODE=enforce governance/guardrails/run-p0-checks.sh",
     "run:cycle": "tsx scripts/run-cycle.ts",
     "run:cycle:list": "tsx scripts/run-cycle.ts --list",
     "seed:market-sources": "tsx scripts/seed-market-sources.ts",

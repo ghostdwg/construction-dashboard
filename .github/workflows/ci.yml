@@ -44,6 +44,24 @@ jobs:
       - name: Lint migrations changed in this PR
         run: node scripts/migration-lint.mjs --since=origin/main
 
+  guardrails-check:
+    name: Guardrails check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Guardrails check
+        run: npm run guardrails:check
+
   typecheck:
     name: Type check
     runs-on: ubuntu-latest
