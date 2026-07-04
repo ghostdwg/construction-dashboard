@@ -38,6 +38,7 @@ function resetDb() {
   db.specBooks.clear();
   db.specBookCounter = 0;
   db.sections = [];
+  blobData.clear();
 }
 
 vi.mock("@/lib/prisma", () => ({
@@ -90,7 +91,8 @@ vi.mock("@/lib/services/jobs/briefRefreshAutomation", () => ({
   triggerBriefRefresh: triggerBriefRefreshMock,
 }));
 
-// ── fs/promises mock — keep the test hermetic, no real disk writes ─────────
+// ── fs/promises mock — proves upload no longer touches the filesystem ──────
+// directly (requirement: no mkdir/write under /app/uploads for new records).
 
 const fsMkdirMock = vi.fn(async () => undefined);
 const fsWriteFileMock = vi.fn(async () => undefined);
@@ -98,6 +100,33 @@ vi.mock("fs/promises", () => ({
   default: { mkdir: fsMkdirMock, writeFile: fsWriteFileMock },
   mkdir: fsMkdirMock,
   writeFile: fsWriteFileMock,
+}));
+
+// ── BlobStore mock — in-memory, so upload persistence is fully hermetic ────
+
+const blobData = new Map<string, Buffer>();
+const blobPutMock = vi.fn(async (key: string, data: Buffer) => {
+  blobData.set(key, data);
+  return { size: data.length, sha256: "fake-sha", storedAt: "2026-01-01T00:00:00.000Z" };
+});
+const blobGetMock = vi.fn(async (key: string) => {
+  const buf = blobData.get(key);
+  if (!buf) throw new Error("BlobStore: not found");
+  return buf;
+});
+const blobExistsMock = vi.fn(async (key: string) => blobData.has(key));
+const blobDeleteMock = vi.fn(async (key: string) => {
+  blobData.delete(key);
+});
+vi.mock("@/lib/storage/blobStore", () => ({
+  getBlobStore: () => ({
+    put: blobPutMock,
+    get: blobGetMock,
+    exists: blobExistsMock,
+    delete: blobDeleteMock,
+    stat: vi.fn(async () => null),
+  }),
+  localPathForKey: vi.fn((key: string) => `/storage/${key}`),
 }));
 
 // ── Minimal synthetic single-page PDF, built with byte-exact xref offsets ───
@@ -188,6 +217,13 @@ describe("POST /api/bids/[id]/specbook/upload", () => {
     // The fallback shim is only ever installed from inside parsePdfFallback —
     // it staying unset proves that path was never entered.
     expect((globalThis as Record<string, unknown>).DOMMatrix).toBeUndefined();
+
+    // Persisted through BlobStore under the canonical, safe relative key —
+    // never a raw /app/uploads filesystem write.
+    expect(blobPutMock).toHaveBeenCalledWith("plan-room/jobs/1/spec/original.pdf", expect.any(Buffer));
+    expect(db.specBooks.get(1)?.filePath).toBe("plan-room/jobs/1/spec/original.pdf");
+    expect(fsMkdirMock).not.toHaveBeenCalled();
+    expect(fsWriteFileMock).not.toHaveBeenCalled();
   });
 
   // ── C. Fallback behavior (success) ─────────────────────────────────────────
@@ -210,6 +246,12 @@ describe("POST /api/bids/[id]/specbook/upload", () => {
 
     // Proves the dynamic import + shim path actually ran.
     expect((globalThis as Record<string, unknown>).DOMMatrix).toBeDefined();
+
+    // Still persisted through BlobStore, not the filesystem, even on the
+    // fallback-parse path.
+    expect(blobPutMock).toHaveBeenCalledWith("plan-room/jobs/1/spec/original.pdf", expect.any(Buffer));
+    expect(fsMkdirMock).not.toHaveBeenCalled();
+    expect(fsWriteFileMock).not.toHaveBeenCalled();
   });
 
   // ── D. Controlled fallback failure ─────────────────────────────────────────

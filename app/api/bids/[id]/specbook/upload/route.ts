@@ -1,6 +1,6 @@
-import fs from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
+import { getBlobStore } from "@/lib/storage/blobStore";
 import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
@@ -143,19 +143,18 @@ export async function POST(
     return Response.json({ error: "Only PDF files are accepted" }, { status: 400 });
   }
 
-  // Save file to disk
-  const dir = path.join(process.cwd(), "uploads", "specbooks", String(bidId));
-  await fs.mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, file.name);
+  // Persist the original PDF through BlobStore — one canonical key per bid,
+  // overwritten on re-upload (there is only ever one active spec book/bid).
   const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(filePath, buffer);
+  const storageKey = `plan-room/jobs/${bidId}/spec/original.pdf`;
+  await getBlobStore().put(storageKey, buffer);
 
   // Delete any existing spec book for this bid (sections cascade via onDelete: Cascade)
   await prisma.specBook.deleteMany({ where: { bidId } });
 
   // Create SpecBook record as processing
   const specBook = await prisma.specBook.create({
-    data: { bidId, fileName: file.name, filePath, status: "processing" },
+    data: { bidId, fileName: file.name, filePath: storageKey, status: "processing" },
   });
 
   // Extract text and parse sections

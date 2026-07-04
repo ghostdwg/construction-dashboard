@@ -108,6 +108,16 @@ export class LocalBlobStore implements BlobStore {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
   }
+
+  /**
+   * Absolute filesystem path for a key, for handoff to a process that needs
+   * a real path rather than a BlobStore call (e.g. the Python sidecar, which
+   * shares this same storage root as a container mount). Goes through the
+   * same key validation as put/get — never returns a path outside root.
+   */
+  localPath(key: string): string {
+    return this.resolve(key);
+  }
 }
 
 let _store: BlobStore | null = null;
@@ -122,6 +132,21 @@ export function getBlobStore(): BlobStore {
     return _store;
   }
   throw new Error(`Unsupported STORAGE_BACKEND: ${backend}`);
+}
+
+/**
+ * Absolute filesystem path for a key, for the rare handoff case where a
+ * collaborating process (e.g. the sidecar) needs a real path on the shared
+ * storage mount rather than a BlobStore call. Only meaningful for the local
+ * backend — throws if a different backend is ever configured, since a
+ * remote backend has no local filesystem path to hand off.
+ */
+export function localPathForKey(key: string): string {
+  const store = getBlobStore();
+  if (!(store instanceof LocalBlobStore)) {
+    throw new Error("localPathForKey: no local filesystem path for the configured storage backend");
+  }
+  return store.localPath(key);
 }
 
 /** Convenience: build a key for a market intelligence doc. */

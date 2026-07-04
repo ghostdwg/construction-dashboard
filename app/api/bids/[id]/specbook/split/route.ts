@@ -1,7 +1,18 @@
 import path from "path";
 import fs from "fs/promises";
 import { prisma } from "@/lib/prisma";
+import { getBlobStore, localPathForKey } from "@/lib/storage/blobStore";
 import { lookupCanonicalTitles } from "@/lib/services/csi/canonicalTitle";
+
+// Pre-migration records may still hold a raw filesystem path from before
+// Spec Book storage moved to BlobStore (see upload/route.ts). Recognizing
+// this one known historic shape lets split/serve/delete keep working for
+// those rows without a data migration — anything else is treated as an
+// (invalid) BlobStore key, never opened as an arbitrary filesystem path.
+const LEGACY_UPLOAD_ROOT = path.join(process.cwd(), "uploads", "specbooks");
+function isLegacyUploadPath(p: string): boolean {
+  return path.isAbsolute(p) && (p === LEGACY_UPLOAD_ROOT || p.startsWith(LEGACY_UPLOAD_ROOT + path.sep));
+}
 
 // POST /api/bids/[id]/specbook/split
 //
@@ -32,22 +43,31 @@ export async function POST(
     return Response.json({ error: "No spec book uploaded" }, { status: 404 });
   }
 
-  // Verify the source PDF exists
-  try {
-    await fs.access(specBook.filePath);
-  } catch {
-    return Response.json({ error: "Spec book file not found on disk" }, { status: 404 });
+  // Resolve an absolute filesystem path for the sidecar handoff. New records
+  // store a relative BlobStore key; pre-migration records may still hold a
+  // legacy absolute path (see isLegacyUploadPath above).
+  const blobStore = getBlobStore();
+  let sourcePdfPath: string;
+  if (isLegacyUploadPath(specBook.filePath)) {
+    try {
+      await fs.access(specBook.filePath);
+    } catch {
+      return Response.json({ error: "Spec book file not found on disk" }, { status: 404 });
+    }
+    sourcePdfPath = specBook.filePath;
+  } else {
+    if (!(await blobStore.exists(specBook.filePath))) {
+      return Response.json({ error: "Spec book file not found on disk" }, { status: 404 });
+    }
+    sourcePdfPath = localPathForKey(specBook.filePath);
   }
 
-  // Create output dir for split sections
-  const outputDir = path.join(
-    process.cwd(),
-    "uploads",
-    "specbooks",
-    String(bidId),
-    "sections",
-  );
-  await fs.mkdir(outputDir, { recursive: true });
+  // The sidecar writes split section PDFs directly onto the shared /storage
+  // mount — both containers mount the same durable root at the same
+  // absolute path, so what the sidecar writes here is already at its final
+  // BlobStore-relative location; no extra copy through BlobStore.put needed.
+  const sectionsKeyPrefix = `plan-room/jobs/${bidId}/spec/sections`;
+  const outputDir = localPathForKey(sectionsKeyPrefix);
 
   // Call sidecar split endpoint
   try {
@@ -58,7 +78,7 @@ export async function POST(
       method: "POST",
       headers,
       body: JSON.stringify({
-        pdf_path: specBook.filePath,
+        pdf_path: sourcePdfPath,
         output_dir: outputDir,
       }),
       signal: AbortSignal.timeout(300_000), // 5 min for split
@@ -132,7 +152,8 @@ export async function POST(
           tradeId: match.tradeId,
           matchedTradeId: match.matchedTradeId,
           covered: match.tradeId !== null,
-          pdfPath: s.pdf_path,
+          // Relative BlobStore key — never the sidecar's absolute pdf_path.
+          pdfPath: `${sectionsKeyPrefix}/${s.filename}`,
           pdfFileName: s.filename,
           pageStart: s.page_start,
           pageEnd: s.page_end,
