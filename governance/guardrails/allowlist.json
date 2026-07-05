@@ -4,9 +4,8 @@
   "ai_providers": [
     { "path": "lib/services/ai/gateway.ts", "reason": "SANCTIONED single AI gateway (P1B) — the ONE permitted TypeScript provider-construction site; all callers route through it." },
     { "path": "sidecar/services/ai_gateway.py", "reason": "SANCTIONED single AI gateway (P1B) — the ONE permitted Python provider-construction site; all callers route through it." },
-    { "path": "lib/services/submittal/organizeWithAi.ts", "reason": "Legacy Anthropic submittal-organize call; migrate to gateway in P1." },
-    { "path": "sidecar/services/drawing_intelligence.py", "reason": "Legacy Anthropic Claude-Vision on drawings (no redaction); highest-priority gateway + sanitization target." },
-    { "path": "sidecar/services/meeting_intelligence.py", "reason": "Legacy Anthropic meeting analysis AND AssemblyAI fallback endpoint; migrate to gateway (P1) + remove auto-fallback (P3)." }
+    { "path": "sidecar/services/drawing_intelligence.py", "reason": "N3 credential migration complete (Option A — ADR 0001): no longer constructs its own client or reads ANTHROPIC_API_KEY; api_key is a caller-supplied parameter routed through ai_gateway.build_client(). Still allow-listed only for the `direct-model-call` (client.messages.create) pattern — not yet migrated to the fully-wrapped ai_gateway.create_message() relay, which remains a separate, non-credential follow-on." },
+    { "path": "sidecar/services/meeting_intelligence.py", "reason": "N3 credential migration complete (Option A — ADR 0001): analyze_meeting_with_context and analyze_meeting_transcript no longer construct their own client or fall back to ANTHROPIC_API_KEY env; both require a caller-supplied api_key routed through ai_gateway.build_client(). Still allow-listed for AssemblyAI + `direct-model-call` (client.messages.create) — not yet migrated to ai_gateway.create_message()." }
   ],
   "deploy_storage": [
     { "path": "runtime/fly/fly.toml", "status": "blocked-deprecated", "reason": "Latent Fly.io app-deploy path. Running prod app is the local Docker container; do not activate. Prohibited unless explicitly approved." },

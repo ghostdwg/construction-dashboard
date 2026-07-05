@@ -15,12 +15,20 @@ import re
 from pathlib import Path
 from typing import Optional
 
-import anthropic
 import httpx
+
+from services import ai_gateway
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
 ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY", "")
+# NOTE (Option A — docs/architecture/adr/0001-ai-credential-resolution.md):
+# This module-level env read is retained ONLY for the /meetings/config
+# diagnostic (`analysis_configured` boolean in routers/meetings.py) — a local
+# "is something set in this process's env" status flag. It is NOT used to
+# resolve a credential for any provider call: both analyze_meeting_transcript
+# and analyze_meeting_with_context below require an explicit api_key
+# parameter and raise if it is absent, with no env fallback.
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ASSEMBLYAI_BASE = "https://api.assemblyai.com"
 
@@ -402,16 +410,26 @@ async def analyze_meeting_transcript(
     meeting_title: str,
     meeting_type: str,
     project_name: str,
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     Legacy simple wrapper — transcript + basic metadata only.
     Used by standalone sidecar calls without project context.
 
+    Currently unreachable from any router (no caller wires this up today —
+    only analyze_meeting_with_context is invoked by /meetings/analyze). Kept
+    as a callable API surface; migrated to Option A for consistency with its
+    sibling below so a future caller cannot silently resurrect an env-only
+    credential bypass. api_key must be resolved by the caller (e.g. via
+    getSetting("ANTHROPIC_API_KEY")) — no env fallback.
+
     Returns:
       { summary, actionItems, keyDecisions, risks, followUpItems, tokensUsed }
     """
-    if not ANTHROPIC_API_KEY:
-        raise ValueError("ANTHROPIC_API_KEY not configured in sidecar/.env")
+    if not api_key:
+        raise ValueError(
+            "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
 
     system_prompt = _load_analysis_rules()
 
@@ -425,7 +443,7 @@ async def analyze_meeting_transcript(
         f"Return only the JSON object as specified. No preamble."
     )
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = ai_gateway.build_client(api_key)
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=4096,
@@ -470,14 +488,17 @@ async def analyze_meeting_with_context(
     the raw 8-section Claude JSON object for the Next.js route to parse
     and persist.
 
-    api_key: caller-supplied key takes precedence over ANTHROPIC_API_KEY env var,
-    allowing the Next.js route to pass the key stored in app settings.
+    api_key: resolved by the caller (Next.js route, via getSetting()) and
+    passed in explicitly. Option A (see docs/architecture/adr/
+    0001-ai-credential-resolution.md): this service never resolves its own
+    credential — the prior "or ANTHROPIC_API_KEY" env fallback has been
+    removed, so a caller that forgets to supply api_key now fails loudly
+    instead of silently substituting a possibly-different env-configured key.
 
     Returns:
       { analysis: dict (8-section object), tokensUsed: { input, output } }
     """
-    effective_key = api_key or ANTHROPIC_API_KEY
-    if not effective_key:
+    if not api_key:
         raise ValueError(
             "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
         )
@@ -494,7 +515,7 @@ async def analyze_meeting_with_context(
         mode=mode,
     )
 
-    client = anthropic.Anthropic(api_key=effective_key)
+    client = ai_gateway.build_client(api_key)
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=max_tokens,

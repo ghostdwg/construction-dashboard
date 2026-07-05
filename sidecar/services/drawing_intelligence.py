@@ -12,11 +12,12 @@ Tiers:
 
 import base64
 import json
-import os
 import re
+from typing import Optional
 
-import anthropic
 import fitz  # PyMuPDF
+
+from services import ai_gateway
 
 CLAUDE_MODELS = {
     "haiku":  "claude-haiku-4-5-20251001",
@@ -155,7 +156,7 @@ def _parse_json(raw: str) -> dict:
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-def analyze_drawings(pdf_path: str, tier: int, model: str) -> dict:
+def analyze_drawings(pdf_path: str, tier: int, model: str, api_key: Optional[str] = None) -> dict:
     """
     Analyze a drawing PDF with Claude Vision.
 
@@ -163,6 +164,12 @@ def analyze_drawings(pdf_path: str, tier: int, model: str) -> dict:
         pdf_path: Absolute path to the PDF.
         tier:     1 (Quick Scan) | 2 (Scope Brief) | 3 (Full Intelligence)
         model:    "haiku" | "sonnet" | "opus"
+        api_key:  Anthropic API key resolved by the caller (Option A — see
+                  docs/architecture/adr/0001-ai-credential-resolution.md). This
+                  service never resolves its own credential; there is no env
+                  fallback. The Next.js drawing-analyze route resolves this via
+                  getSetting("ANTHROPIC_API_KEY") and forwards it, mirroring
+                  meetings/analyze.
 
     Returns:
         Parsed analysis dict including a _meta block.
@@ -172,6 +179,10 @@ def analyze_drawings(pdf_path: str, tier: int, model: str) -> dict:
     model_id = CLAUDE_MODELS.get(model)
     if not model_id:
         raise ValueError(f"model must be haiku, sonnet, or opus — got {model}")
+    if not api_key:
+        raise ValueError(
+            "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
 
     doc = fitz.open(pdf_path)
     total_pages = len(doc)
@@ -190,7 +201,7 @@ def analyze_drawings(pdf_path: str, tier: int, model: str) -> dict:
     if not image_blocks:
         raise RuntimeError("No pages could be rendered from this PDF")
 
-    client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+    client = ai_gateway.build_client(api_key)
 
     response = client.messages.create(
         model=model_id,

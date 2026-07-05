@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -23,6 +24,16 @@ export async function POST(
   if (!model || !["haiku", "sonnet", "opus"].includes(model))
     return Response.json({ error: "model must be haiku, sonnet, or opus" }, { status: 400 });
 
+  // Option A: resolve the AI credential here (DB-first, env-fallback) and
+  // forward it explicitly to the sidecar — the sidecar never resolves its
+  // own credential. See docs/architecture/adr/0001-ai-credential-resolution.md
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey)
+    return Response.json(
+      { error: "ANTHROPIC_API_KEY not configured — set it in /settings → AI Configuration" },
+      { status: 503 },
+    );
+
   const upload = uploadId
     ? await prisma.drawingUpload.findFirst({ where: { id: uploadId, bidId } })
     : await prisma.drawingUpload.findFirst({
@@ -45,7 +56,7 @@ export async function POST(
     const res = await fetch(`${SIDECAR_URL}/parse/drawings/analyze`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ file_path: upload.filePath, tier, model }),
+      body: JSON.stringify({ file_path: upload.filePath, tier, model, api_key: apiKey }),
       signal: AbortSignal.timeout(600_000), // 10 min ceiling for full sets
     });
 

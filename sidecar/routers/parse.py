@@ -576,6 +576,7 @@ class AnalyzeDrawingsRequest(BaseModel):
     file_path: str
     tier: int = 2       # 1=Quick Scan, 2=Scope Brief, 3=Full Intelligence
     model: str = "sonnet"  # "haiku" | "sonnet" | "opus"
+    api_key: str = ""   # caller-supplied key, resolved by the Next.js app (Option A)
 
 
 @router.post("/drawings/analyze")
@@ -585,6 +586,10 @@ async def analyze_drawings_endpoint(request: AnalyzeDrawingsRequest):
 
     Accepts a server-side file path (drawing is already saved from the upload step).
     Runs synchronously in a thread pool — can take 30–120s for large sets.
+
+    api_key — Anthropic API key resolved by the caller via getSetting(); this
+    endpoint never resolves its own credential (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md).
 
     Returns structured analysis matching the DrawingAnalysisResults UI schema.
     """
@@ -607,6 +612,7 @@ async def analyze_drawings_endpoint(request: AnalyzeDrawingsRequest):
                 pdf_path=request.file_path,
                 tier=request.tier,
                 model=request.model,
+                api_key=request.api_key or None,
             ),
         )
         return JSONResponse(content=result)

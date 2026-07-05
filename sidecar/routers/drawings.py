@@ -44,6 +44,7 @@ class AnalyzeRequest(BaseModel):
     file_path: str
     tier: int
     model: str
+    api_key: str = ""  # caller-supplied key, resolved by the Next.js app (Option A)
 
 
 @router.post("/drawings/analyze")
@@ -54,6 +55,8 @@ async def analyze_drawing(body: AnalyzeRequest):
     file_path — absolute path to the PDF on the server filesystem
     tier      — 1 (Quick Scan) | 2 (Scope Brief) | 3 (Full Intelligence)
     model     — haiku | sonnet | opus
+    api_key   — Anthropic API key resolved by the caller via getSetting();
+                this endpoint never resolves its own credential.
     """
     from services.drawing_intelligence import analyze_drawings
 
@@ -65,7 +68,7 @@ async def analyze_drawing(body: AnalyzeRequest):
         raise HTTPException(400, "model must be haiku, sonnet, or opus")
 
     try:
-        return analyze_drawings(body.file_path, body.tier, body.model)
+        return analyze_drawings(body.file_path, body.tier, body.model, api_key=body.api_key or None)
     except Exception as e:
         raise HTTPException(422, f"Analysis failed: {str(e)}")
 

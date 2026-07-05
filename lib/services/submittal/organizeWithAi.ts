@@ -8,8 +8,9 @@
 // Replaces: ai_extraction | csi_baseline | regex_seed | drawing_analysis | ai_organized
 // Preserves: manual items and any packages that contain manual items
 
-import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
+import { createMessage } from "@/lib/services/ai/gateway";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 import { logAiUsage, computeCallCost } from "@/lib/services/ai/aiUsageLog";
 
@@ -392,18 +393,27 @@ export async function organizeSubmittalsWithAi(bidId: number): Promise<OrganizeR
   });
   const inputTable = [header, ...dataLines].join("\n");
 
-  // 3. Call Claude
-  const client    = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // 3. Resolve the AI credential (Option A: TS resolves via getSetting(), never
+  // reads process.env directly — see docs/architecture/adr/0001-ai-credential-resolution.md)
+  // and call Claude through the sanctioned gateway.
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    throw new Error(
+      "ANTHROPIC_API_KEY is not set — configure it in /settings → AI Configuration (or .env.local)"
+    );
+  }
   const maxTokens = await getMaxTokens("submittal-organize");
 
-  const response = await client.messages.create({
+  const { raw: response } = await createMessage({
     model:      "claude-sonnet-4-6",
-    max_tokens: maxTokens,
+    maxTokens,
     system:     GC_SYSTEM_PROMPT,
     messages: [{
       role:    "user",
       content: `Here is the raw submittal list for this project:\n\n${inputTable}\n\nTransform this into the Procore-ready register following all 10 rules. Output ONLY the markdown table.`,
     }],
+    apiKey,
+    audit: { feature: "submittal-organize", bidId: String(bidId) },
   });
 
   // 4. Log usage
