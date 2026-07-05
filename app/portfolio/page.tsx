@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import MorningStrip from "./MorningStrip";
 
 const STATUS_STATE: Record<string, { color: string; bg: string; border: string }> = {
   draft:     { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.04)",  border: "rgba(255,255,255,0.1)"  },
@@ -166,6 +167,8 @@ export default async function PortfolioPage() {
           </p>
         </div>
       </div>
+
+      <MorningStrip />
 
       <GroupTable title="Pursuits" bids={pursuits} />
       <GroupTable title="Active Projects" bids={projects} />
