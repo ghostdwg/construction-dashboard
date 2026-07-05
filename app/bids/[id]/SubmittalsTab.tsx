@@ -10,8 +10,18 @@
 // Full field editing is in the expand-row detail editor (unchanged from H3).
 
 import { useEffect, useRef, useState } from "react";
+import {
+  resolveSourceSectionAction,
+  type SourceSectionAction,
+} from "@/lib/services/specbook/sourceSectionLink";
 
 // ── Types ──────────────────────────────────────────────────────────────────
+
+// Mirrors FileAvailability in lib/services/specbook/fileAvailability.ts
+// (same convention as DocumentsTab.tsx — kept as a local literal union
+// rather than a value import so this client component never pulls in that
+// module's Node-only runtime deps, just the shape of the string).
+type FileAvailability = "durable-present" | "legacy-present" | "missing" | "invalid";
 
 const SUBMITTAL_TYPES = [
   "PRODUCT_DATA",
@@ -113,6 +123,14 @@ type PackageItemRow = {
   requiredBy: string | null;
   specSectionNumber: string | null;
   specSectionTitle: string | null;
+  // Schema-backed FK to SpecSection (SubmittalItem.specSectionId) — powers
+  // the "View source section" action. null means this item has no linked
+  // section at all (manual item, or AI extraction that didn't resolve one).
+  specSectionId: number | null;
+  // Availability of the linked section's split PDF, reusing
+  // checkFileAvailability() (Phase 3) server-side. null whenever
+  // specSectionId is null — there's nothing to check.
+  sourceSectionPdfAvailability: FileAvailability | null;
   responsibleSubId: number | null;
   responsibleSubName: string | null;
   reviewer: string | null;
@@ -1181,6 +1199,71 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
   );
 }
 
+// ── Source section link ─────────────────────────────────────────────────────
+//
+// Renders a "View source section" action for items with a genuine,
+// schema-backed link to a SpecSection (SubmittalItem.specSectionId — Phase
+// 5G-1/5B auto-linkage or manual assignment). Decision logic (whether a link
+// exists at all, and whether the target file is actually servable) lives in
+// resolveSourceSectionAction() so it's covered by unit tests independent of
+// rendering. Items with no specSectionId render nothing here — not a
+// disabled placeholder — same honesty principle as Phase 3's file-
+// availability badges.
+
+function unavailableLabel(state: Exclude<FileAvailability, "durable-present" | "legacy-present">): string {
+  return state === "invalid"
+    ? "Invalid file reference — re-upload required"
+    : "Source file missing — re-upload required";
+}
+
+function SourceSectionLink({
+  bidId,
+  specSectionId,
+  availability,
+}: {
+  bidId: number;
+  specSectionId: number | null;
+  availability: FileAvailability | null;
+}) {
+  let action: SourceSectionAction | null;
+  try {
+    action = resolveSourceSectionAction(bidId, specSectionId, availability);
+  } catch {
+    // Defensive only — resolveSourceSectionAction throws if bidId/specSectionId
+    // aren't positive integers, which shouldn't happen for API-sourced data.
+    // Render nothing rather than a link that could be malformed.
+    return null;
+  }
+  if (action === null) return null;
+
+  if (action.kind === "unavailable") {
+    const label = unavailableLabel(action.state);
+    return (
+      <div className="mt-1">
+        <span
+          title={label}
+          className="inline-flex items-center gap-1 rounded-full bg-red-50 px-1.5 py-0.5 text-[9px] font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+        >
+          ⚠ {label}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1">
+      <a
+        href={action.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-[10px] font-medium text-sky-600 underline underline-offset-2 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-300"
+      >
+        View source section
+      </a>
+    </div>
+  );
+}
+
 // ── Package Section ────────────────────────────────────────────────────────
 
 function ReleasePhaseBadge({ phase }: { phase: string | null }) {
@@ -1633,6 +1716,11 @@ function SubmittalGridRow({
           ) : (
             <span className="text-zinc-300 dark:text-zinc-600">—</span>
           )}
+          <SourceSectionLink
+            bidId={bidId}
+            specSectionId={item.specSectionId}
+            availability={item.sourceSectionPdfAvailability}
+          />
         </td>
 
         {/* Sub (display only — assign via detail editor) */}

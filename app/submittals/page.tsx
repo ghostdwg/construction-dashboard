@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { checkFileAvailability } from "@/lib/services/specbook/fileAvailability";
+import { resolveSourceSectionAction } from "@/lib/services/specbook/sourceSectionLink";
 
 // ── Chip maps ────────────────────────────────────────────────────────────────
 
@@ -72,7 +74,9 @@ export default async function SubmittalsPage({
       where: { status: { notIn: ["APPROVED", "APPROVED_AS_NOTED"] }, ...typeWhere },
       include: {
         bid: { select: { id: true, projectName: true, location: true } },
-        specSection: { select: { csiNumber: true, csiCanonicalTitle: true, csiTitle: true } },
+        specSection: {
+          select: { id: true, csiNumber: true, csiCanonicalTitle: true, csiTitle: true, pdfPath: true },
+        },
       },
       orderBy: [{ submitByDate: "asc" }, { requiredBy: "asc" }, { createdAt: "asc" }],
       take: 150,
@@ -95,6 +99,21 @@ export default async function SubmittalsPage({
       orderBy: { _count: { id: "desc" } },
     }),
   ]);
+
+  // Additive — resolve file availability once per distinct linked SpecSection
+  // (not per item), reusing checkFileAvailability() (Phase 3) so the
+  // "View source section" action can be disabled honestly instead of
+  // linking to a 404. Server component — safe to call directly here.
+  const linkedSections = new Map<number, string | null>();
+  for (const item of items) {
+    if (item.specSection) linkedSections.set(item.specSection.id, item.specSection.pdfPath);
+  }
+  const availabilityEntries = await Promise.all(
+    Array.from(linkedSections.entries())
+      .filter(([, pdfPath]) => pdfPath !== null)
+      .map(async ([sectionId, pdfPath]) => [sectionId, await checkFileAvailability(pdfPath)] as const)
+  );
+  const sectionAvailabilityById = new Map(availabilityEntries);
 
   // per-project breakdown for summary strip
   const byProject: Record<number, { name: string; location: string | null; count: number; overdue: number }> = {};
@@ -298,6 +317,40 @@ export default async function SubmittalsPage({
                               : ""}
                           </p>
                         )}
+                        {(() => {
+                          const action = resolveSourceSectionAction(
+                            item.bid.id,
+                            item.specSection?.id ?? null,
+                            item.specSection ? sectionAvailabilityById.get(item.specSection.id) ?? "missing" : null
+                          );
+                          if (action === null) return null;
+                          if (action.kind === "unavailable") {
+                            const label =
+                              action.state === "invalid"
+                                ? "Invalid file reference — re-upload required"
+                                : "Source file missing — re-upload required";
+                            return (
+                              <p
+                                title={label}
+                                className="font-mono text-[9px] mt-0.5"
+                                style={{ color: "#ff968f" }}
+                              >
+                                ⚠ {label}
+                              </p>
+                            );
+                          }
+                          return (
+                            <a
+                              href={action.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-[9px] mt-0.5 inline-block underline underline-offset-2 hover:text-white"
+                              style={{ color: "var(--text-dim)" }}
+                            >
+                              View source section
+                            </a>
+                          );
+                        })()}
                       </td>
                       <td className="px-5 py-3.5" style={{ width: "9%" }}>
                         <Link

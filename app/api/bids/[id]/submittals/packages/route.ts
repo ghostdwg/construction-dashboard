@@ -7,6 +7,10 @@
 //   Create a new package. Auto-allocates the next PKG-XX number.
 
 import { prisma } from "@/lib/prisma";
+import {
+  checkFileAvailability,
+  type FileAvailability,
+} from "@/lib/services/specbook/fileAvailability";
 
 const VALID_SEVERITY = new Set(["CRITICAL", "HIGH", "MODERATE", "LOW", "INFO"]);
 
@@ -32,7 +36,19 @@ const ITEM_SELECT = {
   type: true,
   status: true,
   requiredBy: true,
-  specSection: { select: { csiNumber: true, csiTitle: true, csiCanonicalTitle: true, aiExtractions: true } },
+  specSection: {
+    select: {
+      id: true,
+      csiNumber: true,
+      csiTitle: true,
+      csiCanonicalTitle: true,
+      aiExtractions: true,
+      // Additive — powers the "View source section" action below via
+      // checkFileAvailability(), the same file-availability check already
+      // used by the gaps route / DocumentsTab (Phase 3).
+      pdfPath: true,
+    },
+  },
   responsibleSubId: true,
   responsibleSub: { select: { id: true, company: true } },
   reviewer: true,
@@ -58,7 +74,14 @@ type DbItem = {
   type: string;
   status: string;
   requiredBy: Date | null;
-  specSection: { csiNumber: string; csiTitle: string; csiCanonicalTitle: string | null; aiExtractions: string | null } | null;
+  specSection: {
+    id: number;
+    csiNumber: string;
+    csiTitle: string;
+    csiCanonicalTitle: string | null;
+    aiExtractions: string | null;
+    pdfPath: string | null;
+  } | null;
   responsibleSubId: number | null;
   responsibleSub: { id: number; company: string } | null;
   reviewer: string | null;
@@ -78,7 +101,11 @@ type DbItem = {
 
 const isTerminal = (s: string) => s === "APPROVED" || s === "APPROVED_AS_NOTED";
 
-function mapItem(it: DbItem, now: number) {
+function mapItem(
+  it: DbItem,
+  now: number,
+  sectionAvailabilityById: Map<number, FileAvailability>
+) {
   return {
     id: it.id,
     bidTradeId: it.bidTradeId,
@@ -89,6 +116,16 @@ function mapItem(it: DbItem, now: number) {
     requiredBy: it.requiredBy?.toISOString() ?? null,
     specSectionNumber: it.specSection?.csiNumber ?? null,
     specSectionTitle: it.specSection?.csiCanonicalTitle ?? it.specSection?.csiTitle ?? null,
+    // Additive — schema-backed FK to SpecSection (SubmittalItem.specSectionId).
+    // Powers the "View source section" action; null means this item has no
+    // linked section at all, in which case the UI must render no action.
+    specSectionId: it.specSection?.id ?? null,
+    // Additive — availability of the linked section's split PDF, when a
+    // section is linked. Reuses checkFileAvailability() (Phase 3) so the
+    // action can be disabled honestly instead of linking to a 404.
+    sourceSectionPdfAvailability: it.specSection
+      ? sectionAvailabilityById.get(it.specSection.id) ?? "missing"
+      : null,
     responsibleSubId: it.responsibleSubId,
     responsibleSubName: it.responsibleSub?.company ?? null,
     reviewer: it.reviewer,
@@ -148,6 +185,23 @@ export async function GET(
 
   const now = Date.now();
 
+  // Additive — resolve file availability once per distinct linked SpecSection
+  // (not per item) before mapping rows, mirroring the pattern already used in
+  // the gaps route. A section with no pdfPath yet (not split) is left out of
+  // the map entirely; mapItem() falls back to "missing" for those, same as
+  // the gaps route's pdfAvailability handling.
+  const allRawItems = [...packages.flatMap((pkg) => pkg.items), ...unassignedItems];
+  const linkedSections = new Map<number, string | null>();
+  for (const it of allRawItems) {
+    if (it.specSection) linkedSections.set(it.specSection.id, it.specSection.pdfPath);
+  }
+  const availabilityEntries = await Promise.all(
+    Array.from(linkedSections.entries())
+      .filter(([, pdfPath]) => pdfPath !== null)
+      .map(async ([sectionId, pdfPath]) => [sectionId, await checkFileAvailability(pdfPath)] as const)
+  );
+  const sectionAvailabilityById = new Map(availabilityEntries);
+
   const result = packages.map((pkg) => {
     const total = pkg.items.length;
     const approved = pkg.items.filter((i) => isTerminal(i.status)).length;
@@ -180,12 +234,12 @@ export async function GET(
       total,
       approved,
       overdue,
-      items: pkg.items.map((i) => mapItem(i, now)),
+      items: pkg.items.map((i) => mapItem(i, now, sectionAvailabilityById)),
     };
   });
 
   const unassigned = unassignedItems.map((it) => ({
-    ...mapItem(it, now),
+    ...mapItem(it, now, sectionAvailabilityById),
     tradeName: it.bidTrade?.trade.name ?? null,
   }));
 
