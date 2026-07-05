@@ -29,7 +29,7 @@ modes**. They are NOT interchangeable and prove different things:
 | When to use it | Right now, while the Anthropic credential rotation is pending — this is the ONLY validation currently possible without risking a real (currently-broken) provider call | Only after the staging `ANTHROPIC_API_KEY` rotation lands and the 401 is confirmed resolved |
 | Production use | **Prohibited, absolutely.** The suppression gate's condition (d) — `APP_ENV=staging` — is a server-side identity fact set exclusively by `/opt/neuroglitch/.env` vs `/opt/neuroglitch/.env.staging` per the Compose topology (see `runtime/env/production.env.example`, which has `APP_ENV=production`) and Zod-validated at boot (`lib/env.ts`). It cannot be true in production, so this mode is structurally inert there — but never attempt it regardless. | Real-AI mode is production's actual default behavior; nothing to prohibit |
 | Real customer documents | **Prohibited in both modes**, same as always (§5) — always use the synthetic fixture | **Prohibited in both modes** |
-| Cleanup after the run | **Required in both modes**, same as always (§5's rollback boundaries) | **Required in both modes** |
+| Cleanup after the run | **Required in both modes**, same as always (§5's rollback boundaries). When using `scripts/specbook-staging-smoke.mjs` for a storage-only run, this is now automatic on success — see §10's self-cleanup note — no manual `DELETE` needed afterward. A by-hand run through §2–§7 (no script) still requires manual cleanup as always. | **Required in both modes** (no scripted self-cleanup exists for real-AI mode; this script cannot perform that mode at all) |
 
 **Bottom line:** storage-only mode lets you validate this runbook's §2
 mechanics today, safely, without a working Anthropic credential. It proves
@@ -460,6 +460,22 @@ that file's header for exact usage). If present:
   failure there means suppression did not actually engage server-side (wrong
   tier, opt-in not set, or non-admin session) and a real Anthropic call may
   have just fired.
+- **Self-cleanup (work package: specbook-smoke-self-cleanup):** after the
+  step-6 re-upload and its `automationStatus` assertion (`6c.`) complete, the
+  script performs one further step — `7. final cleanup delete` — that issues
+  a `DELETE` against the EXACT SpecBook the re-upload itself just created
+  (never the first upload's id, never a guessed id). This runs regardless of
+  whether `6c.` passed or failed, so a **successful storage-only run no
+  longer requires a manual `DELETE` call afterward** — the script cleans up
+  its own final artifact automatically. If that final delete itself fails
+  (non-`204`), it is recorded as a clear `FAIL` (and contributes to a
+  non-zero exit code) but the script still exits cleanly rather than
+  crashing — in that case a manual `DELETE` of the reported SpecBook is
+  still needed, exactly as before this change. The disposable synthetic
+  `Bid` a validator creates for this drill may still remain after a run (per
+  §5, deleting it is a separate, human-managed decision) — this self-cleanup
+  is about the SpecBook artifact only, and after a successful run that bid
+  should contain no SpecBook.
 - It adds no new npm dependency — it uses only the global `fetch`/`FormData`
   already relied on by `app/api/bids/[id]/specbook/upload/route.ts`, the
   `node:*` builtins already used by `scripts/validate-staging.mjs`, and (for

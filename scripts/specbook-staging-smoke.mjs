@@ -5,7 +5,11 @@
 // runtime/runbooks/specbook-staging-validation.md — walks the same six-step
 // flow that runbook describes by hand: upload -> split -> list sections ->
 // serve a section PDF -> delete -> re-upload, plus one read-only
-// auth-posture check (unauthenticated request to the PDF route).
+// auth-posture check (unauthenticated request to the PDF route). A final,
+// seventh step (work package: specbook-smoke-self-cleanup) then deletes the
+// re-upload's own SpecBook, so a successful run leaves no Spec Book artifact
+// behind in staging and no manual cleanup DELETE is needed afterward — see
+// "SELF-CLEANUP" below.
 //
 // SAFETY / DRY-RUN POSTURE (read before using):
 //
@@ -92,6 +96,25 @@
 //   actually engage (e.g. an operator forgot STORAGE_SMOKE_MODE_ENABLED or
 //   ran this against a non-staging tier), and a real Anthropic call may have
 //   just fired despite the pending credential rotation.
+//
+// SELF-CLEANUP (work package: specbook-smoke-self-cleanup):
+//
+//   After the step-6 re-upload and its automationStatus assertion complete,
+//   this script performs one final step — "7. final cleanup delete" — that
+//   issues a DELETE against the EXACT SpecBook created by that re-upload
+//   (its own response's `id` field; never first.id, never a guessed id).
+//   This runs unconditionally, even if the 6c automationStatus assertion
+//   failed, so a successful run never leaves a Spec Book artifact behind in
+//   staging and no manual cleanup DELETE call is needed afterward. If this
+//   final delete itself fails (non-204), it is recorded as a clear FAIL
+//   (contributing to a non-zero exit code) but never throws or crashes the
+//   script — see cleanupDeleteStep() below. This script only ever cleans up
+//   a SpecBook id it is certain it created via its OWN step-6 re-upload in
+//   THIS run; it never touches any other/guessed/pre-existing SpecBook, and
+//   never attempts cleanup at all if the re-upload step itself never ran or
+//   never succeeded. The Bid row this script runs against is a separate,
+//   human-managed cleanup concern (see the runbook) and is never touched
+//   by this script.
 //
 // Usage (dry run — always safe, this is the only mode used while authoring
 // this script):
@@ -194,6 +217,7 @@ This helper would perform, in order, against --base-url:
      4b. (auth-posture check, read-only) same URL, no auth headers, redirect not followed
   5. DELETE {base}/api/bids/{bidId}/specbook/{uploadId}    (uploadId = SpecBook.id from step 1)
   6. POST {base}/api/bids/{bidId}/specbook/upload          (re-upload, same as step 1)
+  7. DELETE {base}/api/bids/{bidId}/specbook/{uploadId}    (self-cleanup: uploadId = SpecBook.id from step 6 — a successful run leaves no Spec Book artifact behind, no manual DELETE needed afterward)
 
 Each step's exact request/response shape and pass/fail criteria are documented in:
   runtime/runbooks/specbook-staging-validation.md  (sections 2-4, 7)
@@ -501,10 +525,19 @@ export async function runMain(argv = process.argv.slice(2)) {
       });
       const body = await res.json().catch(() => null);
       if (res.status !== 201) {
-        record(label, "FAIL", `status=${res.status} body=${JSON.stringify(body)}`);
+        // Never print the full response body — it is not a trusted/redacted
+        // shape (see requirement 5 audit) and may echo more than intended.
+        // Only the (non-secret) `error` field, if present, is safe to show.
+        record(
+          label,
+          "FAIL",
+          `status=${res.status} error=${typeof body?.error === "string" ? body.error : "(no error message in response)"}`
+        );
         return null;
       }
-      record(label, "PASS", `status=${res.status} specBookId=${body?.id} sections=${body?._count?.sections}`);
+      // Never print the SpecBook id itself (an "upload ID") — only a safe,
+      // generic acknowledgment that a record was created.
+      record(label, "PASS", `status=${res.status} specBook=created sections=${body?._count?.sections}`);
       return body;
     } catch (err) {
       record(label, "FAIL", err.message);
@@ -520,7 +553,13 @@ export async function runMain(argv = process.argv.slice(2)) {
       });
       const body = await res.json().catch(() => null);
       if (res.status !== 200) {
-        record("2. split", "FAIL", `status=${res.status} body=${JSON.stringify(body)}`);
+        // Never print the full response body (requirement 5 audit) — only
+        // the (non-secret) `error` field, if present.
+        record(
+          "2. split",
+          "FAIL",
+          `status=${res.status} error=${typeof body?.error === "string" ? body.error : "(no error message in response)"}`
+        );
         return null;
       }
       record("2. split", "PASS", `sectionsCreated=${body?.sectionsCreated}`);
@@ -569,8 +608,15 @@ export async function runMain(argv = process.argv.slice(2)) {
       );
       const contentType = res.headers.get("content-type") || "";
       if (res.status !== 200 || !contentType.includes("application/pdf")) {
+        // Never print response body text here — on failure this could be an
+        // HTML error page or, in the worst case, document/PDF text; only the
+        // length is safe to record (requirement 5 audit).
         const body = await res.text().catch(() => "");
-        record("4. serve pdf", "FAIL", `status=${res.status} content-type=${contentType} body=${body.slice(0, 200)}`);
+        record(
+          "4. serve pdf",
+          "FAIL",
+          `status=${res.status} content-type=${contentType} bodyLength=${body.length}`
+        );
         return false;
       }
       record("4. serve pdf", "PASS", `status=${res.status} content-type=${contentType}`);
@@ -628,10 +674,49 @@ export async function runMain(argv = process.argv.slice(2)) {
       if (body === null) {
         record("5b. confirm deleted", "PASS", "gaps now returns null");
       } else {
-        record("5b. confirm deleted", "FAIL", `gaps still returns a spec book: ${JSON.stringify(body).slice(0, 120)}`);
+        // Never print the response body here (requirement 5 audit) — it
+        // would include the still-present SpecBook's id and other fields.
+        record(
+          "5b. confirm deleted",
+          "FAIL",
+          "gaps still returns a spec book (expected null) — deletion did not fully take"
+        );
       }
     } catch (err) {
       record("5b. confirm deleted", "FAIL", err.message);
+    }
+  }
+
+  // Step 7 (work package: specbook-smoke-self-cleanup): removes the FINAL
+  // artifact this run leaves behind — the re-upload's own SpecBook created
+  // by step 6 — so a successful run no longer requires a manual DELETE
+  // afterward. Same route shape and same 204-success check as step 5's
+  // deleteStep() above; the only difference is the step label and the fact
+  // that `specBookId` here is REQUIRED to be the re-upload's own id (never
+  // guessed, never first.id — see the call site below and requirement 4's
+  // scoping rule). This function never throws — like deleteStep(), a
+  // network/fetch failure is caught here and recorded as FAIL, never
+  // propagated — so a failed cleanup can never crash the script or mask
+  // whatever earlier result this run already produced.
+  async function cleanupDeleteStep(specBookId) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/${specBookId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (res.status !== 204) {
+        record(
+          "7. final cleanup delete",
+          "FAIL",
+          `status=${res.status} — the re-uploaded SpecBook from step 6 was NOT removed; a manual DELETE may still be required`
+        );
+        return false;
+      }
+      record("7. final cleanup delete", "PASS", `status=${res.status}`);
+      return true;
+    } catch (err) {
+      record("7. final cleanup delete", "FAIL", err.message);
+      return false;
     }
   }
 
@@ -684,14 +769,50 @@ export async function runMain(argv = process.argv.slice(2)) {
       // SpecBook.id distinct from `first.id` (see runbook §2.6 / §4).
       const second = await uploadStep("6. re-upload", pdf);
       if (second && first) {
+        // Never print either actual id (requirement 5 audit) — only whether
+        // they differ, which is the meaningful evidence here.
         if (second.id !== first.id) {
-          record("6b. fresh SpecBook.id", "PASS", `${first.id} -> ${second.id}`);
+          record("6b. fresh SpecBook.id", "PASS", "re-upload created a new SpecBook (id differs from step 1's)");
         } else {
-          record("6b. fresh SpecBook.id", "FAIL", `id unchanged: ${second.id}`);
+          record("6b. fresh SpecBook.id", "FAIL", "id unchanged — re-upload did not create a fresh SpecBook");
         }
       }
       if (second) {
-        assertAutomationSuppressed("6c. automation suppressed", second);
+        // From this point on we are CERTAIN this run's own re-upload created
+        // `second.id` and that nothing else in this run has deleted it yet —
+        // it is the ONLY id, besides `first.id` (already handled by step 5
+        // above), that this script ever knows it created. Never clean up any
+        // other/guessed/pre-existing id (requirement 4's scoping rule).
+        const finalSpecBookId = second.id;
+        try {
+          assertAutomationSuppressed("6c. automation suppressed", second);
+          // Step 7: unconditional — runs regardless of whether 6c passed or
+          // failed above, so a failed automationStatus assertion still
+          // leaves this run's own final artifact cleaned up rather than
+          // abandoning it in staging on top of reporting the failure.
+          await cleanupDeleteStep(finalSpecBookId);
+        } catch (err) {
+          // Defense in depth: cleanupDeleteStep() already catches its own
+          // fetch/network errors internally and records a FAIL rather than
+          // throwing (mirroring deleteStep() above), so this branch is only
+          // reachable if something unexpected throws elsewhere in this
+          // segment (e.g. a future bug). Record the unexpected condition as
+          // its own FAIL (never a raw error object/stack — just the
+          // message, consistent with every other catch block in this file)
+          // and make one best-effort attempt to still remove the known
+          // SpecBook — wrapped in its own try/catch so a *cleanup* failure
+          // here can never mask or crash over the original failure. Execution
+          // then falls through to the normal summary/exit-code path below
+          // rather than throwing further, so this can never surface as an
+          // unhandled exception.
+          record("7. final cleanup delete", "FAIL", `unexpected error before cleanup could run: ${err.message}`);
+          try {
+            await cleanupDeleteStep(finalSpecBookId);
+          } catch {
+            // Best-effort only; swallow — the FAIL recorded above already
+            // captures the original problem.
+          }
+        }
       }
     }
 
@@ -727,7 +848,10 @@ const invokedAsScript =
 
 if (invokedAsScript) {
   runMain().catch((err) => {
-    console.error("[specbook-staging-smoke] FATAL", err);
+    // Never print the raw error object/stack trace here (requirement 5
+    // audit) — a stack trace could incidentally include argv/path details
+    // beyond a generic message. Only the message is safe and sufficient.
+    console.error("[specbook-staging-smoke] FATAL", err?.message ?? "(unknown error)");
     process.exit(1);
   });
 }

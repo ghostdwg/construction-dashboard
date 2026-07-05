@@ -381,3 +381,231 @@ describe("scripts/specbook-staging-smoke.mjs — --cookie-prompt (storage-only e
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+// ── Test 10 — full storage-only run + step 7 self-cleanup
+// (work package: specbook-smoke-self-cleanup) ───────────────────────────────
+//
+// These tests drive the full 6-step (now 7-step) real-run flow in-process by
+// stubbing process.stdin/process.stdout to simulate an interactive
+// --cookie-prompt entry (mirroring test 9e's fake-stream technique, but
+// applied to the real process.stdin/stdout objects since runMain() calls
+// promptForCookie() with no arguments) and routing `fetch` calls by
+// URL/method to canned responses matching each route's real shape.
+describe("scripts/specbook-staging-smoke.mjs — full run + step 7 self-cleanup", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let exitSpy: ReturnType<typeof stubProcessExit>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let originalStdinIsTTY: boolean | undefined;
+  let originalStdoutIsTTY: boolean | undefined;
+  let originalStdinMethods: Record<string, unknown>;
+  let originalStdoutWrite: unknown;
+
+  const BASE = "https://staging.example";
+  const BID = "123";
+  const FIRST_ID = 90210111;
+  const SECOND_ID = 90210222;
+  const SECTION_ID = 90210555;
+  const COOKIE_VALUE = "authjs.session-token=full-run-test-cookie";
+
+  type CannedResponse = {
+    status: number;
+    json?: unknown;
+    text?: string;
+    headers?: Record<string, string>;
+  };
+
+  function makeResponse(r: CannedResponse) {
+    return {
+      status: r.status,
+      json: async () => (r.json === undefined ? null : r.json),
+      text: async () => r.text ?? "",
+      headers: { get: (k: string) => r.headers?.[k.toLowerCase()] ?? null },
+    };
+  }
+
+  function buildRouterFetchMock(opts: {
+    cleanupStatus?: number;
+    secondAutomationStatus?: string;
+  } = {}) {
+    const cleanupStatus = opts.cleanupStatus ?? 204;
+    const secondAutomationStatus = opts.secondAutomationStatus ?? "suppressed_for_storage_smoke";
+    let uploadCalls = 0;
+    let gapsCalls = 0;
+    return async (url: string, init: Record<string, unknown> = {}) => {
+      const method = (init.method as string) || "GET";
+      if (url === `${BASE}/api/bids/${BID}/specbook/upload` && method === "POST") {
+        uploadCalls++;
+        if (uploadCalls === 1) {
+          return makeResponse({
+            status: 201,
+            json: { id: FIRST_ID, _count: { sections: 2 }, automationStatus: "suppressed_for_storage_smoke" },
+          });
+        }
+        return makeResponse({
+          status: 201,
+          json: { id: SECOND_ID, _count: { sections: 2 }, automationStatus: secondAutomationStatus },
+        });
+      }
+      if (url === `${BASE}/api/bids/${BID}/specbook/split` && method === "POST") {
+        return makeResponse({ status: 200, json: { sectionsCreated: 2, sectionCount: 2 } });
+      }
+      if (url === `${BASE}/api/bids/${BID}/specbook/gaps` && method === "GET") {
+        gapsCalls++;
+        if (gapsCalls === 1) {
+          return makeResponse({ status: 200, json: { covered: [{ id: SECTION_ID }], missing: [], unknown: [] } });
+        }
+        return makeResponse({ status: 200, json: null });
+      }
+      if (url === `${BASE}/api/bids/${BID}/specbook/sections/${SECTION_ID}/pdf`) {
+        if (init.redirect === "manual") {
+          return makeResponse({ status: 302, headers: { location: "/login?callbackUrl=%2F" } });
+        }
+        return makeResponse({ status: 200, headers: { "content-type": "application/pdf" } });
+      }
+      if (url === `${BASE}/api/bids/${BID}/specbook/${FIRST_ID}` && method === "DELETE") {
+        return makeResponse({ status: 204 });
+      }
+      if (url === `${BASE}/api/bids/${BID}/specbook/${SECOND_ID}` && method === "DELETE") {
+        return makeResponse({ status: cleanupStatus });
+      }
+      throw new Error(`Unexpected fetch call in test: ${method} ${url}`);
+    };
+  }
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    exitSpy = stubProcessExit();
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    originalStdinIsTTY = process.stdin.isTTY;
+    originalStdoutIsTTY = process.stdout.isTTY;
+
+    (process.stdin as unknown as { isTTY?: boolean }).isTTY = true;
+    (process.stdout as unknown as { isTTY?: boolean }).isTTY = true;
+
+    // Some of these methods (setRawMode in particular) only exist on a real
+    // TTY-backed stream and may be entirely absent from process.stdin in the
+    // test runner's environment — vi.spyOn() requires the property to
+    // already exist, so these are assigned directly (and restored directly
+    // in afterEach) rather than spied on, mirroring test 9c/9d's technique
+    // of mutating process.stdin/stdout directly rather than replacing the
+    // stream objects wholesale.
+    const stdinAny = process.stdin as unknown as Record<string, unknown>;
+    const stdoutAny = process.stdout as unknown as Record<string, unknown>;
+    originalStdinMethods = {
+      setRawMode: stdinAny.setRawMode,
+      resume: stdinAny.resume,
+      pause: stdinAny.pause,
+      setEncoding: stdinAny.setEncoding,
+      on: stdinAny.on,
+      removeListener: stdinAny.removeListener,
+    };
+    originalStdoutWrite = stdoutAny.write;
+
+    stdinAny.setRawMode = vi.fn(() => process.stdin);
+    stdinAny.resume = vi.fn(() => process.stdin);
+    stdinAny.pause = vi.fn(() => process.stdin);
+    stdinAny.setEncoding = vi.fn(() => process.stdin);
+    stdinAny.on = vi.fn((event: string, cb: (chunk: string) => void) => {
+      if (event === "data") {
+        // Simulate the operator typing the cookie then pressing Enter,
+        // asynchronously so promptForCookie()'s Promise resolves shortly
+        // after runMain() awaits it, exactly like a real keystroke would.
+        queueMicrotask(() => cb(`${COOKIE_VALUE}\n`));
+      }
+      return process.stdin;
+    });
+    stdinAny.removeListener = vi.fn(() => process.stdin);
+    stdoutAny.write = vi.fn(() => true);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    exitSpy.mockRestore();
+    logSpy.mockRestore();
+    const stdinAny = process.stdin as unknown as Record<string, unknown>;
+    const stdoutAny = process.stdout as unknown as Record<string, unknown>;
+    Object.assign(stdinAny, originalStdinMethods);
+    stdoutAny.write = originalStdoutWrite;
+    (process.stdin as unknown as { isTTY?: boolean }).isTTY = originalStdinIsTTY;
+    (process.stdout as unknown as { isTTY?: boolean }).isTTY = originalStdoutIsTTY;
+  });
+
+  function runArgs() {
+    return [
+      "--base-url", BASE,
+      "--bid-id", BID,
+      "--cookie-prompt",
+      "--execute",
+      "--storage-only",
+    ];
+  }
+
+  test("10a. a fully successful run attempts a 7th cleanup-delete against the re-upload's exact id and records it PASS", async () => {
+    fetchMock.mockImplementation(buildRouterFetchMock({ cleanupStatus: 204 }));
+
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+
+    expect(exitSpy).toHaveBeenCalledWith(0);
+
+    // The final cleanup DELETE was issued against the re-upload's own id.
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([, init]) => (init as { method?: string })?.method === "DELETE"
+    );
+    expect(deleteCalls.some(([url]) => url === `${BASE}/api/bids/${BID}/specbook/${SECOND_ID}`)).toBe(true);
+
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/7\. final cleanup delete/);
+    expect(logged).toMatch(/PASS\s+7\. final cleanup delete/);
+  });
+
+  test("10b. cleanup delete failing (non-204) is recorded FAIL but does not crash — script still exits with a non-zero code", async () => {
+    fetchMock.mockImplementation(buildRouterFetchMock({ cleanupStatus: 500 }));
+
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+
+    // Exits cleanly via the normal process.exit() path (not an unhandled
+    // exception) with a non-zero code reflecting the failure.
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/FAIL\s+7\. final cleanup delete/);
+  });
+
+  test("10c. automationStatus assertion failing on the re-upload still triggers a best-effort cleanup attempt of the known id", async () => {
+    fetchMock.mockImplementation(
+      buildRouterFetchMock({ cleanupStatus: 204, secondAutomationStatus: "triggered" })
+    );
+
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+
+    // 6c fails (wrong automationStatus)...
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/FAIL\s+6c\. automation suppressed/);
+    // ...but the cleanup delete of the known (re-upload's own) id was still
+    // attempted and succeeded.
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([, init]) => (init as { method?: string })?.method === "DELETE"
+    );
+    expect(deleteCalls.some(([url]) => url === `${BASE}/api/bids/${BID}/specbook/${SECOND_ID}`)).toBe(true);
+    expect(logged).toMatch(/PASS\s+7\. final cleanup delete/);
+    // Overall run still fails (6c's FAIL contributes to a non-zero exit).
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  test("10d. no console output contains a raw numeric SpecBook id anywhere in a successful full run", async () => {
+    fetchMock.mockImplementation(buildRouterFetchMock({ cleanupStatus: 204 }));
+
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+
+    const logged = logSpy.mock.calls.flat().join("\n");
+    // Neither SpecBook id (first upload's or the re-upload's) ever appears
+    // bare in any logged output — this is the requirement-5 redaction check.
+    expect(logged).not.toMatch(new RegExp(`\\b${FIRST_ID}\\b`));
+    expect(logged).not.toMatch(new RegExp(`\\b${SECOND_ID}\\b`));
+    // The specific pre-existing leak pattern this task required removing.
+    expect(logged).not.toMatch(/specBookId=\d/);
+    // The interactively-entered cookie value must never appear either.
+    expect(logged).not.toContain(COOKIE_VALUE);
+  });
+});
