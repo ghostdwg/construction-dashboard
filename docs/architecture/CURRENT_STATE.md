@@ -1,6 +1,14 @@
 # Current State — Construction Intelligence Platform
 # Last Updated: 2026-05-15 (Market Intelligence scraper Phase 1-4 live in prod)
 
+> **For the current, source-verified picture of runtime topology, deploy platform,
+> database backend, credential-resolution status, and what is/isn't proven on
+> staging, see [`docs/architecture/REALITY.md`](./REALITY.md) — written 2026-07-04
+> against commit `971db44`. A few specific claims below (Prisma/SQLite stack line,
+> DigitalOcean/Fly.io deploy plan) are corrected inline where verified wrong;
+> REALITY.md is authoritative wherever this document's "current state" framing
+> and actual source disagree.**
+
 ## Repository Context
 - This is **construction-dashboard**, forked from bid-dashboard on 2026-04-12
 - 35 modules carried forward from bid-dashboard (all COMPLETE)
@@ -12,7 +20,7 @@
 ## Repository
 - GitHub: ghostdwg/construction-dashboard — main branch
 - Local: c:/Users/jjcou/construction-dashboard
-- Stack: Next.js 16, React 19, TypeScript 5, Tailwind CSS v4, Prisma 7/SQLite, Claude API, Auth.js v5
+- Stack: Next.js 16, React 19, TypeScript 5, Tailwind CSS v4, Prisma 7 (Turso/libSQL via driver adapter in deployed tiers — see GWX-INF-004 below; local SQLite file in dev only — corrected 2026-07-04, see [REALITY.md](./REALITY.md) §3), Claude API, Auth.js v5
 
 ## Repository Status
 
@@ -31,7 +39,7 @@
   - Tier F F5: Daily Log weather claim integration — NOT STARTED
   - Auth Wall Level B enforcement — deferred until second user exists (infrastructure is ready)
   - Auth Wall Level C (RBAC fine-grained) — DEFERRED
-  - Production deploy to neuroglitch.ai — next milestone (DigitalOcean, see POSTGRES_MIGRATION.md)
+  - CORRECTED (2026-07-04, see [REALITY.md](./REALITY.md)): this line previously read "Production deploy to neuroglitch.ai — next milestone (DigitalOcean, see POSTGRES_MIGRATION.md)." That is stale/wrong on two counts — production is already deployed and live at `groundworx.neuroglitch.ai` (see the Phase 5I section below, and Phase 5J), and it runs via Docker Compose directly on host `superglitch` (see `runtime/compose/TOPOLOGY.md`), not DigitalOcean and not the Postgres migration path in POSTGRES_MIGRATION.md (the deployed DB is Turso/libSQL, per GWX-INF-004 below).
   - ~8 minor enhancements (see ROADMAP.md A4)
 
 ## Architecture — Three Wings + Lifecycle
@@ -339,9 +347,9 @@ If any migration is listed as "failed" or "not applied," stop and investigate be
 | GWX-INF-005 | Dockerfile (multi-stage standalone) | ✅ COMPLETE |
 | GWX-INF-006 | `fly.toml` + `fly.sidecar.toml` | ✅ COMPLETE |
 | GWX-INF-007 | `.github/workflows/deploy.yml` | ✅ COMPLETE |
-| GWX-INF-008 | Turso production database | ⏳ PENDING — next session |
-| GWX-INF-009 | `flyctl launch` + first deploy (both apps) | ⏳ PENDING — next session |
-| GWX-INF-010 | DNS — neuroglitch.ai → Fly.io + SSL cert | ⏳ PENDING — next session |
+| GWX-INF-008 | Turso production database | ✅ COMPLETE — Turso/libSQL is the live production DB; corrected 2026-07-04, see `runtime/compose/TOPOLOGY.md` runtime assumptions §3–4 and [REALITY.md](./REALITY.md) |
+| GWX-INF-009 | `flyctl launch` + first deploy (both apps) | SUPERSEDED — production did not deploy via Fly.io; it runs via Docker Compose directly on host `superglitch`. Corrected 2026-07-04, see `runtime/compose/TOPOLOGY.md` and [REALITY.md](./REALITY.md) |
+| GWX-INF-010 | DNS — neuroglitch.ai → Fly.io + SSL cert | SUPERSEDED — DNS/TLS is live via Caddy + Let's Encrypt directly on the host, not Fly.io. Corrected 2026-07-04, see `runtime/compose/TOPOLOGY.md` and [REALITY.md](./REALITY.md) |
 
 Also this session:
 - **[Codex] Prompts 1–4** — package cleanup, Vitest scaffold (3 test files, 8 passing tests), TabErrorBoundary, ESLint tightening

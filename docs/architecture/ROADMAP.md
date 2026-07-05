@@ -3,6 +3,13 @@
 # Repo: construction-dashboard (forked from bid-dashboard)
 # Parallel repo: bid-dashboard (active, still receiving updates)
 
+# For the current, source-verified picture of runtime topology, deploy
+# platform, database backend, and credential-resolution status, see
+# docs/architecture/REALITY.md (written 2026-07-04 against commit 971db44).
+# A few specific claims below (Database stack row, Fly.io deploy plan) are
+# corrected inline where verified wrong against current source; REALITY.md
+# is authoritative wherever this document's plan and actual source disagree.
+
 ---
 
 ## SYSTEM MISSION
@@ -85,7 +92,7 @@ bid-dashboard, cherry-pick specific commits:
 | Framework | Next.js 16 (App Router) | Server components, API routes, routing |
 | UI | React 19 | Component rendering |
 | Styling | Tailwind CSS v4 | All styling — no separate CSS files |
-| Database | SQLite via Prisma ORM | Local dev.db — Postgres migration planned |
+| Database | Prisma ORM — Turso/libSQL via driver adapter in deployed tiers (local SQLite file in dev only) | CORRECTED 2026-07-04 (see docs/architecture/REALITY.md): the Postgres migration this row originally described was superseded by Turso — see GWX-INF-004 below (✅ COMPLETE) |
 | AI | Anthropic Claude API | Brief generation, gap analysis, spec extraction |
 | Email | Resend API + nodemailer | RFQ emails, award notifications (provider-agnostic) |
 | Auth | Auth.js v5 (next-auth) | Login wall, JWT sessions, role badges |
@@ -223,6 +230,15 @@ Priority: ACTIVE — neuroglitch.ai deploy target
 Platform: Fly.io (Next.js app + Python sidecar as separate Fly apps)
 Database: Turso (libSQL, edge-native SQLite)
 
+CORRECTED 2026-07-04 (see docs/architecture/REALITY.md): the Fly.io platform
+plan below did not ship. Production is live at groundworx.neuroglitch.ai via
+Docker Compose directly on host `superglitch` (see runtime/compose/TOPOLOGY.md),
+not Fly.io — Fly.io deploy paths (`runtime/fly/*.toml`) are now
+governance-blocked ("blocked-deprecated" per governance/guardrails/allowlist.json;
+"prohibited unless explicitly approved" per
+governance/CONFIDENTIAL_DATA_POLICY.md §7). The Turso database plan below did
+ship and is accurate.
+
 | ID | Item | Status |
 |----|------|--------|
 | GWX-INF-001 | Standalone Next.js build | ✅ COMPLETE |
@@ -232,13 +248,19 @@ Database: Turso (libSQL, edge-native SQLite)
 | GWX-INF-005 | Dockerfile (multi-stage standalone) | ✅ COMPLETE |
 | GWX-INF-006 | `fly.toml` + `fly.sidecar.toml` | ✅ COMPLETE |
 | GWX-INF-007 | `.github/workflows/deploy.yml` | ✅ COMPLETE |
-| GWX-INF-008 | Turso production database | ⏳ PENDING |
-| GWX-INF-009 | `flyctl launch` + first deploy (both apps) | ⏳ PENDING |
-| GWX-INF-010 | DNS — neuroglitch.ai → Fly.io + SSL cert | ⏳ PENDING |
+| GWX-INF-008 | Turso production database | ✅ COMPLETE — corrected 2026-07-04, see docs/architecture/REALITY.md |
+| GWX-INF-009 | `flyctl launch` + first deploy (both apps) | SUPERSEDED — deployed via Docker Compose on host `superglitch` instead, see runtime/compose/TOPOLOGY.md |
+| GWX-INF-010 | DNS — neuroglitch.ai → Fly.io + SSL cert | SUPERSEDED — DNS/TLS live via Caddy + Let's Encrypt on the host, not Fly.io |
 
 ---
 
-### NEXT SESSION — Production go-live (~2 hours, 3 steps)
+### NEXT SESSION — Production go-live (~2 hours, 3 steps) — SUPERSEDED, see below
+
+CORRECTED 2026-07-04 (see docs/architecture/REALITY.md): this plan is historical.
+Production went live via a different path than described below — Docker Compose
+directly on host `superglitch` (runtime/compose/TOPOLOGY.md), not Fly.io. The
+Turso DB step did happen; the Fly.io steps did not. Left as-is below for the
+historical record of the original plan.
 
 - [ ] Turso production DB + data migration
 - [ ] Fly.io first deploy (main app + sidecar)
