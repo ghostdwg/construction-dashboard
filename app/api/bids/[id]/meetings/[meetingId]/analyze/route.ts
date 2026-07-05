@@ -16,7 +16,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
-import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import { logAiUsage, classifyAiFailure } from "@/lib/services/ai/aiUsageLog";
 import {
   getProjectContext,
   getPriorOpenItems,
@@ -120,31 +120,52 @@ export async function POST(
       }),
     });
 
-    if (!sidecarRes.ok) {
-      const errText = await sidecarRes.text().catch(() => `HTTP ${sidecarRes.status}`);
-      throw new Error(
-        sidecarRes.status === 503 || sidecarRes.status === 0
-          ? "Sidecar unavailable — make sure the Python service is running (`npm run dev:sidecar`)"
-          : `Sidecar error ${sidecarRes.status}: ${errText}`,
-      );
+    // Evidence is recorded tightly around the real provider call only (the
+    // sidecar fetch + response validation below) — a downstream
+    // parse/write failure (parseMeetingAnalysis/writeMeetingAnalysis) is NOT
+    // a provider-call failure and must never be recorded as such.
+    let sidecarData: { ok: boolean; analysis: unknown; tokensUsed: { input: number; output: number } };
+    try {
+      if (!sidecarRes.ok) {
+        const errText = await sidecarRes.text().catch(() => `HTTP ${sidecarRes.status}`);
+        const httpErr = new Error(
+          sidecarRes.status === 503 || sidecarRes.status === 0
+            ? "Sidecar unavailable — make sure the Python service is running (`npm run dev:sidecar`)"
+            : `Sidecar error ${sidecarRes.status}: ${errText}`,
+        ) as Error & { status?: number };
+        httpErr.status = sidecarRes.status;
+        throw httpErr;
+      }
+
+      sidecarData = await sidecarRes.json() as {
+        ok: boolean;
+        analysis: unknown;
+        tokensUsed: { input: number; output: number };
+      };
+
+      if (!sidecarData.ok || !sidecarData.analysis)
+        throw new Error("Sidecar returned unexpected response shape");
+
+      await logAiUsage({
+        callKey: "meeting-analysis",
+        model: "claude-sonnet-4-6",
+        inputTokens: sidecarData.tokensUsed.input,
+        outputTokens: sidecarData.tokensUsed.output,
+        bidId,
+        status: "ok",
+      });
+    } catch (callErr) {
+      await logAiUsage({
+        callKey: "meeting-analysis",
+        model: "claude-sonnet-4-6",
+        inputTokens: 0,
+        outputTokens: 0,
+        bidId,
+        status: "error",
+        errorMessage: classifyAiFailure(callErr),
+      });
+      throw callErr;
     }
-
-    const sidecarData = await sidecarRes.json() as {
-      ok: boolean;
-      analysis: unknown;
-      tokensUsed: { input: number; output: number };
-    };
-
-    if (!sidecarData.ok || !sidecarData.analysis)
-      throw new Error("Sidecar returned unexpected response shape");
-
-    await logAiUsage({
-      callKey: "meeting-analysis",
-      model: "claude-sonnet-4-6",
-      inputTokens: sidecarData.tokensUsed.input,
-      outputTokens: sidecarData.tokensUsed.output,
-      bidId,
-    });
 
     const analysis = parseMeetingAnalysis(JSON.stringify(sidecarData.analysis));
 

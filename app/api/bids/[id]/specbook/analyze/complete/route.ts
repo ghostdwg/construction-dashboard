@@ -70,6 +70,17 @@ export async function POST(
     if (dbJob) {
       await failJob(dbJob.id, payload.error ?? "sidecar reported error").catch(() => {});
     }
+    // Deliberately scoped OUT of the provider-invocation-evidence work
+    // package: a job failure here is not necessarily a provider-call
+    // failure — it may fail before any Anthropic call is ever attempted
+    // (e.g. PDF parsing, section splitting). Logging LAST_REAL_FAILURE
+    // evidence from a generic job failure would overclaim "a real provider
+    // call failed" when that may not be true. Doing this correctly would
+    // require a broader event-correlation contract between the sidecar and
+    // this webhook (distinguishing "failed before any AI call" from "AI
+    // call itself failed") that doesn't exist today — see
+    // lib/services/ai/aiUsageLog.ts's module doc for the evidence contract
+    // this route DOES participate in (the success path below).
     return Response.json({ saved: false, error: payload.error ?? "job failed" });
   }
 

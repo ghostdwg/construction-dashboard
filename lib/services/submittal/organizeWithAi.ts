@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
 import { createMessage } from "@/lib/services/ai/gateway";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
-import { logAiUsage, computeCallCost } from "@/lib/services/ai/aiUsageLog";
+import { logAiUsage, computeCallCost, classifyAiFailure } from "@/lib/services/ai/aiUsageLog";
 
 // ── GC system prompt (10-step rules) ──────────────────────────────────────
 
@@ -404,17 +404,33 @@ export async function organizeSubmittalsWithAi(bidId: number): Promise<OrganizeR
   }
   const maxTokens = await getMaxTokens("submittal-organize");
 
-  const { raw: response } = await createMessage({
-    model:      "claude-sonnet-4-6",
-    maxTokens,
-    system:     GC_SYSTEM_PROMPT,
-    messages: [{
-      role:    "user",
-      content: `Here is the raw submittal list for this project:\n\n${inputTable}\n\nTransform this into the Procore-ready register following all 10 rules. Output ONLY the markdown table.`,
-    }],
-    apiKey,
-    audit: { feature: "submittal-organize", bidId: String(bidId) },
-  });
+  // Evidence is recorded tightly around the real provider call only.
+  let response: Awaited<ReturnType<typeof createMessage>>["raw"];
+  try {
+    const result = await createMessage({
+      model:      "claude-sonnet-4-6",
+      maxTokens,
+      system:     GC_SYSTEM_PROMPT,
+      messages: [{
+        role:    "user",
+        content: `Here is the raw submittal list for this project:\n\n${inputTable}\n\nTransform this into the Procore-ready register following all 10 rules. Output ONLY the markdown table.`,
+      }],
+      apiKey,
+      audit: { feature: "submittal-organize", bidId: String(bidId) },
+    });
+    response = result.raw;
+  } catch (callErr) {
+    await logAiUsage({
+      callKey: "submittal-organize",
+      model: "claude-sonnet-4-6",
+      inputTokens: 0,
+      outputTokens: 0,
+      bidId,
+      status: "error",
+      errorMessage: classifyAiFailure(callErr),
+    });
+    throw callErr;
+  }
 
   // 4. Log usage
   const usage = response.usage;

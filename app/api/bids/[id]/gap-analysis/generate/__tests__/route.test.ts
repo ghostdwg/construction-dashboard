@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   assembleGapPrompt: vi.fn(),
   getMaxTokens: vi.fn(),
   logAiUsage: vi.fn(),
+  classifyAiFailure: vi.fn(() => "unknown"),
   getSetting: vi.fn(),
 }));
 
@@ -29,7 +30,10 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/services/ai/gateway", () => ({ createMessage: h.createMessage }));
 vi.mock("@/lib/services/ai/assembleGapPrompt", () => ({ assembleGapPrompt: h.assembleGapPrompt }));
 vi.mock("@/lib/services/ai/aiTokenConfig", () => ({ getMaxTokens: h.getMaxTokens }));
-vi.mock("@/lib/services/ai/aiUsageLog", () => ({ logAiUsage: h.logAiUsage }));
+vi.mock("@/lib/services/ai/aiUsageLog", () => ({
+  logAiUsage: h.logAiUsage,
+  classifyAiFailure: h.classifyAiFailure,
+}));
 vi.mock("@/lib/services/settings/appSettingsService", () => ({ getSetting: h.getSetting }));
 
 import { runGapAnalysis } from "../route";

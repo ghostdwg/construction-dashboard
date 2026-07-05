@@ -2,7 +2,7 @@ import { createMessage } from "@/lib/services/ai/gateway";
 import { prisma } from "@/lib/prisma";
 import { assembleReviewPrompt } from "@/lib/services/ai/assembleReviewPrompt";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
-import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import { logAiUsage, classifyAiFailure } from "@/lib/services/ai/aiUsageLog";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // ----- Shared generation logic (importable from upload routes) -----
@@ -28,21 +28,38 @@ export async function generateBidIntelligence(bidId: number): Promise<{
 
   const { systemPrompt, userPrompt, coverage } = await assembleReviewPrompt(bidId);
 
-  const { raw: message } = await createMessage({
-    model: "claude-sonnet-4-6",
-    maxTokens: await getMaxTokens("intelligence"),
-    system: systemPrompt,
-    messages: [{ role: "user", content: userPrompt }],
-    apiKey,
-  });
+  // Evidence is recorded tightly around the real provider call only.
+  let message: Awaited<ReturnType<typeof createMessage>>["raw"];
+  try {
+    const result = await createMessage({
+      model: "claude-sonnet-4-6",
+      maxTokens: await getMaxTokens("intelligence"),
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+      apiKey,
+    });
+    message = result.raw;
 
-  await logAiUsage({
-    callKey: "intelligence",
-    model: "claude-sonnet-4-6",
-    inputTokens: message.usage.input_tokens,
-    outputTokens: message.usage.output_tokens,
-    bidId,
-  });
+    await logAiUsage({
+      callKey: "intelligence",
+      model: "claude-sonnet-4-6",
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      bidId,
+      status: "ok",
+    });
+  } catch (callErr) {
+    await logAiUsage({
+      callKey: "intelligence",
+      model: "claude-sonnet-4-6",
+      inputTokens: 0,
+      outputTokens: 0,
+      bidId,
+      status: "error",
+      errorMessage: classifyAiFailure(callErr),
+    });
+    throw callErr;
+  }
 
   // Extract text block from response
   const textBlock = message.content.find((b) => b.type === "text");

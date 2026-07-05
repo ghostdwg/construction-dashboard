@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   assemblePrompt: vi.fn(),
   getMaxTokens: vi.fn(),
   logAiUsage: vi.fn(),
+  classifyAiFailure: vi.fn(() => "unknown"),
   getSetting: vi.fn(),
 }));
 
@@ -40,7 +41,10 @@ vi.mock("@/lib/services/ai/assembleAddendumDeltaPrompt", () => ({
   assembleAddendumDeltaPrompt: h.assemblePrompt,
 }));
 vi.mock("@/lib/services/ai/aiTokenConfig", () => ({ getMaxTokens: h.getMaxTokens }));
-vi.mock("@/lib/services/ai/aiUsageLog", () => ({ logAiUsage: h.logAiUsage }));
+vi.mock("@/lib/services/ai/aiUsageLog", () => ({
+  logAiUsage: h.logAiUsage,
+  classifyAiFailure: h.classifyAiFailure,
+}));
 vi.mock("@/lib/services/settings/appSettingsService", () => ({ getSetting: h.getSetting }));
 
 import { POST } from "../route";

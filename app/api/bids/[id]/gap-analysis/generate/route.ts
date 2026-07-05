@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { createMessage } from "@/lib/services/ai/gateway";
 import { assembleGapPrompt } from "@/lib/services/ai/assembleGapPrompt";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
-import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import { logAiUsage, classifyAiFailure } from "@/lib/services/ai/aiUsageLog";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // ----- Types -----
@@ -267,6 +267,17 @@ export async function runGapAnalysis(
       totalFindings += count;
       tradesAnalyzed++;
     }
+    // Evidence (Work Package "provider-invocation-evidence"): no provider
+    // call happens in this branch at all — one row per invocation (not per
+    // trade) is enough to mark this bid's gap-analysis activity as stub.
+    await logAiUsage({
+      callKey: "gap-analysis",
+      model: "stub",
+      inputTokens: 0,
+      outputTokens: 0,
+      bidId,
+      status: "stub",
+    });
     return { totalFindings, tradesAnalyzed };
   }
 
@@ -294,21 +305,40 @@ export async function runGapAnalysis(
       if (specCount === 0) continue;
     }
 
-    const { raw: message } = await createMessage({
-      model: "claude-sonnet-4-6",
-      maxTokens: await getMaxTokens("gap-analysis"),
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
-      apiKey,
-    });
+    // Evidence is recorded tightly around the real provider call only, so a
+    // downstream JSON-parse issue for this trade is never misrecorded as a
+    // provider-call failure.
+    let message: Awaited<ReturnType<typeof createMessage>>["raw"];
+    try {
+      const result = await createMessage({
+        model: "claude-sonnet-4-6",
+        maxTokens: await getMaxTokens("gap-analysis"),
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+        apiKey,
+      });
+      message = result.raw;
 
-    await logAiUsage({
-      callKey: "gap-analysis",
-      model: "claude-sonnet-4-6",
-      inputTokens: message.usage.input_tokens,
-      outputTokens: message.usage.output_tokens,
-      bidId,
-    });
+      await logAiUsage({
+        callKey: "gap-analysis",
+        model: "claude-sonnet-4-6",
+        inputTokens: message.usage.input_tokens,
+        outputTokens: message.usage.output_tokens,
+        bidId,
+        status: "ok",
+      });
+    } catch (callErr) {
+      await logAiUsage({
+        callKey: "gap-analysis",
+        model: "claude-sonnet-4-6",
+        inputTokens: 0,
+        outputTokens: 0,
+        bidId,
+        status: "error",
+        errorMessage: classifyAiFailure(callErr),
+      });
+      throw callErr;
+    }
 
     const textBlock = message.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") continue;

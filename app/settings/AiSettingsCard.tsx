@@ -88,7 +88,12 @@ type ProviderReadiness = {
     totalCount: number;
     mostRecent: { createdAt: string; model: string } | null;
   };
-  liveProviderVerification: "NOT_VERIFIED";
+  liveProviderVerification:
+    | "NOT_CONFIGURED"
+    | "CONFIGURED_UNVERIFIED"
+    | "LAST_REAL_SUCCESS"
+    | "LAST_REAL_FAILURE"
+    | "STUB_ONLY";
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -372,16 +377,46 @@ function ProviderReadinessSection({ readiness }: { readiness: ProviderReadiness 
 
         <div className="flex items-center justify-between gap-4">
           <span className="text-zinc-600 dark:text-zinc-300">Live provider verification</span>
-          <Pill tone="warn">NOT VERIFIED</Pill>
+          <Pill tone={LIVE_VERIFICATION_TONE[readiness.liveProviderVerification]}>
+            {LIVE_VERIFICATION_LABEL[readiness.liveProviderVerification]}
+          </Pill>
         </div>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 -mt-2">
-          No durable record in this system distinguishes a real Anthropic response from a stubbed one — logged usage
-          or a completed job proves a call was attempted, not that a live provider responded.
+          {LIVE_VERIFICATION_NOTE[readiness.liveProviderVerification]}
         </p>
       </div>
     </section>
   );
 }
+
+// Conservative-by-construction rendering for the 5-state live-verification
+// classification — never overstates confidence. STUB_ONLY and
+// CONFIGURED_UNVERIFIED both read as "not yet verified" states, distinct
+// from a genuine LAST_REAL_SUCCESS.
+const LIVE_VERIFICATION_LABEL: Record<ProviderReadiness["liveProviderVerification"], string> = {
+  NOT_CONFIGURED: "NOT CONFIGURED",
+  CONFIGURED_UNVERIFIED: "CONFIGURED — UNVERIFIED",
+  LAST_REAL_SUCCESS: "LAST REAL CALL: SUCCESS",
+  LAST_REAL_FAILURE: "LAST REAL CALL: FAILED",
+  STUB_ONLY: "STUB ONLY — NO REAL CALL YET",
+};
+
+const LIVE_VERIFICATION_TONE: Record<ProviderReadiness["liveProviderVerification"], "ok" | "warn" | "neutral"> = {
+  NOT_CONFIGURED: "neutral",
+  CONFIGURED_UNVERIFIED: "neutral",
+  LAST_REAL_SUCCESS: "ok",
+  LAST_REAL_FAILURE: "warn",
+  STUB_ONLY: "warn",
+};
+
+const LIVE_VERIFICATION_NOTE: Record<ProviderReadiness["liveProviderVerification"], string> = {
+  NOT_CONFIGURED: "No ANTHROPIC_API_KEY is configured, so no provider call could succeed.",
+  CONFIGURED_UNVERIFIED:
+    "A credential is configured, but no AI call — real or stub — has been recorded yet.",
+  LAST_REAL_SUCCESS: "The most recent real-call evidence recorded a successful provider response.",
+  LAST_REAL_FAILURE: "The most recent real-call evidence recorded a failed provider response.",
+  STUB_ONLY: "Every recorded call so far was a stub-mode completion — no real provider call has been attempted.",
+};
 
 // ── Usage subsection ───────────────────────────────────────────────────────
 

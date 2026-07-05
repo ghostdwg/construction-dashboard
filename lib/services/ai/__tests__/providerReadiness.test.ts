@@ -140,39 +140,124 @@ describe("getProviderReadiness — stub mode is reported honestly, not invented"
   });
 });
 
-describe("getProviderReadiness — live verification can never be flipped by job/usage-log presence alone", () => {
+// ──────────────────────────────────────────────────────────────────────────
+//  Live provider verification — Work Package "provider-invocation-evidence".
+//
+//  getProviderReadiness() now issues TWO findFirst() calls against
+//  aiUsageLog: one unfiltered (powers usageEvidence.mostRecent, unchanged
+//  from before) and one filtered to `status IN ("ok","error")` (real-call
+//  evidence only, excluding "stub" rows — powers liveProviderVerification).
+//  This helper routes the shared `h.findFirst` mock to the right fixture
+//  based on which query it's serving, so tests can set up the two
+//  independently instead of relying on a single generic mockResolvedValue.
+// ──────────────────────────────────────────────────────────────────────────
+function routeFindFirst(
+  unfilteredResult: unknown,
+  realEvidenceResult: unknown
+): (args: { where?: unknown }) => Promise<unknown> {
+  return async (args) => (args?.where ? realEvidenceResult : unfilteredResult);
+}
+
+describe("getProviderReadiness — liveProviderVerification 5-state evidence contract", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    h.getSettingSource.mockResolvedValue("db");
   });
 
-  test("liveProviderVerification stays NOT_VERIFIED even with many usage-log rows and a recent timestamp", async () => {
-    h.count.mockResolvedValue(9999);
-    h.findFirst.mockResolvedValue({
-      createdAt: new Date("2026-07-04T12:00:00.000Z"),
-      model: "claude-sonnet-4-6",
-    });
+  // The following two tests replace the old permanent-NOT_VERIFIED
+  // assertions ("liveProviderVerification stays NOT_VERIFIED even with many
+  // usage-log rows..."). That literal is no longer valid output — this work
+  // package closes the exact gap those tests were documenting. The
+  // underlying SAFETY property they protected (usage-log presence alone,
+  // with no real/stub distinction, must never be misread as a verified
+  // success) is preserved and re-expressed below via the STUB_ONLY test,
+  // which is the direct, sharper descendant of that guarantee.
+
+  test("1. configured credential + ZERO evidence of any kind -> CONFIGURED_UNVERIFIED (never something else)", async () => {
+    h.getSettingSource.mockResolvedValue("db");
+    h.count.mockResolvedValue(0);
+    h.findFirst.mockImplementation(routeFindFirst(null, null));
 
     const result = await getProviderReadiness();
 
-    // The most important assertion in this suite: usage-log presence (which
-    // in this codebase is also how completed BackgroundJobs' AI activity is
-    // durably recorded, e.g. via logSidecarUsage from the specbook analyze
-    // completion webhook) must NEVER, by itself, cause this field to read
-    // anything other than NOT_VERIFIED.
-    expect(result.liveProviderVerification).toBe("NOT_VERIFIED");
+    expect(result.liveProviderVerification).toBe("CONFIGURED_UNVERIFIED");
+    expect(result.usageEvidence.observed).toBe(false);
+  });
+
+  test("2. stub-only evidence -> STUB_ONLY, NEVER LAST_REAL_SUCCESS (most important test in this suite)", async () => {
+    h.getSettingSource.mockResolvedValue("db");
+    // Many rows exist (proving usage-log presence alone proves nothing) but
+    // NONE of them are real-call evidence — the filtered query finds none.
+    h.count.mockResolvedValue(9999);
+    h.findFirst.mockImplementation(
+      routeFindFirst({ createdAt: new Date("2026-07-04T12:00:00.000Z"), model: "stub" }, null)
+    );
+
+    const result = await getProviderReadiness();
+
+    expect(result.liveProviderVerification).toBe("STUB_ONLY");
+    expect(result.liveProviderVerification).not.toBe("LAST_REAL_SUCCESS");
     expect(result.usageEvidence.observed).toBe(true);
     expect(result.usageEvidence.totalCount).toBe(9999);
   });
 
-  test("liveProviderVerification stays NOT_VERIFIED with zero usage rows too", async () => {
-    h.count.mockResolvedValue(0);
-    h.findFirst.mockResolvedValue(null);
+  test("3. modeled real success evidence -> LAST_REAL_SUCCESS", async () => {
+    h.getSettingSource.mockResolvedValue("db");
+    h.count.mockResolvedValue(5);
+    h.findFirst.mockImplementation(
+      routeFindFirst(
+        { createdAt: new Date("2026-07-04T12:00:00.000Z"), model: "claude-sonnet-4-6" },
+        { status: "ok" }
+      )
+    );
 
     const result = await getProviderReadiness();
 
-    expect(result.liveProviderVerification).toBe("NOT_VERIFIED");
-    expect(result.usageEvidence.observed).toBe(false);
+    expect(result.liveProviderVerification).toBe("LAST_REAL_SUCCESS");
+  });
+
+  test("4. modeled real failure evidence -> LAST_REAL_FAILURE", async () => {
+    h.getSettingSource.mockResolvedValue("db");
+    h.count.mockResolvedValue(5);
+    h.findFirst.mockImplementation(
+      routeFindFirst(
+        { createdAt: new Date("2026-07-04T12:00:00.000Z"), model: "claude-sonnet-4-6" },
+        { status: "error" }
+      )
+    );
+
+    const result = await getProviderReadiness();
+
+    expect(result.liveProviderVerification).toBe("LAST_REAL_FAILURE");
+  });
+
+  test("missing credential -> NOT_CONFIGURED, even with real-success evidence present (credential check wins)", async () => {
+    h.getSettingSource.mockResolvedValue("missing");
+    h.count.mockResolvedValue(5);
+    h.findFirst.mockImplementation(
+      routeFindFirst(
+        { createdAt: new Date("2026-07-04T12:00:00.000Z"), model: "claude-sonnet-4-6" },
+        { status: "ok" }
+      )
+    );
+
+    const result = await getProviderReadiness();
+
+    expect(result.liveProviderVerification).toBe("NOT_CONFIGURED");
+  });
+
+  test("real-call query explicitly excludes stub rows at the Prisma layer", async () => {
+    h.getSettingSource.mockResolvedValue("db");
+    h.count.mockResolvedValue(1);
+    h.findFirst.mockImplementation(routeFindFirst(null, null));
+
+    await getProviderReadiness();
+
+    expect(h.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: { in: ["ok", "error"] } },
+        select: { status: true },
+      })
+    );
   });
 });
 
@@ -184,10 +269,15 @@ describe("getProviderReadiness — usage evidence is distinct from provider heal
 
   test("usage evidence reports observed + count + model/timestamp only — never content, cost, or bidId", async () => {
     h.count.mockResolvedValue(3);
-    h.findFirst.mockResolvedValue({
-      createdAt: new Date("2026-07-01T00:00:00.000Z"),
-      model: "claude-sonnet-4-6",
-    });
+    // The unfiltered row (usageEvidence.mostRecent) is independent of
+    // real-call evidence (routed to null here) — proving these two surfaces
+    // are computed from separate queries, not conflated.
+    h.findFirst.mockImplementation(
+      routeFindFirst(
+        { createdAt: new Date("2026-07-01T00:00:00.000Z"), model: "claude-sonnet-4-6" },
+        null
+      )
+    );
 
     const result = await getProviderReadiness();
 
@@ -201,10 +291,13 @@ describe("getProviderReadiness — usage evidence is distinct from provider heal
     // constitute provider health or verification.
     expect(result).not.toHaveProperty("providerHealth");
     expect(result).not.toHaveProperty("verified");
-    expect(result.liveProviderVerification).toBe("NOT_VERIFIED");
+    // 3 rows exist but none are tagged as real-call evidence in this fixture
+    // -> STUB_ONLY, not a success/failure claim.
+    expect(result.liveProviderVerification).toBe("STUB_ONLY");
 
     // Only fields select()'d by the service ever reach the response —
-    // sanity-check the prisma call itself never asked for content/cost/bidId.
+    // sanity-check the unfiltered prisma call itself never asked for
+    // content/cost/bidId.
     expect(h.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         select: { createdAt: true, model: true },
@@ -217,6 +310,72 @@ describe("getProviderReadiness — usage evidence is distinct from provider heal
     const fileMarkers = [FAKE_DB_SECRET_MARKER, FAKE_ENV_SECRET_MARKER];
     for (const marker of fileMarkers) {
       expect(marker).not.toMatch(suspicious);
+    }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+//  Mandatory test 5 — full-shape content-safety sweep across the persisted
+//  write-path input shape, the read/API response, and the UI-facing data.
+//  Actively searches for forbidden content rather than only checking that
+//  the enum labels look right.
+// ──────────────────────────────────────────────────────────────────────────
+describe("evidence contract never carries credentials, prompts, responses, or raw error text", () => {
+  const FORBIDDEN_SUBSTRINGS = [
+    "sk-ant-",
+    "Bearer ",
+    "whatIsThisJob",
+    "riskFlags",
+    "system prompt",
+    "TypeError: fetch failed at",
+    "stack trace",
+  ];
+
+  test("classifyAiFailure() output is always one of the 5 closed values, never the input error's message", async () => {
+    const { classifyAiFailure } = await import("../aiUsageLog");
+
+    const secretyError = new Error(
+      "request to https://api.anthropic.com failed with body sk-ant-FAKE-should-never-appear-999"
+    );
+    const result = classifyAiFailure(secretyError);
+
+    expect(["rate_limited", "auth_error", "provider_error", "network_error", "unknown"]).toContain(
+      result
+    );
+    expect(result).not.toContain("sk-ant-");
+    expect(result).not.toContain("anthropic.com");
+    expect(result.length).toBeLessThan(30); // closed enum values are short; a leaked message would not be
+  });
+
+  test("full getProviderReadiness() response — across configured/evidence permutations — never contains forbidden content", async () => {
+    h.getSettingSource.mockResolvedValue("db");
+    const permutations: Array<[number, unknown, unknown]> = [
+      [0, null, null],
+      [9999, { createdAt: new Date(), model: "stub" }, null],
+      [5, { createdAt: new Date(), model: "claude-sonnet-4-6" }, { status: "ok" }],
+      [5, { createdAt: new Date(), model: "claude-sonnet-4-6" }, { status: "error" }],
+    ];
+
+    for (const [count, unfiltered, real] of permutations) {
+      vi.clearAllMocks();
+      h.getSettingSource.mockResolvedValue("db");
+      h.count.mockResolvedValue(count);
+      h.findFirst.mockImplementation(routeFindFirst(unfiltered, real));
+
+      const result = await getProviderReadiness();
+      const serialized = JSON.stringify(result);
+
+      for (const forbidden of FORBIDDEN_SUBSTRINGS) {
+        expect(serialized).not.toContain(forbidden);
+      }
+      // The 5-state field is always exactly one of the closed values.
+      expect([
+        "NOT_CONFIGURED",
+        "CONFIGURED_UNVERIFIED",
+        "LAST_REAL_SUCCESS",
+        "LAST_REAL_FAILURE",
+        "STUB_ONLY",
+      ]).toContain(result.liveProviderVerification);
     }
   });
 });

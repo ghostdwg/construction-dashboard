@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { createMessage } from "@/lib/services/ai/gateway";
 import { assembleAddendumDeltaPrompt } from "@/lib/services/ai/assembleAddendumDeltaPrompt";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
-import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import { logAiUsage, classifyAiFailure } from "@/lib/services/ai/aiUsageLog";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // ----- Types -----
@@ -227,6 +227,17 @@ export async function POST(
       },
     });
 
+    // Evidence (Work Package "provider-invocation-evidence"): no provider
+    // call happens on this path at all — record that explicitly.
+    await logAiUsage({
+      callKey: "addendum-delta",
+      model: "stub",
+      inputTokens: 0,
+      outputTokens: 0,
+      bidId,
+      status: "stub",
+    });
+
     return Response.json({ delta, addendumId: aId });
   }
 
@@ -259,21 +270,41 @@ export async function POST(
     );
   }
 
-  const { raw: message } = await createMessage({
-    model: "claude-sonnet-4-6",
-    maxTokens: await getMaxTokens("addendum-delta"),
-    system: systemPrompt,
-    messages: [{ role: "user", content: userPrompt }],
-    apiKey,
-  });
+  // Evidence is recorded tightly around the real provider call only — a
+  // downstream JSON-parse failure below is NOT a provider-call failure.
+  let message: Awaited<ReturnType<typeof createMessage>>["raw"];
+  try {
+    const result = await createMessage({
+      model: "claude-sonnet-4-6",
+      maxTokens: await getMaxTokens("addendum-delta"),
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+      apiKey,
+    });
+    message = result.raw;
 
-  await logAiUsage({
-    callKey: "addendum-delta",
-    model: "claude-sonnet-4-6",
-    inputTokens: message.usage.input_tokens,
-    outputTokens: message.usage.output_tokens,
-    bidId,
-  });
+    await logAiUsage({
+      callKey: "addendum-delta",
+      model: "claude-sonnet-4-6",
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      bidId,
+      status: "ok",
+    });
+  } catch (callErr) {
+    await logAiUsage({
+      callKey: "addendum-delta",
+      model: "claude-sonnet-4-6",
+      inputTokens: 0,
+      outputTokens: 0,
+      bidId,
+      status: "error",
+      errorMessage: classifyAiFailure(callErr),
+    });
+    // Preserves this route's existing "no route try/catch" opaque
+    // propagation semantics — the exact same error object propagates.
+    throw callErr;
+  }
 
   const textBlock = message.content.find((b) => b.type === "text");
   if (!textBlock || textBlock.type !== "text") {

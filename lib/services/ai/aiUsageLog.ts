@@ -7,18 +7,101 @@
 //
 // Usage is non-blocking: a failure to log should never break the actual AI
 // call. Log via try/catch with console.error on failure.
+//
+// Work Package "provider-invocation-evidence" — real vs. stub / success vs.
+// failure evidence contract:
+//
+// AiUsageLog.status (an existing, previously two-valued "ok" | "error"
+// string column — no schema change) now carries THREE values:
+//   "ok"    — a real provider call was attempted and succeeded (unchanged
+//             meaning/behavior from before this work package; existing cost
+//             aggregation queries that filter on status:"ok" are unaffected).
+//   "error" — a real provider call was attempted and failed. Previously
+//             declared but never actually written by any caller.
+//   "stub"  — no provider call was attempted at all; a stub/mock code path
+//             ran instead. Brand new value — never written before this work
+//             package, so it cannot collide with any existing status:"ok"
+//             filter (stub rows are correctly excluded from cost/usage
+//             totals, since they carry no real cost or tokens).
+//
+// AiUsageLog.errorMessage (an existing, previously write-only-as-null
+// column — grep confirms no caller in this codebase has ever populated it
+// with a real value) is repurposed to carry a SAFE, CLOSED failure-class
+// enum (see AiFailureClass below) ONLY when status is "error". It is never
+// used to store a raw provider error message, stack trace, or any other
+// free-text/unbounded content — see classifyAiFailure().
+//
+// "Real" vs. "stub" is determined structurally, not by a new correlation
+// mechanism: every call site that invokes logAiUsage()/logSidecarUsage()
+// after actually calling createMessage() (TS gateway) or receiving a
+// sidecar-reported success is real by construction (this codebase's stub
+// code paths — BRIEF_STUB_MODE / GAP_STUB_MODE / ADDENDUM_STUB_MODE — skip
+// createMessage() entirely and, before this work package, logged nothing at
+// all). Stub code paths now explicitly log one status:"stub" row so their
+// activity is visible as evidence instead of silently indistinguishable from
+// "no evidence yet".
 
+import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { MODEL_PRICING, type ModelId, type CallKey, AI_CALL_DEFINITIONS } from "./aiTokenConfig";
+
+// ── Failure classification (evidence-safe, closed vocabulary) ──────────────
+//
+// A small, bounded enum — NEVER the raw provider error message, stack trace,
+// or any request/response detail. Safe to persist durably in
+// AiUsageLog.errorMessage because it can never carry unbounded or sensitive
+// content by construction (the return type is a closed string union).
+
+export type AiFailureClass =
+  | "rate_limited"
+  | "auth_error"
+  | "provider_error"
+  | "network_error"
+  | "unknown";
+
+/**
+ * Classify a thrown error into a safe, closed failure class for evidence
+ * recording. Recognizes genuine Anthropic SDK error types when present
+ * (preferred path — used by every TS call site that invokes createMessage()
+ * directly). Falls back to reading a plain numeric `status` property (useful
+ * for call sites fronted by an HTTP hop, e.g. the sidecar-routed meeting
+ * analysis call, which throws a plain Error rather than an Anthropic SDK
+ * error) or a network-failure error shape. Never inspects/returns
+ * `err.message` or any other free-text field.
+ */
+export function classifyAiFailure(err: unknown): AiFailureClass {
+  if (err instanceof Anthropic.RateLimitError) return "rate_limited";
+  if (err instanceof Anthropic.AuthenticationError) return "auth_error";
+  if (err instanceof Anthropic.PermissionDeniedError) return "auth_error";
+  if (err instanceof Anthropic.APIConnectionError) return "network_error"; // covers APIConnectionTimeoutError
+  if (err instanceof Anthropic.APIError) return "provider_error"; // any other status-bearing APIError subtype
+
+  // Fallback for non-SDK error shapes (e.g. a plain Error thrown by a
+  // fetch-fronted call site) that carry a bare numeric HTTP status.
+  const status = (err as { status?: unknown } | null | undefined)?.status;
+  if (typeof status === "number") {
+    if (status === 429) return "rate_limited";
+    if (status === 401 || status === 403) return "auth_error";
+    if (status >= 400) return "provider_error";
+  }
+
+  // A bare network-level failure (e.g. `fetch` connection refused) throws a
+  // plain TypeError with no status at all.
+  if (err instanceof TypeError) return "network_error";
+
+  return "unknown";
+}
 
 // ── Cost calculation ────────────────────────────────────────────────────────
 
 export function computeCallCost(
-  model: ModelId,
+  model: ModelId | string,
   inputTokens: number,
   outputTokens: number
 ): number {
-  const pricing = MODEL_PRICING[model];
+  const pricing = (MODEL_PRICING as Record<string, { inputPer1M: number; outputPer1M: number }>)[
+    model
+  ];
   if (!pricing) return 0;
   const inputCost = (inputTokens / 1_000_000) * pricing.inputPer1M;
   const outputCost = (outputTokens / 1_000_000) * pricing.outputPer1M;
@@ -29,12 +112,21 @@ export function computeCallCost(
 
 export type LogUsageInput = {
   callKey: CallKey;
-  model: ModelId;
+  /** The real model id, or the literal `"stub"` sentinel for a stub-mode
+   *  evidence row (see module doc above) — never a real model name for a
+   *  call that didn't actually happen, so evidence can't be misread as a
+   *  real completion. */
+  model: ModelId | "stub";
   inputTokens: number;
   outputTokens: number;
   bidId?: number | null;
-  status?: "ok" | "error";
-  errorMessage?: string | null;
+  /** "ok" = real success, "error" = real failure, "stub" = no provider call
+   *  was attempted. Defaults to "ok" for backward compatibility with every
+   *  existing caller that omits this. */
+  status?: "ok" | "error" | "stub";
+  /** ONLY ever a bounded AiFailureClass value (see classifyAiFailure) when
+   *  status is "error" — never a raw provider error message or stack. */
+  errorMessage?: AiFailureClass | null;
 };
 
 /**

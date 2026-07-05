@@ -1075,8 +1075,8 @@ model AiUsageLog {
   outputTokens Int
   costUsd      Float
   bidId        Int?
-  status       String   @default("ok") // "ok" | "error"
-  errorMessage String?
+  status       String   @default("ok") // "ok" (real success) | "error" (real failure) | "stub" (no provider call attempted — see lib/services/ai/aiUsageLog.ts module doc)
+  errorMessage String?  // ONLY a bounded AiFailureClass value when status="error" — never raw provider error text (see classifyAiFailure())
   createdAt    DateTime @default(now())
 
   @@index([callKey])

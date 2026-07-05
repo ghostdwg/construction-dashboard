@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   assembleBriefPrompt: vi.fn(),
   getMaxTokens: vi.fn(),
   logAiUsage: vi.fn(),
+  classifyAiFailure: vi.fn(() => "unknown"),
   getSetting: vi.fn(),
 }));
 
@@ -22,7 +23,7 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("../gateway", () => ({ createMessage: h.createMessage }));
 vi.mock("../assembleBriefPrompt", () => ({ assembleBriefPrompt: h.assembleBriefPrompt }));
 vi.mock("../aiTokenConfig", () => ({ getMaxTokens: h.getMaxTokens }));
-vi.mock("../aiUsageLog", () => ({ logAiUsage: h.logAiUsage }));
+vi.mock("../aiUsageLog", () => ({ logAiUsage: h.logAiUsage, classifyAiFailure: h.classifyAiFailure }));
 vi.mock("@/lib/services/settings/appSettingsService", () => ({ getSetting: h.getSetting }));
 
 import { generateBidIntelligenceBrief } from "../generateBidIntelligenceBrief";

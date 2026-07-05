@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { createMessage } from "./gateway";
 import { assembleBriefPrompt } from "./assembleBriefPrompt";
 import { getMaxTokens } from "./aiTokenConfig";
-import { logAiUsage } from "./aiUsageLog";
+import { logAiUsage, classifyAiFailure } from "./aiUsageLog";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // ----- JSON repair for truncated responses -----
@@ -217,6 +217,18 @@ export async function generateBidIntelligenceBrief(
   // ----- STUB MODE -----
   if (process.env.BRIEF_STUB_MODE === "true") {
     await saveStubBrief(bidId, triggeredBy);
+    // Evidence (Work Package "provider-invocation-evidence"): no provider
+    // call happens on this path at all — record that explicitly so it's
+    // visible as "stub" evidence rather than silently indistinguishable
+    // from "no evidence yet".
+    await logAiUsage({
+      callKey: "brief",
+      model: "stub",
+      inputTokens: 0,
+      outputTokens: 0,
+      bidId,
+      status: "stub",
+    });
     return {
       status: "ready",
       sourceContext: null,
@@ -246,22 +258,41 @@ export async function generateBidIntelligenceBrief(
     const prompt = await assembleBriefPrompt(bidId);
     sourceContext = prompt.sourceContext;
 
-    const { raw: message } = await createMessage({
-      model: "claude-sonnet-4-6",
-      maxTokens: await getMaxTokens("brief"),
-      system: prompt.systemPrompt,
-      messages: [{ role: "user", content: prompt.userPrompt }],
-      apiKey,
-      audit: { feature: "brief", bidId: String(bidId) },
-    });
+    // Evidence is recorded tightly around the real provider call only — a
+    // downstream JSON-parse failure below is NOT a provider-call failure and
+    // must never be recorded as LAST_REAL_FAILURE evidence.
+    let message: Awaited<ReturnType<typeof createMessage>>["raw"];
+    try {
+      const result = await createMessage({
+        model: "claude-sonnet-4-6",
+        maxTokens: await getMaxTokens("brief"),
+        system: prompt.systemPrompt,
+        messages: [{ role: "user", content: prompt.userPrompt }],
+        apiKey,
+        audit: { feature: "brief", bidId: String(bidId) },
+      });
+      message = result.raw;
 
-    await logAiUsage({
-      callKey: "brief",
-      model: "claude-sonnet-4-6",
-      inputTokens: message.usage.input_tokens,
-      outputTokens: message.usage.output_tokens,
-      bidId,
-    });
+      await logAiUsage({
+        callKey: "brief",
+        model: "claude-sonnet-4-6",
+        inputTokens: message.usage.input_tokens,
+        outputTokens: message.usage.output_tokens,
+        bidId,
+        status: "ok",
+      });
+    } catch (callErr) {
+      await logAiUsage({
+        callKey: "brief",
+        model: "claude-sonnet-4-6",
+        inputTokens: 0,
+        outputTokens: 0,
+        bidId,
+        status: "error",
+        errorMessage: classifyAiFailure(callErr),
+      });
+      throw callErr;
+    }
 
     const textBlock = message.content.find((b) => b.type === "text");
     if (!textBlock || textBlock.type !== "text") {

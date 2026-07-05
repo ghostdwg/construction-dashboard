@@ -67,7 +67,11 @@ describe("GET /api/settings/ai-readiness", () => {
         activeFlags: { BRIEF_STUB_MODE: false, GAP_STUB_MODE: false, ADDENDUM_STUB_MODE: false },
       },
       usageEvidence: { observed: true, totalCount: 2, mostRecent: { createdAt: "2026-07-01T00:00:00.000Z", model: "claude-sonnet-4-6" } },
-      liveProviderVerification: "NOT_VERIFIED" as const,
+      // Updated for Work Package "provider-invocation-evidence": the
+      // permanent "NOT_VERIFIED" literal no longer exists — this route is a
+      // pure pass-through of whatever getProviderReadiness() returns, so any
+      // of the 5 real states exercises the same pass-through behavior.
+      liveProviderVerification: "LAST_REAL_SUCCESS" as const,
     };
     h.getProviderReadiness.mockResolvedValue(fakeReadiness);
 
@@ -76,6 +80,6 @@ describe("GET /api/settings/ai-readiness", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual(fakeReadiness);
-    expect(body.liveProviderVerification).toBe("NOT_VERIFIED");
+    expect(body.liveProviderVerification).toBe("LAST_REAL_SUCCESS");
   });
 });

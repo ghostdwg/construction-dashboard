@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { createMessage } from "@/lib/services/ai/gateway";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
-import { logAiUsage } from "@/lib/services/ai/aiUsageLog";
+import { logAiUsage, classifyAiFailure } from "@/lib/services/ai/aiUsageLog";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 // POST /api/bids/[id]/leveling/[rowId]/question
@@ -115,6 +115,7 @@ Return only the question text. No preamble, no explanation.`;
       inputTokens: message.usage.input_tokens,
       outputTokens: message.usage.output_tokens,
       bidId,
+      status: "ok",
     });
 
     const content = message.content[0];
@@ -124,6 +125,19 @@ Return only the question text. No preamble, no explanation.`;
     return templateQuestion(scopeText);
   } catch (err) {
     console.error("[draftQuestion] Claude API error:", err);
+    // Evidence: this catch is reached only when createMessage() itself threw
+    // (logAiUsage never throws, and the block above it has no other
+    // exit) — so this is a genuine real-call failure, not a downstream
+    // parsing issue.
+    await logAiUsage({
+      callKey: "leveling-question",
+      model: "claude-sonnet-4-6",
+      inputTokens: 0,
+      outputTokens: 0,
+      bidId,
+      status: "error",
+      errorMessage: classifyAiFailure(err),
+    });
     return templateQuestion(scopeText);
   }
 }

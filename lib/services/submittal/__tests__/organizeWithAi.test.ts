@@ -57,6 +57,7 @@ vi.mock("@/lib/services/ai/aiTokenConfig", () => ({ getMaxTokens: h.getMaxTokens
 vi.mock("@/lib/services/ai/aiUsageLog", () => ({
   logAiUsage: h.logAiUsage,
   computeCallCost: vi.fn(() => 0.01),
+  classifyAiFailure: vi.fn(() => "unknown"),
 }));
 
 import { organizeSubmittalsWithAi } from "../organizeWithAi";
