@@ -4,6 +4,48 @@ import { getBlobStore } from "@/lib/storage/blobStore";
 import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
+import { env } from "@/lib/env";
+// isAdminAuthorized (lib/auth.ts) is imported dynamically below, only inside
+// the storage-smoke gate branch — this route is on the hot path for every
+// spec book upload, and lib/auth.ts pulls in the full next-auth module graph.
+// The overwhelming majority of requests never send the smoke marker header,
+// so deferring the import keeps their cost identical to before this feature
+// existed (no next-auth module load at all on that path).
+
+// ── Storage-only smoke mode (work package: specbook-storage-smoke-isolation) ─
+//
+// Lets an operator validate upload/split/serve/delete/re-upload storage
+// mechanics on staging WITHOUT triggering a real Anthropic call, while a
+// credential rotation is pending. This is NOT a generic "skip AI" switch —
+// suppression only ever engages when ALL FOUR of the following hold
+// simultaneously; if even one is missing, this route behaves exactly as it
+// did before this feature existed (normal automation fires unconditionally).
+//
+//   a. Authenticated ADMIN session (reuses lib/auth.ts's isAdminAuthorized(),
+//      the same helper every /api/settings/* admin route already uses — this
+//      route itself has no other auth check; see proxy.ts, which only
+//      enforces admin-only for /settings pages, not API routes).
+//   b. The caller sent the non-secret intent marker header below. Non-secret
+//      because it grants no authority by itself — it is intent, not
+//      authorization. The other three conditions are what make this safe.
+//   c. STORAGE_SMOKE_MODE_ENABLED=true is set in the server's own process
+//      env. Defaults OFF/unset, exactly like the existing BRIEF_STUB_MODE /
+//      GAP_STUB_MODE / ADDENDUM_STUB_MODE flags (see
+//      lib/services/ai/providerReadiness.ts's module doc — none of those
+//      three go through getSetting()/AppSetting either; they are direct,
+//      per-call process.env reads with no DB-backed override, and this flag
+//      follows that exact, already-established convention rather than the
+//      DB-backed getSetting() path used for user-facing credentials).
+//   d. env.APP_ENV === "staging" — a server-side identity fact set exclusively
+//      by whoever deploys/configures the container (runtime/env/staging.env.example),
+//      Zod-validated at boot in lib/env.ts, and NEVER derived from any part of
+//      an incoming request. This is what makes the bypass untriggerable in
+//      production even if an attacker somehow obtained an admin session and
+//      knew about the header/flag.
+//
+// The marker header value itself is never persisted (no DB row, no log line)
+// — it is read once into a boolean and discarded.
+const STORAGE_SMOKE_HEADER = "x-specbook-storage-smoke";
 
 // ── Sidecar integration ────────────────────────────────────────────────────
 
@@ -211,16 +253,43 @@ export async function POST(
       where: { specBookId: specBook.id, covered: true },
     });
 
-    // Fire-and-forget intelligence regeneration — does not block upload response
-    generateBidIntelligence(bidId).catch((err) =>
-      console.error("[specbook/upload] background intelligence generation failed:", err)
-    );
-    triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
-      console.error("[specbook/upload] background brief refresh failed:", err)
-    );
+    // ── Storage-only smoke gate — see module doc above for the full 4-condition
+    // contract. Cheapest/non-auth checks first so the default (no marker
+    // header) request path never pays for an extra auth lookup.
+    let automationStatus: "triggered" | "suppressed_for_storage_smoke" = "triggered";
+
+    const storageSmokeRequested = request.headers.get(STORAGE_SMOKE_HEADER) === "1";
+    const storageSmokeConfigEnabled = process.env.STORAGE_SMOKE_MODE_ENABLED === "true";
+    const isStagingTier = env.APP_ENV === "staging";
+
+    if (storageSmokeRequested && storageSmokeConfigEnabled && isStagingTier) {
+      const { isAdminAuthorized } = await import("@/lib/auth");
+      const adminCheck = await isAdminAuthorized();
+      if (adminCheck.authorized) {
+        automationStatus = "suppressed_for_storage_smoke";
+      }
+      // Any of unauthenticated/non-admin falls through silently to the
+      // normal "triggered" path below — a non-admin sending the marker
+      // header never suppresses automation, it just has no effect.
+    }
+
+    if (automationStatus === "triggered") {
+      // Fire-and-forget intelligence regeneration — does not block upload response
+      generateBidIntelligence(bidId).catch((err) =>
+        console.error("[specbook/upload] background intelligence generation failed:", err)
+      );
+      triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
+        console.error("[specbook/upload] background brief refresh failed:", err)
+      );
+    }
 
     return Response.json(
-      { ...updated, coveredCount, gapCount: updated._count.sections - coveredCount },
+      {
+        ...updated,
+        coveredCount,
+        gapCount: updated._count.sections - coveredCount,
+        automationStatus,
+      },
       { status: 201 }
     );
   } catch (err) {

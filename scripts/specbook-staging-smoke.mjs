@@ -14,8 +14,8 @@
 //     exits 0. This is the default and cannot be bypassed by partial input.
 //   - A real HTTP request is only ever made when ALL of the following are
 //     supplied together: --base-url, --bid-id, one of --cookie/--bearer,
-//     AND the --execute flag. Missing any one of these keeps the script in
-//     dry-run mode.
+//     --execute, AND (new) --storage-only. Missing any one of these keeps
+//     the script in dry-run mode.
 //   - No dependency beyond what Node 18+ / this repo already provides:
 //     global fetch/FormData/Blob (same primitives
 //     app/api/bids/[id]/specbook/upload/route.ts already uses) and node:*
@@ -30,20 +30,47 @@
 //   - This script was written but never executed against any real host as
 //     part of producing it or the runbook it accompanies.
 //
+// STORAGE-ONLY MODE (work package: specbook-storage-smoke-isolation):
+//
+//   Until the Anthropic credential rotation lands, this script can ONLY ever
+//   perform a storage-only run — there is no "real-AI" execute mode anymore.
+//   `--execute` alone is refused; a NEW required flag, `--storage-only`, must
+//   also be passed. This maps to the four-condition suppression contract in
+//   app/api/bids/[id]/specbook/upload/route.ts: authenticated admin session
+//   (via --cookie/--bearer for an admin account) + this script's marker
+//   header + the server's own STORAGE_SMOKE_MODE_ENABLED=true + the server's
+//   own APP_ENV=staging. This script supplies only the header — the other
+//   three conditions are the server operator's responsibility and are out of
+//   this script's control by design (a client can never prove them).
+//
+//   The marker header (sent ONLY in storage-only execute mode, never in dry
+//   run, never without --storage-only) is:
+//     X-Specbook-Storage-Smoke: 1
+//
+//   After the first upload (and the step-6 re-upload), this script asserts
+//   the response's `automationStatus` field is exactly
+//   "suppressed_for_storage_smoke" and FAILS LOUDLY if it is missing or any
+//   other value — that would mean the server-side suppression did not
+//   actually engage (e.g. an operator forgot STORAGE_SMOKE_MODE_ENABLED or
+//   ran this against a non-staging tier), and a real Anthropic call may have
+//   just fired despite the pending credential rotation.
+//
 // Usage (dry run — always safe, this is the only mode used while authoring
 // this script):
 //
 //   node scripts/specbook-staging-smoke.mjs
 //   node scripts/specbook-staging-smoke.mjs --base-url https://staging.example --bid-id 123
-//     (still dry-run: --execute and an auth input are both missing)
+//     (still dry-run: --execute, --storage-only, and an auth input are all missing)
 //
-// Usage (real run — operator-driven, requires explicit auth input):
+// Usage (real run — operator-driven, storage-only, requires explicit auth
+// input AND an admin session AND the server-side flags described above):
 //
 //   node scripts/specbook-staging-smoke.mjs \
 //     --base-url https://staging.groundworx.neuroglitch.ai \
 //     --bid-id 123 \
-//     --cookie "authjs.session-token=<value>" \
-//     --execute
+//     --cookie "authjs.session-token=<admin-account-value>" \
+//     --execute \
+//     --storage-only
 //
 //   Optional: --pdf /path/to/local/test.pdf   (defaults to a tiny synthetic
 //   PDF generated in-memory with two fake CSI-style section headers — never
@@ -54,16 +81,41 @@
 // compatibility / operator convenience but is NOT confirmed to authenticate
 // against these routes today — --cookie is the realistic option. Flagged
 // here as a judgment call for the operator, not asserted as supported.
+//
+// --base-url tightening: in any real (--execute) run, --base-url must
+// contain the substring "staging" (case-insensitive) — matching this repo's
+// actual staging hostname convention (runtime/env/staging.env.example:
+// NEXTAUTH_URL=https://staging.groundworx.neuroglitch.ai). This is a
+// client-side, easily-bypassed sanity check, not a security boundary — the
+// real boundary is the server's own APP_ENV=staging fence. It exists only to
+// catch an operator fat-fingering a production URL into this script.
+//
+// TESTABILITY: parseArgs() and runMain() are exported so
+// scripts/__tests__/specbook-staging-smoke.test.ts can drive both the
+// dry-run and refusal paths in-process (spying on global fetch and
+// process.exit) without ever spawning a real child process or touching a
+// real host. This mirrors the auto-run guard already used by
+// scripts/cron-loop.mjs ("Auto-run when invoked as a script (not when
+// imported by tests)").
 
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
-// ── Argv parsing (no dependency) ────────────────────────────────────────────
+// Non-secret intent marker — must match app/api/bids/[id]/specbook/upload/
+// route.ts's STORAGE_SMOKE_HEADER exactly. Sent ONLY in storage-only execute
+// mode.
+const STORAGE_SMOKE_HEADER = "X-Specbook-Storage-Smoke";
+const REQUIRED_AUTOMATION_STATUS = "suppressed_for_storage_smoke";
 
-function parseArgs(argv) {
-  const args = { execute: false };
+// ── Argv parsing (no dependency, pure) ──────────────────────────────────────
+
+export function parseArgs(argv) {
+  const args = { execute: false, storageOnly: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--execute") { args.execute = true; continue; }
+    if (a === "--storage-only") { args.storageOnly = true; continue; }
     if (a === "--base-url") { args.baseUrl = argv[++i]; continue; }
     if (a === "--bid-id") { args.bidId = argv[++i]; continue; }
     if (a === "--cookie") { args.cookie = argv[++i]; continue; }
@@ -73,8 +125,6 @@ function parseArgs(argv) {
   }
   return args;
 }
-
-const args = parseArgs(process.argv.slice(2));
 
 const PLAN = `
 [specbook-staging-smoke] DRY RUN — no network action taken.
@@ -95,53 +145,26 @@ Each step's exact request/response shape and pass/fail criteria are documented i
 To actually run this against a real staging instance, ALL of the following
 must be supplied together:
   --base-url <url>       e.g. https://staging.groundworx.neuroglitch.ai
+                         (must contain "staging" — see --base-url tightening
+                          note in this script's header comment)
   --bid-id <n>           an existing staging Bid.id to run the flow against
-  --cookie "<value>"     a valid staging session cookie header value
-                         (or --bearer "<token>" — unconfirmed for these routes,
-                          see this script's header comment)
+  --cookie "<value>"     a valid staging session cookie header value, for an
+                         ADMIN account (or --bearer "<token>" — unconfirmed
+                          for these routes, see this script's header comment)
   --execute              explicit confirmation to perform real HTTP requests
+  --storage-only         explicit confirmation this is a storage-only run —
+                         REQUIRED alongside --execute. This script no longer
+                          has any other real-run mode: --execute without
+                          --storage-only is refused, not just left dry-run.
 
 Optional: --pdf <path>   a local test PDF (defaults to a tiny synthetic one
                           generated in-memory — never a real project document).
 
-Missing any of the four required inputs above keeps this script in dry-run
-mode, as it is right now.
+Missing any of the required inputs above keeps this script in dry-run
+mode, as it is right now. This is NOT a real-AI validation tool — it proves
+storage/DB mechanics only. See runtime/runbooks/specbook-staging-validation.md
+for the storage-only vs real-AI distinction.
 `;
-
-const missing = [];
-if (!args.baseUrl) missing.push("--base-url");
-if (!args.bidId) missing.push("--bid-id");
-if (!args.cookie && !args.bearer) missing.push("--cookie or --bearer");
-if (!args.execute) missing.push("--execute");
-
-if (args.help || missing.length > 0) {
-  console.log(PLAN);
-  if (missing.length > 0 && !args.help) {
-    console.log(`[specbook-staging-smoke] Not executing — missing: ${missing.join(", ")}`);
-  }
-  process.exit(0);
-}
-
-// ── From here down: real-run path. Only reached when base-url, bid-id, an
-// auth input, and --execute were ALL supplied explicitly. ──────────────────
-
-const BASE_URL = args.baseUrl.replace(/\/+$/, "");
-const BID_ID = args.bidId;
-const RUN_TAG = `smoke-${Date.now()}-${randomUUID().slice(0, 6)}`;
-
-function authHeaders() {
-  const h = {};
-  if (args.cookie) h["Cookie"] = args.cookie;
-  if (args.bearer) h["Authorization"] = `Bearer ${args.bearer}`;
-  return h;
-}
-
-const results = [];
-function record(name, ok, detail) {
-  const symbol = ok === "PASS" ? "✔" : ok === "FAIL" ? "✗" : "•";
-  results.push({ name, status: ok, detail });
-  console.log(`  ${symbol} ${ok.padEnd(5)} ${name}${detail ? " — " + detail : ""}`);
-}
 
 // Minimal, dependency-free single-page PDF with a couple of fake CSI-style
 // section headers, so split's regex/parse logic has something to find.
@@ -177,10 +200,10 @@ function buildSyntheticPdf(lines) {
   return Buffer.from(pdf, "utf8");
 }
 
-async function loadTestPdf() {
-  if (args.pdfPath) {
+async function loadTestPdf(pdfPath) {
+  if (pdfPath) {
     const { readFile } = await import("node:fs/promises");
-    return await readFile(args.pdfPath);
+    return await readFile(pdfPath);
   }
   return buildSyntheticPdf([
     "SECTION 09 91 00 - PAINTING",
@@ -190,198 +213,291 @@ async function loadTestPdf() {
   ]);
 }
 
-async function uploadStep(label, pdfBuffer) {
-  try {
-    const form = new FormData();
-    form.append(
-      "file",
-      new Blob([new Uint8Array(pdfBuffer)], { type: "application/pdf" }),
-      `smoke-test-${RUN_TAG}.pdf`
-    );
-    const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/upload`, {
-      method: "POST",
-      body: form,
-      headers: authHeaders(),
-    });
-    const body = await res.json().catch(() => null);
-    if (res.status !== 201) {
-      record(label, "FAIL", `status=${res.status} body=${JSON.stringify(body)}`);
-      return null;
-    }
-    record(label, "PASS", `status=${res.status} specBookId=${body?.id} sections=${body?._count?.sections}`);
-    return body;
-  } catch (err) {
-    record(label, "FAIL", err.message);
-    return null;
-  }
-}
+// ── Main entry point ────────────────────────────────────────────────────────
+//
+// Exported (rather than only run as a bare top-level script) so tests can
+// invoke it directly with a synthetic argv, spying on global fetch and
+// process.exit, without spawning a real process or touching a real host.
 
-async function splitStep() {
-  try {
-    const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/split`, {
-      method: "POST",
-      headers: authHeaders(),
-    });
-    const body = await res.json().catch(() => null);
-    if (res.status !== 200) {
-      record("2. split", "FAIL", `status=${res.status} body=${JSON.stringify(body)}`);
-      return null;
-    }
-    record("2. split", "PASS", `sectionsCreated=${body?.sectionsCreated}`);
-    return body;
-  } catch (err) {
-    record("2. split", "FAIL", err.message);
-    return null;
-  }
-}
+export async function runMain(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
 
-async function listSectionsStep() {
-  try {
-    const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/gaps`, {
-      headers: authHeaders(),
-    });
-    const body = await res.json().catch(() => null);
-    if (res.status !== 200 || !body) {
-      record("3. list sections", "FAIL", `status=${res.status}`);
-      return null;
-    }
-    // Response shape per app/api/bids/[id]/specbook/gaps/route.ts:
-    // { specBook, total, coveredCount, missingCount, unknownCount,
-    //   covered: [...], missing: [...], unknown: [...], aiAnalysis }
-    const allSections = [
-      ...(body.covered ?? []),
-      ...(body.missing ?? []),
-      ...(body.unknown ?? []),
-    ];
-    if (allSections.length === 0) {
-      record("3. list sections", "FAIL", "no sections returned");
-      return null;
-    }
-    record("3. list sections", "PASS", `sectionId=${allSections[0].id}`);
-    return allSections[0].id;
-  } catch (err) {
-    record("3. list sections", "FAIL", err.message);
-    return null;
+  const missing = [];
+  if (!args.baseUrl) {
+    missing.push("--base-url");
+  } else if (args.execute && !/staging/i.test(args.baseUrl)) {
+    missing.push('--base-url must reference a staging host (contain "staging") for any real run');
   }
-}
+  if (!args.bidId) missing.push("--bid-id");
+  if (!args.cookie && !args.bearer) missing.push("--cookie or --bearer");
+  if (!args.execute) missing.push("--execute");
+  if (args.execute && !args.storageOnly) {
+    missing.push("--storage-only (required — --execute alone is refused, this helper has no real-AI run mode)");
+  }
 
-async function servePdfStep(sectionId) {
-  try {
-    const res = await fetch(
-      `${BASE_URL}/api/bids/${BID_ID}/specbook/sections/${sectionId}/pdf`,
-      { headers: authHeaders() }
-    );
-    const contentType = res.headers.get("content-type") || "";
-    if (res.status !== 200 || !contentType.includes("application/pdf")) {
-      const body = await res.text().catch(() => "");
-      record("4. serve pdf", "FAIL", `status=${res.status} content-type=${contentType} body=${body.slice(0, 200)}`);
+  if (args.help || missing.length > 0) {
+    console.log(PLAN);
+    if (missing.length > 0 && !args.help) {
+      console.log(`[specbook-staging-smoke] Not executing — missing/invalid: ${missing.join(", ")}`);
+    }
+    process.exit(0);
+    return; // unreachable when process.exit is real; defensive when mocked in tests
+  }
+
+  // ── From here down: real-run path. Only reached when base-url, bid-id, an
+  // auth input, --execute, AND --storage-only were ALL supplied explicitly. ──
+
+  const BASE_URL = args.baseUrl.replace(/\/+$/, "");
+  const BID_ID = args.bidId;
+  const RUN_TAG = `smoke-${Date.now()}-${randomUUID().slice(0, 6)}`;
+
+  function authHeaders() {
+    const h = {};
+    if (args.cookie) h["Cookie"] = args.cookie;
+    if (args.bearer) h["Authorization"] = `Bearer ${args.bearer}`;
+    // Sent ONLY in storage-only execute mode. We are already past the
+    // missing-inputs gate above (which requires --storage-only for any
+    // --execute run), so args.storageOnly is always true here in practice —
+    // the explicit check is defense-in-depth against future refactors.
+    if (args.execute && args.storageOnly) h[STORAGE_SMOKE_HEADER] = "1";
+    return h;
+  }
+
+  const results = [];
+  function record(name, ok, detail) {
+    const symbol = ok === "PASS" ? "✔" : ok === "FAIL" ? "✗" : "•";
+    results.push({ name, status: ok, detail });
+    console.log(`  ${symbol} ${ok.padEnd(5)} ${name}${detail ? " — " + detail : ""}`);
+  }
+
+  // Fail loudly if the server did not actually engage suppression — this is
+  // the one honest signal we have that a real Anthropic call was (or wasn't)
+  // avoided. Never skip this check silently.
+  function assertAutomationSuppressed(label, body) {
+    if (!args.storageOnly) return;
+    const status = body?.automationStatus;
+    if (status === REQUIRED_AUTOMATION_STATUS) {
+      record(label, "PASS", `automationStatus=${status}`);
+    } else {
+      record(
+        label,
+        "FAIL",
+        `expected automationStatus="${REQUIRED_AUTOMATION_STATUS}", got ${JSON.stringify(status)} — ` +
+          "suppression did NOT engage; a real provider call may have just fired"
+      );
+    }
+  }
+
+  async function uploadStep(label, pdfBuffer) {
+    try {
+      const form = new FormData();
+      form.append(
+        "file",
+        new Blob([new Uint8Array(pdfBuffer)], { type: "application/pdf" }),
+        `smoke-test-${RUN_TAG}.pdf`
+      );
+      const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/upload`, {
+        method: "POST",
+        body: form,
+        headers: authHeaders(),
+      });
+      const body = await res.json().catch(() => null);
+      if (res.status !== 201) {
+        record(label, "FAIL", `status=${res.status} body=${JSON.stringify(body)}`);
+        return null;
+      }
+      record(label, "PASS", `status=${res.status} specBookId=${body?.id} sections=${body?._count?.sections}`);
+      return body;
+    } catch (err) {
+      record(label, "FAIL", err.message);
+      return null;
+    }
+  }
+
+  async function splitStep() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/split`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const body = await res.json().catch(() => null);
+      if (res.status !== 200) {
+        record("2. split", "FAIL", `status=${res.status} body=${JSON.stringify(body)}`);
+        return null;
+      }
+      record("2. split", "PASS", `sectionsCreated=${body?.sectionsCreated}`);
+      return body;
+    } catch (err) {
+      record("2. split", "FAIL", err.message);
+      return null;
+    }
+  }
+
+  async function listSectionsStep() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/gaps`, {
+        headers: authHeaders(),
+      });
+      const body = await res.json().catch(() => null);
+      if (res.status !== 200 || !body) {
+        record("3. list sections", "FAIL", `status=${res.status}`);
+        return null;
+      }
+      // Response shape per app/api/bids/[id]/specbook/gaps/route.ts:
+      // { specBook, total, coveredCount, missingCount, unknownCount,
+      //   covered: [...], missing: [...], unknown: [...], aiAnalysis }
+      const allSections = [
+        ...(body.covered ?? []),
+        ...(body.missing ?? []),
+        ...(body.unknown ?? []),
+      ];
+      if (allSections.length === 0) {
+        record("3. list sections", "FAIL", "no sections returned");
+        return null;
+      }
+      record("3. list sections", "PASS", `sectionId=${allSections[0].id}`);
+      return allSections[0].id;
+    } catch (err) {
+      record("3. list sections", "FAIL", err.message);
+      return null;
+    }
+  }
+
+  async function servePdfStep(sectionId) {
+    try {
+      const res = await fetch(
+        `${BASE_URL}/api/bids/${BID_ID}/specbook/sections/${sectionId}/pdf`,
+        { headers: authHeaders() }
+      );
+      const contentType = res.headers.get("content-type") || "";
+      if (res.status !== 200 || !contentType.includes("application/pdf")) {
+        const body = await res.text().catch(() => "");
+        record("4. serve pdf", "FAIL", `status=${res.status} content-type=${contentType} body=${body.slice(0, 200)}`);
+        return false;
+      }
+      record("4. serve pdf", "PASS", `status=${res.status} content-type=${contentType}`);
+      return true;
+    } catch (err) {
+      record("4. serve pdf", "FAIL", err.message);
       return false;
     }
-    record("4. serve pdf", "PASS", `status=${res.status} content-type=${contentType}`);
-    return true;
-  } catch (err) {
-    record("4. serve pdf", "FAIL", err.message);
-    return false;
   }
-}
 
-async function authPostureCheck(sectionId) {
-  try {
-    const res = await fetch(
-      `${BASE_URL}/api/bids/${BID_ID}/specbook/sections/${sectionId}/pdf`,
-      { redirect: "manual" } // no auth headers on purpose
-    );
-    const isRedirectish = res.status >= 300 && res.status < 400;
-    const location = res.headers.get("location") || "";
-    if (isRedirectish && location.includes("/login")) {
-      record("4b. auth-posture (unauthenticated)", "PASS", `status=${res.status} location includes /login`);
-    } else if (res.status === 200) {
-      record("4b. auth-posture (unauthenticated)", "FAIL", "got 200 without auth — served without a session");
-    } else {
-      record("4b. auth-posture (unauthenticated)", "FAIL", `status=${res.status} location=${location || "(none)"}`);
+  async function authPostureCheck(sectionId) {
+    try {
+      const res = await fetch(
+        `${BASE_URL}/api/bids/${BID_ID}/specbook/sections/${sectionId}/pdf`,
+        { redirect: "manual" } // no auth headers on purpose
+      );
+      const isRedirectish = res.status >= 300 && res.status < 400;
+      const location = res.headers.get("location") || "";
+      if (isRedirectish && location.includes("/login")) {
+        record("4b. auth-posture (unauthenticated)", "PASS", `status=${res.status} location includes /login`);
+      } else if (res.status === 200) {
+        record("4b. auth-posture (unauthenticated)", "FAIL", "got 200 without auth — served without a session");
+      } else {
+        record("4b. auth-posture (unauthenticated)", "FAIL", `status=${res.status} location=${location || "(none)"}`);
+      }
+    } catch (err) {
+      record("4b. auth-posture (unauthenticated)", "FAIL", err.message);
     }
-  } catch (err) {
-    record("4b. auth-posture (unauthenticated)", "FAIL", err.message);
   }
-}
 
-async function deleteStep(specBookId) {
-  try {
-    const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/${specBookId}`, {
-      method: "DELETE",
-      headers: authHeaders(),
-    });
-    if (res.status !== 204) {
-      record("5. delete", "FAIL", `status=${res.status}`);
+  async function deleteStep(specBookId) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/${specBookId}`, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      if (res.status !== 204) {
+        record("5. delete", "FAIL", `status=${res.status}`);
+        return false;
+      }
+      record("5. delete", "PASS", `status=${res.status}`);
+      return true;
+    } catch (err) {
+      record("5. delete", "FAIL", err.message);
       return false;
     }
-    record("5. delete", "PASS", `status=${res.status}`);
-    return true;
-  } catch (err) {
-    record("5. delete", "FAIL", err.message);
-    return false;
   }
-}
 
-async function confirmDeletedStep() {
-  try {
-    const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/gaps`, {
-      headers: authHeaders(),
-    });
-    const body = await res.json().catch(() => undefined);
-    if (body === null) {
-      record("5b. confirm deleted", "PASS", "gaps now returns null");
-    } else {
-      record("5b. confirm deleted", "FAIL", `gaps still returns a spec book: ${JSON.stringify(body).slice(0, 120)}`);
-    }
-  } catch (err) {
-    record("5b. confirm deleted", "FAIL", err.message);
-  }
-}
-
-// ── Main (real-run path) ────────────────────────────────────────────────────
-
-console.log("[specbook-staging-smoke] EXECUTING against a real host — this is not a dry run.");
-console.log(`  RUN_TAG=${RUN_TAG}`);
-console.log(`  BASE_URL=${BASE_URL}`);
-console.log(`  BID_ID=${BID_ID}`);
-console.log(`  auth=${args.cookie ? "cookie (redacted)" : "bearer (redacted, unconfirmed for these routes)"}`);
-console.log("");
-
-const pdf = await loadTestPdf();
-
-const first = await uploadStep("1. upload", pdf);
-if (first) {
-  const split = await splitStep();
-  if (split) {
-    const sectionId = await listSectionsStep();
-    if (sectionId != null) {
-      await servePdfStep(sectionId);
-      await authPostureCheck(sectionId);
+  async function confirmDeletedStep() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/gaps`, {
+        headers: authHeaders(),
+      });
+      const body = await res.json().catch(() => undefined);
+      if (body === null) {
+        record("5b. confirm deleted", "PASS", "gaps now returns null");
+      } else {
+        record("5b. confirm deleted", "FAIL", `gaps still returns a spec book: ${JSON.stringify(body).slice(0, 120)}`);
+      }
+    } catch (err) {
+      record("5b. confirm deleted", "FAIL", err.message);
     }
   }
-  const deleted = await deleteStep(first.id);
-  if (deleted) await confirmDeletedStep();
-  // Step 6: re-upload, same fixture. Only meaningful evidence is a fresh
-  // SpecBook.id distinct from `first.id` (see runbook §2.6 / §4).
-  const second = await uploadStep("6. re-upload", pdf);
-  if (second && first) {
-    if (second.id !== first.id) {
-      record("6b. fresh SpecBook.id", "PASS", `${first.id} -> ${second.id}`);
-    } else {
-      record("6b. fresh SpecBook.id", "FAIL", `id unchanged: ${second.id}`);
+
+  console.log("[specbook-staging-smoke] EXECUTING against a real host — this is not a dry run.");
+  console.log(`  RUN_TAG=${RUN_TAG}`);
+  console.log(`  BASE_URL=${BASE_URL}`);
+  console.log(`  BID_ID=${BID_ID}`);
+  console.log(`  auth=${args.cookie ? "cookie (redacted)" : "bearer (redacted, unconfirmed for these routes)"}`);
+  console.log("");
+
+  const pdf = await loadTestPdf(args.pdfPath);
+
+  const first = await uploadStep("1. upload", pdf);
+  if (first) {
+    assertAutomationSuppressed("1c. automation suppressed", first);
+    const split = await splitStep();
+    if (split) {
+      const sectionId = await listSectionsStep();
+      if (sectionId != null) {
+        await servePdfStep(sectionId);
+        await authPostureCheck(sectionId);
+      }
+    }
+    const deleted = await deleteStep(first.id);
+    if (deleted) await confirmDeletedStep();
+    // Step 6: re-upload, same fixture. Only meaningful evidence is a fresh
+    // SpecBook.id distinct from `first.id` (see runbook §2.6 / §4).
+    const second = await uploadStep("6. re-upload", pdf);
+    if (second && first) {
+      if (second.id !== first.id) {
+        record("6b. fresh SpecBook.id", "PASS", `${first.id} -> ${second.id}`);
+      } else {
+        record("6b. fresh SpecBook.id", "FAIL", `id unchanged: ${second.id}`);
+      }
+    }
+    if (second) {
+      assertAutomationSuppressed("6c. automation suppressed", second);
     }
   }
+
+  console.log("");
+  const pass = results.filter((r) => r.status === "PASS").length;
+  const fail = results.filter((r) => r.status === "FAIL").length;
+  console.log("===============================================================");
+  console.log(`  SPEC BOOK SMOKE — ${pass} pass · ${fail} fail`);
+  console.log("===============================================================");
+  console.log("Reminder: this run did NOT touch /specbook/analyze — AI analysis");
+  console.log("content remains unprovable while staging's Anthropic 401 stands.");
+  console.log("See runtime/runbooks/specbook-staging-validation.md §6.");
+
+  process.exit(fail > 0 ? 1 : 0);
 }
 
-console.log("");
-const pass = results.filter((r) => r.status === "PASS").length;
-const fail = results.filter((r) => r.status === "FAIL").length;
-console.log("===============================================================");
-console.log(`  SPEC BOOK SMOKE — ${pass} pass · ${fail} fail`);
-console.log("===============================================================");
-console.log("Reminder: this run did NOT touch /specbook/analyze — AI analysis");
-console.log("content remains unprovable while staging's Anthropic 401 stands.");
-console.log("See runtime/runbooks/specbook-staging-validation.md §6.");
+// Auto-run when invoked as a script (not when imported by tests) — same
+// guard convention as scripts/cron-loop.mjs ("Auto-run when invoked as a
+// script (not when imported by tests)").
+const invokedAsScript =
+  typeof process !== "undefined" &&
+  process.argv[1] &&
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
-process.exit(fail > 0 ? 1 : 0);
+if (invokedAsScript) {
+  runMain().catch((err) => {
+    console.error("[specbook-staging-smoke] FATAL", err);
+    process.exit(1);
+  });
+}

@@ -15,6 +15,29 @@ upload → split → serve a section PDF → delete → re-upload. This is the
   that section before running anything, or a 401-caused partial failure
   will be misread as a storage/routing bug.
 
+## Storage-only validation vs. real-AI validation — read this first
+
+This runbook (and the helper script in §11) now supports **two distinct
+modes**. They are NOT interchangeable and prove different things:
+
+| | **Storage-only mode** (new) | **Real-AI mode** (original scope of this document) |
+|---|---|---|
+| What it proves | Upload/split/serve/delete/re-upload storage & DB mechanics ONLY | The same mechanics, **plus** that the fire-and-forget `generateBidIntelligence`/`triggerBriefRefresh` calls actually reach Anthropic and complete |
+| What it does NOT prove | Anything about AI/provider behavior — it deliberately suppresses those calls | Nothing extra — but currently blocked by staging's known Anthropic 401 (§6) |
+| How suppression engages | ALL FOUR of: (a) an **admin** session, (b) the `X-Specbook-Storage-Smoke: 1` request header, (c) server env `STORAGE_SMOKE_MODE_ENABLED=true`, (d) server `APP_ENV=staging` — see `app/api/bids/[id]/specbook/upload/route.ts`'s module doc for the exact contract | N/A — this is simply today's default (unsuppressed) behavior |
+| Evidence in the response | `automationStatus: "suppressed_for_storage_smoke"` on the upload response | `automationStatus: "triggered"` (background calls fired; success/failure is async and not reflected in this response — see §2.1) |
+| When to use it | Right now, while the Anthropic credential rotation is pending — this is the ONLY validation currently possible without risking a real (currently-broken) provider call | Only after the staging `ANTHROPIC_API_KEY` rotation lands and the 401 is confirmed resolved |
+| Production use | **Prohibited, absolutely.** The suppression gate's condition (d) — `APP_ENV=staging` — is a server-side identity fact set exclusively by `/opt/neuroglitch/.env` vs `/opt/neuroglitch/.env.staging` per the Compose topology (see `runtime/env/production.env.example`, which has `APP_ENV=production`) and Zod-validated at boot (`lib/env.ts`). It cannot be true in production, so this mode is structurally inert there — but never attempt it regardless. | Real-AI mode is production's actual default behavior; nothing to prohibit |
+| Real customer documents | **Prohibited in both modes**, same as always (§5) — always use the synthetic fixture | **Prohibited in both modes** |
+| Cleanup after the run | **Required in both modes**, same as always (§5's rollback boundaries) | **Required in both modes** |
+
+**Bottom line:** storage-only mode lets you validate this runbook's §2
+mechanics today, safely, without a working Anthropic credential. It proves
+nothing about AI — do not report a storage-only pass as evidence that AI
+generation works. Once the credential rotation lands, re-run in real-AI mode
+(the script's historical default, before storage-only mode existed) for the
+AI-inclusive validation this document originally described.
+
 ---
 
 ## Scope
@@ -81,16 +104,22 @@ Server-side, per `app/api/bids/[id]/specbook/upload/route.ts`:
   Anthropic-dependent.
 - On success: `201` with the updated `SpecBook` JSON (`id`, `bidId`,
   `fileName`, `filePath`, `status: "ready"`, `_count.sections`,
-  `coveredCount`, `gapCount`).
+  `coveredCount`, `gapCount`, `automationStatus`).
 - On parse failure: `422` with `{ error: <message> }`; the `SpecBook` row is
   marked `status: "error"`.
 - **Fire-and-forget side effects** (do not block the response, do not affect
-  pass/fail of this step): `generateBidIntelligence(bidId)` and
+  pass/fail of this step): unless storage-only mode is engaged (see the
+  section above this table), `generateBidIntelligence(bidId)` and
   `triggerBriefRefresh(bidId)` run in the background and may themselves call
   Anthropic. If the 401 is still live, expect async
   `[specbook/upload] background intelligence generation failed:` /
   `background brief refresh failed:` lines in the app logs a few seconds
   after the `201` — this is expected noise, not an upload failure (§6).
+  `automationStatus` in the response body tells you which happened:
+  `"triggered"` (normal — these background calls fired) or
+  `"suppressed_for_storage_smoke"` (storage-only mode engaged — the calls
+  were never made, and correctly so per the four-condition contract in
+  `app/api/bids/[id]/specbook/upload/route.ts`).
 
 ### 2.2 Split
 
@@ -386,6 +415,11 @@ route was modified while producing this document.
 - Does not define a live-incident procedure for the 401 itself (rotating
   the staging `ANTHROPIC_API_KEY`, escalation path, etc.) — that is a
   different, credential-rotation runbook that does not exist yet.
+- Storage-only mode (see the table near the top of this document) does NOT
+  validate Anthropic/provider functionality in any way — it proves
+  storage/DB mechanics only, by deliberately suppressing the two
+  provider-bound background calls that upload would otherwise fire. A
+  storage-only pass is not evidence that AI generation works.
 
 ---
 
@@ -397,9 +431,22 @@ that file's header for exact usage). If present:
 
 - Running it with **no arguments** only prints the six-step plan above and
   exits `0` — it performs no network action by default.
-- It requires an explicit `--base-url` **and** an explicit
-  `--cookie`/`--bearer` **and** the `--execute` flag together before it will
-  perform any real HTTP request against the six routes in §2.
+- **This script now has exactly ONE real-run mode: storage-only.** It
+  requires an explicit `--base-url` (which must reference a staging host —
+  contain the substring `"staging"` — for any real run) **and** an explicit
+  `--cookie`/`--bearer` for an **admin** account **and** the `--execute` flag
+  **and** the new `--storage-only` flag, all together, before it will
+  perform any real HTTP request. `--execute` without `--storage-only` is
+  refused outright — there is no way to make this script attempt a real-AI
+  run; that must be done by hand per §2–§7 once the credential rotation
+  lands.
+- In storage-only mode, it sends the non-secret `X-Specbook-Storage-Smoke: 1`
+  marker header on every upload call, and asserts the response's
+  `automationStatus` field is exactly `"suppressed_for_storage_smoke"` —
+  failing loudly if it is not (see step `1c.`/`6c.` in its output). A
+  failure there means suppression did not actually engage server-side (wrong
+  tier, opt-in not set, or non-admin session) and a real Anthropic call may
+  have just fired.
 - It adds no new npm dependency — it uses only the global `fetch`/`FormData`
   already relied on by `app/api/bids/[id]/specbook/upload/route.ts` and the
   `node:*` builtins already used by `scripts/validate-staging.mjs`.
@@ -407,7 +454,9 @@ that file's header for exact usage). If present:
   this runbook or the script itself.
 
 Using this helper is optional. The procedure in §2–§7 is complete and
-followable by hand with `curl`/a REST client without it.
+followable by hand with `curl`/a REST client without it — and by-hand
+execution is REQUIRED for real-AI mode, since this script cannot perform
+that mode at all.
 
 ---
 
@@ -425,6 +474,10 @@ followable by hand with `curl`/a REST client without it.
   key-safety rules (`assertSafeKey`) underlying §8 and §2.6.
 - `lib/auth.ts`, `lib/auth-helpers.ts`, `proxy.ts` — the Auth Wall
   middleware underlying §7's auth-posture checks.
+- `lib/env.ts` — the Zod-validated `APP_ENV` schema; condition (d) of the
+  storage-only suppression gate described above depends on this being a
+  genuine, boot-time-only, deployment-controlled signal (see that file's own
+  module comment and `runtime/runbooks/app-env-rollout.md`).
 - `docs/architecture/STORAGE.md` — `plan-room/` key layout referenced in
   §2 and §8.
 - `runtime/env/staging.env.example` — env var names referenced in §1 and
