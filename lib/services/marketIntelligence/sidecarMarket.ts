@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 import {
   classifySignal,
   type SignalContext,
@@ -93,12 +94,36 @@ function sidecarHeaders(): Record<string, string> {
   return h;
 }
 
+// Option A (docs/architecture/adr/0001-ai-credential-resolution.md,
+// docs/architecture/adr/0002-remaining-sidecar-credential-targets.md): the
+// Anthropic credential is resolved ONCE here, TS-side, and forwarded as an
+// explicit `api_key` request-body field to the sidecar — the sidecar never
+// resolves its own. This one resolution point covers EVERY caller of
+// callSidecarScan / callSidecarScrape uniformly: the manual scan/scrape-now
+// routes, run-due's runMarketScrape() (unattended worker path), and the
+// cron-driven municipalAgendaIngestion runner (which reaches these functions
+// through scrapeOneSource). Each of those has TS/Node code with getSetting()
+// access executing before the sidecar is ever called, so no path is missed.
+// Fails closed (throws) when the key is missing, mirroring the existing
+// "sidecar unavailable" throw shape — callers already map thrown errors to a
+// 502 / failed-job outcome, so no path proceeds without a credential.
+async function resolveAnthropicKey(): Promise<string> {
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    throw new Error(
+      "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+    );
+  }
+  return apiKey;
+}
+
 export async function callSidecarScan(input: {
   url?: string;
   text?: string;
   jurisdiction?: string;
   sourceDate?: string;
 }): Promise<ScanSidecarResponse> {
+  const apiKey = await resolveAnthropicKey();
   const res = await fetch(`${SIDECAR_URL}/market/scan-document`, {
     method: "POST",
     headers: sidecarHeaders(),
@@ -107,6 +132,7 @@ export async function callSidecarScan(input: {
       text: input.text,
       jurisdiction: input.jurisdiction,
       source_date: input.sourceDate,
+      api_key: apiKey,
     }),
   });
   if (!res.ok) {
@@ -129,6 +155,7 @@ export async function callSidecarScrape(input: {
   prefilterThreshold?: number;
   prefilterModel?: string | null;
 }): Promise<ScrapeSidecarResponse> {
+  const apiKey = await resolveAnthropicKey();
   const res = await fetch(`${SIDECAR_URL}/market/scrape-source`, {
     method: "POST",
     headers: sidecarHeaders(),
@@ -144,6 +171,7 @@ export async function callSidecarScrape(input: {
       prefilter_mode: input.prefilterMode ?? "off",
       prefilter_threshold: input.prefilterThreshold ?? 30000,
       prefilter_model: input.prefilterModel ?? null,
+      api_key: apiKey,
     }),
   });
   if (!res.ok) {

@@ -29,9 +29,14 @@ from pydantic import BaseModel
 from services import ai_gateway
 
 router = APIRouter()
-anthropic = ai_gateway.build_client(
-    os.getenv("ANTHROPIC_API_KEY", "")
-)
+
+# Option A (docs/architecture/adr/0001-ai-credential-resolution.md,
+# docs/architecture/adr/0002-remaining-sidecar-credential-targets.md): this
+# router NEVER resolves its own Anthropic credential. There is deliberately no
+# module-level client singleton and no import-time environment read of the
+# Anthropic key. The TS caller resolves the key once (via getSetting) and
+# forwards it as `api_key` in each request body; `_scan_text()` builds a
+# call-scoped client from that value (or fails closed if it is missing).
 
 MODEL = "claude-sonnet-4-6"
 MAX_TEXT_CHARS = 60_000  # ~15k tokens — enough for a full council session
@@ -236,6 +241,7 @@ class ScanRequest(BaseModel):
     text: Optional[str] = None
     jurisdiction: Optional[str] = None   # hint, overrides AI-detected
     source_date: Optional[str] = None    # ISO date hint
+    api_key: str = ""                    # Option A: resolved TS-side, forwarded per-request; never persisted
 
 
 class ScanResponse(BaseModel):
@@ -412,8 +418,28 @@ def _excerpts_to_doc(excerpts: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-async def _scan_text(doc_text: str, jurisdiction_hint: Optional[str], source_date_hint: Optional[str]) -> dict:
-    """Run Claude analysis on extracted text. Returns dict with signals/relationships + usage."""
+async def _scan_text(
+    doc_text: str,
+    jurisdiction_hint: Optional[str],
+    source_date_hint: Optional[str],
+    api_key: Optional[str] = None,
+) -> dict:
+    """Run Claude analysis on extracted text. Returns dict with signals/relationships + usage.
+
+    api_key: Anthropic API key resolved by the TS caller (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md and
+    docs/architecture/adr/0002-remaining-sidecar-credential-targets.md). This
+    router never resolves its own credential; there is no env fallback. All
+    three endpoints (scan-document, scrape-source, analyze-text) forward the
+    value they received in their request body into this single chokepoint,
+    which builds a call-scoped client from it. Fails closed when absent."""
+    if not api_key:
+        raise HTTPException(
+            503, "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
+
+    client = ai_gateway.build_client(api_key)
+
     prompt = EXTRACT_PROMPT + doc_text
     try:
         result = ai_gateway.create_message(
@@ -421,7 +447,7 @@ async def _scan_text(doc_text: str, jurisdiction_hint: Optional[str], source_dat
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
-            client=anthropic,
+            client=client,
         )
         response = result.raw
     except Exception as exc:
@@ -471,7 +497,7 @@ async def scan_document(req: ScanRequest):
     if len(raw) > MAX_TEXT_CHARS:
         doc_text += f"\n\n[... document truncated at {MAX_TEXT_CHARS} chars ...]"
 
-    result = await _scan_text(doc_text, req.jurisdiction, req.source_date)
+    result = await _scan_text(doc_text, req.jurisdiction, req.source_date, req.api_key)
 
     return ScanResponse(
         signals_found=len(result["signals"]),
@@ -864,6 +890,7 @@ class ScrapeRequest(BaseModel):
     prefilter_mode: str = "off"            # off | large | always
     prefilter_threshold: int = 30_000      # only used when mode = "large"
     prefilter_model: Optional[str] = None  # override OLLAMA_MODEL env default
+    api_key: str = ""                      # Option A: resolved TS-side, forwarded per-request; never persisted
 
 
 class ScrapedDoc(BaseModel):
@@ -1085,6 +1112,7 @@ async def scrape_source(req: ScrapeRequest):
                 text_for_claude,
                 req.jurisdiction,
                 parsed_date.isoformat() if parsed_date else None,
+                req.api_key,
             )
         except HTTPException as exc:
             results.append(ScrapedDoc(
@@ -1151,6 +1179,7 @@ class AnalyzeTextRequest(BaseModel):
     model: Optional[str] = None          # override default per engine
     jurisdiction: Optional[str] = None
     source_date: Optional[str] = None
+    api_key: str = ""                    # Option A: resolved TS-side for the claude branch; never persisted
 
 
 class AnalyzeTextResponse(BaseModel):
@@ -1224,7 +1253,7 @@ async def analyze_text(req: AnalyzeTextRequest):
             doc_text = req.text[:MAX_TEXT_CHARS]
             if len(req.text) > MAX_TEXT_CHARS:
                 doc_text += f"\n\n[... document truncated at {MAX_TEXT_CHARS} chars ...]"
-            result = await _scan_text(doc_text, req.jurisdiction, req.source_date)
+            result = await _scan_text(doc_text, req.jurisdiction, req.source_date, req.api_key)
             duration_ms = _now_ms() - started
             return AnalyzeTextResponse(
                 engine="claude",

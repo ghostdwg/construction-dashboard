@@ -8,6 +8,7 @@
 // Returns: the MarketDocAnalysis row (status=complete or failed).
 
 import { prisma } from "@/lib/prisma";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -51,6 +52,27 @@ export async function POST(
   }
   const requestedModel = body.model || (engine === "claude" ? DEFAULT_CLAUDE_MODEL : DEFAULT_OLLAMA_MODEL);
 
+  // Option A (docs/architecture/adr/0001-ai-credential-resolution.md,
+  // docs/architecture/adr/0002-remaining-sidecar-credential-targets.md):
+  // resolve the Anthropic credential here and forward it explicitly to the
+  // sidecar — the sidecar never resolves its own. Only the "claude" engine
+  // needs it; the "ollama" branch runs local inference with no Anthropic
+  // credential, so it is left untouched. Fail closed with a 503 before
+  // creating the running analysis row so a missing key never leaves a
+  // dangling job. This is the one market endpoint caller that talks to the
+  // sidecar directly rather than through sidecarMarket.ts.
+  let apiKey = "";
+  if (engine === "claude") {
+    const resolved = await getSetting("ANTHROPIC_API_KEY");
+    if (!resolved) {
+      return Response.json(
+        { error: "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration" },
+        { status: 503 }
+      );
+    }
+    apiKey = resolved;
+  }
+
   const doc = await prisma.marketSourceDoc.findUnique({
     where: { id },
     select: { id: true, rawText: true, jurisdiction: true, documentDate: true },
@@ -81,6 +103,7 @@ export async function POST(
     model: requestedModel,
     jurisdiction: doc.jurisdiction ?? null,
     source_date: doc.documentDate ? doc.documentDate.toISOString().slice(0, 10) : null,
+    api_key: apiKey,
   };
 
   // 3 min server-side cap covers Ollama's slowest typical run on qwen2.5:14b.

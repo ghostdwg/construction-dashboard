@@ -41,6 +41,9 @@ SUBMITTAL_INTELLIGENCE = REPO_ROOT / "sidecar/services/submittal_intelligence.py
 SUBMITTAL_GENERATE_AI_ROUTE = REPO_ROOT / "app/api/bids/[id]/submittals/generate-ai/route.ts"
 SCHEDULE_INTELLIGENCE = REPO_ROOT / "sidecar/services/schedule_intelligence.py"
 SCHEDULE_V2_GENERATE_ROUTE = REPO_ROOT / "app/api/bids/[id]/schedule-v2/generate/route.ts"
+MARKET_ROUTER = REPO_ROOT / "sidecar/routers/market.py"
+SIDECAR_MARKET_TS = REPO_ROOT / "lib/services/marketIntelligence/sidecarMarket.ts"
+MARKET_ANALYZE_ROUTE = REPO_ROOT / "app/api/market-intelligence/docs/[id]/analyze/route.ts"
 
 
 def _read(path: Path) -> str:
@@ -375,6 +378,89 @@ def test_schedule_v2_generate_route_resolves_via_get_setting_and_forwards_api_ke
     assert "api_key: apiKey" in src, (
         "schedule-v2/generate/route.ts must forward the resolved credential to the "
         "sidecar as an explicit api_key request-body field"
+    )
+
+
+# ---- market.py (ADR 0002 §4 — the LAST sidecar credential bypass) -----------
+def test_market_router_has_no_module_singleton_or_env_read():
+    src = _read(MARKET_ROUTER)
+
+    # The eliminated module-level singleton and its import-time env read.
+    assert 'os.getenv("ANTHROPIC_API_KEY"' not in src, (
+        "market.py must no longer read os.getenv(\"ANTHROPIC_API_KEY\") — the "
+        "module-level singleton client is removed"
+    )
+    assert "os.environ.get(\"ANTHROPIC_API_KEY\"" not in src
+    assert "os.environ[\"ANTHROPIC_API_KEY\"]" not in src
+    # No module-level `anthropic = ai_gateway.build_client(...)` singleton.
+    assert not re.search(r'^anthropic\s*=\s*ai_gateway\.build_client', src, flags=re.MULTILINE), (
+        "market.py must no longer construct a module-level `anthropic` client"
+    )
+    # It still routes through the sanctioned gateway (call-scoped now).
+    assert "ai_gateway.build_client(" in src, (
+        "market.py must build its client via the sanctioned ai_gateway.build_client()"
+    )
+
+    # The single chokepoint _scan_text takes api_key and fails closed.
+    scan_fn = _extract_python_function(src, "_scan_text")
+    assert "api_key: Optional[str] = None" in scan_fn, (
+        "_scan_text must accept api_key as an explicit Optional[str] parameter"
+    )
+    assert "if not api_key:" in scan_fn, (
+        "_scan_text must fail closed when api_key is missing"
+    )
+    assert "os.getenv" not in scan_fn and "os.environ" not in scan_fn, (
+        "_scan_text must not read the environment itself"
+    )
+
+    # All three request models gain an api_key field.
+    for model in ("ScanRequest", "ScrapeRequest", "AnalyzeTextRequest"):
+        assert model in src
+    assert src.count('api_key: str = ""') == 3, (
+        "each of ScanRequest / ScrapeRequest / AnalyzeTextRequest must gain an "
+        f"api_key field; found {src.count('api_key: str = ' + chr(34) + chr(34))}"
+    )
+
+    # `import os` stays (still used for OLLAMA_URL / BROWSERLESS_URL etc.), but
+    # NOT for any ANTHROPIC read — asserted above.
+    assert re.search(r'^import os$', src, flags=re.MULTILINE), (
+        "market.py still needs `import os` for its Ollama/browserless config"
+    )
+
+
+# ---- sidecarMarket.ts (TS half — covers manual / run-due / cron paths) ------
+def test_sidecar_market_ts_resolves_via_get_setting_and_forwards_api_key():
+    src = _read(SIDECAR_MARKET_TS)
+
+    assert "process.env.ANTHROPIC_API_KEY" not in src, (
+        "sidecarMarket.ts must never read process.env.ANTHROPIC_API_KEY directly"
+    )
+    assert 'getSetting("ANTHROPIC_API_KEY")' in src, (
+        "sidecarMarket.ts must resolve the credential via getSetting()"
+    )
+    assert "api_key: apiKey" in src, (
+        "sidecarMarket.ts must forward the resolved credential to the sidecar "
+        "as an explicit api_key request-body field (both callSidecarScan and "
+        "callSidecarScrape)"
+    )
+    # Both trigger functions forward it — the resolver is used in both.
+    assert src.count("api_key: apiKey") == 2, (
+        "both callSidecarScan and callSidecarScrape must forward api_key"
+    )
+
+
+# ---- docs/[id]/analyze/route.ts (TS half — the one direct sidecar caller) ---
+def test_market_analyze_route_resolves_via_get_setting_and_forwards_api_key():
+    src = _read(MARKET_ANALYZE_ROUTE)
+
+    assert "process.env.ANTHROPIC_API_KEY" not in src, (
+        "analyze/route.ts must never read process.env.ANTHROPIC_API_KEY directly"
+    )
+    assert 'getSetting("ANTHROPIC_API_KEY")' in src, (
+        "analyze/route.ts must resolve the credential via getSetting() (claude branch)"
+    )
+    assert "api_key: apiKey" in src, (
+        "analyze/route.ts must forward the resolved credential as api_key"
     )
 
 
