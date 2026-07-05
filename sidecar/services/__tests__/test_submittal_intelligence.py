@@ -12,7 +12,6 @@ Runnable two ways:
   * plain stdlib:  python3 sidecar/services/__tests__/test_submittal_intelligence.py
   * pytest:        pytest sidecar/services/__tests__/test_submittal_intelligence.py
 """
-import os
 import sys
 import time
 import types
@@ -115,26 +114,13 @@ OBJ = ('```json\n{"drawing_submittals":[{"type":"SHOP_DRAWING","title":"BAS – 
        '"spec_coverage_gaps":["BAS Controls"],"project_summary":"Drawing-sourced BAS scope."}\n```')
 
 
-@contextlib.contextmanager
-def _with_key():
-    saved = os.environ.get("ANTHROPIC_API_KEY")
-    os.environ["ANTHROPIC_API_KEY"] = "k"
-    try:
-        yield
-    finally:
-        if saved is None:
-            os.environ.pop("ANTHROPIC_API_KEY", None)
-        else:
-            os.environ["ANTHROPIC_API_KEY"] = saved
-
-
 # ===========================================================================
 #  A. Request and output fidelity
 # ===========================================================================
 def test_happy_path_forwarding_and_cost():
     fc = FakeClient(message=FakeMessage(OBJ, 100, 50))
-    with patched_build_client(fc), capture_sleeps(), _with_key():
-        out = si.generate_submittal_intelligence(SPEC, DRAW, model="opus")  # model ignored
+    with patched_build_client(fc), capture_sleeps():
+        out = si.generate_submittal_intelligence(SPEC, DRAW, model="opus", api_key="k")  # model ignored
 
     call = fc.calls[0]
     assert call["model"] == si.SONNET_MODEL          # hardcoded Sonnet even when model="opus"
@@ -162,15 +148,15 @@ def test_bare_and_fenced_json_both_parse():
     bare = '{"drawing_submittals":[{"title":"X"}],"spec_coverage_gaps":[],"project_summary":"p"}'
     for body in (OBJ, bare):
         fc = FakeClient(message=FakeMessage(body, 1, 1))
-        with patched_build_client(fc), capture_sleeps(), _with_key():
-            out = si.generate_submittal_intelligence(SPEC, DRAW)
+        with patched_build_client(fc), capture_sleeps():
+            out = si.generate_submittal_intelligence(SPEC, DRAW, api_key="k")
         assert isinstance(out["drawing_submittals"], list) and out["drawing_submittals"]
 
 
 def test_missing_keys_use_defaults():
     fc = FakeClient(message=FakeMessage('{"project_summary":"only summary"}', 2, 3))
-    with patched_build_client(fc), capture_sleeps(), _with_key():
-        out = si.generate_submittal_intelligence(SPEC, DRAW)
+    with patched_build_client(fc), capture_sleeps():
+        out = si.generate_submittal_intelligence(SPEC, DRAW, api_key="k")
     assert out["drawing_submittals"] == []          # .get default
     assert out["spec_coverage_gaps"] == []          # .get default
     assert out["project_summary"] == "only summary"
@@ -178,8 +164,8 @@ def test_missing_keys_use_defaults():
 
 def test_malformed_json_all_empty_but_usage_populated():
     fc = FakeClient(message=FakeMessage("not json at all", 11, 7))
-    with patched_build_client(fc), capture_sleeps(), _with_key():
-        out = si.generate_submittal_intelligence(SPEC, DRAW)
+    with patched_build_client(fc), capture_sleeps():
+        out = si.generate_submittal_intelligence(SPEC, DRAW, api_key="k")
     assert out["drawing_submittals"] == [] and out["spec_coverage_gaps"] == []
     assert out["project_summary"] == ""
     assert out["input_tokens"] == 11 and out["output_tokens"] == 7
@@ -192,8 +178,8 @@ def test_malformed_json_all_empty_but_usage_populated():
 #  B. Retry and error fidelity
 # ===========================================================================
 def _run(fc):
-    with patched_build_client(fc), _with_key():
-        return si.generate_submittal_intelligence(SPEC, DRAW)
+    with patched_build_client(fc):
+        return si.generate_submittal_intelligence(SPEC, DRAW, api_key="k")
 
 
 def test_429_then_success():
@@ -269,7 +255,6 @@ def test_immediate_generic():
 #  C. Existing guards
 # ===========================================================================
 def test_missing_api_key_raises_before_build():
-    saved = os.environ.pop("ANTHROPIC_API_KEY", None)
     # build_client must NOT be reached; make it explode if it is.
     def boom(api_key=None):
         raise AssertionError("build_client must not be called without a key")
@@ -277,15 +262,13 @@ def test_missing_api_key_raises_before_build():
     ai_gateway.build_client = boom
     raised = None
     try:
-        si.generate_submittal_intelligence(SPEC, DRAW)
+        si.generate_submittal_intelligence(SPEC, DRAW, api_key=None)
     except ValueError as e:
         raised = e
     finally:
         ai_gateway.build_client = orig
-        if saved is not None:
-            os.environ["ANTHROPIC_API_KEY"] = saved
     assert raised is not None
-    assert str(raised) == "ANTHROPIC_API_KEY not configured"
+    assert str(raised) == "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
 
 
 def test_none_provider_return_runtimeerror():

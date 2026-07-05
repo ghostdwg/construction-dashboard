@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/prisma";
 import { generateSubmittalsFromAiAnalysis } from "@/lib/services/submittal/generateFromAiAnalysis";
 import { seedCsiBaseline } from "@/lib/services/submittal/csiBaselineSeeder";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -112,6 +113,23 @@ export async function POST(
     return Response.json({ specResult, jobId: null, usedFallbackSeed });
   }
 
+  // Option A (docs/architecture/adr/0001-ai-credential-resolution.md,
+  // docs/architecture/adr/0002-remaining-sidecar-credential-targets.md):
+  // resolve the AI credential here and forward it explicitly to the sidecar
+  // — the sidecar never resolves its own. Checked before the sidecar request
+  // is made so a missing key never fires an unusable job. The drawing
+  // cross-reference is an optional Phase 2 enhancement (spec-only items are
+  // already generated and saved above), so — consistent with this route's
+  // existing best-effort handling of sidecar-unavailable/sidecar-rejected —
+  // a missing credential is treated as non-fatal: it skips Phase 2 and
+  // returns the already-computed specResult with jobId: null, rather than
+  // failing the whole request.
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    console.warn("[submittals/generate-ai] ANTHROPIC_API_KEY not configured — skipping drawing cross-reference");
+    return Response.json({ specResult, jobId: null, usedFallbackSeed });
+  }
+
   try {
     const res = await fetch(`${SIDECAR_URL}/parse/submittals/generate`, {
       method: "POST",
@@ -120,6 +138,7 @@ export async function POST(
         spec_sections: specSections,
         drawing_analysis: drawingAnalysis,
         model: "sonnet",
+        api_key: apiKey,
       }),
       signal: AbortSignal.timeout(30_000),
     });

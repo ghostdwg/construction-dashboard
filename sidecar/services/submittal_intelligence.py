@@ -8,8 +8,8 @@ covered by a spec section. Returns drawing-sourced submittal additions only
 function and are not re-processed here.
 """
 
-import os
 import json
+from typing import Optional
 
 from services import ai_gateway
 
@@ -60,6 +60,7 @@ def generate_submittal_intelligence(
     spec_sections: list[dict],
     drawing_analysis: dict,
     model: str = "sonnet",
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     Cross-reference spec sections against drawing analysis.
@@ -67,13 +68,22 @@ def generate_submittal_intelligence(
     spec_sections: [{csi, title}] — sections already covered by the spec book
     drawing_analysis: parsed DrawingUpload.analysisJson
 
+    api_key: Anthropic API key resolved by the caller (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md and
+    docs/architecture/adr/0002-remaining-sidecar-credential-targets.md). This
+    service never resolves its own credential; there is no env fallback. The
+    Next.js submittals/generate-ai route resolves this via
+    getSetting("ANTHROPIC_API_KEY") and forwards it as `api_key` in the
+    /parse/submittals/generate request body.
+
     Returns:
         {drawing_submittals, spec_coverage_gaps, project_summary,
          cost_usd, input_tokens, output_tokens}
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not configured")
+        raise ValueError(
+            "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
 
     client = ai_gateway.build_client(api_key)
 

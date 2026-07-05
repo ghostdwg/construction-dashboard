@@ -17,6 +17,11 @@ that neither analyze function's own source body references it or any other
 os.getenv/env fallback. See sidecar/services/meeting_intelligence.py's
 module-level comment for the full rationale.
 
+Also covers submittal_intelligence.py + its TS caller
+(app/api/bids/[id]/submittals/generate-ai/route.ts), migrated per
+docs/architecture/adr/0002-remaining-sidecar-credential-targets.md, which
+extends ADR 0001's Option-A decision to this specific site.
+
 Runnable two ways:
   * plain stdlib:  python3 governance/guardrails/__tests__/test_n3_credential_bypass_grep.py
   * pytest:        pytest governance/guardrails/__tests__/test_n3_credential_bypass_grep.py
@@ -32,6 +37,8 @@ DRAWING_INTELLIGENCE = REPO_ROOT / "sidecar/services/drawing_intelligence.py"
 MEETING_INTELLIGENCE = REPO_ROOT / "sidecar/services/meeting_intelligence.py"
 SPEC_INTELLIGENCE = REPO_ROOT / "sidecar/services/spec_intelligence.py"
 SPEC_ANALYSIS_AUTOMATION = REPO_ROOT / "lib/services/jobs/specAnalysisAutomation.ts"
+SUBMITTAL_INTELLIGENCE = REPO_ROOT / "sidecar/services/submittal_intelligence.py"
+SUBMITTAL_GENERATE_AI_ROUTE = REPO_ROOT / "app/api/bids/[id]/submittals/generate-ai/route.ts"
 
 
 def _read(path: Path) -> str:
@@ -193,6 +200,91 @@ def test_spec_analysis_automation_resolves_via_get_setting_and_forwards_api_key(
     )
     assert "api_key: apiKey" in src, (
         "specAnalysisAutomation.ts must forward the resolved credential to the "
+        "sidecar as an explicit api_key request-body field"
+    )
+
+
+# ---- submittal_intelligence.py (ADR 0002 — remaining sidecar credential target) --
+def test_submittal_intelligence_has_no_direct_env_read_in_migrated_execution_path():
+    src = _read(SUBMITTAL_INTELLIGENCE)
+
+    assert "os.getenv(\"ANTHROPIC_API_KEY\"" not in src, (
+        "submittal_intelligence.py must no longer read os.getenv(\"ANTHROPIC_API_KEY\") anywhere"
+    )
+    assert "os.environ.get(\"ANTHROPIC_API_KEY\"" not in src
+    assert "os.environ[\"ANTHROPIC_API_KEY\"]" not in src
+    assert "anthropic.Anthropic(" not in src, (
+        "submittal_intelligence.py must not construct anthropic.Anthropic() directly"
+    )
+    assert "import anthropic" not in src, (
+        "submittal_intelligence.py must not import anthropic directly"
+    )
+    assert "ai_gateway.build_client(" in src, (
+        "submittal_intelligence.py must construct its client via the sanctioned ai_gateway.build_client()"
+    )
+
+    fn_src = _extract_python_function(src, "generate_submittal_intelligence")
+    assert "api_key: Optional[str] = None" in fn_src, (
+        "generate_submittal_intelligence must accept api_key as an explicit Optional[str] parameter"
+    )
+    assert "os.getenv" not in fn_src, "generate_submittal_intelligence must not read os.getenv itself"
+    assert "os.environ" not in fn_src, "generate_submittal_intelligence must not read os.environ itself"
+
+    # No residual os.getenv("ANTHROPIC_API_KEY" anywhere in this file at all.
+    assert len(re.findall(r'os\.getenv\("ANTHROPIC_API_KEY"', src)) == 0
+
+    # `import os` itself should be gone too — it was only ever used for the
+    # single os.getenv call this migration removed.
+    assert not re.search(r'^import os$', src, flags=re.MULTILINE), (
+        "submittal_intelligence.py no longer needs `import os` after this migration"
+    )
+
+
+# ---- parse.py's submittals route (Python half of the submittal_intelligence.py fix) --
+def test_parse_router_submittals_route_threads_api_key_and_never_persists_it():
+    src = _read(REPO_ROOT / "sidecar/routers/parse.py")
+
+    assert 'class SubmittalGenerateRequest(BaseModel):' in src
+    # Extract just the submittals section (from the SubmittalGenerateRequest
+    # class through the end of the status endpoint) to keep this assertion
+    # scoped, since parse.py is a large shared file with many other routes.
+    start = src.index("class SubmittalGenerateRequest(BaseModel):")
+    submittals_src = src[start:]
+
+    assert "api_key: str = \"\"" in submittals_src, (
+        "SubmittalGenerateRequest must gain an api_key field"
+    )
+    assert 'if not request.api_key:' in submittals_src, (
+        "submittals_generate must fail closed on a missing api_key rather than reading os.getenv"
+    )
+    assert 'os.getenv("ANTHROPIC_API_KEY")' not in submittals_src, (
+        "the submittals route must no longer resolve its own credential from the environment"
+    )
+    assert "api_key: Optional[str] = None" in submittals_src, (
+        "_run_submittals_generate must accept api_key as an explicit parameter"
+    )
+    assert "generate_submittal_intelligence(spec_sections, drawing_analysis, model, api_key=api_key)" in submittals_src, (
+        "the background task must thread api_key through to generate_submittal_intelligence()"
+    )
+
+    # _jobs[job_id] must never be assigned the credential — only status/
+    # progress/result/error/type keys.
+    assert '_jobs[job_id]["api_key"]' not in submittals_src
+    assert '_jobs[job_id]["result"] = result' in submittals_src
+
+
+# ---- submittals/generate-ai/route.ts (TS half of the submittal_intelligence.py fix) --
+def test_submittals_generate_ai_route_resolves_via_get_setting_and_forwards_api_key():
+    src = _read(SUBMITTAL_GENERATE_AI_ROUTE)
+
+    assert "process.env.ANTHROPIC_API_KEY" not in src, (
+        "generate-ai/route.ts must never read process.env.ANTHROPIC_API_KEY directly"
+    )
+    assert 'getSetting("ANTHROPIC_API_KEY")' in src, (
+        "generate-ai/route.ts must resolve the credential via getSetting()"
+    )
+    assert "api_key: apiKey" in src, (
+        "generate-ai/route.ts must forward the resolved credential to the "
         "sidecar as an explicit api_key request-body field"
     )
 

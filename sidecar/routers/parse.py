@@ -781,6 +781,7 @@ class SubmittalGenerateRequest(BaseModel):
     spec_sections: list[dict]        # [{csi, title}] — already-covered sections
     drawing_analysis: dict           # parsed DrawingUpload.analysisJson
     model: str = "sonnet"
+    api_key: str = ""    # caller-supplied key, resolved by the Next.js app (Option A)
 
 
 @router.post("/submittals/generate")
@@ -788,8 +789,18 @@ async def submittals_generate(request: SubmittalGenerateRequest):
     """
     Kick off drawing cross-reference for submittal gap analysis.
     Returns a job_id for polling.
+
+    api_key — Anthropic API key resolved by the caller via getSetting(); this
+    endpoint never resolves its own credential (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md and
+    docs/architecture/adr/0002-remaining-sidecar-credential-targets.md).
+    Threaded through the background task to
+    generate_submittal_intelligence() as a plain function argument only —
+    never written into the in-memory _jobs[job_id] record (there is no
+    callback payload for this job type; results are retrieved by polling
+    GET /submittals/status/{job_id}).
     """
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    if not request.api_key:
         raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
 
     if not request.drawing_analysis:
@@ -810,6 +821,7 @@ async def submittals_generate(request: SubmittalGenerateRequest):
             request.spec_sections,
             request.drawing_analysis,
             request.model,
+            request.api_key or None,
         )
     )
 
@@ -821,15 +833,21 @@ async def _run_submittals_generate(
     spec_sections: list[dict],
     drawing_analysis: dict,
     model: str,
+    api_key: Optional[str] = None,
 ):
-    """Background task: cross-reference spec coverage against drawing analysis."""
+    """Background task: cross-reference spec coverage against drawing analysis.
+
+    api_key is held only as a local function argument/closure for the
+    duration of this task — it is never assigned into _jobs[job_id] (the
+    in-memory progress/result record).
+    """
     try:
         from services.submittal_intelligence import generate_submittal_intelligence
 
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: generate_submittal_intelligence(spec_sections, drawing_analysis, model),
+            lambda: generate_submittal_intelligence(spec_sections, drawing_analysis, model, api_key=api_key),
         )
         _jobs[job_id]["result"] = result
         _jobs[job_id]["status"] = "complete"
