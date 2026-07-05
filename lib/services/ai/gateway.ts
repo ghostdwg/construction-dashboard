@@ -64,6 +64,58 @@ export interface CreateMessageResult {
   raw: Anthropic.Message;
 }
 
+// ── Failure classification (evidence-safe, closed vocabulary) ──────────────
+//
+// A small, bounded enum — NEVER the raw provider error message, stack trace,
+// or any request/response detail. Safe to persist durably (see
+// lib/services/ai/aiUsageLog.ts's provider-invocation-evidence contract)
+// because it can never carry unbounded or sensitive content by construction
+// (the return type is a closed string union). Lives here, not in
+// aiUsageLog.ts, because this is the ONE sanctioned site permitted to import
+// the Anthropic SDK (see the P0 guardrail allow-list) — the instanceof
+// checks below need the SDK's error classes; aiUsageLog.ts re-exports this
+// rather than importing the SDK itself.
+
+export type AiFailureClass =
+  | "rate_limited"
+  | "auth_error"
+  | "provider_error"
+  | "network_error"
+  | "unknown";
+
+/**
+ * Classify a thrown error into a safe, closed failure class for evidence
+ * recording. Recognizes genuine Anthropic SDK error types when present
+ * (preferred path — used by every TS call site that invokes createMessage()
+ * directly). Falls back to reading a plain numeric `status` property (useful
+ * for call sites fronted by an HTTP hop, e.g. the sidecar-routed meeting
+ * analysis call, which throws a plain Error rather than an Anthropic SDK
+ * error) or a network-failure error shape. Never inspects/returns
+ * `err.message` or any other free-text field.
+ */
+export function classifyAiFailure(err: unknown): AiFailureClass {
+  if (err instanceof Anthropic.RateLimitError) return "rate_limited";
+  if (err instanceof Anthropic.AuthenticationError) return "auth_error";
+  if (err instanceof Anthropic.PermissionDeniedError) return "auth_error";
+  if (err instanceof Anthropic.APIConnectionError) return "network_error"; // covers APIConnectionTimeoutError
+  if (err instanceof Anthropic.APIError) return "provider_error"; // any other status-bearing APIError subtype
+
+  // Fallback for non-SDK error shapes (e.g. a plain Error thrown by a
+  // fetch-fronted call site) that carry a bare numeric HTTP status.
+  const status = (err as { status?: unknown } | null | undefined)?.status;
+  if (typeof status === "number") {
+    if (status === 429) return "rate_limited";
+    if (status === 401 || status === 403) return "auth_error";
+    if (status >= 400) return "provider_error";
+  }
+
+  // A bare network-level failure (e.g. `fetch` connection refused) throws a
+  // plain TypeError with no status at all.
+  if (err instanceof TypeError) return "network_error";
+
+  return "unknown";
+}
+
 /** Extracts text-only content from a message's `content` field. Skips
  *  non-text blocks (images, tool_use, tool_result, etc.) entirely — they
  *  are never inspected. */

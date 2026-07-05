@@ -41,7 +41,6 @@
 // activity is visible as evidence instead of silently indistinguishable from
 // "no evidence yet".
 
-import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { MODEL_PRICING, type ModelId, type CallKey, AI_CALL_DEFINITIONS } from "./aiTokenConfig";
 
@@ -51,46 +50,14 @@ import { MODEL_PRICING, type ModelId, type CallKey, AI_CALL_DEFINITIONS } from "
 // or any request/response detail. Safe to persist durably in
 // AiUsageLog.errorMessage because it can never carry unbounded or sensitive
 // content by construction (the return type is a closed string union).
-
-export type AiFailureClass =
-  | "rate_limited"
-  | "auth_error"
-  | "provider_error"
-  | "network_error"
-  | "unknown";
-
-/**
- * Classify a thrown error into a safe, closed failure class for evidence
- * recording. Recognizes genuine Anthropic SDK error types when present
- * (preferred path — used by every TS call site that invokes createMessage()
- * directly). Falls back to reading a plain numeric `status` property (useful
- * for call sites fronted by an HTTP hop, e.g. the sidecar-routed meeting
- * analysis call, which throws a plain Error rather than an Anthropic SDK
- * error) or a network-failure error shape. Never inspects/returns
- * `err.message` or any other free-text field.
- */
-export function classifyAiFailure(err: unknown): AiFailureClass {
-  if (err instanceof Anthropic.RateLimitError) return "rate_limited";
-  if (err instanceof Anthropic.AuthenticationError) return "auth_error";
-  if (err instanceof Anthropic.PermissionDeniedError) return "auth_error";
-  if (err instanceof Anthropic.APIConnectionError) return "network_error"; // covers APIConnectionTimeoutError
-  if (err instanceof Anthropic.APIError) return "provider_error"; // any other status-bearing APIError subtype
-
-  // Fallback for non-SDK error shapes (e.g. a plain Error thrown by a
-  // fetch-fronted call site) that carry a bare numeric HTTP status.
-  const status = (err as { status?: unknown } | null | undefined)?.status;
-  if (typeof status === "number") {
-    if (status === 429) return "rate_limited";
-    if (status === 401 || status === 403) return "auth_error";
-    if (status >= 400) return "provider_error";
-  }
-
-  // A bare network-level failure (e.g. `fetch` connection refused) throws a
-  // plain TypeError with no status at all.
-  if (err instanceof TypeError) return "network_error";
-
-  return "unknown";
-}
+//
+// Defined in ./gateway, not here: gateway.ts is the ONE P0-guardrail-
+// sanctioned site permitted to import the Anthropic SDK (needed for the
+// instanceof checks). Re-exported here so every existing call site's
+// `import { classifyAiFailure } from ".../aiUsageLog"` keeps working
+// unchanged.
+export { classifyAiFailure, type AiFailureClass } from "./gateway";
+import type { AiFailureClass } from "./gateway";
 
 // ── Cost calculation ────────────────────────────────────────────────────────
 
