@@ -99,26 +99,19 @@ export async function decrypt(
   return plain;
 }
 
-/**
- * Render a credential value as a masked summary safe for UI display.
- *
- *  username "jcoughl..."   →  "jc******"
- *  password "hunter2"      →  "••••••••"
- *  api_key "sk-abc123xyz"  →  "sk-a••••••xyz"
- */
-export function maskValue(field: string, plaintext: string): string {
-  if (!plaintext) return "—";
-  if (field === "password" || /secret/i.test(field)) {
-    return "•".repeat(Math.min(plaintext.length, 12));
-  }
-  if (plaintext.length <= 4) return "••••";
-  if (field === "api_key" || field === "token") {
-    // show first 4 + last 3
-    return `${plaintext.slice(0, 4)}${"•".repeat(6)}${plaintext.slice(-3)}`;
-  }
-  // username-style: show first 2
-  return `${plaintext.slice(0, 2)}${"*".repeat(Math.max(2, plaintext.length - 2))}`;
-}
+// Security hotfix (credential-vault-secret-redaction): there used to be a
+// maskValue() helper here that revealed real plaintext fragments — first 4 +
+// last 3 characters for api_key/token fields, first 2 characters for
+// username-style fields. It was exported but never actually called anywhere
+// (credentialsService.ts's real, reachable listIntegrations() path already
+// used a fully safe fixed-shape mask — "••••••••" for password/secret
+// fields, the literal string "(set)" for everything else, with zero
+// characters ever derived from the real value). Removed entirely, not
+// neutered, so it can't be reintroduced or called later. Any future UI/API
+// surface for these credentials must use the same fixed-shape,
+// content-free "Configured" / "Not configured" pattern established by
+// lib/services/settings/secretDisplay.ts — never re-derive a display string
+// from the plaintext.
 
 /**
  * Validate that CREDENTIAL_MASTER_KEY is configured. Use during app startup

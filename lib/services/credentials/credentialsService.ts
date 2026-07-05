@@ -7,7 +7,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { encrypt, maskValue } from "./credentialVault";
+import { encrypt } from "./credentialVault";
 
 export type IntegrationStatus = {
   service: string;
