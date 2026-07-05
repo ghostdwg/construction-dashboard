@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { summarizeWorkspaceSurfaces } from "@/lib/services/operatorWorkspace";
 import { SurfaceCard } from "./surfaceCard";
+import { NotActiveV1Banner } from "../NotActiveV1Banner";
 
 export default async function WorkspacePage() {
   const surfaces = await summarizeWorkspaceSurfaces({ limit: 8 });
@@ -31,6 +32,8 @@ export default async function WorkspacePage() {
           <Link href="/market-intelligence/alerts" style={{ color: "var(--signal-soft)", textDecoration: "none" }}>Alerts</Link>
         </nav>
       </header>
+
+      <NotActiveV1Banner reason="This command center and the five surfaces below (Watchlists, Corridors, Briefings, Targets, Alerts) read from the forecast/alert pipeline, which stays gated until ingestion has soaked (see runtime/runbooks/o2.2-first-live-activation.md §13). Expect empty panels in a fresh V1 deployment — this is not linked from primary navigation for that reason, but the route and data model are fully intact." />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 12 }}>
         {surfaces.map((surface) => (

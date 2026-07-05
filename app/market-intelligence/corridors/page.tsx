@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { NotActiveV1Banner } from "../NotActiveV1Banner";
 
 interface PageProps {
   searchParams: Promise<{ classification?: string; corridor?: string }>;
@@ -24,6 +25,7 @@ export default async function CorridorsPage({ searchParams }: PageProps) {
     return (
       <main style={{ padding: "24px 32px", maxWidth: 1200, margin: "0 auto" }}>
         <Link href="/market-intelligence/corridors" style={{ color: "var(--text-dim)", fontSize: 12, textDecoration: "none" }}>← All corridors</Link>
+        <NotActiveV1Banner reason="CorridorHeat rows are only computed by the forecast-daily runner, which is gated until ingestion soak thresholds are met." />
         <header style={{ margin: "12px 0 16px" }}>
           <h1 style={{ margin: 0, fontSize: 22 }}>{corridor.corridorLabel}</h1>
           <p style={{ color: "var(--text-dim)", fontSize: 13, margin: "6px 0 0" }}>
@@ -67,6 +69,7 @@ export default async function CorridorsPage({ searchParams }: PageProps) {
           Heat scores across active corridors. Click a corridor to view member parcels.
         </p>
       </header>
+      <NotActiveV1Banner reason="CorridorHeat rows are only computed by the forecast-daily runner, which is gated until ingestion soak thresholds are met (see runtime/runbooks/o2.2-first-live-activation.md §13). This table is expected to be empty in a fresh V1 deployment." />
       <nav style={{ display: "flex", gap: 12, marginBottom: 16, fontSize: 12 }}>
         <Link href="/market-intelligence/corridors" style={{ color: "var(--text-soft)" }}>All</Link>
         {["IGNITING", "HOT", "WARM", "STEADY", "COOLING"].map((c) => (

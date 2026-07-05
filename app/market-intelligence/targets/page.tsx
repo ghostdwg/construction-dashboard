@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { NotActiveV1Banner } from "../NotActiveV1Banner";
 
 interface PageProps {
   searchParams: Promise<{ kind?: string; active?: string }>;
@@ -28,6 +29,8 @@ export default async function TargetsPage({ searchParams }: PageProps) {
           Operator-curated recurrence patterns. Matches fire AlertEvents with full explainability.
         </p>
       </header>
+
+      <NotActiveV1Banner reason="There is no create/register path anywhere in the app or API today — this page can only ever display TargetingPattern rows inserted directly via Prisma." />
 
       <nav style={{ display: "flex", gap: 12, marginBottom: 16, fontSize: 12, flexWrap: "wrap" }}>
         <Link href="/market-intelligence/targets" style={{ color: "var(--text-soft)" }}>All active</Link>

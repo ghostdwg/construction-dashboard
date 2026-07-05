@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { NotActiveV1Banner } from "../../NotActiveV1Banner";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -31,6 +32,7 @@ export default async function WatchlistDetailPage({ params }: PageProps) {
   return (
     <main style={{ padding: "24px 32px", maxWidth: 1200, margin: "0 auto" }}>
       <Link href="/market-intelligence/watchlists" style={{ color: "var(--text-dim)", fontSize: 12, textDecoration: "none" }}>← Watchlists</Link>
+      <NotActiveV1Banner reason="There is no in-product way to add or remove items on this list yet — the underlying API is real, but nothing in the UI calls it." />
       <header style={{ margin: "12px 0 24px" }}>
         <h1 style={{ margin: 0, fontSize: 22 }}>{wl.name}</h1>
         <p style={{ margin: "6px 0 0", color: "var(--text-dim)", fontSize: 13 }}>

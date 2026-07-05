@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { NotActiveV1Banner } from "../NotActiveV1Banner";
 
 interface PageProps {
   searchParams: Promise<{ status?: string; severity?: string }>;
@@ -46,6 +47,8 @@ export default async function AlertsPage({ searchParams }: PageProps) {
           <span style={{ color: "var(--text-dim)" }}>Attention+: <strong style={{ color: "#ffcc72" }}>{attentionPlus}</strong></span>
         </div>
       </header>
+
+      <NotActiveV1Banner reason="AlertEvent rows are only produced by the alert-eval runner, which stays gated until the forecast-daily gates pass (see runtime/runbooks/o2.2-first-live-activation.md §13). Expect this list to stay empty in a fresh V1 deployment." />
 
       <nav style={{ display: "flex", gap: 12, marginBottom: 16, fontSize: 12, flexWrap: "wrap" }}>
         <Link href="/market-intelligence/alerts" style={{ color: "var(--text-soft)" }}>Active</Link>

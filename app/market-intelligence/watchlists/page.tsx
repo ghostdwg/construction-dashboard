@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { NotActiveV1Banner } from "../NotActiveV1Banner";
 
 interface PageProps {
   searchParams: Promise<{
@@ -38,6 +39,8 @@ export default async function WatchlistsPage({ searchParams }: PageProps) {
           utilities, and project types.
         </p>
       </header>
+
+      <NotActiveV1Banner reason="The create/add-item API exists (POST /api/market-intelligence/workspace/watchlists), but no page in the product calls it — there is no in-product way to create a watchlist or add an item to one yet." />
 
       <nav style={{ display: "flex", gap: 12, marginBottom: 16, fontSize: 12 }}>
         <Link href="/market-intelligence/watchlists" style={{ color: "var(--text-soft)" }}>All</Link>

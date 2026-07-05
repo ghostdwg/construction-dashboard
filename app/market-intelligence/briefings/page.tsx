@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { NotActiveV1Banner } from "../NotActiveV1Banner";
 
 interface PageProps {
   searchParams: Promise<{ kind?: string; status?: string; id?: string }>;
@@ -26,6 +27,7 @@ export default async function BriefingsPage({ searchParams }: PageProps) {
     return (
       <main style={{ padding: "24px 32px", maxWidth: 900, margin: "0 auto" }}>
         <Link href="/market-intelligence/briefings" style={{ color: "var(--text-dim)", fontSize: 12, textDecoration: "none" }}>← All briefings</Link>
+        <NotActiveV1Banner reason="Briefing generation exists only as a backend API (POST /api/market-intelligence/workspace/briefings) — there is no in-product UI to trigger a new briefing yet." />
         <header style={{ margin: "12px 0 16px" }}>
           <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{doc.briefingKind} · {doc.status}</span>
           <h1 style={{ margin: "6px 0 0", fontSize: 24 }}>{doc.title}</h1>
@@ -63,6 +65,9 @@ export default async function BriefingsPage({ searchParams }: PageProps) {
           movement, forecast changes.
         </p>
       </header>
+
+      <NotActiveV1Banner reason="Briefing generation exists only as a backend API (POST /api/market-intelligence/workspace/briefings) — there is no in-product UI to trigger a new briefing yet." />
+
       {docs.length === 0 ? (
         <p style={{ color: "var(--text-dim)" }}>No briefings yet. Generate one via the API.</p>
       ) : (
