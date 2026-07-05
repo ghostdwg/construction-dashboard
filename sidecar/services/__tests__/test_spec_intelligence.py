@@ -220,6 +220,7 @@ def test_split_sections_usage_and_cost_structure():
     assert p2["sections_analyzed"] == 2
     assert p2["sonnet_sections"] == 1 and p2["haiku_sections"] == 1
     assert p2["total_input"] == 200 and p2["total_output"] == 100
+    assert p2["models"] == sorted({si.SONNET_MODEL, si.HAIKU_MODEL})
     expect = round(si._cost(si.SONNET_MODEL, 100, 50) + si._cost(si.HAIKU_MODEL, 100, 50), 4)
     assert p2["total_cost"] == expect
     assert out["total_cost"] == expect

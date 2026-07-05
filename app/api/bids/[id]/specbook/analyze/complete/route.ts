@@ -5,6 +5,7 @@ import {
   completeJob,
   failJob,
 } from "@/lib/services/jobs/backgroundJobService";
+import { logSidecarUsage } from "@/lib/services/ai/aiUsageLog";
 
 // POST /api/bids/[id]/specbook/analyze/complete
 //
@@ -28,6 +29,18 @@ interface CallbackPayload {
     section_count: number;
     summary: Record<string, number>;
     total_cost: number;
+    // AI usage evidence (Work Package N5) — aggregate token/cost/model
+    // accounting for this job's Pass 2 analysis calls. No prompt or
+    // document text ever appears in this shape (see spec_intelligence.py).
+    pass2_usage?: {
+      total_input: number;
+      total_output: number;
+      total_cost: number;
+      sections_analyzed: number;
+      sonnet_sections: number;
+      haiku_sections: number;
+      models: string[];
+    } | null;
   };
   error?: string;
 }
@@ -95,6 +108,23 @@ export async function POST(
     `[analyze/complete] job ${payload.job_id}: ${updated}/${payload.result.section_count} ` +
     `sections saved, $${payload.result.total_cost}`
   );
+
+  // Persist AI usage evidence (Work Package N5) — model(s), token counts, and
+  // cost for this job's Pass 2 analysis calls, correlated to the bid. This is
+  // a numeric/metadata summary only: no prompts, section body text, or
+  // credentials are read from `payload` here — only pass2_usage's aggregate
+  // counters and model ids.
+  const usage = payload.result.pass2_usage;
+  if (usage) {
+    await logSidecarUsage({
+      callKey: "spec_analysis_sidecar",
+      models: usage.models,
+      inputTokens: usage.total_input,
+      outputTokens: usage.total_output,
+      costUsd: usage.total_cost,
+      bidId,
+    });
+  }
 
   // Resolve the durable job record early so we can stamp sourceJobId on
   // the SubmittalItems created below (GWX-006 audit attribution).

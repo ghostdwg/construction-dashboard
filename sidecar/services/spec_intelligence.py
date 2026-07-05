@@ -483,6 +483,10 @@ def analyze_split_sections(
             "sections_analyzed": len(usages),
             "sonnet_sections": sum(1 for u in usages if "sonnet" in u["model"]),
             "haiku_sections": sum(1 for u in usages if "haiku" in u["model"]),
+            # Exact model ids actually used (verbatim from each response.model),
+            # deduped + sorted. Lets callers persist usage evidence without
+            # guessing an id from the sonnet/haiku tier counts above.
+            "models": sorted({u["model"] for u in usages}),
         },
         "total_cost": round(total_cost, 4),
     }

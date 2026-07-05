@@ -61,6 +61,70 @@ export async function logAiUsage(input: LogUsageInput): Promise<void> {
   }
 }
 
+// ── Sidecar usage evidence (Work Package N5) ────────────────────────────────
+//
+// The Python sidecar (sidecar/services/spec_intelligence.py) makes its own
+// Anthropic calls directly through the sanctioned Python gateway
+// (sidecar/services/ai_gateway.py) — it never routes through this Node
+// process's gateway.ts, so those calls can't be captured by logAiUsage()
+// above. Instead, the sidecar reports an aggregate usage summary (model ids,
+// token counts, cost) in the webhook payload it POSTs back to
+// /api/bids/[id]/specbook/analyze/complete when an analyze_split job
+// finishes. This function persists THAT evidence.
+//
+// callKey is intentionally a plain string outside the CallKey union (the
+// AiTokenConfig / AI_CALL_DEFINITIONS registry only governs max_tokens for
+// calls made through the TS gateway) — loadUsageSummaries()/loadUsageForBid()
+// already tolerate callKeys absent from that map by falling back to the raw
+// key as the label.
+//
+// Only non-sensitive, already-reported fields are accepted here: model id(s),
+// token counts, cost, and bidId (job correlation). No prompt text, document
+// text, or credentials ever pass through this path — see the input type below.
+
+export type SidecarUsageInput = {
+  /** Identifies the sidecar call site, e.g. "spec_analysis_sidecar". */
+  callKey: string;
+  /**
+   * Exact model id(s) reported by the sidecar for this job. When more than
+   * one model was used (tiered routing mixes Sonnet + Haiku across
+   * sections), pass all of them — they are joined into a single stored
+   * value since AiUsageLog.model is a single column.
+   */
+  models: string[];
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  bidId?: number | null;
+  status?: "ok" | "error";
+  errorMessage?: string | null;
+};
+
+/**
+ * Log sidecar-reported AI usage (Spec Book intelligence path). Never
+ * throws — mirrors logAiUsage()'s non-blocking contract so a logging
+ * failure can never affect the webhook it's called from.
+ */
+export async function logSidecarUsage(input: SidecarUsageInput): Promise<void> {
+  try {
+    const model = input.models.length > 0 ? input.models.join(", ") : "unknown";
+    await prisma.aiUsageLog.create({
+      data: {
+        callKey: input.callKey,
+        model,
+        inputTokens: input.inputTokens,
+        outputTokens: input.outputTokens,
+        costUsd: input.costUsd,
+        bidId: input.bidId ?? null,
+        status: input.status ?? "ok",
+        errorMessage: input.errorMessage ?? null,
+      },
+    });
+  } catch (err) {
+    console.error("[logSidecarUsage] failed to record usage:", err);
+  }
+}
+
 // ── Read / aggregate ────────────────────────────────────────────────────────
 
 export type UsageSummary = {
