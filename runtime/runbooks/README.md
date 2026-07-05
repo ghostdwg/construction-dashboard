@@ -21,6 +21,7 @@ Operator procedures for staging and production: deploys, rollbacks, secret rotat
 | `worker-incident-checklist.md` | How to diagnose the worker container; based on `Migration/DEPLOYMENT_DNS_ANALYSIS-Corrected.md` | Phase R4 |
 | `turso-migrations.md` | How to apply Prisma migrations to a Turso DB via `scripts/apply-turso-migrations.mjs`; APP_ENV tier fence, dry-run, failure recovery | Phase R6.6 ✅ |
 | `staging-backup-restore.md` | Staging DB + `/storage` backup requirements, checksum manifest, retention, isolated restore-drill procedure, and manual approval gates. Documentation foundation only — no backup/restore script yet. | Backup/Restore Runbook Foundation ✅ (doc); execution scripts deferred |
+| `specbook-staging-validation.md` | Manual validation procedure for the Spec Book flow (upload → split → serve section PDF → delete → re-upload) against staging: exact routes, safe evidence, pass/fail criteria, rollback boundaries, what's provable while the Anthropic 401 stands, auth-posture checks, and a future versioned-key recommendation. Documentation foundation only; optional dry-run-by-default smoke helper at `scripts/specbook-staging-smoke.mjs`. | Spec Book Staging Validation ✅ (doc) |
 
 ## Runbook style guide
 
