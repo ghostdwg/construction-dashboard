@@ -20,6 +20,7 @@ Operator procedures for staging and production: deploys, rollbacks, secret rotat
 | `prod-host-setup.md` | Bootstrap procedure for replacing or expanding the `superglitch` host | Phase R7 |
 | `worker-incident-checklist.md` | How to diagnose the worker container; based on `Migration/DEPLOYMENT_DNS_ANALYSIS-Corrected.md` | Phase R4 |
 | `turso-migrations.md` | How to apply Prisma migrations to a Turso DB via `scripts/apply-turso-migrations.mjs`; APP_ENV tier fence, dry-run, failure recovery | Phase R6.6 ✅ |
+| `staging-backup-restore.md` | Staging DB + `/storage` backup requirements, checksum manifest, retention, isolated restore-drill procedure, and manual approval gates. Documentation foundation only — no backup/restore script yet. | Backup/Restore Runbook Foundation ✅ (doc); execution scripts deferred |
 
 ## Runbook style guide
 
