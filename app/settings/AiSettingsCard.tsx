@@ -10,6 +10,7 @@
 //    (powered by AiUsageLog rows from Phase 3)
 
 import { useEffect, useState } from "react";
+import { stubFlagRows } from "@/lib/services/ai/providerReadinessDisplay";
 import SettingFieldRow, { type SettingItem } from "./SettingFieldRow";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -326,7 +327,7 @@ function ProviderReadinessSection({ readiness }: { readiness: ProviderReadiness 
     missing: "Not configured",
   }[readiness.credentialSource];
 
-  const activeStubFlags = Object.entries(readiness.stubMode.activeFlags).filter(([, v]) => v);
+  const stubRows = stubFlagRows(readiness.stubMode.activeFlags);
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900 overflow-hidden">
@@ -365,15 +366,16 @@ function ProviderReadinessSection({ readiness }: { readiness: ProviderReadiness 
           </p>
         )}
 
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-zinc-600 dark:text-zinc-300">Stub mode</span>
-          <Pill tone={activeStubFlags.length > 0 ? "warn" : "neutral"}>
-            {activeStubFlags.length > 0
-              ? activeStubFlags.map(([k]) => k).join(", ")
-              : "Not centrally toggleable"}
-          </Pill>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-zinc-600 dark:text-zinc-300">Stub mode (per feature)</span>
+          {stubRows.map(({ name, on }) => (
+            <div key={name} className="flex items-center justify-between gap-4 pl-2">
+              <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">{name}</span>
+              <Pill tone={on ? "warn" : "neutral"}>{on ? "ON" : "OFF"}</Pill>
+            </div>
+          ))}
         </div>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 -mt-2">{readiness.stubMode.note}</p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 -mt-1">{readiness.stubMode.note}</p>
 
         <div className="flex items-center justify-between gap-4">
           <span className="text-zinc-600 dark:text-zinc-300">Live provider verification</span>

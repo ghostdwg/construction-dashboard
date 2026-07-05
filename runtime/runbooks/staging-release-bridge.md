@@ -569,6 +569,51 @@ is staging-only, start to finish.
 
 ---
 
+## 11. Security note — credential rotation required before the next real provider call
+
+`fix/provider-readiness-secret-redaction` closed two release-blocking issues
+found on the authenticated AI Configuration screen after Gate 1's staging
+activation:
+
+1. **API-key display exposed trailing key characters.** The prior
+   `maskSecret()` helper (`lib/services/settings/appSettingsService.ts`)
+   rendered a secret's real last 4 characters after a run of bullets —
+   discoverable by anyone with admin access to `/settings`, and duplicated
+   independently in `InfrastructureSettingsCard.tsx`'s post-save display
+   logic. Both were replaced with a neutral, content-free
+   "Configured from database" / "Configured from environment" status
+   computed only from `hasValue` + `source` — never from the value itself.
+2. **Stub-mode status was incomplete**, not exposing raw values — the
+   Provider Readiness panel only listed which of `BRIEF_STUB_MODE` /
+   `GAP_STUB_MODE` / `ADDENDUM_STUB_MODE` were ON, silently omitting the
+   OFF ones from view.
+
+**Because issue 1 was a real, live exposure — not just a theoretical
+one — the `ANTHROPIC_API_KEY` (and any other `secret: true` setting
+anyone viewed on that screen before this hotfix, e.g. `RESEND_API_KEY`,
+`WHISPERX_API_KEY`, `SIDECAR_API_KEY`, `WORKER_TOKEN`) must be rotated
+before the next real provider call or any further deliberate use of the
+affected environment, since partial key material was displayed in a UI
+screen prior to this fix.**
+
+Rotation is a **human-only environment change** and must happen entirely
+outside this coordination process:
+
+- No key, token, or credential value may ever be pasted into this chat,
+  ChatGPT, Claude, any AI tool, a log line, shell history, a source file,
+  a commit message, or this runbook.
+- Rotation happens directly in the credential's origin (the provider's own
+  console for `ANTHROPIC_API_KEY`/`RESEND_API_KEY`, or the operator's own
+  secret generator for internal tokens like `WORKER_TOKEN`/`SIDECAR_API_KEY`)
+  and is saved directly into `/opt/neuroglitch/.env.staging` (or the DB
+  override via `/settings`, which after this hotfix never displays what was
+  typed) by the human operator alone.
+- No agent or automated process in this rollout ever needs to see, log, or
+  handle the actual value at any point — this hotfix's whole purpose is to
+  make that unnecessary going forward.
+
+---
+
 ## Canonical references
 
 - `runtime/compose/base.yml`, `runtime/compose/overrides/staging.yml`,

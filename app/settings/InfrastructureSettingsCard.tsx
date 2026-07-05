@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { SettingDisplay } from "@/lib/services/settings/appSettingsService";
+import {
+  computeSecretDisplayStatus,
+  secretDisplayLabel,
+} from "@/lib/services/settings/secretDisplay";
 
 type HealthResult =
   | { connected: true; device?: string; model?: string }
@@ -35,6 +39,8 @@ function FieldRow({
   type = "text",
   placeholder,
   initialDisplay,
+  initialHasValue,
+  initialSource,
   isSecret,
 }: {
   label: string;
@@ -42,19 +48,30 @@ function FieldRow({
   settingKey: string;
   type?: "text" | "password";
   placeholder?: string;
+  /** Non-secret fields only — the actual value. Ignored when isSecret. */
   initialDisplay: string;
+  initialHasValue: boolean;
+  initialSource: "db" | "env" | "missing";
   isSecret: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
   const [display, setDisplay] = useState(initialDisplay);
+  // Secret fields never carry a display string — only whether a value
+  // exists and where it came from, so a neutral status can be rendered
+  // without any part of the actual secret ever passing through this
+  // component's state.
+  const [hasValue, setHasValue] = useState(initialHasValue);
+  const [source, setSource] = useState(initialSource);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setDisplay(initialDisplay);
-  }, [initialDisplay]);
+    setHasValue(initialHasValue);
+    setSource(initialSource);
+  }, [initialDisplay, initialHasValue, initialSource]);
 
   async function save() {
     setSaving(true);
@@ -70,7 +87,14 @@ function FieldRow({
       setError(body.error ?? "Save failed");
       return;
     }
-    setDisplay(isSecret && value ? `${"•".repeat(Math.max(8, value.length - 4))}${value.slice(-4)}` : value);
+    if (isSecret) {
+      // setSetting() always writes to the DB, so this is a real, accurate
+      // status — never derived from `value` itself.
+      setHasValue(true);
+      setSource("db");
+    } else {
+      setDisplay(value);
+    }
     setValue("");
     setEditing(false);
     setSaved(true);
@@ -83,10 +107,18 @@ function FieldRow({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key: settingKey, value: null }),
     });
-    setDisplay("");
+    if (isSecret) {
+      setHasValue(false);
+      setSource("missing");
+    } else {
+      setDisplay("");
+    }
     setValue("");
     setEditing(false);
   }
+
+  const secretStatusLabel = secretDisplayLabel(computeSecretDisplayStatus(hasValue, source));
+  const showsAsSet = isSecret ? hasValue : Boolean(display);
 
   return (
     <div className="space-y-1.5">
@@ -96,18 +128,26 @@ function FieldRow({
       </div>
       {!editing ? (
         <div className="flex items-center gap-2">
-          <span className="text-sm font-mono text-zinc-700 dark:text-zinc-300">
-            {display || (
-              <span className="text-zinc-400 dark:text-zinc-500 italic font-sans">Not set</span>
+          <span className="text-sm font-mono text-zinc-700 dark:text-zinc-300 truncate max-w-full overflow-hidden">
+            {isSecret ? (
+              showsAsSet ? (
+                secretStatusLabel
+              ) : (
+                <span className="text-zinc-400 dark:text-zinc-500 italic font-sans">Not set</span>
+              )
+            ) : (
+              display || (
+                <span className="text-zinc-400 dark:text-zinc-500 italic font-sans">Not set</span>
+              )
             )}
           </span>
           <button
             onClick={() => setEditing(true)}
             className="text-xs text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100 underline"
           >
-            {display ? "Edit" : "Set"}
+            {showsAsSet ? "Edit" : "Set"}
           </button>
-          {display && (
+          {showsAsSet && (
             <button
               onClick={clear}
               className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 underline"
@@ -220,6 +260,8 @@ export default function InfrastructureSettingsCard() {
             type="text"
             placeholder={whisperxUrl?.placeholder ?? "http://100.x.x.x:8002"}
             initialDisplay={whisperxUrl?.displayValue ?? ""}
+            initialHasValue={whisperxUrl?.hasValue ?? false}
+            initialSource={whisperxUrl?.source ?? "missing"}
             isSecret={false}
           />
           <FieldRow
@@ -229,6 +271,8 @@ export default function InfrastructureSettingsCard() {
             type="password"
             placeholder={whisperxKey?.placeholder ?? "your-random-secret"}
             initialDisplay={whisperxKey?.displayValue ?? ""}
+            initialHasValue={whisperxKey?.hasValue ?? false}
+            initialSource={whisperxKey?.source ?? "missing"}
             isSecret={true}
           />
         </div>
@@ -252,6 +296,8 @@ export default function InfrastructureSettingsCard() {
             type="text"
             placeholder={sidecarUrl?.placeholder ?? "http://127.0.0.1:8001"}
             initialDisplay={sidecarUrl?.displayValue ?? ""}
+            initialHasValue={sidecarUrl?.hasValue ?? false}
+            initialSource={sidecarUrl?.source ?? "missing"}
             isSecret={false}
           />
           <FieldRow
@@ -261,6 +307,8 @@ export default function InfrastructureSettingsCard() {
             type="password"
             placeholder={sidecarKey?.placeholder ?? "your-random-secret"}
             initialDisplay={sidecarKey?.displayValue ?? ""}
+            initialHasValue={sidecarKey?.hasValue ?? false}
+            initialSource={sidecarKey?.source ?? "missing"}
             isSecret={true}
           />
         </div>
@@ -303,6 +351,8 @@ export default function InfrastructureSettingsCard() {
             type="text"
             placeholder={appUrl?.placeholder ?? "https://groundworx.neuroglitch.ai"}
             initialDisplay={appUrl?.displayValue ?? ""}
+            initialHasValue={appUrl?.hasValue ?? false}
+            initialSource={appUrl?.source ?? "missing"}
             isSecret={false}
           />
         </div>

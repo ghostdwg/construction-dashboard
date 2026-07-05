@@ -9,7 +9,10 @@ import { useEffect, useState } from "react";
 
 export default function MeetingSettingsCard() {
   const [assemblyKey, setAssemblyKey] = useState("");
-  const [maskedKey, setMaskedKey] = useState<string | null>(null);
+  // Security hotfix (provider-readiness-secret-redaction): never store or
+  // render any fragment of the real key, including a "last-4" suffix — only
+  // whether a value is configured at all.
+  const [configured, setConfigured] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -20,7 +23,7 @@ export default function MeetingSettingsCard() {
       .then((r) => r.json())
       .then((data: Record<string, string>) => {
         const val = data["ASSEMBLYAI_API_KEY"] ?? "";
-        setMaskedKey(val ? `••••${val.slice(-4)}` : null);
+        setConfigured(Boolean(val));
       });
   }, []);
 
@@ -37,7 +40,7 @@ export default function MeetingSettingsCard() {
       setError("Save failed");
       return;
     }
-    setMaskedKey(assemblyKey ? `••••${assemblyKey.slice(-4)}` : null);
+    setConfigured(Boolean(assemblyKey));
     setAssemblyKey("");
     setEditing(false);
     setSaved(true);
@@ -50,7 +53,7 @@ export default function MeetingSettingsCard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ASSEMBLYAI_API_KEY: "" }),
     });
-    setMaskedKey(null);
+    setConfigured(false);
     setAssemblyKey("");
     setEditing(false);
   }
@@ -77,16 +80,20 @@ export default function MeetingSettingsCard() {
         </div>
         {!editing ? (
           <div className="flex items-center gap-2">
-            <span className="text-sm font-mono text-zinc-700 dark:text-zinc-300">
-              {maskedKey ?? <span className="text-zinc-400 dark:text-zinc-500 italic font-sans">Not set — manual transcript only</span>}
+            <span className="text-sm font-mono text-zinc-700 dark:text-zinc-300 truncate max-w-full overflow-hidden">
+              {configured ? (
+                "Configured"
+              ) : (
+                <span className="text-zinc-400 dark:text-zinc-500 italic font-sans">Not set — manual transcript only</span>
+              )}
             </span>
             <button
               onClick={() => setEditing(true)}
               className="text-xs text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100 underline"
             >
-              {maskedKey ? "Replace" : "Add key"}
+              {configured ? "Replace" : "Add key"}
             </button>
-            {maskedKey && (
+            {configured && (
               <button
                 onClick={clear}
                 className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 underline"

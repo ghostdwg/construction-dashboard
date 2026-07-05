@@ -442,15 +442,16 @@ export async function setSetting(
 }
 
 // ── Display helpers ─────────────────────────────────────────────────────────
-
-/**
- * Mask a secret value to last-4. "" → "" so the UI shows "not set".
- */
-export function maskSecret(value: string | null): string {
-  if (!value) return "";
-  if (value.length <= 4) return "•".repeat(value.length);
-  return "•".repeat(Math.max(8, value.length - 4)) + value.slice(-4);
-}
+//
+// Security hotfix (provider-readiness-secret-redaction): a secret value's
+// characters — including any masked "last-4" suffix — must never reach the
+// client. There used to be a maskSecret() helper here that appended the
+// real value's last 4 characters after a run of bullets; it has been
+// removed entirely, not neutered, so it can't be silently reintroduced.
+// Secret settings now always report displayValue: "" — the client renders
+// a neutral "Configured from database" / "Configured from environment" /
+// "not configured" status computed from hasValue + source alone (see
+// lib/services/settings/secretDisplay.ts), never from the value itself.
 
 // ── Convenience: load all settings for a category for the UI ───────────────
 
@@ -464,7 +465,10 @@ export type SettingDisplay = {
   placeholder: string | null;
   // Effective value (db OR env)
   hasValue: boolean;
-  // For non-secrets, the actual value. For secrets, the masked form.
+  // For non-secrets, the actual value. For secrets, ALWAYS "" — never any
+  // part of the real value, masked or otherwise. The UI must derive a
+  // secret's display status from hasValue + source only (see
+  // lib/services/settings/secretDisplay.ts).
   displayValue: string;
   // Where the value comes from
   source: "db" | "env" | "missing";
@@ -487,7 +491,7 @@ export async function loadSettingsByCategory(
       envVar: def.envVar,
       placeholder: def.placeholder ?? null,
       hasValue: value !== null,
-      displayValue: def.secret ? maskSecret(value) : value ?? "",
+      displayValue: def.secret ? "" : value ?? "",
       source,
     });
   }

@@ -12,6 +12,10 @@
 // - "Clear" button removes the DB override (falls back to env if available).
 
 import { useState } from "react";
+import {
+  computeSecretDisplayStatus,
+  secretDisplayLabel,
+} from "@/lib/services/settings/secretDisplay";
 
 export type SettingItem = {
   key: string;
@@ -92,13 +96,17 @@ export default function SettingFieldRow({
       {!editing ? (
         <div className="flex items-center justify-between gap-3">
           <span
-            className={`font-mono text-sm ${
+            className={`font-mono text-sm truncate max-w-full overflow-hidden ${
               item.hasValue
                 ? "text-zinc-800 dark:text-zinc-200"
                 : "text-zinc-400 italic dark:text-zinc-500"
             }`}
           >
-            {item.hasValue ? item.displayValue : "not configured"}
+            {item.secret
+              ? secretDisplayLabel(computeSecretDisplayStatus(item.hasValue, item.source))
+              : item.hasValue
+                ? item.displayValue
+                : "not configured"}
           </span>
           <div className="flex items-center gap-2">
             {item.source === "db" && (
