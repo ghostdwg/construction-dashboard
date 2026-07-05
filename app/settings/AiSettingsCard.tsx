@@ -71,6 +71,26 @@ type UsageResponse = {
   last30Days: UsageSummary;
 };
 
+type ProviderReadiness = {
+  credentialConfigured: boolean;
+  credentialSource: "database" | "environment" | "missing";
+  stubMode: {
+    centrallyToggleable: false;
+    note: string;
+    activeFlags: {
+      BRIEF_STUB_MODE: boolean;
+      GAP_STUB_MODE: boolean;
+      ADDENDUM_STUB_MODE: boolean;
+    };
+  };
+  usageEvidence: {
+    observed: boolean;
+    totalCount: number;
+    mostRecent: { createdAt: string; model: string } | null;
+  };
+  liveProviderVerification: "NOT_VERIFIED";
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmtUsd(amount: number): string {
@@ -105,6 +125,7 @@ export default function AiSettingsCard() {
   const [apiKeyItems, setApiKeyItems] = useState<SettingItem[] | null>(null);
   const [configs, setConfigs] = useState<CallConfig[] | null>(null);
   const [usage, setUsage] = useState<UsageResponse | null>(null);
+  const [readiness, setReadiness] = useState<ProviderReadiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -114,23 +135,27 @@ export default function AiSettingsCard() {
     let cancelled = false;
     (async () => {
       try {
-        const [aiKeyRes, tokensRes, usageRes] = await Promise.all([
+        const [aiKeyRes, tokensRes, usageRes, readinessRes] = await Promise.all([
           fetch("/api/settings/app?category=ai"),
           fetch("/api/settings/ai-tokens"),
           fetch("/api/settings/ai-usage"),
+          fetch("/api/settings/ai-readiness"),
         ]);
         if (!aiKeyRes.ok) throw new Error(`AI key load: HTTP ${aiKeyRes.status}`);
         if (!tokensRes.ok) throw new Error(`Tokens load: HTTP ${tokensRes.status}`);
         if (!usageRes.ok) throw new Error(`Usage load: HTTP ${usageRes.status}`);
+        if (!readinessRes.ok) throw new Error(`Readiness load: HTTP ${readinessRes.status}`);
 
         const aiKeyData = (await aiKeyRes.json()) as { items: SettingItem[] };
         const tokensData = (await tokensRes.json()) as { configs: CallConfig[] };
         const usageData = (await usageRes.json()) as UsageResponse;
+        const readinessData = (await readinessRes.json()) as ProviderReadiness;
 
         if (cancelled) return;
         setApiKeyItems(aiKeyData.items);
         setConfigs(tokensData.configs);
         setUsage(usageData);
+        setReadiness(readinessData);
         setError(null);
       } catch (e) {
         if (cancelled) return;
@@ -167,7 +192,7 @@ export default function AiSettingsCard() {
   if (loading) {
     return <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading AI settings…</p>;
   }
-  if (error || !configs || !apiKeyItems || !usage) {
+  if (error || !configs || !apiKeyItems || !usage || !readiness) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/30 dark:text-red-300">
         {error ?? "Failed to load"}
@@ -224,6 +249,9 @@ export default function AiSettingsCard() {
         </div>
       </section>
 
+      {/* ── Provider readiness subsection ── */}
+      <ProviderReadinessSection readiness={readiness} />
+
       {/* ── Usage subsection ── */}
       <UsageSection usage={usage} callLabelByKey={callLabelByKey} />
 
@@ -263,6 +291,95 @@ export default function AiSettingsCard() {
         </div>
       </section>
     </div>
+  );
+}
+
+// ── Provider readiness subsection ───────────────────────────────────────────
+//
+// A truthful status surface — never makes a live provider call, never shows
+// a credential value. See lib/services/ai/providerReadiness.ts for the full
+// contract and the rationale behind each field (especially why "Live
+// Verification" always reads NOT VERIFIED today).
+
+function Pill({ tone, children }: { tone: "ok" | "warn" | "neutral"; children: React.ReactNode }) {
+  const toneClasses = {
+    ok: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+    warn: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+    neutral: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+  } as const;
+  return (
+    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold ${toneClasses[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+function ProviderReadinessSection({ readiness }: { readiness: ProviderReadiness }) {
+  const sourceLabel = {
+    database: "Database (overrides env)",
+    environment: "Environment variable",
+    missing: "Not configured",
+  }[readiness.credentialSource];
+
+  const activeStubFlags = Object.entries(readiness.stubMode.activeFlags).filter(([, v]) => v);
+
+  return (
+    <section className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900 overflow-hidden">
+      <div className="px-5 py-3 border-b border-zinc-200 dark:border-zinc-700">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+          Provider Readiness
+        </h3>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+          Local configuration state only — never makes a live call to Anthropic and never displays a credential value.
+        </p>
+      </div>
+
+      <div className="px-5 py-4 flex flex-col gap-3 text-sm">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-zinc-600 dark:text-zinc-300">Credential configured</span>
+          <div className="flex items-center gap-2">
+            <Pill tone={readiness.credentialConfigured ? "ok" : "warn"}>
+              {readiness.credentialConfigured ? "Yes" : "No"}
+            </Pill>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">{sourceLabel}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-zinc-600 dark:text-zinc-300">Usage evidence observed</span>
+          <Pill tone={readiness.usageEvidence.observed ? "ok" : "neutral"}>
+            {readiness.usageEvidence.observed
+              ? `${readiness.usageEvidence.totalCount.toLocaleString()} logged call${readiness.usageEvidence.totalCount === 1 ? "" : "s"}`
+              : "None yet"}
+          </Pill>
+        </div>
+        {readiness.usageEvidence.mostRecent && (
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 -mt-2">
+            Most recent: {new Date(readiness.usageEvidence.mostRecent.createdAt).toLocaleString()} ·{" "}
+            <span className="font-mono">{readiness.usageEvidence.mostRecent.model}</span>
+          </p>
+        )}
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-zinc-600 dark:text-zinc-300">Stub mode</span>
+          <Pill tone={activeStubFlags.length > 0 ? "warn" : "neutral"}>
+            {activeStubFlags.length > 0
+              ? activeStubFlags.map(([k]) => k).join(", ")
+              : "Not centrally toggleable"}
+          </Pill>
+        </div>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 -mt-2">{readiness.stubMode.note}</p>
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-zinc-600 dark:text-zinc-300">Live provider verification</span>
+          <Pill tone="warn">NOT VERIFIED</Pill>
+        </div>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 -mt-2">
+          No durable record in this system distinguishes a real Anthropic response from a stubbed one — logged usage
+          or a completed job proves a call was attempted, not that a live provider responded.
+        </p>
+      </div>
+    </section>
   );
 }
 
