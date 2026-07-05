@@ -38,6 +38,77 @@ generation works. Once the credential rotation lands, re-run in real-AI mode
 (the script's historical default, before storage-only mode existed) for the
 AI-inclusive validation this document originally described.
 
+### Fail-closed server contract (work package: specbook-smoke-fail-closed)
+
+Any request that carries the `X-Specbook-Storage-Smoke: 1` marker header is
+now treated by `app/api/bids/[id]/specbook/upload/route.ts` as an **explicit
+storage-smoke attempt**. If the marker is present but any of the other three
+conditions (staging tier, `STORAGE_SMOKE_MODE_ENABLED=true`, admin session)
+does not also hold, the request is now **rejected outright** — a controlled,
+non-2xx response, returned before any BlobStore write or database
+persistence — rather than silently falling through to normal (real-provider-
+calling) automation. This closes a prior gap where a marker-bearing request
+with one condition unmet would still complete as a normal upload and still
+fire the real `generateBidIntelligence`/`triggerBriefRefresh` calls, exactly
+as if the marker had never been sent — the operator's explicit intent to run
+storage-only was silently ignored rather than honored or refused.
+
+Checks run in this order, the moment the marker header is detected, before
+the bid-existence lookup or any persistence:
+
+1. `env.APP_ENV !== "staging"` → `403 { error: "Storage-only smoke mode is only permitted on the staging environment" }`
+2. `STORAGE_SMOKE_MODE_ENABLED !== "true"` → `403 { error: "Storage-only smoke mode is not enabled on this server" }`
+3. Not an authenticated admin session → `401` or `403` (whatever `isAdminAuthorized()` itself reports — `401 { error: "Authentication required" }` if unauthenticated, `403 { error: "Admin access required" }` if authenticated but non-admin)
+
+If the marker is **absent**, none of the above runs at all — the route
+behaves exactly as it did before this feature existed. If the marker is
+present and all three checks pass, the upload proceeds exactly as before
+(real persistence, real parse), only the two provider-bound background calls
+are suppressed, and the response's `automationStatus` is
+`"suppressed_for_storage_smoke"` as before.
+
+### New helper preflight (work package: specbook-smoke-fail-closed)
+
+`scripts/specbook-staging-smoke.mjs`'s `--execute --storage-only
+--cookie-prompt` mode now runs a read-only **"0. preflight bid check"**
+(`GET {base}/api/bids/{bidId}`, the plain bid route — not a specbook-specific
+one) BEFORE attempting step 1's upload. This exists because a real run
+previously failed with a confusing, late 404 mid-upload: staging almost
+certainly has no `Bid.id=1` (or whatever id was guessed) by default — `Bid.id`
+is an autoincrement integer a validator must obtain from a real `Bid` created
+via the UI first (see §1's `bidId` row). The preflight surfaces that same
+problem immediately, safely, and read-only, instead of mid-upload.
+
+The preflight uses `redirect: "manual"` (as does every other authenticated
+request this script makes, except the deliberately-unauthenticated
+auth-posture check in §7/step 4b) — this matters because it turns a
+bad/expired/missing session into an explicit, detectable `3xx` status instead
+of silently following the redirect to `/login` and evaluating that page's
+(HTML) response as if it were the real answer.
+
+The preflight **passes** only when ALL of the following hold: HTTP status is
+exactly `200`, the body is JSON-parseable and shaped like a `Bid` (a numeric
+`id` field matching the requested `bidId`, per `app/api/bids/[id]/route.ts`'s
+`GET` handler), AND the `X-App-Env` response header (set by `proxy.ts` from
+the runtime's own Zod-validated `APP_ENV`) is exactly `"staging"`. It **fails
+closed** — refuses to proceed to step 1 — on: a `404` (the bid does not
+exist: create a real `Bid` via the UI and pass its actual id), a redirect/3xx
+(bad or missing session), a non-JSON body (e.g. an HTML error/login page), a
+missing or wrong `X-App-Env` header (pointed at the wrong tier — confirm
+`--base-url` is actually staging), or any other non-`200` status.
+
+The `--cookie-prompt`-collected value is also validated, before this
+preflight (before any network request at all), to look like a well-formed
+`name=value` cookie pair — a malformed value fails closed immediately with
+the same "refuse before any network action" posture as the script's other
+pre-network safety gates.
+
+If a validator hits any of these preflight failures, the fix is almost
+always one of: create a real `Bid` via the UI on the target host and pass its
+actual id via `--bid-id`, confirm `--base-url` actually points at staging
+(not production or a stale local URL), or re-run `--cookie-prompt` with a
+fresh, valid admin session cookie.
+
 ---
 
 ## Scope
@@ -429,8 +500,18 @@ A dry-run-by-default helper script,
 `scripts/specbook-staging-smoke.mjs`, may exist alongside this runbook (see
 that file's header for exact usage). If present:
 
-- Running it with **no arguments** only prints the six-step plan above and
-  exits `0` — it performs no network action by default.
+- Running it with **no arguments** only prints the plan above and exits `0`
+  — it performs no network action by default.
+- **New read-only preflight (work package: specbook-smoke-fail-closed):**
+  before step 1's upload, storage-only execute mode now runs a
+  `0. preflight bid check` (`GET {base}/api/bids/{bidId}`) that confirms the
+  bid exists, the session is valid, and the target host is actually staging
+  — see "New helper preflight" above for the full contract. A failure here
+  means step 1 is never attempted at all; fix the reported cause (usually a
+  missing/wrong `--bid-id` or a non-staging `--base-url`) and re-run. The
+  `--cookie-prompt`-collected value is also checked to look like a
+  well-formed `name=value` pair before this preflight — before any network
+  request at all.
 - **This script now has exactly ONE real-run mode: storage-only.** It
   requires an explicit `--base-url` (which must reference a staging host —
   contain the substring `"staging"` — for any real run) **and** the new

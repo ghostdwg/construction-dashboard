@@ -18,8 +18,20 @@ import { env } from "@/lib/env";
 // mechanics on staging WITHOUT triggering a real Anthropic call, while a
 // credential rotation is pending. This is NOT a generic "skip AI" switch —
 // suppression only ever engages when ALL FOUR of the following hold
-// simultaneously; if even one is missing, this route behaves exactly as it
-// did before this feature existed (normal automation fires unconditionally).
+// simultaneously.
+//
+// Fail-closed contract: if the marker header (b) is ABSENT, this route
+// behaves exactly as it did before this feature existed — normal automation
+// fires unconditionally, no extra check is even performed. But if the marker
+// header IS present, this is treated as an EXPLICIT storage-smoke attempt —
+// and if any of the other three conditions (a/c/d) is not also true, the
+// request is REJECTED outright (a controlled, non-2xx response, before any
+// BlobStore write or DB persistence) rather than silently falling through to
+// normal automation. A caller that goes out of its way to send the marker
+// header must never be able to trigger a real provider call by getting one
+// of the other three conditions wrong — that would be the worst possible
+// failure mode for a feature whose entire purpose is avoiding real provider
+// calls during a credential rotation.
 //
 //   a. Authenticated ADMIN session (reuses lib/auth.ts's isAdminAuthorized(),
 //      the same helper every /api/settings/* admin route already uses — this
@@ -155,6 +167,45 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  // ── Storage-only smoke gate — see module doc above for the full 4-condition
+  // contract. Checked FIRST, before any read/write below, because any request
+  // carrying the marker header is an EXPLICIT storage-smoke attempt and must
+  // NEVER be allowed to silently fall through into normal (real-provider-
+  // calling) automation just because one of the other three conditions isn't
+  // met — that silent fallthrough is exactly the gap this gate closes. A
+  // reject here happens before prisma.bid.findUnique, before BlobStore.put,
+  // and before prisma.specBook.create, so none of the reject branches below
+  // can ever leave a DB row or blob behind.
+  //
+  // Cheapest, non-auth checks first, so the default (no marker header)
+  // request path — the overwhelming majority of traffic — pays for nothing
+  // beyond a single header read and short-circuits immediately.
+  const storageSmokeRequested = request.headers.get(STORAGE_SMOKE_HEADER) === "1";
+  let suppressAutomationForStorageSmoke = false;
+
+  if (storageSmokeRequested) {
+    if (env.APP_ENV !== "staging") {
+      return Response.json(
+        { error: "Storage-only smoke mode is only permitted on the staging environment" },
+        { status: 403 }
+      );
+    }
+    if (process.env.STORAGE_SMOKE_MODE_ENABLED !== "true") {
+      return Response.json(
+        { error: "Storage-only smoke mode is not enabled on this server" },
+        { status: 403 }
+      );
+    }
+    const { isAdminAuthorized } = await import("@/lib/auth");
+    const adminCheck = await isAdminAuthorized();
+    if (!adminCheck.authorized) {
+      return Response.json({ error: adminCheck.error }, { status: adminCheck.status });
+    }
+    // ALL FOUR conditions hold — proceed into the normal upload/parse
+    // mechanics below, but suppress the post-parse provider-bound jobs.
+    suppressAutomationForStorageSmoke = true;
+  }
+
   // AI analysis is now a separate step — see /api/bids/[id]/specbook/analyze
 
   // Verify bid exists
@@ -253,25 +304,13 @@ export async function POST(
       where: { specBookId: specBook.id, covered: true },
     });
 
-    // ── Storage-only smoke gate — see module doc above for the full 4-condition
-    // contract. Cheapest/non-auth checks first so the default (no marker
-    // header) request path never pays for an extra auth lookup.
-    let automationStatus: "triggered" | "suppressed_for_storage_smoke" = "triggered";
-
-    const storageSmokeRequested = request.headers.get(STORAGE_SMOKE_HEADER) === "1";
-    const storageSmokeConfigEnabled = process.env.STORAGE_SMOKE_MODE_ENABLED === "true";
-    const isStagingTier = env.APP_ENV === "staging";
-
-    if (storageSmokeRequested && storageSmokeConfigEnabled && isStagingTier) {
-      const { isAdminAuthorized } = await import("@/lib/auth");
-      const adminCheck = await isAdminAuthorized();
-      if (adminCheck.authorized) {
-        automationStatus = "suppressed_for_storage_smoke";
-      }
-      // Any of unauthenticated/non-admin falls through silently to the
-      // normal "triggered" path below — a non-admin sending the marker
-      // header never suppresses automation, it just has no effect.
-    }
+    // The 4-condition storage-smoke gate at the top of this handler already
+    // decided suppression (or rejected the request outright, before any
+    // persistence, if the marker was present but any condition failed) — by
+    // the time execution reaches here, either no marker was sent, or all four
+    // conditions held. Nothing to re-check.
+    const automationStatus: "triggered" | "suppressed_for_storage_smoke" =
+      suppressAutomationForStorageSmoke ? "suppressed_for_storage_smoke" : "triggered";
 
     if (automationStatus === "triggered") {
       // Fire-and-forget intelligence regeneration — does not block upload response

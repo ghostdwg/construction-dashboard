@@ -12,9 +12,15 @@
 //    d. env.APP_ENV === "staging" (server-side identity fact, Zod-validated
 //       at boot in lib/env.ts, never derived from any part of a request)
 //
-//  Suppression must engage ONLY when ALL FOUR hold simultaneously. Missing
-//  any single one must leave normal automation (generateBidIntelligence +
-//  triggerBriefRefresh) firing exactly as before this feature existed.
+//  Suppression must engage ONLY when ALL FOUR hold simultaneously.
+//
+//  Fail-closed contract: if the marker header is ABSENT, this route behaves
+//  exactly as before this feature existed (normal automation fires
+//  unconditionally, no extra check performed at all). But if the marker
+//  header IS present and any of the other three conditions is not also true,
+//  the request must be REJECTED outright — a controlled, non-2xx response,
+//  before any BlobStore write or DB persistence — rather than silently
+//  falling through to normal (real-provider-calling) automation.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -255,7 +261,7 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
   });
 
   // ── Test 2 — marker present, opt-in OFF ────────────────────────────────────
-  test("2. marker present but STORAGE_SMOKE_MODE_ENABLED is OFF (staging tier) — automation still fires, NOT suppressed", async () => {
+  test("2. marker present but STORAGE_SMOKE_MODE_ENABLED is OFF (staging tier) — controlled reject BEFORE persistence/automation, fail closed", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "false"; // explicit off, not just unset
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
@@ -267,13 +273,22 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     );
     const json = await res.json();
 
-    expect(res.status).toBe(201);
-    expect(json.automationStatus).toBe("triggered");
-    expect(generateBidIntelligenceMock).toHaveBeenCalledTimes(1);
-    expect(triggerBriefRefreshMock).toHaveBeenCalledTimes(1);
+    // Fail-closed: a marker-bearing request with the flag off is REJECTED
+    // outright, not silently upgraded into a normal (real-provider-calling)
+    // upload. Never 2xx.
+    expect(res.status).toBe(403);
+    expect(json.automationStatus).toBeUndefined();
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    // No persistence of any kind happened before the reject.
+    expect(blobPutMock).not.toHaveBeenCalled();
+    expect(db.specBooks.size).toBe(0);
+    expect(db.sections).toHaveLength(0);
+    expect(aiUsageLogCreateMock).not.toHaveBeenCalled();
+    expect(backgroundJobCreateMock).not.toHaveBeenCalled();
   });
 
-  test("2b. marker present, opt-in ON, but APP_ENV is NOT staging — automation still fires, NOT suppressed", async () => {
+  test("2b. marker present, opt-in ON, but APP_ENV is NOT staging — controlled reject BEFORE persistence/automation, fail closed", async () => {
     h.appEnv.APP_ENV = "production";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
@@ -285,10 +300,19 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     );
     const json = await res.json();
 
-    expect(res.status).toBe(201);
-    expect(json.automationStatus).toBe("triggered");
-    expect(generateBidIntelligenceMock).toHaveBeenCalledTimes(1);
-    expect(triggerBriefRefreshMock).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(403);
+    expect(json.automationStatus).toBeUndefined();
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    expect(blobPutMock).not.toHaveBeenCalled();
+    expect(db.specBooks.size).toBe(0);
+    expect(db.sections).toHaveLength(0);
+    expect(aiUsageLogCreateMock).not.toHaveBeenCalled();
+    expect(backgroundJobCreateMock).not.toHaveBeenCalled();
+    // APP_ENV is checked before the flag/admin checks — confirm the
+    // (comparatively expensive, dynamically-imported) admin check was never
+    // even reached for this failure mode.
+    expect(h.isAdminAuthorized).not.toHaveBeenCalled();
   });
 
   // ── Test 3 — opt-in ON, staging, but marker ABSENT ─────────────────────────
@@ -363,8 +387,9 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     expect(backgroundJobCreateMock).not.toHaveBeenCalled();
   });
 
-  // ── Test 6 — non-admin cannot trigger suppression ──────────────────────────
-  test("6. non-admin authenticated caller cannot trigger suppression even with marker+opt-in+staging all present", async () => {
+  // ── Test 6 — non-admin cannot trigger suppression, and is rejected (not
+  // silently upgraded to normal automation) ─────────────────────────────────
+  test("6. non-admin authenticated caller with marker+opt-in+staging all present gets a controlled 403 reject BEFORE persistence/automation", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
     h.isAdminAuthorized.mockResolvedValue({
@@ -380,15 +405,22 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     );
     const json = await res.json();
 
-    // Normal automation still fires — suppression never engages for a
-    // non-admin caller, regardless of the other three conditions.
-    expect(res.status).toBe(201);
-    expect(json.automationStatus).toBe("triggered");
-    expect(generateBidIntelligenceMock).toHaveBeenCalledTimes(1);
-    expect(triggerBriefRefreshMock).toHaveBeenCalledTimes(1);
+    // Suppression never engages for a non-admin caller, AND — fail closed —
+    // normal automation must not fire either. The request is rejected
+    // outright, before any persistence.
+    expect(res.status).toBe(403);
+    expect(json.error).toBe("Admin access required");
+    expect(json.automationStatus).toBeUndefined();
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    expect(blobPutMock).not.toHaveBeenCalled();
+    expect(db.specBooks.size).toBe(0);
+    expect(db.sections).toHaveLength(0);
+    expect(aiUsageLogCreateMock).not.toHaveBeenCalled();
+    expect(backgroundJobCreateMock).not.toHaveBeenCalled();
   });
 
-  test("6b. unauthenticated caller (401) cannot trigger suppression either", async () => {
+  test("6b. unauthenticated caller (401) gets a controlled 401 reject BEFORE persistence/automation, not a silent fallthrough", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
     h.isAdminAuthorized.mockResolvedValue({
@@ -404,10 +436,50 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     );
     const json = await res.json();
 
-    expect(res.status).toBe(201);
-    expect(json.automationStatus).toBe("triggered");
-    expect(generateBidIntelligenceMock).toHaveBeenCalledTimes(1);
-    expect(triggerBriefRefreshMock).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(401);
+    expect(json.error).toBe("Authentication required");
+    expect(json.automationStatus).toBeUndefined();
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    expect(blobPutMock).not.toHaveBeenCalled();
+    expect(db.specBooks.size).toBe(0);
+    expect(db.sections).toHaveLength(0);
+    expect(aiUsageLogCreateMock).not.toHaveBeenCalled();
+    expect(backgroundJobCreateMock).not.toHaveBeenCalled();
+  });
+
+  // ── Test 7 — no fake evidence written in ANY reject branch (explicit,
+  // consolidated assertion across all three reject reasons) ─────────────────
+  test("7. no persistence, automation, or fake provider-evidence rows are ever written across any of the three reject branches", async () => {
+    const scenarios: Array<{ name: string; appEnv: string; flag: string; admin: { authorized: boolean; status?: 401 | 403; error?: string } }> = [
+      { name: "flag off", appEnv: "staging", flag: "false", admin: { authorized: true } },
+      { name: "wrong env", appEnv: "production", flag: "true", admin: { authorized: true } },
+      { name: "non-admin", appEnv: "staging", flag: "true", admin: { authorized: false, status: 403, error: "Admin access required" } },
+    ];
+
+    for (const scenario of scenarios) {
+      resetDb();
+      vi.clearAllMocks();
+      h.appEnv.APP_ENV = scenario.appEnv;
+      process.env.STORAGE_SMOKE_MODE_ENABLED = scenario.flag;
+      h.isAdminAuthorized.mockResolvedValue(scenario.admin);
+      stubSidecarSuccess();
+
+      const { POST } = await import("../route");
+      const res = await POST(
+        uploadRequest(buildMinimalPdf("x"), { [STORAGE_SMOKE_HEADER]: "1" }),
+        routeParams
+      );
+
+      expect(res.status, `${scenario.name}: must not be 2xx`).toBeGreaterThanOrEqual(400);
+      expect(generateBidIntelligenceMock, `${scenario.name}: no automation`).not.toHaveBeenCalled();
+      expect(triggerBriefRefreshMock, `${scenario.name}: no automation`).not.toHaveBeenCalled();
+      expect(blobPutMock, `${scenario.name}: no blob write`).not.toHaveBeenCalled();
+      expect(db.specBooks.size, `${scenario.name}: no SpecBook row`).toBe(0);
+      expect(db.sections, `${scenario.name}: no SpecSection rows`).toHaveLength(0);
+      expect(aiUsageLogCreateMock, `${scenario.name}: no fake AiUsageLog row`).not.toHaveBeenCalled();
+      expect(backgroundJobCreateMock, `${scenario.name}: no fake BackgroundJob row`).not.toHaveBeenCalled();
+    }
   });
 
   // ── Test 9 — full-shape sweep: no secret/content/marker-value leakage ─────

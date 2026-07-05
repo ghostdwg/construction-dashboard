@@ -167,6 +167,48 @@
 // real boundary is the server's own APP_ENV=staging fence. It exists only to
 // catch an operator fat-fingering a production URL into this script.
 //
+// PREFLIGHT BID CHECK (work package: specbook-smoke-fail-closed):
+//
+//   Before step 1's upload, a NEW read-only "0. preflight bid check" issues
+//   GET {base}/api/bids/{bidId} (the plain bid-existence route — NOT a
+//   specbook-specific one) with the same auth headers as every other step.
+//   This exists because a prior real run failed with an immediate 404 on the
+//   upload step: staging almost certainly has no Bid.id=1 by default, and
+//   Bid.id is an autoincrement integer an operator must obtain from a real
+//   Bid created via the UI first. The preflight turns that late, confusing
+//   404-mid-upload failure into an early, clear, read-only-safe refusal
+//   before any multipart upload is even attempted.
+//
+//   The preflight fetch uses `redirect: "manual"` (as does every other
+//   authenticated fetch call in this script — see the per-step functions
+//   below) so that if proxy.ts's middleware would otherwise redirect an
+//   unauthenticated/bad-session request to /login, this manifests as an
+//   explicit 3xx status this script can detect and fail on, rather than
+//   silently following the redirect and evaluating some other page's (e.g.
+//   the HTML login page's) response as if it were the real answer.
+//
+//   The preflight PASSES only when ALL of the following hold: HTTP status is
+//   exactly 200, the body is JSON-parseable and shaped like a Bid (a numeric
+//   `id` field matching the requested bidId — see
+//   app/api/bids/[id]/route.ts's GET handler, which returns exactly
+//   `{ error }` on 404/400 or the full Bid row, including a numeric `id`, on
+//   200), AND the `X-App-Env` response header (set by proxy.ts on every
+//   response from the runtime's own validated APP_ENV) is exactly "staging".
+//   It FAILS closed (does not proceed to step 1) on: a 404 (bid missing —
+//   almost certainly this is what a validator hit; the fix is to create a
+//   real Bid via the UI and pass its actual id), a redirect/3xx (bad or
+//   expired session), a non-JSON body (e.g. an HTML error/login page), a
+//   missing or wrong X-App-Env header (pointed at the wrong tier), or any
+//   other non-200 status.
+//
+//   The interactively-collected --cookie-prompt value is also validated to
+//   look like a well-formed `name=value` cookie pair (non-empty name before
+//   the first "=", non-empty value after it) BEFORE this preflight — before
+//   any network request at all — is even attempted; a malformed value fails
+//   closed immediately, exactly like the pre-network `missing[]` argv gate
+//   above, just discovered after the interactive prompt rather than before
+//   it (the cookie value cannot be known until the operator has typed it).
+//
 // TESTABILITY: parseArgs(), runMain(), and promptForCookie() are exported so
 // scripts/__tests__/specbook-staging-smoke.test.ts can drive both the
 // dry-run and refusal paths in-process (spying on global fetch and
@@ -185,6 +227,22 @@ import { resolve } from "node:path";
 // mode.
 const STORAGE_SMOKE_HEADER = "X-Specbook-Storage-Smoke";
 const REQUIRED_AUTOMATION_STATUS = "suppressed_for_storage_smoke";
+
+// Minimal, dependency-free shape check for a `--cookie-prompt`-collected
+// value: at minimum, it must contain a "=", with a non-empty name before it
+// and a non-empty value after it (e.g. "authjs.session-token=abc123"). This
+// is intentionally permissive about the value's own contents (real session
+// tokens can contain "=", "%", etc.) — it only guards against the operator
+// pasting something that clearly isn't a cookie pair at all (empty input, a
+// bare word with no "=", or "name=" with nothing after it).
+export function looksLikeCookiePair(value) {
+  if (typeof value !== "string") return false;
+  const eq = value.indexOf("=");
+  if (eq <= 0) return false; // no "=" present, or an empty name before it
+  const name = value.slice(0, eq);
+  const val = value.slice(eq + 1);
+  return name.length > 0 && val.length > 0;
+}
 
 // ── Argv parsing (no dependency, pure) ──────────────────────────────────────
 
@@ -210,6 +268,7 @@ const PLAN = `
 
 This helper would perform, in order, against --base-url:
 
+  0. GET  {base}/api/bids/{bidId}                          (read-only preflight — confirms the bid exists, the session is valid (not redirected to /login), and the host is actually staging (X-App-Env), BEFORE attempting any upload)
   1. POST {base}/api/bids/{bidId}/specbook/upload         (multipart: file=<test.pdf>)
   2. POST {base}/api/bids/{bidId}/specbook/split           (no body)
   3. GET  {base}/api/bids/{bidId}/specbook/gaps            (to pick a real sectionId)
@@ -510,6 +569,71 @@ export async function runMain(argv = process.argv.slice(2)) {
     }
   }
 
+  // 0. Preflight — read-only, confirms the bid exists, the session is valid
+  // (redirect: "manual" surfaces a bad/expired session as an explicit 3xx
+  // rather than silently following it to /login and evaluating that page's
+  // response), and the host is actually staging (X-App-Env), BEFORE any
+  // upload is attempted. See the PREFLIGHT BID CHECK header note above for
+  // the full rationale.
+  async function preflightBidStep() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}`, {
+        headers: authHeaders(),
+        redirect: "manual",
+      });
+
+      if (res.status >= 300 && res.status < 400) {
+        record(
+          "0. preflight bid check",
+          "FAIL",
+          `status=${res.status} — request was redirected (likely a missing/expired/invalid session) — refusing to proceed`
+        );
+        return false;
+      }
+      if (res.status === 404) {
+        record(
+          "0. preflight bid check",
+          "FAIL",
+          `status=404 — Bid.id=${BID_ID} does not exist on this host; create a real Bid via the UI first and pass its actual id`
+        );
+        return false;
+      }
+      if (res.status !== 200) {
+        record("0. preflight bid check", "FAIL", `status=${res.status}`);
+        return false;
+      }
+
+      const appEnvHeader = res.headers.get("x-app-env");
+      if (appEnvHeader !== "staging") {
+        record(
+          "0. preflight bid check",
+          "FAIL",
+          `X-App-Env=${appEnvHeader ? JSON.stringify(appEnvHeader) : "(missing)"} (expected "staging") — refusing to proceed against a non-staging host`
+        );
+        return false;
+      }
+
+      // Never print the parsed body itself (requirement 5/6 audit) — only
+      // whether it is JSON-shaped like the expected Bid (a numeric `id`
+      // matching BID_ID), per app/api/bids/[id]/route.ts's GET handler.
+      const body = await res.json().catch(() => null);
+      if (!body || typeof body.id !== "number" || body.id !== Number(BID_ID)) {
+        record(
+          "0. preflight bid check",
+          "FAIL",
+          "response was not JSON-shaped like the expected Bid (missing/mismatched numeric id) — refusing to proceed"
+        );
+        return false;
+      }
+
+      record("0. preflight bid check", "PASS", "bid confirmed to exist on a staging host with a valid session");
+      return true;
+    } catch (err) {
+      record("0. preflight bid check", "FAIL", err.message);
+      return false;
+    }
+  }
+
   async function uploadStep(label, pdfBuffer) {
     try {
       const form = new FormData();
@@ -522,6 +646,7 @@ export async function runMain(argv = process.argv.slice(2)) {
         method: "POST",
         body: form,
         headers: authHeaders(),
+        redirect: "manual",
       });
       const body = await res.json().catch(() => null);
       if (res.status !== 201) {
@@ -550,6 +675,7 @@ export async function runMain(argv = process.argv.slice(2)) {
       const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/split`, {
         method: "POST",
         headers: authHeaders(),
+        redirect: "manual",
       });
       const body = await res.json().catch(() => null);
       if (res.status !== 200) {
@@ -574,6 +700,7 @@ export async function runMain(argv = process.argv.slice(2)) {
     try {
       const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/gaps`, {
         headers: authHeaders(),
+        redirect: "manual",
       });
       const body = await res.json().catch(() => null);
       if (res.status !== 200 || !body) {
@@ -602,6 +729,16 @@ export async function runMain(argv = process.argv.slice(2)) {
 
   async function servePdfStep(sectionId) {
     try {
+      // Deliberately NOT redirect: "manual" here — this same URL is also
+      // called, intentionally unauthenticated and WITH redirect: "manual",
+      // by authPostureCheck() below to verify the middleware's redirect
+      // behavior itself; that check already covers the "bad/missing session
+      // gets redirected" case for this route. If this authenticated call's
+      // own session were somehow invalid, following the redirect still fails
+      // safely below (the login page's content-type is never
+      // "application/pdf", so the status/content-type check still catches
+      // it) — see the module header's per-step review of every authenticated
+      // fetch call in this file for the full reasoning.
       const res = await fetch(
         `${BASE_URL}/api/bids/${BID_ID}/specbook/sections/${sectionId}/pdf`,
         { headers: authHeaders() }
@@ -652,6 +789,7 @@ export async function runMain(argv = process.argv.slice(2)) {
       const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/${specBookId}`, {
         method: "DELETE",
         headers: authHeaders(),
+        redirect: "manual",
       });
       if (res.status !== 204) {
         record("5. delete", "FAIL", `status=${res.status}`);
@@ -669,6 +807,7 @@ export async function runMain(argv = process.argv.slice(2)) {
     try {
       const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/gaps`, {
         headers: authHeaders(),
+        redirect: "manual",
       });
       const body = await res.json().catch(() => undefined);
       if (body === null) {
@@ -703,6 +842,7 @@ export async function runMain(argv = process.argv.slice(2)) {
       const res = await fetch(`${BASE_URL}/api/bids/${BID_ID}/specbook/${specBookId}`, {
         method: "DELETE",
         headers: authHeaders(),
+        redirect: "manual",
       });
       if (res.status !== 204) {
         record(
@@ -750,9 +890,33 @@ export async function runMain(argv = process.argv.slice(2)) {
     );
     console.log("");
 
-    const pdf = await loadTestPdf(args.pdfPath);
+    // Fail-closed pre-network gate for storage-only execute mode: the
+    // interactively-collected cookie must look like a complete name=value
+    // pair, and the plain bid-existence route must confirm the bid exists,
+    // the session is valid, and the host is really staging — all BEFORE the
+    // first upload is attempted. Neither check can run any earlier than
+    // this: the cookie's shape can't be validated until the operator has
+    // typed it, and the preflight is itself the first network action this
+    // script performs.
+    let proceed = true;
 
-    const first = await uploadStep("1. upload", pdf);
+    if (storageOnlyExecute) {
+      if (!looksLikeCookiePair(sessionCookieValue)) {
+        record(
+          "0a. cookie shape",
+          "FAIL",
+          "the entered value does not look like a complete name=value cookie pair — refusing before any network action"
+        );
+        proceed = false;
+      } else {
+        const preflightOk = await preflightBidStep();
+        if (!preflightOk) proceed = false;
+      }
+    }
+
+    const pdf = proceed ? await loadTestPdf(args.pdfPath) : null;
+
+    const first = proceed ? await uploadStep("1. upload", pdf) : null;
     if (first) {
       assertAutomationSuppressed("1c. automation suppressed", first);
       const split = await splitStep();

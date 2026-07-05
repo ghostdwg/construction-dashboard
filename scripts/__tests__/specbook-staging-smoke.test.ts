@@ -21,7 +21,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { parseArgs, promptForCookie, runMain } from "../specbook-staging-smoke.mjs";
+import { looksLikeCookiePair, parseArgs, promptForCookie, runMain } from "../specbook-staging-smoke.mjs";
 
 class ProcessExitSentinel extends Error {
   constructor(public code: number | undefined) {
@@ -426,13 +426,24 @@ describe("scripts/specbook-staging-smoke.mjs — full run + step 7 self-cleanup"
   function buildRouterFetchMock(opts: {
     cleanupStatus?: number;
     secondAutomationStatus?: string;
+    preflightStatus?: number;
+    preflightAppEnv?: string | null;
   } = {}) {
     const cleanupStatus = opts.cleanupStatus ?? 204;
     const secondAutomationStatus = opts.secondAutomationStatus ?? "suppressed_for_storage_smoke";
+    const preflightStatus = opts.preflightStatus ?? 200;
+    const preflightAppEnv = opts.preflightAppEnv === undefined ? "staging" : opts.preflightAppEnv;
     let uploadCalls = 0;
     let gapsCalls = 0;
     return async (url: string, init: Record<string, unknown> = {}) => {
       const method = (init.method as string) || "GET";
+      if (url === `${BASE}/api/bids/${BID}` && method === "GET") {
+        return makeResponse({
+          status: preflightStatus,
+          json: preflightStatus === 200 ? { id: Number(BID) } : { error: "Not found" },
+          headers: preflightAppEnv !== null ? { "x-app-env": preflightAppEnv } : {},
+        });
+      }
       if (url === `${BASE}/api/bids/${BID}/specbook/upload` && method === "POST") {
         uploadCalls++;
         if (uploadCalls === 1) {
@@ -607,5 +618,274 @@ describe("scripts/specbook-staging-smoke.mjs — full run + step 7 self-cleanup"
     expect(logged).not.toMatch(/specBookId=\d/);
     // The interactively-entered cookie value must never appear either.
     expect(logged).not.toContain(COOKIE_VALUE);
+  });
+});
+
+// ── Test 11 — cookie-shape validation (pure) and preflight bid check
+// (work package: specbook-smoke-fail-closed) ────────────────────────────────
+describe("scripts/specbook-staging-smoke.mjs — looksLikeCookiePair (pure)", () => {
+  test("accepts a well-formed name=value pair", () => {
+    expect(looksLikeCookiePair("authjs.session-token=abc.def-ghi_123")).toBe(true);
+    expect(looksLikeCookiePair("a=b")).toBe(true);
+  });
+
+  test("rejects a value with no '=' at all", () => {
+    expect(looksLikeCookiePair("not-a-cookie-at-all")).toBe(false);
+  });
+
+  test("rejects an empty name before '='", () => {
+    expect(looksLikeCookiePair("=missing-name")).toBe(false);
+  });
+
+  test("rejects an empty value after '='", () => {
+    expect(looksLikeCookiePair("session-token=")).toBe(false);
+  });
+
+  test("rejects an empty string", () => {
+    expect(looksLikeCookiePair("")).toBe(false);
+  });
+
+  test("rejects a non-string value", () => {
+    expect(looksLikeCookiePair(undefined as unknown as string)).toBe(false);
+    expect(looksLikeCookiePair(null as unknown as string)).toBe(false);
+  });
+});
+
+describe("scripts/specbook-staging-smoke.mjs — preflight bid check + cookie-shape gate (work package: specbook-smoke-fail-closed)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let exitSpy: ReturnType<typeof stubProcessExit>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let originalStdinIsTTY: boolean | undefined;
+  let originalStdoutIsTTY: boolean | undefined;
+  let originalStdinMethods: Record<string, unknown>;
+  let originalStdoutWrite: unknown;
+
+  const BASE = "https://staging.example";
+  const BID = "123";
+  const COOKIE_VALUE = "authjs.session-token=preflight-test-cookie";
+
+  function stubCookiePrompt(value: string) {
+    (process.stdin as unknown as { isTTY?: boolean }).isTTY = true;
+    (process.stdout as unknown as { isTTY?: boolean }).isTTY = true;
+    const stdinAny = process.stdin as unknown as Record<string, unknown>;
+    const stdoutAny = process.stdout as unknown as Record<string, unknown>;
+    stdinAny.setRawMode = vi.fn(() => process.stdin);
+    stdinAny.resume = vi.fn(() => process.stdin);
+    stdinAny.pause = vi.fn(() => process.stdin);
+    stdinAny.setEncoding = vi.fn(() => process.stdin);
+    stdinAny.on = vi.fn((event: string, cb: (chunk: string) => void) => {
+      if (event === "data") queueMicrotask(() => cb(`${value}\n`));
+      return process.stdin;
+    });
+    stdinAny.removeListener = vi.fn(() => process.stdin);
+    stdoutAny.write = vi.fn(() => true);
+  }
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    exitSpy = stubProcessExit();
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    originalStdinIsTTY = process.stdin.isTTY;
+    originalStdoutIsTTY = process.stdout.isTTY;
+    const stdinAny = process.stdin as unknown as Record<string, unknown>;
+    const stdoutAny = process.stdout as unknown as Record<string, unknown>;
+    originalStdinMethods = {
+      setRawMode: stdinAny.setRawMode,
+      resume: stdinAny.resume,
+      pause: stdinAny.pause,
+      setEncoding: stdinAny.setEncoding,
+      on: stdinAny.on,
+      removeListener: stdinAny.removeListener,
+    };
+    originalStdoutWrite = stdoutAny.write;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    exitSpy.mockRestore();
+    logSpy.mockRestore();
+    const stdinAny = process.stdin as unknown as Record<string, unknown>;
+    const stdoutAny = process.stdout as unknown as Record<string, unknown>;
+    Object.assign(stdinAny, originalStdinMethods);
+    stdoutAny.write = originalStdoutWrite;
+    (process.stdin as unknown as { isTTY?: boolean }).isTTY = originalStdinIsTTY;
+    (process.stdout as unknown as { isTTY?: boolean }).isTTY = originalStdoutIsTTY;
+  });
+
+  function runArgs() {
+    return ["--base-url", BASE, "--bid-id", BID, "--cookie-prompt", "--execute", "--storage-only"];
+  }
+
+  // ── Cookie-shape gate — checked before any network call ───────────────────
+
+  test("11a. malformed cookie (no '=') refuses before any fetch call", async () => {
+    stubCookiePrompt("not-a-cookie-at-all");
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/0a\. cookie shape/);
+    expect(logged).toMatch(/FAIL/);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  test("11b. malformed cookie (empty name before '=') refuses before any fetch call", async () => {
+    stubCookiePrompt("=missing-name");
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("11c. malformed cookie (empty value after '=') refuses before any fetch call", async () => {
+    stubCookiePrompt("session-token=");
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // ── Preflight bid check — positive case ────────────────────────────────────
+
+  test("11d. preflight succeeds ONLY for 200 + JSON + X-App-Env=staging, then proceeds to step 1", async () => {
+    stubCookiePrompt(COOKIE_VALUE);
+    fetchMock.mockImplementation(async (url: string, init: Record<string, unknown> = {}) => {
+      const method = (init.method as string) || "GET";
+      if (url === `${BASE}/api/bids/${BID}` && method === "GET") {
+        return {
+          status: 200,
+          json: async () => ({ id: Number(BID) }),
+          headers: { get: (k: string) => (k.toLowerCase() === "x-app-env" ? "staging" : null) },
+        };
+      }
+      if (url === `${BASE}/api/bids/${BID}/specbook/upload` && method === "POST") {
+        // A controlled stub failure — what matters here is only that the
+        // preflight passed and step 1 was actually attempted afterward.
+        return { status: 422, json: async () => ({ error: "stub" }), headers: { get: () => null } };
+      }
+      throw new Error(`Unexpected fetch call in test: ${method} ${url}`);
+    });
+
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/PASS\s+0\. preflight bid check/);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE}/api/bids/${BID}/specbook/upload`,
+      expect.objectContaining({ method: "POST" })
+    );
+    // Confirm the preflight itself used redirect: "manual".
+    const preflightCall = fetchMock.mock.calls.find(([url]) => url === `${BASE}/api/bids/${BID}`);
+    expect(preflightCall?.[1]).toMatchObject({ redirect: "manual" });
+  });
+
+  // ── Preflight bid check — refusal cases ────────────────────────────────────
+
+  test("11e. preflight refuses on 404 (bid missing) — never attempts step 1", async () => {
+    stubCookiePrompt(COOKIE_VALUE);
+    fetchMock.mockImplementation(async () => ({
+      status: 404,
+      json: async () => ({ error: "Not found" }),
+      headers: { get: () => null },
+    }));
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/FAIL\s+0\. preflight bid check/);
+    expect(logged).toMatch(/does not exist/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("11f. preflight refuses on a redirect (3xx) response, never attempts step 1", async () => {
+    stubCookiePrompt(COOKIE_VALUE);
+    fetchMock.mockImplementation(async () => ({
+      status: 302,
+      json: async () => {
+        throw new Error("no body");
+      },
+      headers: { get: (k: string) => (k.toLowerCase() === "location" ? "/login" : null) },
+    }));
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/FAIL\s+0\. preflight bid check/);
+    expect(logged).toMatch(/redirect/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: "manual" });
+  });
+
+  test("11g. preflight refuses on a non-JSON (HTML) response, never attempts step 1", async () => {
+    stubCookiePrompt(COOKIE_VALUE);
+    fetchMock.mockImplementation(async () => ({
+      status: 200,
+      json: async () => {
+        throw new Error("Unexpected token < in JSON");
+      },
+      headers: { get: (k: string) => (k.toLowerCase() === "x-app-env" ? "staging" : null) },
+    }));
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/FAIL\s+0\. preflight bid check/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("11h. preflight refuses when X-App-Env header is missing, never attempts step 1", async () => {
+    stubCookiePrompt(COOKIE_VALUE);
+    fetchMock.mockImplementation(async () => ({
+      status: 200,
+      json: async () => ({ id: Number(BID) }),
+      headers: { get: () => null },
+    }));
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/FAIL\s+0\. preflight bid check/);
+    expect(logged).toMatch(/X-App-Env/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("11i. preflight refuses when X-App-Env header is the wrong value, never attempts step 1", async () => {
+    stubCookiePrompt(COOKIE_VALUE);
+    fetchMock.mockImplementation(async () => ({
+      status: 200,
+      json: async () => ({ id: Number(BID) }),
+      headers: { get: (k: string) => (k.toLowerCase() === "x-app-env" ? "production" : null) },
+    }));
+    await expect(runMain(runArgs())).rejects.toBeInstanceOf(ProcessExitSentinel);
+    const logged = logSpy.mock.calls.flat().join("\n");
+    expect(logged).toMatch(/FAIL\s+0\. preflight bid check/);
+    expect(logged).toMatch(/production/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Full-shape sweep — no sensitive value ever appears in logged output ────
+
+  test("11j. no cookie value, response body field, or bid detail ever appears in logged output across every scenario above", async () => {
+    const scenarios: Array<() => Promise<unknown>> = [
+      async () => {
+        stubCookiePrompt("not-a-cookie-at-all");
+        return runMain(runArgs());
+      },
+      async () => {
+        stubCookiePrompt(COOKIE_VALUE);
+        fetchMock.mockImplementation(async () => ({
+          status: 200,
+          json: async () => ({ id: Number(BID), secretField: "should-never-appear-in-logs" }),
+          headers: { get: () => null }, // missing X-App-Env -> fails
+        }));
+        return runMain(runArgs());
+      },
+      async () => {
+        stubCookiePrompt(COOKIE_VALUE);
+        fetchMock.mockImplementation(async () => ({
+          status: 404,
+          json: async () => ({ error: "Not found" }),
+          headers: { get: () => null },
+        }));
+        return runMain(runArgs());
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      fetchMock.mockReset();
+      logSpy.mockClear();
+      await expect(scenario()).rejects.toBeInstanceOf(ProcessExitSentinel);
+      const logged = logSpy.mock.calls.flat().join("\n");
+      expect(logged).not.toContain(COOKIE_VALUE);
+      expect(logged).not.toContain("not-a-cookie-at-all");
+      expect(logged).not.toContain("should-never-appear-in-logs");
+    }
   });
 });
