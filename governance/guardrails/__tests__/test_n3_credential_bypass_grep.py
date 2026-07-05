@@ -39,6 +39,8 @@ SPEC_INTELLIGENCE = REPO_ROOT / "sidecar/services/spec_intelligence.py"
 SPEC_ANALYSIS_AUTOMATION = REPO_ROOT / "lib/services/jobs/specAnalysisAutomation.ts"
 SUBMITTAL_INTELLIGENCE = REPO_ROOT / "sidecar/services/submittal_intelligence.py"
 SUBMITTAL_GENERATE_AI_ROUTE = REPO_ROOT / "app/api/bids/[id]/submittals/generate-ai/route.ts"
+SCHEDULE_INTELLIGENCE = REPO_ROOT / "sidecar/services/schedule_intelligence.py"
+SCHEDULE_V2_GENERATE_ROUTE = REPO_ROOT / "app/api/bids/[id]/schedule-v2/generate/route.ts"
 
 
 def _read(path: Path) -> str:
@@ -285,6 +287,93 @@ def test_submittals_generate_ai_route_resolves_via_get_setting_and_forwards_api_
     )
     assert "api_key: apiKey" in src, (
         "generate-ai/route.ts must forward the resolved credential to the "
+        "sidecar as an explicit api_key request-body field"
+    )
+
+
+# ---- schedule_intelligence.py (ADR 0002 — remaining sidecar credential target) --
+def test_schedule_intelligence_has_no_direct_env_read_in_migrated_execution_path():
+    src = _read(SCHEDULE_INTELLIGENCE)
+
+    assert "os.getenv(\"ANTHROPIC_API_KEY\"" not in src, (
+        "schedule_intelligence.py must no longer read os.getenv(\"ANTHROPIC_API_KEY\") anywhere"
+    )
+    assert "os.environ.get(\"ANTHROPIC_API_KEY\"" not in src
+    assert "os.environ[\"ANTHROPIC_API_KEY\"]" not in src
+    assert "anthropic.Anthropic(" not in src, (
+        "schedule_intelligence.py must not construct anthropic.Anthropic() directly"
+    )
+    assert "import anthropic" not in src, (
+        "schedule_intelligence.py must not import anthropic directly"
+    )
+    assert "ai_gateway.build_client(" in src, (
+        "schedule_intelligence.py must construct its client via the sanctioned ai_gateway.build_client()"
+    )
+
+    fn_src = _extract_python_function(src, "generate_schedule_intelligence")
+    assert "api_key: Optional[str] = None" in fn_src, (
+        "generate_schedule_intelligence must accept api_key as an explicit Optional[str] parameter"
+    )
+    assert "os.getenv" not in fn_src, "generate_schedule_intelligence must not read os.getenv itself"
+    assert "os.environ" not in fn_src, "generate_schedule_intelligence must not read os.environ itself"
+
+    # No residual os.getenv("ANTHROPIC_API_KEY" anywhere in this file at all.
+    assert len(re.findall(r'os\.getenv\("ANTHROPIC_API_KEY"', src)) == 0
+
+    # `import os` itself should be gone too — it was only ever used for the
+    # single os.getenv call this migration removed.
+    assert not re.search(r'^import os$', src, flags=re.MULTILINE), (
+        "schedule_intelligence.py no longer needs `import os` after this migration"
+    )
+
+
+# ---- parse.py's schedule route (Python half of the schedule_intelligence.py fix) --
+def test_parse_router_schedule_route_threads_api_key_and_never_persists_it():
+    src = _read(REPO_ROOT / "sidecar/routers/parse.py")
+
+    assert 'class ScheduleGenerateRequest(BaseModel):' in src
+    # Extract just the schedule section (from ScheduleGenerateRequest through
+    # the start of the submittals section) to keep this assertion scoped,
+    # since parse.py is a large shared file with many other routes.
+    start = src.index("class ScheduleGenerateRequest(BaseModel):")
+    end = src.index("class SubmittalGenerateRequest(BaseModel):")
+    schedule_src = src[start:end]
+
+    assert "api_key: str = \"\"" in schedule_src, (
+        "ScheduleGenerateRequest must gain an api_key field"
+    )
+    assert 'if not request.api_key:' in schedule_src, (
+        "schedule_generate must fail closed on a missing api_key rather than reading os.getenv"
+    )
+    assert 'os.getenv("ANTHROPIC_API_KEY")' not in schedule_src, (
+        "the schedule route must no longer resolve its own credential from the environment"
+    )
+    assert "api_key: Optional[str] = None" in schedule_src, (
+        "_run_schedule_generate must accept api_key as an explicit parameter"
+    )
+    assert (
+        "generate_schedule_intelligence(spec_sections, drawing_analysis, model, api_key=api_key)"
+        in schedule_src
+    ), "the background task must thread api_key through to generate_schedule_intelligence()"
+
+    # _jobs[job_id] must never be assigned the credential — only status/
+    # progress/result/error/type keys.
+    assert '_jobs[job_id]["api_key"]' not in schedule_src
+    assert '_jobs[job_id]["result"] = result' in schedule_src
+
+
+# ---- schedule-v2/generate/route.ts (TS half of the schedule_intelligence.py fix) --
+def test_schedule_v2_generate_route_resolves_via_get_setting_and_forwards_api_key():
+    src = _read(SCHEDULE_V2_GENERATE_ROUTE)
+
+    assert "process.env.ANTHROPIC_API_KEY" not in src, (
+        "schedule-v2/generate/route.ts must never read process.env.ANTHROPIC_API_KEY directly"
+    )
+    assert 'getSetting("ANTHROPIC_API_KEY")' in src, (
+        "schedule-v2/generate/route.ts must resolve the credential via getSetting()"
+    )
+    assert "api_key: apiKey" in src, (
+        "schedule-v2/generate/route.ts must forward the resolved credential to the "
         "sidecar as an explicit api_key request-body field"
     )
 

@@ -1,7 +1,9 @@
 """
 Offline, mock-only fidelity tests for the migrated schedule_intelligence caller
-(P1B-2). No network and no `anthropic` package required: ai_gateway.create_message
-is monkeypatched, so the real gateway/client is never constructed.
+(P1B-2, and its Option-A credential migration per ADR 0002). No network and no
+`anthropic` package required: generate_schedule_intelligence() builds its own
+client via ai_gateway.build_client(), so tests monkeypatch build_client to
+inject a fake client (mirroring submittal_intelligence.py's precedent).
 
 These assert that routing schedule generation through the transparent gateway
 preserves — byte-for-byte — the prior behavior:
@@ -9,12 +11,15 @@ preserves — byte-for-byte — the prior behavior:
   * JSON extraction via the real _extract_json (embedded object, no fences)
   * cost math and token passthrough (same COST_RATES formula as before)
   * exception behavior on unparseable output (RuntimeError)
+  * missing-api_key guard is now a fail-closed ValueError raised before
+    ai_gateway.build_client is ever reached (api_key is a caller-supplied
+    parameter now, not an env read)
 
 Runnable two ways:
   * plain stdlib:  python3 sidecar/services/__tests__/test_schedule_intelligence.py
   * pytest:        pytest sidecar/services/__tests__/test_schedule_intelligence.py
 """
-import os
+import contextlib
 import sys
 from pathlib import Path
 
@@ -46,19 +51,37 @@ class FakeMessage:
         self.stop_reason = stop_reason
 
 
-def _patched_gateway(returns_text, it, ot, captured, model="claude-sonnet-4-6"):
-    """Return a fake ai_gateway.create_message capturing kwargs and returning
-    an AiResult whose .raw mimics the provider Message the caller reads."""
-    def fake_create(**kwargs):
-        captured.update(kwargs)
-        return ai_gateway.AiResult(
-            text=returns_text,
-            usage={"input_tokens": it, "output_tokens": ot},
-            model=model,
-            stop_reason="end_turn",
-            raw=FakeMessage(returns_text, it, ot, model=model),
-        )
-    return fake_create
+class FakeClient:
+    """Stands in for the real anthropic.Anthropic client returned by
+    ai_gateway.build_client(). Records every kwargs dict passed to
+    .messages.create(...)."""
+
+    def __init__(self, message):
+        self._message = message
+        self.calls = []
+        self.messages = self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self._message
+
+
+@contextlib.contextmanager
+def patched_build_client(captured_api_keys, client):
+    """Monkeypatch ai_gateway.build_client to record the api_key it was
+    called with and return a pre-built FakeClient instead of constructing a
+    real anthropic.Anthropic() (which is not installed in this sandbox)."""
+    original = ai_gateway.build_client
+
+    def fake_build_client(api_key=None):
+        captured_api_keys.append(api_key)
+        return client
+
+    ai_gateway.build_client = fake_build_client
+    try:
+        yield
+    finally:
+        ai_gateway.build_client = original
 
 
 SAMPLE_SECTIONS = [
@@ -78,14 +101,10 @@ def test_request_parser_and_cost_fidelity():
         '"new_activities": [], "procurement_activities": []}\n'
         'End of analysis.'
     )
-    captured = {}
-    original = ai_gateway.create_message
-    ai_gateway.create_message = _patched_gateway(body, it, ot, captured)
-    os.environ["ANTHROPIC_API_KEY"] = "test-key"
-    try:
-        out = si.generate_schedule_intelligence(SAMPLE_SECTIONS, None, "sonnet")
-    finally:
-        ai_gateway.create_message = original
+    fc = FakeClient(FakeMessage(body, it, ot))
+    keys = []
+    with patched_build_client(keys, fc):
+        out = si.generate_schedule_intelligence(SAMPLE_SECTIONS, None, "sonnet", api_key="test-key")
 
     # Parser fidelity: real _extract_json pulled the embedded object out intact.
     assert out["estimated_weeks"] == 40
@@ -100,60 +119,73 @@ def test_request_parser_and_cost_fidelity():
     assert out["cost_usd"] == expected_cost
 
     # Request forwarding: model resolved via MODEL_MAP, max_tokens + system kept.
-    assert captured["model"] == si.MODEL_MAP["sonnet"]
-    assert captured["max_tokens"] == 8_000
-    assert captured["system"] == si.SYSTEM_PROMPT
-    assert captured["messages"][0]["role"] == "user"
-    assert captured["api_key"] == "test-key"
+    call = fc.calls[0]
+    assert call["model"] == si.MODEL_MAP["sonnet"]
+    assert call["max_tokens"] == 8_000
+    assert call["system"] == si.SYSTEM_PROMPT
+    assert call["messages"][0]["role"] == "user"
+
+    # Credential boundary: api_key reached build_client exactly once, and is
+    # never forwarded into the provider-call kwargs themselves.
+    assert keys == ["test-key"]
+    assert "api_key" not in call
 
 
 # ---- 2. Model-map resolution fidelity (opus alias) -------------------------
 def test_model_alias_resolution():
-    captured = {}
     body = '{"activity_overrides": [], "new_activities": [], "procurement_activities": []}'
-    original = ai_gateway.create_message
-    ai_gateway.create_message = _patched_gateway(body, 1, 1, captured, model="claude-opus-4-6")
-    os.environ["ANTHROPIC_API_KEY"] = "test-key"
-    try:
-        si.generate_schedule_intelligence(SAMPLE_SECTIONS, None, "opus46")
-    finally:
-        ai_gateway.create_message = original
-    assert captured["model"] == "claude-opus-4-6"
+    fc = FakeClient(FakeMessage(body, 1, 1, model="claude-opus-4-6"))
+    keys = []
+    with patched_build_client(keys, fc):
+        si.generate_schedule_intelligence(SAMPLE_SECTIONS, None, "opus46", api_key="test-key")
+    assert fc.calls[0]["model"] == "claude-opus-4-6"
 
 
 # ---- 3. Unparseable-output exception fidelity ------------------------------
 def test_unparseable_raises_runtimeerror():
-    captured = {}
-    original = ai_gateway.create_message
-    ai_gateway.create_message = _patched_gateway("no json here at all", 1, 1, captured)
-    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+    fc = FakeClient(FakeMessage("no json here at all", 1, 1))
+    keys = []
     raised = None
-    try:
-        si.generate_schedule_intelligence(SAMPLE_SECTIONS, None, "sonnet")
-    except RuntimeError as e:
-        raised = e
-    finally:
-        ai_gateway.create_message = original
+    with patched_build_client(keys, fc):
+        try:
+            si.generate_schedule_intelligence(SAMPLE_SECTIONS, None, "sonnet", api_key="test-key")
+        except RuntimeError as e:
+            raised = e
     assert raised is not None, "unparseable output must raise RuntimeError as before"
 
 
-# ---- 4. Missing-key guard is unchanged (never reaches gateway) -------------
-def test_missing_api_key_raises_before_gateway():
-    captured = {}
-    original = ai_gateway.create_message
-    ai_gateway.create_message = _patched_gateway("{}", 1, 1, captured)
-    saved = os.environ.pop("ANTHROPIC_API_KEY", None)
+# ---- 4. Missing-key guard fails closed before build_client is reached ------
+def test_missing_api_key_raises_before_build_client():
+    def boom(api_key=None):
+        raise AssertionError("build_client must not be called without a key")
+
+    original = ai_gateway.build_client
+    ai_gateway.build_client = boom
     raised = None
     try:
-        si.generate_schedule_intelligence(SAMPLE_SECTIONS, None, "sonnet")
-    except RuntimeError as e:
+        si.generate_schedule_intelligence(SAMPLE_SECTIONS, None, "sonnet", api_key=None)
+    except ValueError as e:
         raised = e
     finally:
-        ai_gateway.create_message = original
-        if saved is not None:
-            os.environ["ANTHROPIC_API_KEY"] = saved
+        ai_gateway.build_client = original
     assert raised is not None, "missing key must raise before any gateway call"
-    assert captured == {}, "gateway must not be called when key is absent"
+    assert str(raised) == "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+
+
+def test_empty_string_api_key_also_fails_closed():
+    def boom(api_key=None):
+        raise AssertionError("build_client must not be called with an empty key")
+
+    original = ai_gateway.build_client
+    ai_gateway.build_client = boom
+    raised = None
+    try:
+        si.generate_schedule_intelligence(SAMPLE_SECTIONS, None, "sonnet", api_key="")
+    except ValueError as e:
+        raised = e
+    finally:
+        ai_gateway.build_client = original
+    assert raised is not None
 
 
 if __name__ == "__main__":

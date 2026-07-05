@@ -688,6 +688,7 @@ class ScheduleGenerateRequest(BaseModel):
     spec_sections: list[dict]       # [{csi, title, canonical_title?, ai_extractions?}]
     drawing_analysis: dict | None = None
     model: str = "sonnet"           # "sonnet" | "opus46" | "opus47"
+    api_key: str = ""    # caller-supplied key, resolved by the Next.js app (Option A)
 
 
 @router.post("/schedule/generate")
@@ -697,8 +698,18 @@ async def schedule_generate(request: ScheduleGenerateRequest):
 
     The sidecar sends spec sections + drawing analysis to Claude, which
     returns targeted modifications to apply over the 9-phase CPM skeleton.
+
+    api_key — Anthropic API key resolved by the caller via getSetting(); this
+    endpoint never resolves its own credential (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md and
+    docs/architecture/adr/0002-remaining-sidecar-credential-targets.md).
+    Threaded through the background task to
+    generate_schedule_intelligence() as a plain function argument only —
+    never written into the in-memory _jobs[job_id] record (there is no
+    callback payload for this job type; results are retrieved by polling
+    GET /schedule/status/{job_id}).
     """
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    if not request.api_key:
         raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
 
     if not request.spec_sections:
@@ -722,6 +733,7 @@ async def schedule_generate(request: ScheduleGenerateRequest):
             request.spec_sections,
             request.drawing_analysis,
             request.model,
+            request.api_key or None,
         )
     )
 
@@ -733,15 +745,21 @@ async def _run_schedule_generate(
     spec_sections: list[dict],
     drawing_analysis: dict | None,
     model: str,
+    api_key: Optional[str] = None,
 ):
-    """Background task: call Claude and store result."""
+    """Background task: call Claude and store result.
+
+    api_key is held only as a local function argument/closure for the
+    duration of this task — it is never assigned into _jobs[job_id] (the
+    in-memory progress/result record).
+    """
     try:
         from services.schedule_intelligence import generate_schedule_intelligence
 
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: generate_schedule_intelligence(spec_sections, drawing_analysis, model),
+            lambda: generate_schedule_intelligence(spec_sections, drawing_analysis, model, api_key=api_key),
         )
         _jobs[job_id]["result"] = result
         _jobs[job_id]["status"] = "complete"

@@ -16,6 +16,7 @@ import {
   createActivityV2,
   recalculateScheduleV2,
 } from "@/lib/services/schedule/scheduleV2Service";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -176,6 +177,27 @@ export async function POST(
     ai_extractions: s.aiExtractions,
   }));
 
+  // Option A (docs/architecture/adr/0001-ai-credential-resolution.md,
+  // docs/architecture/adr/0002-remaining-sidecar-credential-targets.md):
+  // resolve the AI credential here and forward it explicitly to the sidecar
+  // — the sidecar never resolves its own. Checked before the sidecar request
+  // is made so a missing key never fires an unusable job. Judgment call:
+  // unlike the submittals/generate-ai route (which already has an
+  // independently-valid Phase 1 spec-only result computed and saved before
+  // its optional Phase 2 AI cross-reference, so a missing credential there
+  // is treated as non-fatal), this POST *is* the entire schedule-intelligence
+  // trigger — there is no partial/fallback result to return instead — so a
+  // missing credential fails the whole request closed here, matching
+  // specAnalysisAutomation.ts's triggerSpecAnalysis() 503 precedent rather
+  // than the submittals route's skip-and-continue pattern.
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    return Response.json(
+      { error: "ANTHROPIC_API_KEY not configured — set it in /settings → AI Configuration" },
+      { status: 503 }
+    );
+  }
+
   try {
     const res = await fetch(`${SIDECAR_URL}/parse/schedule/generate`, {
       method: "POST",
@@ -184,6 +206,7 @@ export async function POST(
         spec_sections: sectionsPayload,
         drawing_analysis: drawingAnalysis,
         model,
+        api_key: apiKey,
       }),
       signal: AbortSignal.timeout(30_000),
     });

@@ -13,7 +13,7 @@ Models:
 """
 
 import json
-import os
+from typing import Optional
 
 from services import ai_gateway
 
@@ -281,17 +281,29 @@ def generate_schedule_intelligence(
     spec_sections: list[dict],
     drawing_analysis: dict | None,
     model: str,
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     Call Claude with spec + drawing context, return schedule modifications.
+
+    api_key: Anthropic API key resolved by the caller (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md and
+    docs/architecture/adr/0002-remaining-sidecar-credential-targets.md). This
+    service never resolves its own credential; there is no env fallback. The
+    Next.js schedule-v2/generate route resolves this via
+    getSetting("ANTHROPIC_API_KEY") and forwards it as `api_key` in the
+    /parse/schedule/generate request body.
 
     Returns dict with keys:
       activity_overrides, new_activities, procurement_activities,
       project_summary, estimated_weeks, cost_usd, input_tokens, output_tokens
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY not configured")
+        raise ValueError(
+            "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
+
+    client = ai_gateway.build_client(api_key)
 
     model_id = MODEL_MAP.get(model, MODEL_MAP["sonnet"])
     user_prompt = _build_user_prompt(spec_sections, drawing_analysis)
@@ -301,7 +313,7 @@ def generate_schedule_intelligence(
         max_tokens=8_000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
-        api_key=api_key,
+        client=client,
     )
     response = result.raw
 
