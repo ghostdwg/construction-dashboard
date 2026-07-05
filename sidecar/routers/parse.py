@@ -14,7 +14,7 @@ import asyncio
 import tempfile
 from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Query, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Query, HTTPException
 from fastapi.responses import JSONResponse
 
 from services.spec_parser import parse_spec_pdf
@@ -320,12 +320,23 @@ async def parse_specs_status(job_id: str):
 # ── POST /parse/specs/intelligent ────────────────────────────────────────────
 
 @router.post("/specs/intelligent")
-async def parse_specs_intelligent(file: UploadFile = File(...)):
+async def parse_specs_intelligent(
+    file: UploadFile = File(...),
+    api_key: str = Form(""),  # caller-supplied key, resolved by the Next.js app (Option A)
+):
     """
     AI-first spec intelligence — async. Returns a job_id immediately.
     Poll /parse/specs/intelligent/status/{job_id} for progress and results.
+
+    api_key — Anthropic API key resolved by the caller via getSetting(); this
+    endpoint never resolves its own credential (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md). Note: this
+    endpoint currently has no wired-up Next.js caller (the live spec-analysis
+    path is /parse/specs/analyze_split); the api_key field is added here for
+    contract consistency so no future caller can silently resurrect an
+    env-only credential bypass.
     """
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    if not api_key:
         raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
 
     if not (file.filename or "").lower().endswith(".pdf"):
@@ -346,12 +357,12 @@ async def parse_specs_intelligent(file: UploadFile = File(...)):
         "type": "intelligent",
     }
 
-    asyncio.create_task(_run_intelligent(job_id, tmp_path))
+    asyncio.create_task(_run_intelligent(job_id, tmp_path, api_key or None))
 
     return {"job_id": job_id, "status": "processing"}
 
 
-async def _run_intelligent(job_id: str, tmp_path: str):
+async def _run_intelligent(job_id: str, tmp_path: str, api_key: Optional[str] = None):
     """Background task for intelligent spec analysis with progress tracking."""
     try:
         loop = asyncio.get_event_loop()
@@ -364,7 +375,7 @@ async def _run_intelligent(job_id: str, tmp_path: str):
 
         result = await loop.run_in_executor(
             None,
-            lambda: run_spec_intelligence(tmp_path, analyze=True, on_progress=on_progress),
+            lambda: run_spec_intelligence(tmp_path, analyze=True, on_progress=on_progress, api_key=api_key),
         )
 
         _jobs[job_id]["result"] = result
@@ -418,6 +429,7 @@ class AnalyzeSplitSectionsRequest(BaseModel):
     tier: int = 2          # 1=all Haiku, 2=auto-routed, 3=all Sonnet
     callback_url: str | None = None   # POSTed with final result when job finishes
     callback_token: str | None = None  # sent as X-Callback-Token header
+    api_key: str = ""      # caller-supplied key, resolved by the Next.js app (Option A)
 
 
 @router.post("/specs/analyze_split")
@@ -428,8 +440,15 @@ async def analyze_split(request: AnalyzeSplitSectionsRequest):
     Each section is expected to have: csi, title, pdf_path (from the splitter).
     Skips Pass 1 identification and goes directly to per-section Claude analysis
     using each section's own PDF as clean, isolated context.
+
+    api_key — Anthropic API key resolved by the caller via getSetting(); this
+    endpoint never resolves its own credential (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md). Threaded through
+    to the background task and analyze_split_sections() as a plain function
+    argument only — never written into the in-memory _jobs[job_id] record or
+    the callback payload.
     """
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    if not request.api_key:
         raise HTTPException(503, "ANTHROPIC_API_KEY not configured")
 
     if not request.sections:
@@ -449,7 +468,8 @@ async def analyze_split(request: AnalyzeSplitSectionsRequest):
     }
 
     asyncio.create_task(_run_analyze_split(
-        job_id, request.sections, request.tier, request.callback_url, request.callback_token
+        job_id, request.sections, request.tier, request.callback_url, request.callback_token,
+        request.api_key or None,
     ))
 
     return {"job_id": job_id, "status": "processing"}
@@ -504,8 +524,15 @@ async def _run_analyze_split(
     tier: int,
     callback_url: str | None,
     callback_token: str | None,
+    api_key: Optional[str] = None,
 ):
-    """Background task: analyze each split section using its own PDF."""
+    """Background task: analyze each split section using its own PDF.
+
+    api_key is held only as a local function argument/closure for the
+    duration of this task — it is never assigned into _jobs[job_id] (the
+    in-memory progress/result record) and never included in the callback
+    payload fired to the Next.js webhook below.
+    """
     try:
         loop = asyncio.get_event_loop()
 
@@ -517,7 +544,7 @@ async def _run_analyze_split(
 
         result = await loop.run_in_executor(
             None,
-            lambda: analyze_split_sections(sections, on_progress=on_progress, tier=tier),
+            lambda: analyze_split_sections(sections, on_progress=on_progress, tier=tier, api_key=api_key),
         )
 
         _jobs[job_id]["result"] = result

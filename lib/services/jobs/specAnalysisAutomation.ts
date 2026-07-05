@@ -12,6 +12,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getSetting } from "@/lib/services/settings/appSettingsService";
 import {
   createJob,
   startJob,
@@ -85,6 +86,19 @@ export async function triggerSpecAnalysis(
     );
   }
 
+  // Option A (docs/architecture/adr/0001-ai-credential-resolution.md): resolve
+  // the AI credential here (DB-first, env-fallback) and forward it explicitly
+  // to the sidecar per request — the sidecar never resolves its own
+  // credential. Resolved before creating the durable BackgroundJob row below
+  // so a missing key never leaves behind an orphaned "queued" job record.
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey) {
+    throw new TriggerError(
+      503,
+      "ANTHROPIC_API_KEY not configured — set it in /settings → AI Configuration"
+    );
+  }
+
   const inputSummary = `${specBook.sections.length} sections, tier ${tier}`;
 
   // Atomic duplicate guard: the unique index on (bidId, jobType, activeSlot)
@@ -133,6 +147,7 @@ export async function triggerSpecAnalysis(
         tier,
         callback_url: `${APP_URL}/api/bids/${bidId}/specbook/analyze/complete`,
         callback_token: CALLBACK_TOKEN || undefined,
+        api_key: apiKey,
       }),
       headers,
       signal: AbortSignal.timeout(30_000),

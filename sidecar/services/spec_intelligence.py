@@ -16,7 +16,7 @@ Every section gets reviewed. Every section gets a severity flag.
 import os
 import re
 import json
-from typing import Any
+from typing import Any, Optional
 
 import pymupdf
 
@@ -398,6 +398,7 @@ def analyze_split_sections(
     sections: list[dict],
     on_progress: callable = None,
     tier: int = 2,
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     Analyze already-split spec sections. Each section has its own PDF file
@@ -406,11 +407,19 @@ def analyze_split_sections(
     Input: [{ csi, title, pdf_path }]
     Each PDF is opened, text extracted, then sent to Claude (tiered by division).
 
+    api_key: Anthropic API key resolved by the caller (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md). This service
+    never resolves its own credential; there is no env fallback. The Next.js
+    specbook/analyze route (via lib/services/jobs/specAnalysisAutomation.ts)
+    resolves this via getSetting("ANTHROPIC_API_KEY") and forwards it as
+    `api_key` in the /parse/specs/analyze_split request body.
+
     Returns same shape as run_spec_intelligence.
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not configured")
+        raise ValueError(
+            "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
 
     client = ai_gateway.build_client(api_key)
 
@@ -498,6 +507,7 @@ def run_spec_intelligence(
     pdf_path: str,
     analyze: bool = True,
     on_progress: callable = None,
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     Full spec intelligence pipeline:
@@ -507,6 +517,14 @@ def run_spec_intelligence(
       4. Route each section to Sonnet (complex) or Haiku (standard) for analysis
       5. Every section gets severity flag: CRITICAL / HIGH / MODERATE / LOW / INFO
 
+    api_key: Anthropic API key resolved by the caller (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md). This service
+    never resolves its own credential; there is no env fallback. (Currently
+    unreachable from any Next.js route — the only wired-up spec-analysis path
+    is analyze_split_sections() via /parse/specs/analyze_split — migrated for
+    consistency, matching the precedent set by meeting_intelligence.py's
+    then-unreachable legacy wrapper.)
+
     Returns:
         {
             sections: [{csi, title, raw_text, analysis, model_used}],
@@ -514,9 +532,10 @@ def run_spec_intelligence(
             pass1_usage, pass2_usage, total_cost
         }
     """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not configured")
+        raise ValueError(
+            "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
 
     client = ai_gateway.build_client(api_key)
 

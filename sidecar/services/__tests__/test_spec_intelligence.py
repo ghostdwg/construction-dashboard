@@ -13,7 +13,6 @@ Runnable two ways:
   * plain stdlib:  python3 sidecar/services/__tests__/test_spec_intelligence.py
   * pytest:        pytest sidecar/services/__tests__/test_spec_intelligence.py
 """
-import os
 import sys
 import time
 import types
@@ -210,11 +209,10 @@ def test_pass2_happy_path_sonnet_haiku_and_override():
 def test_split_sections_usage_and_cost_structure():
     fc = FakeClient(message=FakeMessage(OBJ, 100, 50, model=si.HAIKU_MODEL))
     with patched_pymupdf_open("SECTION body text"), patched_build_client(fc), capture_sleeps():
-        os.environ["ANTHROPIC_API_KEY"] = "k"
         out = si.analyze_split_sections([
             {"csi": "23 05 00", "title": "HVAC", "pdf_path": __file__},    # Sonnet div
             {"csi": "09 21 16", "title": "Gypsum", "pdf_path": __file__},  # Haiku div
-        ])
+        ], api_key="k")
     assert out["pass1_usage"] is None
     p2 = out["pass2_usage"]
     assert p2["sections_analyzed"] == 2
@@ -363,8 +361,7 @@ def test_pass1_unparseable_yields_empty_and_early_return():
     # Pipeline-level: empty identification → early return with pass2_usage None.
     fc2 = FakeClient(message=FakeMessage("still not json", 5, 3, model=si.HAIKU_MODEL))
     with patched_pymupdf_open("some text"), patched_build_client(fc2), capture_sleeps():
-        os.environ["ANTHROPIC_API_KEY"] = "k"
-        out = si.run_spec_intelligence("/fake.pdf", analyze=True)
+        out = si.run_spec_intelligence("/fake.pdf", analyze=True, api_key="k")
     assert out["section_count"] == 0 and out["sections"] == []
     assert out["pass2_usage"] is None
     assert out["pass1_usage"]["model"] == si.HAIKU_MODEL
@@ -412,12 +409,11 @@ def test_pass2_none_provider_runtimeerror():
 
 def test_inter_section_throttle():
     with patched_build_client(ExplodingClient()), capture_sleeps() as sleeps:
-        os.environ["ANTHROPIC_API_KEY"] = "k"
         out = si.analyze_split_sections([
             {"csi": "03 30 00", "title": "A"},   # no pdf_path → empty text → no provider
             {"csi": "09 21 16", "title": "B"},
             {"csi": "23 05 00", "title": "C"},
-        ])
+        ], api_key="k")
     # Throttle sleeps 2s before every section after the first (i=1, i=2).
     assert sleeps == [2, 2]
     assert out["section_count"] == 3

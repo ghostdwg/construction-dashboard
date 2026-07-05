@@ -2,10 +2,11 @@
 N3 — grep-based regression test for the Option-A credential migration
 (docs/architecture/adr/0001-ai-credential-resolution.md).
 
-Confirms the three named legacy bypasses no longer independently resolve
-`ANTHROPIC_API_KEY` from process.env / os.getenv, and no longer construct
-their own provider client directly. Pure text/regex checks against the repo
-tree — no imports, no network, no DB.
+Confirms the three originally-named legacy bypasses, plus the spec_intelligence.py
+follow-on migration (one of the ADR's "5 additional sites"), no longer
+independently resolve `ANTHROPIC_API_KEY` from process.env / os.getenv, and no
+longer construct their own provider client directly. Pure text/regex checks
+against the repo tree — no imports, no network, no DB.
 
 Honest partial-migration note (meeting_intelligence.py): the module keeps
 ONE `os.getenv("ANTHROPIC_API_KEY", "")` line for a config-status diagnostic
@@ -29,6 +30,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 ORGANIZE_WITH_AI = REPO_ROOT / "lib/services/submittal/organizeWithAi.ts"
 DRAWING_INTELLIGENCE = REPO_ROOT / "sidecar/services/drawing_intelligence.py"
 MEETING_INTELLIGENCE = REPO_ROOT / "sidecar/services/meeting_intelligence.py"
+SPEC_INTELLIGENCE = REPO_ROOT / "sidecar/services/spec_intelligence.py"
+SPEC_ANALYSIS_AUTOMATION = REPO_ROOT / "lib/services/jobs/specAnalysisAutomation.ts"
 
 
 def _read(path: Path) -> str:
@@ -136,6 +139,61 @@ def test_meeting_intelligence_named_functions_have_no_env_fallback_or_direct_con
     assert residual_hits == 1, (
         f"expected exactly 1 residual os.getenv(\"ANTHROPIC_API_KEY\" reference "
         f"(the /meetings/config diagnostic constant), found {residual_hits}"
+    )
+
+
+# ---- spec_intelligence.py (N3 follow-on — ADR 0001 §6's "5 additional sites") --
+def test_spec_intelligence_has_no_direct_env_read_in_migrated_execution_path():
+    src = _read(SPEC_INTELLIGENCE)
+
+    assert "os.getenv(\"ANTHROPIC_API_KEY\"" not in src, (
+        "spec_intelligence.py must no longer read os.getenv(\"ANTHROPIC_API_KEY\") anywhere"
+    )
+    assert "os.environ.get(\"ANTHROPIC_API_KEY\"" not in src
+    assert "os.environ[\"ANTHROPIC_API_KEY\"]" not in src
+    assert "anthropic.Anthropic(" not in src, (
+        "spec_intelligence.py must not construct anthropic.Anthropic() directly"
+    )
+    assert "import anthropic" not in src, (
+        "spec_intelligence.py must not import anthropic directly"
+    )
+    assert "ai_gateway.build_client(" in src, (
+        "spec_intelligence.py must construct its client via the sanctioned ai_gateway.build_client()"
+    )
+
+    # Both migrated entry points take api_key as an explicit parameter.
+    analyze_split_fn = _extract_python_function(src, "analyze_split_sections")
+    run_pipeline_fn = _extract_python_function(src, "run_spec_intelligence")
+
+    for fn_src, fn_name in [
+        (analyze_split_fn, "analyze_split_sections"),
+        (run_pipeline_fn, "run_spec_intelligence"),
+    ]:
+        assert "api_key: Optional[str] = None" in fn_src, (
+            f"{fn_name} must accept api_key as an explicit Optional[str] parameter"
+        )
+        assert "os.getenv" not in fn_src, f"{fn_name} must not read os.getenv itself"
+        assert "os.environ" not in fn_src, f"{fn_name} must not read os.environ itself"
+
+    # No residual os.getenv("ANTHROPIC_API_KEY" anywhere in this file at all —
+    # unlike meeting_intelligence.py, spec_intelligence.py has no diagnostic
+    # constant that needs one to remain.
+    assert len(re.findall(r'os\.getenv\("ANTHROPIC_API_KEY"', src)) == 0
+
+
+# ---- specAnalysisAutomation.ts (TS half of the spec_intelligence.py fix) -----
+def test_spec_analysis_automation_resolves_via_get_setting_and_forwards_api_key():
+    src = _read(SPEC_ANALYSIS_AUTOMATION)
+
+    assert "process.env.ANTHROPIC_API_KEY" not in src, (
+        "specAnalysisAutomation.ts must never read process.env.ANTHROPIC_API_KEY directly"
+    )
+    assert 'getSetting("ANTHROPIC_API_KEY")' in src, (
+        "specAnalysisAutomation.ts must resolve the credential via getSetting()"
+    )
+    assert "api_key: apiKey" in src, (
+        "specAnalysisAutomation.ts must forward the resolved credential to the "
+        "sidecar as an explicit api_key request-body field"
     )
 
 
