@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { checkFileAvailability } from "@/lib/services/specbook/fileAvailability";
 
 function tryParseJson(raw: string | null): unknown {
   if (!raw) return null;
@@ -65,6 +66,18 @@ export async function GET(
 
   const total = validSections.length;
 
+  // Availability of the underlying file artifacts. A pdfPath of null means
+  // "not split yet" — not an error, so it's left out of this map entirely
+  // and reported as `pdfAvailability: null` below, distinct from a recorded
+  // reference that turns out to be missing/invalid.
+  const pdfAvailabilityEntries = await Promise.all(
+    validSections
+      .filter((s) => s.pdfPath !== null)
+      .map(async (s) => [s.id, await checkFileAvailability(s.pdfPath)] as const)
+  );
+  const pdfAvailabilityById = new Map(pdfAvailabilityEntries);
+  const sourceAvailability = await checkFileAvailability(specBook.filePath);
+
   // Clean up merged TOC titles — find earliest truncation point
   function cleanTitle(raw: string): string {
     const cutPatterns = [
@@ -105,6 +118,9 @@ export async function GET(
     pageEnd: s.pageEnd,
     pageCount: s.pageCount,
     hasPdf: s.pdfPath !== null,
+    // Additive: whether the pdfPath reference (when present) actually
+    // resolves to a file. null means no split PDF is expected yet.
+    pdfAvailability: s.pdfPath !== null ? pdfAvailabilityById.get(s.id) ?? "missing" : null,
   });
 
   // AI analysis summary
@@ -121,6 +137,8 @@ export async function GET(
       fileName: specBook.fileName,
       status: specBook.status,
       uploadedAt: specBook.uploadedAt,
+      // Additive: availability of the original uploaded PDF in storage.
+      sourceAvailability,
     },
     total,
     coveredCount: coveredSections.length,

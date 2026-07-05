@@ -21,6 +21,9 @@ type AiAnalysis = {
   _model?: string;
 };
 
+// Mirrors FileAvailability in lib/services/specbook/fileAvailability.ts.
+type FileAvailability = "durable-present" | "legacy-present" | "missing" | "invalid";
+
 type SectionRow = {
   id: number;
   csiNumber: string;
@@ -37,6 +40,10 @@ type SectionRow = {
   pageEnd?: number | null;
   pageCount?: number | null;
   hasPdf?: boolean;
+  // Availability of the pdfPath reference, when one exists. null/undefined
+  // means either no split PDF is expected yet, or an older API response
+  // that predates this field — treated as "trust hasPdf" for compatibility.
+  pdfAvailability?: FileAvailability | null;
 };
 
 type SpecBookMeta = {
@@ -44,6 +51,9 @@ type SpecBookMeta = {
   fileName: string;
   status: "processing" | "ready" | "error";
   uploadedAt: string;
+  // Availability of the original uploaded PDF. Optional for compatibility
+  // with any cached/older API response shape.
+  sourceAvailability?: FileAvailability;
 };
 
 type SpecData = {
@@ -363,6 +373,31 @@ function SeverityBadge({ severity }: { severity: string }) {
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${s.bg} ${s.text}`}>
       {severity}
+    </span>
+  );
+}
+
+// ── File availability badge ──────────────────────────────────────────────────
+//
+// Surfaces the "missing/invalid source file" state from the API up front,
+// rather than letting a user discover it only after clicking a dead link.
+// "durable-present"/"legacy-present" render nothing — normal behavior.
+
+function isFileUnavailable(state: FileAvailability | null | undefined): boolean {
+  return state === "missing" || state === "invalid";
+}
+
+function FileMissingBadge({ state }: { state: FileAvailability }) {
+  const label =
+    state === "invalid"
+      ? "Invalid file reference — re-upload required"
+      : "Source file missing — re-upload required";
+  return (
+    <span
+      title={label}
+      className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+    >
+      ⚠ {label}
     </span>
   );
 }
@@ -689,12 +724,18 @@ function SpecSectionsByDivision({
 
               {isOpen && (
                 <div className="bg-zinc-50/50 dark:bg-zinc-800/30">
-                  {secs.map((sec) => (
+                  {secs.map((sec) => {
+                    // A pdfAvailability of undefined predates this field (or
+                    // the section hasn't been split) — fall back to trusting
+                    // hasPdf alone rather than treating it as unavailable.
+                    const pdfUnavailable = sec.hasPdf && isFileUnavailable(sec.pdfAvailability);
+                    const pdfLinkOk = sec.hasPdf && !pdfUnavailable;
+                    return (
                     <div
                       key={sec.id}
                       className="flex items-center gap-3 px-4 py-2 pl-12 border-t border-zinc-100 dark:border-zinc-800 text-sm hover:bg-zinc-100/50 dark:hover:bg-zinc-800/50"
                     >
-                      {sec.hasPdf ? (
+                      {pdfLinkOk ? (
                         <a
                           href={`/api/bids/${bidId}/specbook/sections/${sec.id}/pdf`}
                           target="_blank"
@@ -729,7 +770,8 @@ function SpecSectionsByDivision({
                           ✓ {sec.trade.name}
                         </span>
                       )}
-                      {sec.hasPdf && (
+                      {pdfUnavailable && <FileMissingBadge state={sec.pdfAvailability!} />}
+                      {pdfLinkOk && (
                         <a
                           href={`/api/bids/${bidId}/specbook/sections/${sec.id}/pdf`}
                           target="_blank"
@@ -741,7 +783,8 @@ function SpecSectionsByDivision({
                         </a>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1009,6 +1052,9 @@ function DocumentInventory({
             <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate flex-1 min-w-0">
               {specData.specBook.fileName}
             </span>
+            {isFileUnavailable(specData.specBook.sourceAvailability) && (
+              <FileMissingBadge state={specData.specBook.sourceAvailability!} />
+            )}
             {specData.total > 0 && (
               <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0 whitespace-nowrap">
                 {specData.total} sections
