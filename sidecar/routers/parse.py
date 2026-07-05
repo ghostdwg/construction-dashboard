@@ -106,6 +106,7 @@ async def parse_specs_ai(
         description="Comma-separated extraction types: submittals,warranties,training,testing,closeout,products,performance",
     ),
     max_text: int = Query(5000, ge=500, le=20000),
+    api_key: str = Form(""),  # caller-supplied key, resolved by the Next.js app (Option A)
 ):
     """
     Parse a spec book PDF, then send each section to Claude for
@@ -114,8 +115,16 @@ async def parse_specs_ai(
 
     Use ?extract=submittals,warranties to limit extraction types
     and save tokens.
+
+    api_key — Anthropic API key resolved by the caller via getSetting(); this
+    endpoint never resolves its own credential (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md and
+    docs/architecture/adr/0002-remaining-sidecar-credential-targets.md). Note:
+    this endpoint currently has no wired-up Next.js caller; the api_key field
+    is added here for contract consistency so no future caller can silently
+    resurrect an env-only credential bypass.
     """
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    if not api_key:
         raise HTTPException(
             503,
             "ANTHROPIC_API_KEY not configured — AI parsing unavailable",
@@ -146,7 +155,7 @@ async def parse_specs_ai(
             }
 
         # Phase 2: AI extraction
-        ai_results = extract_from_sections(sections, extract_types)
+        ai_results = extract_from_sections(sections, extract_types, api_key=api_key or None)
 
         # Merge AI results back into sections
         ai_by_section = {
@@ -192,11 +201,20 @@ async def parse_specs_async(
     file: UploadFile = File(...),
     extract: Optional[str] = Query(None),
     max_text: int = Query(5000, ge=500, le=20000),
+    api_key: str = Form(""),  # caller-supplied key, resolved by the Next.js app (Option A)
 ):
     """
     Queue a large spec book for background processing.
     Returns a job_id immediately. Poll /parse/specs/status/{job_id}
     for progress and results.
+
+    api_key — Anthropic API key resolved by the caller via getSetting(); this
+    endpoint never resolves its own credential (Option A — see
+    docs/architecture/adr/0001-ai-credential-resolution.md and
+    docs/architecture/adr/0002-remaining-sidecar-credential-targets.md).
+    Threaded through to the background task and extract_from_section() as a
+    plain function argument only — never written into the in-memory
+    _jobs[job_id] record.
     """
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF files are accepted")
@@ -224,7 +242,7 @@ async def parse_specs_async(
 
     # Fire background task
     asyncio.create_task(
-        _process_async(job_id, tmp_path, max_text, extract_types)
+        _process_async(job_id, tmp_path, max_text, extract_types, api_key or None)
     )
 
     return {"job_id": job_id, "status": "processing"}
@@ -235,8 +253,14 @@ async def _process_async(
     tmp_path: str,
     max_text: int,
     extract_types: set[str] | None,
+    api_key: Optional[str] = None,
 ):
-    """Background task for async spec parsing."""
+    """Background task for async spec parsing.
+
+    api_key: Anthropic API key resolved by the caller (Option A). Held only
+    as a plain function argument for the lifetime of this task — never
+    written into _jobs[job_id].
+    """
     try:
         # Parse PDF (sync, runs in thread pool)
         loop = asyncio.get_event_loop()
@@ -246,7 +270,7 @@ async def _process_async(
 
         _jobs[job_id]["total_sections"] = len(sections)
 
-        if extract_types and os.getenv("ANTHROPIC_API_KEY"):
+        if extract_types and api_key:
             # AI extraction — process one at a time so we can track progress
             from services.ai_extractor import extract_from_section
 
@@ -256,7 +280,10 @@ async def _process_async(
             for i, section in enumerate(sections):
                 try:
                     result = await loop.run_in_executor(
-                        None, extract_from_section, section, extract_types
+                        None,
+                        lambda section=section: extract_from_section(
+                            section, extract_types, api_key=api_key
+                        ),
                     )
                     section["ai_extractions"] = result.extractions
                     total_cost += result.cost_usd

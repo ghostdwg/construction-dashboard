@@ -13,9 +13,9 @@ Sends each CSI section to Claude (Sonnet) for structured extraction of:
 Uses structured JSON output for machine-parseable results.
 """
 
-import os
 import json
 from dataclasses import dataclass
+from typing import Optional
 
 from services import ai_gateway
 
@@ -97,6 +97,7 @@ def extract_from_section(
     section: dict,
     extract_types: set[str] | None = None,
     model: str = "claude-sonnet-4-20250514",
+    api_key: Optional[str] = None,
 ) -> ExtractionResult:
     """
     Send a single spec section to Claude for structured extraction.
@@ -105,6 +106,11 @@ def extract_from_section(
         section: Dict with section_number, title, raw_text
         extract_types: Which categories to extract (default: all)
         model: Claude model to use
+        api_key: Anthropic API key resolved by the caller (Option A — see
+            docs/architecture/adr/0001-ai-credential-resolution.md and
+            docs/architecture/adr/0002-remaining-sidecar-credential-targets.md).
+            This service never resolves its own credential; there is no env
+            fallback.
 
     Returns:
         ExtractionResult with parsed JSON and token usage
@@ -117,9 +123,10 @@ def extract_from_section(
     if not valid_types:
         valid_types = EXTRACTION_TYPES
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not configured")
+        raise ValueError(
+            "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
 
     prompt = SECTION_PROMPT_TEMPLATE.format(
         section_number=section["section_number"],
@@ -174,9 +181,18 @@ def extract_from_sections(
     sections: list[dict],
     extract_types: set[str] | None = None,
     model: str = "claude-sonnet-4-20250514",
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     Process multiple sections sequentially and return aggregate results.
+
+    api_key: Anthropic API key resolved by the caller (Option A — see
+        docs/architecture/adr/0001-ai-credential-resolution.md and
+        docs/architecture/adr/0002-remaining-sidecar-credential-targets.md).
+        This service never resolves its own credential; there is no env
+        fallback. Checked once up front so a missing key fails before any
+        section is processed, then threaded through to each
+        extract_from_section() call as a plain function argument.
 
     Returns dict with:
         sections: list of per-section results
@@ -184,13 +200,18 @@ def extract_from_sections(
         total_output_tokens: int
         total_cost_usd: float
     """
+    if not api_key:
+        raise ValueError(
+            "ANTHROPIC_API_KEY not configured — set it in Settings → AI Configuration"
+        )
+
     results = []
     total_in = 0
     total_out = 0
     total_cost = 0.0
 
     for section in sections:
-        result = extract_from_section(section, extract_types, model)
+        result = extract_from_section(section, extract_types, model, api_key=api_key)
         results.append({
             "section_number": result.section_number,
             "title": result.title,

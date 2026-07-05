@@ -8,7 +8,6 @@ Runnable two ways:
   * plain stdlib:  python3 sidecar/services/__tests__/test_ai_gateway.py
   * pytest:        pytest sidecar/services/__tests__/test_ai_gateway.py
 """
-import os
 import sys
 import types
 import contextlib
@@ -137,10 +136,11 @@ def test_ai_extractor_parser_and_cost_fidelity():
         )
 
     ai_gateway.create_message = fake_create
-    os.environ["ANTHROPIC_API_KEY"] = "test-key"
     try:
         section = {"section_number": "03 30 00", "title": "Concrete", "raw_text": "x" * 20}
-        res = ai_extractor.extract_from_section(section, extract_types={"submittals"})
+        res = ai_extractor.extract_from_section(
+            section, extract_types={"submittals"}, api_key="test-key"
+        )
     finally:
         ai_gateway.create_message = original
 
