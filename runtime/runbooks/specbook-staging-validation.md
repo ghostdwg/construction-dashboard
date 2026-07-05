@@ -17,7 +17,7 @@ upload → split → serve a section PDF → delete → re-upload. This is the
 
 ## Storage-only validation vs. real-AI validation — read this first
 
-This runbook (and the helper script in §11) now supports **two distinct
+This runbook (and the helper script in §10) now supports **two distinct
 modes**. They are NOT interchangeable and prove different things:
 
 | | **Storage-only mode** (new) | **Real-AI mode** (original scope of this document) |
@@ -433,13 +433,26 @@ that file's header for exact usage). If present:
   exits `0` — it performs no network action by default.
 - **This script now has exactly ONE real-run mode: storage-only.** It
   requires an explicit `--base-url` (which must reference a staging host —
-  contain the substring `"staging"` — for any real run) **and** an explicit
-  `--cookie`/`--bearer` for an **admin** account **and** the `--execute` flag
-  **and** the new `--storage-only` flag, all together, before it will
-  perform any real HTTP request. `--execute` without `--storage-only` is
-  refused outright — there is no way to make this script attempt a real-AI
-  run; that must be done by hand per §2–§7 once the credential rotation
-  lands.
+  contain the substring `"staging"` — for any real run) **and** the new
+  `--cookie-prompt` flag **and** the `--execute` flag **and** the
+  `--storage-only` flag, all together, before it will perform any real HTTP
+  request. `--execute` without `--storage-only` is refused outright — there
+  is no way to make this script attempt a real-AI run; that must be done by
+  hand per §2–§7 once the credential rotation lands.
+- **`--cookie-prompt` is mandatory for storage-only execute mode, and is the
+  only supported way to authenticate this script.** Passing `--cookie` or
+  `--bearer` directly alongside `--execute --storage-only` is refused — a
+  real session cookie must never be typed as a command-line argument, since
+  argv ends up in shell history, in process listings visible to other
+  processes/tools on the same host, and (if an AI assistant is the one
+  invoking the command on an operator's behalf) echoed verbatim into that
+  assistant's chat transcript. `--cookie-prompt` instead prompts
+  interactively, with terminal echo disabled, and requires an interactive
+  TTY — it refuses immediately, before any request, if invoked from a
+  non-interactive context (CI, a piped/redirected invocation, etc.).
+  **Run the script locally, on your own machine/terminal — never via a
+  remote or shared execution context** — so the entered cookie value is
+  never held or transmitted anywhere but your own local process memory.
 - In storage-only mode, it sends the non-secret `X-Specbook-Storage-Smoke: 1`
   marker header on every upload call, and asserts the response's
   `automationStatus` field is exactly `"suppressed_for_storage_smoke"` —
@@ -448,15 +461,34 @@ that file's header for exact usage). If present:
   tier, opt-in not set, or non-admin session) and a real Anthropic call may
   have just fired.
 - It adds no new npm dependency — it uses only the global `fetch`/`FormData`
-  already relied on by `app/api/bids/[id]/specbook/upload/route.ts` and the
-  `node:*` builtins already used by `scripts/validate-staging.mjs`.
+  already relied on by `app/api/bids/[id]/specbook/upload/route.ts`, the
+  `node:*` builtins already used by `scripts/validate-staging.mjs`, and (for
+  `--cookie-prompt`) direct `process.stdin` raw-mode handling — no new
+  password-prompt package.
 - It was never invoked against staging (or anywhere else) while producing
   this runbook or the script itself.
 
-Using this helper is optional. The procedure in §2–§7 is complete and
-followable by hand with `curl`/a REST client without it — and by-hand
-execution is REQUIRED for real-AI mode, since this script cannot perform
-that mode at all.
+**A manual browser click-through is NOT an equivalent alternative to this
+script for storage-only validation — do not substitute one for the other.**
+Only this script can send the trusted `X-Specbook-Storage-Smoke: 1` marker
+header; a browser session, `curl`, or any REST client driven by hand has no
+way to attach it. Without that header, the four-condition suppression gate
+in `app/api/bids/[id]/specbook/upload/route.ts` cannot engage, so the
+request falls through to this app's normal (real-AI) upload behavior —
+which, while the Anthropic 401 stands (§6), means a real, credentialed
+attempt to reach Anthropic still fires in the background (and would fire
+successfully, reaching a real provider call, once the 401 is resolved). A
+by-hand pass through §2.1 therefore proves nothing about storage-only
+suppression and risks the exact provider-call exposure storage-only mode
+exists to avoid. If storage-only validation is what you need, use this
+script — do not attempt to reproduce it manually.
+
+Using this helper is optional in the sense that the procedure in §2–§7 is
+complete and followable by hand with `curl`/a REST client without it **for
+real-AI mode** (by-hand execution is in fact REQUIRED there, since this
+script cannot perform that mode at all). For **storage-only** validation
+specifically, this script is not merely convenient — it is the only way to
+produce a valid storage-only result, per the previous paragraph.
 
 ---
 

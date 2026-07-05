@@ -13,14 +13,20 @@
 //     NO network action of any kind. It only prints the plan below and
 //     exits 0. This is the default and cannot be bypassed by partial input.
 //   - A real HTTP request is only ever made when ALL of the following are
-//     supplied together: --base-url, --bid-id, one of --cookie/--bearer,
-//     --execute, AND (new) --storage-only. Missing any one of these keeps
-//     the script in dry-run mode.
+//     supplied together: --base-url, --bid-id, an auth input, --execute, AND
+//     --storage-only. Missing any one of these keeps the script in dry-run
+//     mode. In --execute --storage-only mode specifically, the ONLY accepted
+//     auth input is the new --cookie-prompt flag (see "SECURE COOKIE PROMPT"
+//     below) — passing --cookie or --bearer directly alongside
+//     --execute --storage-only is a hard refusal, not just discouraged.
 //   - No dependency beyond what Node 18+ / this repo already provides:
 //     global fetch/FormData/Blob (same primitives
 //     app/api/bids/[id]/specbook/upload/route.ts already uses) and node:*
-//     builtins (same as scripts/validate-staging.mjs). No package.json
-//     change was made to add this script.
+//     builtins (same as scripts/validate-staging.mjs), including the
+//     --cookie-prompt hidden-input mechanism below, which is built directly
+//     on process.stdin raw-mode handling — no readline "password" package,
+//     no third-party prompt library. No package.json change was made to add
+//     this script.
 //   - This script never retries a failing step in a loop. Each step runs
 //     once; on failure it records FAIL and moves on so the operator gets a
 //     full picture in one pass (see the runbook's §5 "do not loop retries").
@@ -37,7 +43,9 @@
 //   `--execute` alone is refused; a NEW required flag, `--storage-only`, must
 //   also be passed. This maps to the four-condition suppression contract in
 //   app/api/bids/[id]/specbook/upload/route.ts: authenticated admin session
-//   (via --cookie/--bearer for an admin account) + this script's marker
+//   (via --cookie-prompt, entered interactively for an admin account — see
+//   "SECURE COOKIE PROMPT" below; --cookie/--bearer are rejected in this
+//   mode) + this script's marker
 //   header + the server's own STORAGE_SMOKE_MODE_ENABLED=true + the server's
 //   own APP_ENV=staging. This script supplies only the header — the other
 //   three conditions are the server operator's responsibility and are out of
@@ -46,6 +54,36 @@
 //   The marker header (sent ONLY in storage-only execute mode, never in dry
 //   run, never without --storage-only) is:
 //     X-Specbook-Storage-Smoke: 1
+//
+// SECURE COOKIE PROMPT (work package: specbook-smoke-cookie-prompt):
+//
+//   A real staging session cookie must never appear as a CLI argument — argv
+//   is visible in shell history, in `ps`/process listings on shared hosts,
+//   and (in this coordination context) would be echoed verbatim into any
+//   chat transcript of an assistant invoking this command. So in
+//   --execute --storage-only mode, --cookie-prompt is REQUIRED:
+//
+//     - It refuses immediately (before any HTTP request, before even
+//       attempting to read from stdin) if process.stdin/process.stdout are
+//       not both an interactive TTY — this keeps CI/non-interactive
+//       invocations failing safely instead of hanging or silently reading
+//       garbage from a pipe.
+//     - If TTY, it prompts the operator to type/paste the cookie value with
+//       terminal echo suppressed, via raw-mode stdin handling (see
+//       promptForCookie() below) — no new dependency, no readline "password"
+//       trick, just process.stdin.setRawMode(true) plus manual keypress
+//       handling that never writes typed characters back to the terminal.
+//     - The entered value is held ONLY in a local `let` in runMain()'s own
+//       scope — never assigned onto the `args` object parseArgs() returns
+//       (which is otherwise a plain data bag other code could reasonably log
+//       or JSON.stringify for debugging) — and is cleared (reassigned to
+//       null) in a `finally` block once the entire 6-step request flow
+//       finishes, success or failure.
+//     - Passing --cookie or --bearer directly alongside
+//       --execute --storage-only is REJECTED with a message pointing at
+//       --cookie-prompt, before any network action — those flags remain
+//       available for other purposes (see the auth note below), just not in
+//       storage-only execute mode.
 //
 //   After the first upload (and the step-6 re-upload), this script asserts
 //   the response's `automationStatus` field is exactly
@@ -62,15 +100,23 @@
 //   node scripts/specbook-staging-smoke.mjs --base-url https://staging.example --bid-id 123
 //     (still dry-run: --execute, --storage-only, and an auth input are all missing)
 //
-// Usage (real run — operator-driven, storage-only, requires explicit auth
-// input AND an admin session AND the server-side flags described above):
+// Usage (real run — operator-driven, storage-only, requires an interactive
+// terminal, the --cookie-prompt flag, AND an admin session AND the
+// server-side flags described above). Run this LOCALLY, in your own
+// terminal — never via a remote/shared execution context, since the whole
+// point of --cookie-prompt is that the cookie value never leaves your own
+// machine's memory:
 //
 //   node scripts/specbook-staging-smoke.mjs \
 //     --base-url https://staging.groundworx.neuroglitch.ai \
 //     --bid-id 123 \
-//     --cookie "authjs.session-token=<admin-account-value>" \
+//     --cookie-prompt \
 //     --execute \
 //     --storage-only
+//
+//   (the script will then prompt: "Enter the staging session cookie value
+//   (input hidden, press Enter when done): " — paste an ADMIN account's
+//   session cookie header value; nothing will echo to the terminal)
 //
 //   Optional: --pdf /path/to/local/test.pdf   (defaults to a tiny synthetic
 //   PDF generated in-memory with two fake CSI-style section headers — never
@@ -78,9 +124,17 @@
 //
 // Auth note: this app's session is a NextAuth JWT cookie (lib/auth.ts), not
 // a bearer token scheme for these routes. --bearer is accepted for forward
-// compatibility / operator convenience but is NOT confirmed to authenticate
-// against these routes today — --cookie is the realistic option. Flagged
-// here as a judgment call for the operator, not asserted as supported.
+// compatibility / operator convenience on non-storage-only invocations, but
+// is NOT confirmed to authenticate against these routes today — --cookie
+// (or, in storage-only mode, --cookie-prompt) is the realistic option.
+// Flagged here as a judgment call for the operator, not asserted as
+// supported. In --execute --storage-only mode specifically, --cookie and
+// --bearer are BOTH rejected in favor of --cookie-prompt — see "SECURE
+// COOKIE PROMPT" above for why, and note that today --storage-only is
+// required for every --execute run this script supports at all, so
+// --bearer currently has no live real-run path here; it is left in place,
+// unrejected, only for whatever future non-storage-only real-run mode this
+// script might grow.
 //
 // --base-url tightening: in any real (--execute) run, --base-url must
 // contain the substring "staging" (case-insensitive) — matching this repo's
@@ -90,10 +144,11 @@
 // real boundary is the server's own APP_ENV=staging fence. It exists only to
 // catch an operator fat-fingering a production URL into this script.
 //
-// TESTABILITY: parseArgs() and runMain() are exported so
+// TESTABILITY: parseArgs(), runMain(), and promptForCookie() are exported so
 // scripts/__tests__/specbook-staging-smoke.test.ts can drive both the
 // dry-run and refusal paths in-process (spying on global fetch and
-// process.exit) without ever spawning a real child process or touching a
+// process.exit), and drive the hidden-input mechanism itself with fake
+// stream stand-ins, without ever spawning a real child process or touching a
 // real host. This mirrors the auto-run guard already used by
 // scripts/cron-loop.mjs ("Auto-run when invoked as a script (not when
 // imported by tests)").
@@ -120,6 +175,7 @@ export function parseArgs(argv) {
     if (a === "--bid-id") { args.bidId = argv[++i]; continue; }
     if (a === "--cookie") { args.cookie = argv[++i]; continue; }
     if (a === "--bearer") { args.bearer = argv[++i]; continue; }
+    if (a === "--cookie-prompt") { args.cookiePrompt = true; continue; }
     if (a === "--pdf") { args.pdfPath = argv[++i]; continue; }
     if (a === "--help" || a === "-h") { args.help = true; continue; }
   }
@@ -148,9 +204,14 @@ must be supplied together:
                          (must contain "staging" — see --base-url tightening
                           note in this script's header comment)
   --bid-id <n>           an existing staging Bid.id to run the flow against
-  --cookie "<value>"     a valid staging session cookie header value, for an
-                         ADMIN account (or --bearer "<token>" — unconfirmed
-                          for these routes, see this script's header comment)
+  --cookie-prompt        REQUIRED (in place of --cookie/--bearer) for
+                         --execute --storage-only runs — interactively
+                          prompts for the session cookie with echo disabled,
+                          so the value never appears in argv/shell history.
+                          Requires an interactive TTY; refused otherwise.
+                          Passing --cookie or --bearer directly alongside
+                          --execute --storage-only is REJECTED — this script
+                          will tell you to use --cookie-prompt instead.
   --execute              explicit confirmation to perform real HTTP requests
   --storage-only         explicit confirmation this is a storage-only run —
                          REQUIRED alongside --execute. This script no longer
@@ -213,6 +274,86 @@ async function loadTestPdf(pdfPath) {
   ]);
 }
 
+// ── Secure interactive cookie prompt (storage-only execute mode) ───────────
+//
+// Node has no single built-in "hidden input" primitive. This implements one
+// directly on process.stdin's raw mode rather than adding a dependency:
+// raw mode disables the terminal driver's own canonical-mode line editing
+// AND character echo, so as long as we never write the typed characters
+// back to stdout ourselves (we don't — only a literal trailing "\n" is
+// written once the operator presses Enter), nothing appears on screen while
+// the value is typed or pasted.
+//
+// `streams` is accepted (defaulting to the real process.stdin/stdout) so
+// scripts/__tests__/specbook-staging-smoke.test.ts can drive this function
+// directly with fake, in-memory stream stand-ins — feeding it a sentinel
+// value programmatically — without needing a real TTY or touching the
+// actual process.stdin, mirroring this file's existing parseArgs()/runMain()
+// exported-for-testability convention (see the TESTABILITY note above).
+//
+// The returned Promise resolves with the entered value as a plain string.
+// Callers MUST hold that value only in their own local variable (never on
+// the `args` object, which other code may reasonably log/stringify) and
+// clear it once it is no longer needed — see runMain()'s try/finally below.
+export function promptForCookie(streams = {}) {
+  const stdin = streams.stdin ?? process.stdin;
+  const stdout = streams.stdout ?? process.stdout;
+
+  return new Promise((resolvePromise, reject) => {
+    if (!stdin.isTTY || !stdout.isTTY) {
+      // Defense in depth — runMain()'s missing-input gate already refuses
+      // before ever reaching here, but this function must never attempt
+      // raw-mode stdin manipulation against a non-TTY stream regardless of
+      // how it is invoked.
+      reject(new Error("--cookie-prompt requires an interactive TTY; refusing to read from stdin."));
+      return;
+    }
+
+    stdout.write(
+      "[specbook-staging-smoke] Enter the staging session cookie value (input hidden, press Enter when done): "
+    );
+
+    const wasRaw = stdin.isRaw;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+
+    let value = "";
+
+    const cleanup = () => {
+      stdin.removeListener("data", onData);
+      stdin.setRawMode(wasRaw);
+      stdin.pause();
+    };
+
+    const onData = (chunk) => {
+      const text = chunk.toString();
+      for (const ch of text) {
+        if (ch === "\u0003") {
+          // Ctrl-C — abort without ever logging the partial value.
+          cleanup();
+          stdout.write("\n");
+          reject(new Error("Cookie entry aborted (Ctrl-C)."));
+          return;
+        }
+        if (ch === "\r" || ch === "\n") {
+          cleanup();
+          stdout.write("\n");
+          resolvePromise(value);
+          return;
+        }
+        if (ch === "\u007f" || ch === "\b") {
+          value = value.slice(0, -1);
+          continue;
+        }
+        value += ch;
+      }
+    };
+
+    stdin.on("data", onData);
+  });
+}
+
 // ── Main entry point ────────────────────────────────────────────────────────
 //
 // Exported (rather than only run as a bare top-level script) so tests can
@@ -222,6 +363,12 @@ async function loadTestPdf(pdfPath) {
 export async function runMain(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
 
+  // The only real-run mode this script supports at all today (see the
+  // STORAGE-ONLY MODE header note) — kept as a named boolean since it gates
+  // both the auth-input rules below and, further down, which auth mechanism
+  // authHeaders() is allowed to read from.
+  const storageOnlyExecute = args.execute && args.storageOnly;
+
   const missing = [];
   if (!args.baseUrl) {
     missing.push("--base-url");
@@ -229,7 +376,39 @@ export async function runMain(argv = process.argv.slice(2)) {
     missing.push('--base-url must reference a staging host (contain "staging") for any real run');
   }
   if (!args.bidId) missing.push("--bid-id");
-  if (!args.cookie && !args.bearer) missing.push("--cookie or --bearer");
+
+  if (storageOnlyExecute) {
+    // Storage-only execute mode: --cookie-prompt is the ONLY supported auth
+    // mechanism. --cookie/--bearer passed directly here would put a real
+    // session value in argv/shell history (and, in an assistant-driven
+    // invocation, a chat transcript) — reject before any network action,
+    // before the interactive prompt is even attempted.
+    if (args.cookie) {
+      missing.push(
+        "Passing --cookie directly is not permitted in storage-only execute mode — use --cookie-prompt instead so the session value never appears in argv/shell history. Refusing."
+      );
+    }
+    if (args.bearer) {
+      missing.push(
+        "Passing --bearer directly is not permitted in storage-only execute mode — use --cookie-prompt instead so the session value never appears in argv/shell history. Refusing."
+      );
+    }
+    if (!args.cookiePrompt) {
+      missing.push(
+        "--cookie-prompt (required in --execute --storage-only mode — this is now the only supported auth input for storage-only runs)"
+      );
+    } else if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      // Checked even before the prompt would be attempted, so a
+      // non-interactive/CI invocation fails safely and immediately rather
+      // than hanging or silently reading garbage from a pipe.
+      missing.push(
+        "--cookie-prompt requires an interactive terminal (process.stdin/process.stdout must both be a TTY) — refusing to prompt in a non-interactive environment; run this script locally in your own terminal"
+      );
+    }
+  } else {
+    if (!args.cookie && !args.bearer) missing.push("--cookie or --bearer");
+  }
+
   if (!args.execute) missing.push("--execute");
   if (args.execute && !args.storageOnly) {
     missing.push("--storage-only (required — --execute alone is refused, this helper has no real-AI run mode)");
@@ -251,10 +430,29 @@ export async function runMain(argv = process.argv.slice(2)) {
   const BID_ID = args.bidId;
   const RUN_TAG = `smoke-${Date.now()}-${randomUUID().slice(0, 6)}`;
 
+  // Holds the interactively-entered cookie value (storage-only mode only).
+  // Deliberately a bare local `let` in runMain()'s own scope — never
+  // assigned onto `args` (a plain data bag other code may reasonably log or
+  // JSON.stringify) — and cleared in the `finally` block below once the
+  // entire 6-step request flow finishes, success or failure. A simple
+  // dereference (reassign to null) is the strongest erasure Node/V8 exposes
+  // without a native addon: JS strings are immutable and there is no public
+  // "overwrite these bytes in place" primitive, so this drops the only
+  // reference and makes the string eligible for GC immediately rather than
+  // living for the rest of this short-lived, single-purpose process.
+  let sessionCookieValue = null;
+
   function authHeaders() {
     const h = {};
-    if (args.cookie) h["Cookie"] = args.cookie;
-    if (args.bearer) h["Authorization"] = `Bearer ${args.bearer}`;
+    if (storageOnlyExecute) {
+      // Storage-only mode: the ONLY accepted auth input is the
+      // interactively-prompted cookie value — args.cookie/args.bearer are
+      // already rejected above and can never reach here.
+      if (sessionCookieValue) h["Cookie"] = sessionCookieValue;
+    } else {
+      if (args.cookie) h["Cookie"] = args.cookie;
+      if (args.bearer) h["Authorization"] = `Bearer ${args.bearer}`;
+    }
     // Sent ONLY in storage-only execute mode. We are already past the
     // missing-inputs gate above (which requires --storage-only for any
     // --execute run), so args.storageOnly is always true here in practice —
@@ -437,54 +635,86 @@ export async function runMain(argv = process.argv.slice(2)) {
     }
   }
 
-  console.log("[specbook-staging-smoke] EXECUTING against a real host — this is not a dry run.");
-  console.log(`  RUN_TAG=${RUN_TAG}`);
-  console.log(`  BASE_URL=${BASE_URL}`);
-  console.log(`  BID_ID=${BID_ID}`);
-  console.log(`  auth=${args.cookie ? "cookie (redacted)" : "bearer (redacted, unconfirmed for these routes)"}`);
-  console.log("");
+  // exitCode is computed inside the try below and only acted on (via
+  // process.exit) once the try/finally has fully unwound — process.exit()
+  // terminates the process immediately and does NOT run pending `finally`
+  // blocks further up the call stack, so the cookie-clearing finally below
+  // would silently never run if process.exit were called from inside it.
+  let exitCode = 0;
 
-  const pdf = await loadTestPdf(args.pdfPath);
+  try {
+    // Prompt for the session cookie now, inside the try, so that ANY
+    // failure during entry (including a Ctrl-C abort) still routes through
+    // the finally below and clears sessionCookieValue.
+    if (storageOnlyExecute) {
+      sessionCookieValue = await promptForCookie();
+    }
 
-  const first = await uploadStep("1. upload", pdf);
-  if (first) {
-    assertAutomationSuppressed("1c. automation suppressed", first);
-    const split = await splitStep();
-    if (split) {
-      const sectionId = await listSectionsStep();
-      if (sectionId != null) {
-        await servePdfStep(sectionId);
-        await authPostureCheck(sectionId);
+    console.log("[specbook-staging-smoke] EXECUTING against a real host — this is not a dry run.");
+    console.log(`  RUN_TAG=${RUN_TAG}`);
+    console.log(`  BASE_URL=${BASE_URL}`);
+    console.log(`  BID_ID=${BID_ID}`);
+    console.log(
+      `  auth=${
+        storageOnlyExecute
+          ? "cookie (redacted, entered interactively via --cookie-prompt)"
+          : args.cookie
+          ? "cookie (redacted)"
+          : "bearer (redacted, unconfirmed for these routes)"
+      }`
+    );
+    console.log("");
+
+    const pdf = await loadTestPdf(args.pdfPath);
+
+    const first = await uploadStep("1. upload", pdf);
+    if (first) {
+      assertAutomationSuppressed("1c. automation suppressed", first);
+      const split = await splitStep();
+      if (split) {
+        const sectionId = await listSectionsStep();
+        if (sectionId != null) {
+          await servePdfStep(sectionId);
+          await authPostureCheck(sectionId);
+        }
+      }
+      const deleted = await deleteStep(first.id);
+      if (deleted) await confirmDeletedStep();
+      // Step 6: re-upload, same fixture. Only meaningful evidence is a fresh
+      // SpecBook.id distinct from `first.id` (see runbook §2.6 / §4).
+      const second = await uploadStep("6. re-upload", pdf);
+      if (second && first) {
+        if (second.id !== first.id) {
+          record("6b. fresh SpecBook.id", "PASS", `${first.id} -> ${second.id}`);
+        } else {
+          record("6b. fresh SpecBook.id", "FAIL", `id unchanged: ${second.id}`);
+        }
+      }
+      if (second) {
+        assertAutomationSuppressed("6c. automation suppressed", second);
       }
     }
-    const deleted = await deleteStep(first.id);
-    if (deleted) await confirmDeletedStep();
-    // Step 6: re-upload, same fixture. Only meaningful evidence is a fresh
-    // SpecBook.id distinct from `first.id` (see runbook §2.6 / §4).
-    const second = await uploadStep("6. re-upload", pdf);
-    if (second && first) {
-      if (second.id !== first.id) {
-        record("6b. fresh SpecBook.id", "PASS", `${first.id} -> ${second.id}`);
-      } else {
-        record("6b. fresh SpecBook.id", "FAIL", `id unchanged: ${second.id}`);
-      }
-    }
-    if (second) {
-      assertAutomationSuppressed("6c. automation suppressed", second);
-    }
+
+    console.log("");
+    const pass = results.filter((r) => r.status === "PASS").length;
+    const fail = results.filter((r) => r.status === "FAIL").length;
+    console.log("===============================================================");
+    console.log(`  SPEC BOOK SMOKE — ${pass} pass · ${fail} fail`);
+    console.log("===============================================================");
+    console.log("Reminder: this run did NOT touch /specbook/analyze — AI analysis");
+    console.log("content remains unprovable while staging's Anthropic 401 stands.");
+    console.log("See runtime/runbooks/specbook-staging-validation.md §6.");
+
+    exitCode = fail > 0 ? 1 : 0;
+  } finally {
+    // Clear the interactively-entered cookie now that the entire 6-step
+    // request flow has completed (success or failure) — see the
+    // sessionCookieValue declaration above for why a dereference is judged
+    // sufficient here.
+    sessionCookieValue = null;
   }
 
-  console.log("");
-  const pass = results.filter((r) => r.status === "PASS").length;
-  const fail = results.filter((r) => r.status === "FAIL").length;
-  console.log("===============================================================");
-  console.log(`  SPEC BOOK SMOKE — ${pass} pass · ${fail} fail`);
-  console.log("===============================================================");
-  console.log("Reminder: this run did NOT touch /specbook/analyze — AI analysis");
-  console.log("content remains unprovable while staging's Anthropic 401 stands.");
-  console.log("See runtime/runbooks/specbook-staging-validation.md §6.");
-
-  process.exit(fail > 0 ? 1 : 0);
+  process.exit(exitCode);
 }
 
 // Auto-run when invoked as a script (not when imported by tests) — same
