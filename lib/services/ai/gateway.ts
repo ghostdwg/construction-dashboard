@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { scanPrompt } from "./promptScan";
 import { emitAuditEventNoAwait } from "@/lib/observability/audit";
+import { recordPromptScanOutcome } from "@/lib/observability/metrics";
 
 /**
  * Single AI gateway (P1B) — a TRANSPARENT, behavior-preserving relay for
@@ -97,6 +98,11 @@ function runShadowPromptScan(req: CreateMessageRequest): void {
     const scan = scanPrompt(text);
     const decision: "flagged" | "clean" = scan.findings.length > 0 ? "flagged" : "clean";
 
+    // Content-free counter, additional to (never a replacement for) the
+    // audit event below. Does not change the severity/log level of the
+    // clean-scan audit event emitted next.
+    recordPromptScanOutcome(decision, feature);
+
     emitAuditEventNoAwait({
       category: "ai_prompt_scan",
       action: "prompt_scan",
@@ -120,6 +126,11 @@ function runShadowPromptScan(req: CreateMessageRequest): void {
     // already swallows its own async errors — this catch exists only as an
     // absolute last resort so a shadow-audit defect can never propagate
     // into the provider call path. Report scan_error, metadata only.
+    try {
+      recordPromptScanOutcome("error", feature);
+    } catch {
+      // Metrics must never throw into the shadow-scan path either.
+    }
     try {
       emitAuditEventNoAwait({
         category: "ai_prompt_scan",

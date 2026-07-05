@@ -20,6 +20,11 @@ vi.mock("../promptScan", () => ({ scanPrompt: h.scanPrompt }));
 vi.mock("@/lib/observability/audit", () => ({ emitAuditEventNoAwait: h.emitAuditEventNoAwait }));
 
 import { createMessage } from "../gateway";
+// Real (unmocked) metrics registry — the shadow-scan outcome counter under
+// test lives here. Using the real module (rather than mocking it) lets the
+// "inspect the actual emitted payload" tests below assert on genuine
+// Prometheus exposition text, not a stubbed call arg.
+import { resetMetrics, renderPrometheus } from "@/lib/observability/metrics";
 
 const CLEAN_SCAN = {
   scannerVersion: "1.0.0",
@@ -49,6 +54,12 @@ function fakeClient(result: { message?: any; error?: any }) {
 beforeEach(() => {
   vi.clearAllMocks();
   h.scanPrompt.mockReturnValue(CLEAN_SCAN);
+  // clearAllMocks() clears call history but not implementations set via
+  // mockImplementation (see the 6b test below, which makes this always
+  // throw) — give every test a fresh non-throwing default so that leak
+  // can't cross test boundaries.
+  h.emitAuditEventNoAwait.mockImplementation(() => {});
+  resetMetrics();
 });
 
 describe("ai gateway — transparent relay (P1B)", () => {
@@ -290,5 +301,159 @@ describe("ai gateway — P2-A0 shadow prompt-scan hook", () => {
     expect(serialized).not.toContain(secretEmail);
     expect(serialized).not.toContain("Contact");
     expect(serialized).not.toContain("irrelevant");
+  });
+});
+
+describe("ai gateway — shadow prompt-scan outcome metrics (clean-scan observability)", () => {
+  // These 5 tests are the mandatory suite for the clean-scan-observability
+  // change: a bounded, content-free counter (`neuroglitch_ai_prompt_scan_outcomes_total`,
+  // labels `outcome` + `feature`) that fires once per shadow-scan result,
+  // additional to (never a replacement for) the existing audit event.
+
+  it("1. a clean scan increments the clean-outcome counter exactly once", async () => {
+    const { client } = fakeClient({ message: fakeMessage("ok", 1, 1) });
+    await createMessage({
+      model: "m",
+      maxTokens: 10,
+      messages: [{ role: "user", content: "p" }],
+      apiKey: "k",
+      client,
+      audit: { feature: "brief" },
+    });
+
+    const out = renderPrometheus();
+    expect(out).toMatch(
+      /neuroglitch_ai_prompt_scan_outcomes_total\{outcome="clean",feature="brief"\} 1/
+    );
+    // No other outcome bucket ticked for this single call.
+    expect(out).not.toMatch(/neuroglitch_ai_prompt_scan_outcomes_total\{outcome="flagged"/);
+    expect(out).not.toMatch(/neuroglitch_ai_prompt_scan_outcomes_total\{outcome="error"/);
+  });
+
+  it("2. a flagged scan increments the flagged-outcome counter exactly once", async () => {
+    h.scanPrompt.mockReturnValue({
+      scannerVersion: "1.0.0",
+      mode: "shadow",
+      findings: [{ detector: "dollar_amount", count: 3, confidence: "medium" }],
+      scannedChars: 99,
+      truncated: false,
+    });
+    const { client } = fakeClient({ message: fakeMessage("ok", 1, 1) });
+    await createMessage({
+      model: "m",
+      maxTokens: 10,
+      messages: [{ role: "user", content: "p" }],
+      apiKey: "k",
+      client,
+      audit: { feature: "submittal-organize" },
+    });
+
+    const out = renderPrometheus();
+    expect(out).toMatch(
+      /neuroglitch_ai_prompt_scan_outcomes_total\{outcome="flagged",feature="submittal-organize"\} 1/
+    );
+    expect(out).not.toMatch(/neuroglitch_ai_prompt_scan_outcomes_total\{outcome="clean"/);
+    expect(out).not.toMatch(/neuroglitch_ai_prompt_scan_outcomes_total\{outcome="error"/);
+  });
+
+  it("3. a scan error increments the error-outcome counter exactly once", async () => {
+    h.scanPrompt.mockImplementation(() => {
+      throw new Error("scanner exploded");
+    });
+    const { client } = fakeClient({ message: fakeMessage("ok", 1, 1) });
+    await createMessage({
+      model: "m",
+      maxTokens: 10,
+      messages: [{ role: "user", content: "p" }],
+      apiKey: "k",
+      client,
+    });
+
+    const out = renderPrometheus();
+    expect(out).toMatch(
+      /neuroglitch_ai_prompt_scan_outcomes_total\{outcome="error",feature="unknown"\} 1/
+    );
+    expect(out).not.toMatch(/neuroglitch_ai_prompt_scan_outcomes_total\{outcome="clean"/);
+    expect(out).not.toMatch(/neuroglitch_ai_prompt_scan_outcomes_total\{outcome="flagged"/);
+  });
+
+  it("4. the emitted metric payload never contains prompt text, matched values, or document/token text", async () => {
+    const secret = "definitely-not-real@example.com CONFIDENTIAL-SPEC-TEXT $12,345.67";
+    h.scanPrompt.mockReturnValue({
+      scannerVersion: "1.0.0",
+      mode: "shadow",
+      findings: [
+        { detector: "email", count: 1, confidence: "low" },
+        { detector: "dollar_amount", count: 1, confidence: "medium" },
+      ],
+      scannedChars: secret.length,
+      truncated: false,
+    });
+    const { client } = fakeClient({ message: fakeMessage("ok", 1, 1) });
+
+    await createMessage({
+      model: "m",
+      maxTokens: 10,
+      system: secret,
+      messages: [{ role: "user", content: "irrelevant document body" }],
+      apiKey: "k",
+      client,
+      audit: { feature: "unrecognized-caller-name", bidId: "bid-should-never-appear", correlationId: "corr-should-never-appear" },
+    });
+
+    const out = renderPrometheus();
+    const section = out
+      .split("\n")
+      .filter((l) => l.includes("neuroglitch_ai_prompt_scan_outcomes_total"))
+      .join("\n");
+
+    // Only the bounded outcome+feature label pair is present. Findings were
+    // present (email + dollar_amount) so the outcome is "flagged" — the
+    // point of this test is that even a flagged result's metric carries
+    // none of what triggered it.
+    expect(section).toMatch(/\{outcome="flagged",feature="other"\} 1/);
+    expect(section).not.toContain(secret);
+    expect(section).not.toContain("CONFIDENTIAL-SPEC-TEXT");
+    expect(section).not.toContain("irrelevant document body");
+    expect(section).not.toContain("bid-should-never-appear");
+    expect(section).not.toContain("corr-should-never-appear");
+    expect(section).not.toContain("email");
+    expect(section).not.toContain("dollar_amount");
+    // Unrecognized feature values collapse to "other", not passed through raw.
+    expect(section).not.toContain("unrecognized-caller-name");
+  });
+
+  it("5. scanner remains shadow-mode: still non-blocking, still logs clean at DEBUG, caller result unchanged", async () => {
+    const msg = fakeMessage("hello world", 12, 7, "mX");
+    const { client, create } = fakeClient({ message: msg });
+
+    const r = await createMessage({
+      model: "mX",
+      maxTokens: 100,
+      messages: [{ role: "user", content: "p" }],
+      apiKey: "k",
+      client,
+    });
+
+    // Provider call happened exactly once, untouched by the scan/metric.
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(r.raw).toBe(msg);
+    expect(r.text).toBe("hello world");
+    expect(r.usage).toEqual({ inputTokens: 12, outputTokens: 7 });
+    expect(r.model).toBe("mX");
+    expect(r.stopReason).toBe("end_turn");
+
+    // The audit call's severity is still DEBUG for a clean result — this
+    // metric change does not raise it to INFO or otherwise alter it.
+    expect(h.emitAuditEventNoAwait).toHaveBeenCalledTimes(1);
+    const call = h.emitAuditEventNoAwait.mock.calls[0][0];
+    expect(call.decision).toBe("clean");
+    expect(call.severity).toBe("DEBUG");
+
+    // The metric fired in addition to (not instead of) that audit call.
+    const out = renderPrometheus();
+    expect(out).toMatch(
+      /neuroglitch_ai_prompt_scan_outcomes_total\{outcome="clean",feature="unknown"\} 1/
+    );
   });
 });

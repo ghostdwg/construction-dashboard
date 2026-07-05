@@ -325,6 +325,42 @@ const alertsUnreadGauge = registerGauge(
   ["severity"]
 );
 
+// ── P2-A0 addendum — shadow prompt-scan outcome observability ─────────────
+//
+// The TS AI gateway's shadow prompt-scan (lib/services/ai/gateway.ts) already
+// emits an audit event per call (recordAuditEmission above ticks once for
+// every one of those, keyed by category+severity). This counter adds an
+// explicit, purpose-built breakdown by scan *outcome* so "how many clean
+// scans happened" is a direct query instead of an inference from severity.
+//
+// Content-free by construction: only ever fed the fixed `outcome` enum and a
+// bounded `feature` value (see boundedPromptScanFeature) — never prompt
+// text, detector match values, document/token text, or any unbounded id
+// (bidId, correlationId, etc).
+
+export type PromptScanOutcome = "clean" | "flagged" | "error";
+
+// Fixed allow-list of known gateway call-site names. `feature` originates
+// from caller-supplied source code (never end-user input), but is typed as
+// a plain `string` at the gateway boundary — collapsing anything outside
+// this list to "other" keeps the label space bounded even if a future
+// caller passes an unexpected value.
+const KNOWN_PROMPT_SCAN_FEATURES = new Set([
+  "unknown",
+  "brief",
+  "submittal-organize",
+]);
+
+function boundedPromptScanFeature(feature: string): string {
+  return KNOWN_PROMPT_SCAN_FEATURES.has(feature) ? feature : "other";
+}
+
+const promptScanOutcomesCounter = registerCounter(
+  "neuroglitch_ai_prompt_scan_outcomes_total",
+  "Count of P2-A0 shadow prompt-scan results, by outcome + feature. Content-free — never prompt/document/token text or matched values.",
+  ["outcome", "feature"]
+);
+
 // ── Public emission helpers ────────────────────────────────────────────────
 
 export function recordAuditEmission(category: AuditCategory, severity: AuditSeverity): void {
@@ -436,6 +472,13 @@ export function recordAlertPersisted(triggerKind: string, severity: string): voi
 
 export function setAlertsUnreadCount(severity: string, count: number): void {
   setGauge(alertsUnreadGauge, count, { severity });
+}
+
+// P2-A0 — shadow prompt-scan outcome helper. `feature` is bounded to a
+// known allow-list before it ever becomes a label value (see
+// boundedPromptScanFeature above).
+export function recordPromptScanOutcome(outcome: PromptScanOutcome, feature: string): void {
+  incCounter(promptScanOutcomesCounter, { outcome, feature: boundedPromptScanFeature(feature) });
 }
 
 // ── Renderer ───────────────────────────────────────────────────────────────
