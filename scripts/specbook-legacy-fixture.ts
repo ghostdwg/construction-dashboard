@@ -294,14 +294,31 @@ async function doCleanup(bidId: number): Promise<{ ok: true } | { ok: false; rea
     return { ok: true };
   }
 
+  // Up-front, whole-cleanup gate: EVERY row this action would touch — the
+  // SpecBook itself AND every non-null SpecSection.pdfPath — must classify as
+  // legacy-storage-root for this exact bidId. A single mismatch (canonical,
+  // legacy-cwd, or invalid) refuses the entire cleanup before any Prisma
+  // delete or BlobStore delete call is made — no partial mutation.
   for (const book of specBooks) {
-    const classified = classifyStoragePath(book.filePath, bidId);
-    if (classified.kind !== "legacy-storage-root") {
+    const classifiedBook = classifyStoragePath(book.filePath, bidId);
+    if (classifiedBook.kind !== "legacy-storage-root") {
       return {
         ok: false,
         reason:
           "This Bid does not contain a fixture-shaped SpecBook row — refusing to touch it.",
       };
+    }
+
+    for (const section of book.sections) {
+      if (section.pdfPath === null) continue;
+      const classifiedSection = classifyStoragePath(section.pdfPath, bidId);
+      if (classifiedSection.kind !== "legacy-storage-root") {
+        return {
+          ok: false,
+          reason:
+            "This Bid does not contain a fixture-shaped SpecSection row — refusing to touch it.",
+        };
+      }
     }
   }
 
@@ -314,11 +331,15 @@ async function doCleanup(bidId: number): Promise<{ ok: true } | { ok: false; rea
   for (const book of specBooks) {
     for (const section of book.sections) {
       if (section.pdfPath) {
-        const classified = classifyStoragePath(section.pdfPath, bidId);
-        if (classified.kind === "legacy-storage-root" || classified.kind === "canonical") {
-          await blobStore.delete(classified.canonicalKey);
-          sectionBlobsDeleted += 1;
-        }
+        // Already verified legacy-storage-root above — never a "canonical"
+        // (or any other) key. A canonical-key section blob must never be
+        // deleted by this tool.
+        const classified = classifyStoragePath(section.pdfPath, bidId) as {
+          kind: "legacy-storage-root";
+          canonicalKey: string;
+        };
+        await blobStore.delete(classified.canonicalKey);
+        sectionBlobsDeleted += 1;
       }
       await prisma.specSection.delete({ where: { id: section.id } });
       sectionRowsDeleted += 1;
@@ -338,6 +359,30 @@ async function doCleanup(bidId: number): Promise<{ ok: true } | { ok: false; rea
       `specSections=${sectionRowsDeleted} specSectionBlobs=${sectionBlobsDeleted}`
   );
   return { ok: true };
+}
+
+const MAX_ERROR_DESCRIPTOR_LENGTH = 64;
+const ERRNO_CODE_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+/**
+ * Bounded, path-free failure descriptor: an errno `code` (e.g. "ENOENT"),
+ * shape-checked against the standard Node errno-code convention (all
+ * uppercase, no path-shaped content possible), or else the thrown value's
+ * Error constructor name, or else its `typeof` (a fixed, closed set of
+ * strings — "string", "number", "object", etc. — never derived from the
+ * value's own content). Never `e.message`, never a stack, never `String(e)` —
+ * none of those are safe against an underlying fs/BlobStore error embedding
+ * an absolute storage path.
+ */
+function sanitizeErrorDescriptor(e: unknown): string {
+  const code = e && typeof e === "object" && "code" in e ? (e as { code?: unknown }).code : undefined;
+  if (typeof code === "string" && ERRNO_CODE_PATTERN.test(code)) {
+    return code.slice(0, MAX_ERROR_DESCRIPTOR_LENGTH);
+  }
+  if (e instanceof Error) {
+    return e.constructor.name.slice(0, MAX_ERROR_DESCRIPTOR_LENGTH);
+  }
+  return typeof e;
 }
 
 export async function runMain(argv: string[]): Promise<number> {
@@ -381,7 +426,7 @@ export async function runMain(argv: string[]): Promise<number> {
     }
     return 0;
   } catch (e) {
-    err(`Unexpected failure: ${e instanceof Error ? e.message : String(e)}`);
+    err(`Unexpected failure: ${sanitizeErrorDescriptor(e)}`);
     return 2;
   }
 }
@@ -399,7 +444,7 @@ if (invokedAsScript) {
       process.exitCode = code;
     })
     .catch((e) => {
-      console.error(e);
+      err(`Unexpected bootstrap failure: ${sanitizeErrorDescriptor(e)}`);
       process.exitCode = 2;
     });
 }

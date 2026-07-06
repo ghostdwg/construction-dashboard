@@ -414,6 +414,132 @@ describe("--cleanup", () => {
   });
 });
 
+describe("--cleanup: per-section identity gate", () => {
+  beforeEach(() => {
+    process.env.APP_ENV = "staging";
+  });
+
+  test("refuses cleanup when a SpecSection.pdfPath does not classify as legacy-storage-root (e.g. canonical shape), leaving all rows and blobs untouched", async () => {
+    db.specBookCounter += 1;
+    const bookId = db.specBookCounter;
+    const bookKey = `uploads/specbooks/${FIXTURE_BID_ID}/original.pdf`;
+    db.specBooks.set(bookId, {
+      id: bookId,
+      bidId: FIXTURE_BID_ID,
+      fileName: "original.pdf",
+      filePath: `${SYNTHETIC_STORAGE_ROOT}/${bookKey}`, // legacy-storage-root at the book level
+      status: "ready",
+    });
+    blobData.set(bookKey, Buffer.from("book content"));
+
+    db.specSectionCounter += 1;
+    const sectionId = db.specSectionCounter;
+    db.specSections.set(sectionId, {
+      id: sectionId,
+      specBookId: bookId,
+      csiNumber: "01 00 00",
+      csiTitle: "Section",
+      pdfPath: "plan-room/jobs/1/spec/section.pdf", // canonical relative key, NOT legacy-storage-root
+      pdfFileName: "section.pdf",
+    });
+
+    const code = await runMain(["--cleanup", "--bid-id", String(FIXTURE_BID_ID), "--confirm", CONFIRM_PHRASE]);
+    expect(code).toBe(1);
+    expect(blobDeleteMock).not.toHaveBeenCalled();
+    expect(db.specBooks.has(bookId)).toBe(true);
+    expect(db.specSections.has(sectionId)).toBe(true);
+    expect(blobData.has(bookKey)).toBe(true);
+  });
+
+  test("refuses cleanup when a SpecSection.pdfPath is invalid / points at a mismatched bid, leaving all rows and blobs untouched", async () => {
+    db.specBookCounter += 1;
+    const bookId = db.specBookCounter;
+    const bookKey = `uploads/specbooks/${FIXTURE_BID_ID}/original.pdf`;
+    db.specBooks.set(bookId, {
+      id: bookId,
+      bidId: FIXTURE_BID_ID,
+      fileName: "original.pdf",
+      filePath: `${SYNTHETIC_STORAGE_ROOT}/${bookKey}`,
+      status: "ready",
+    });
+    blobData.set(bookKey, Buffer.from("book content"));
+
+    db.specSectionCounter += 1;
+    const sectionId = db.specSectionCounter;
+    db.specSections.set(sectionId, {
+      id: sectionId,
+      specBookId: bookId,
+      csiNumber: "01 00 00",
+      csiTitle: "Section",
+      // Mismatched bid-id segment inside the storage root — must classify
+      // "invalid", never "legacy-storage-root", even though it's structurally
+      // close.
+      pdfPath: `${SYNTHETIC_STORAGE_ROOT}/uploads/specbooks/${OTHER_BID_ID}/other-section.pdf`,
+      pdfFileName: "other-section.pdf",
+    });
+
+    const code = await runMain(["--cleanup", "--bid-id", String(FIXTURE_BID_ID), "--confirm", CONFIRM_PHRASE]);
+    expect(code).toBe(1);
+    expect(blobDeleteMock).not.toHaveBeenCalled();
+    expect(db.specBooks.has(bookId)).toBe(true);
+    expect(db.specSections.has(sectionId)).toBe(true);
+    expect(blobData.has(bookKey)).toBe(true);
+  });
+});
+
+describe("error output sanitization", () => {
+  beforeEach(() => {
+    process.env.APP_ENV = "staging";
+  });
+
+  test("seed: an injected BlobStore throw produces a bounded, path-free descriptor — never message/stack/String(e)", async () => {
+    const thrown = new Error(
+      `ENOENT: no such file or directory, open '${SYNTHETIC_STORAGE_ROOT}/uploads/specbooks/${FIXTURE_BID_ID}/fixture-original.pdf'`
+    );
+    (thrown as NodeJS.ErrnoException).code = "ENOENT";
+    blobPutMock.mockImplementationOnce(async () => {
+      throw thrown;
+    });
+
+    const code = await runMain(["--seed", "--bid-id", String(FIXTURE_BID_ID), "--confirm", CONFIRM_PHRASE]);
+    expect(code).toBe(2);
+
+    const output = errorSpy.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
+    expect(output).toContain("ENOENT");
+    expect(output).not.toContain(SYNTHETIC_STORAGE_ROOT);
+    expect(output).not.toContain("/storage");
+    expect(output).not.toContain("/opt");
+    expect(output).not.toContain(thrown.message);
+    expect(output).not.toContain(thrown.stack ?? " unreachable ");
+    expect(output.length).toBeLessThan(200);
+  });
+
+  test("cleanup: an injected BlobStore throw during delete produces a bounded, path-free descriptor — never message/stack/String(e)", async () => {
+    const seedCode = await runMain(["--seed", "--bid-id", String(FIXTURE_BID_ID), "--confirm", CONFIRM_PHRASE]);
+    expect(seedCode).toBe(0);
+
+    const thrown = new Error(
+      `EACCES: permission denied, unlink '${SYNTHETIC_STORAGE_ROOT}/uploads/specbooks/${FIXTURE_BID_ID}/fixture-section.pdf'`
+    );
+    (thrown as NodeJS.ErrnoException).code = "EACCES";
+    blobDeleteMock.mockImplementationOnce(async () => {
+      throw thrown;
+    });
+
+    const code = await runMain(["--cleanup", "--bid-id", String(FIXTURE_BID_ID), "--confirm", CONFIRM_PHRASE]);
+    expect(code).toBe(2);
+
+    const output = errorSpy.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
+    expect(output).toContain("EACCES");
+    expect(output).not.toContain(SYNTHETIC_STORAGE_ROOT);
+    expect(output).not.toContain("/storage");
+    expect(output).not.toContain("/opt");
+    expect(output).not.toContain(thrown.message);
+    expect(output).not.toContain(thrown.stack ?? " unreachable ");
+    expect(output.length).toBeLessThan(200);
+  });
+});
+
 describe("no HTTP/sidecar/provider/job path reachable", () => {
   test("the script's own import statements touch nothing under app/api/**, no fetch, no SIDECAR_URL, no job-creation service", async () => {
     const source = await fs.readFile(
