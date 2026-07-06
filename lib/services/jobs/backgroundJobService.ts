@@ -14,7 +14,8 @@ export type JobType =
   | "drawing_analysis"
   | "meeting_transcription"
   | "brief_refresh"
-  | "submittal_generation";
+  | "submittal_generation"
+  | "market_scrape";
 
 export type JobStatus =
   | "queued"
@@ -27,6 +28,7 @@ export interface CreateJobParams {
   jobType: JobType;
   bidId?: number;
   relatedId?: string;
+  dedupeKey?: string;
   inputSummary?: string;
   triggerSource?: "user" | "automation" | "webhook" | "upload";
 }
@@ -40,6 +42,7 @@ export async function createJob(params: CreateJobParams) {
       status: "queued",
       bidId: params.bidId ?? null,
       relatedId: params.relatedId ?? null,
+      dedupeKey: params.dedupeKey ?? null,
       inputSummary: params.inputSummary ?? null,
       triggerSource: params.triggerSource ?? "user",
     },

@@ -1290,6 +1290,7 @@ model RfiItem {
 // the authoritative source of truth for overnight work and long-running analysis.
 //
 // jobType values: "spec_analysis" | "drawing_analysis" | "meeting_transcription"
+// | "brief_refresh" | "submittal_generation" | "market_scrape"
 //
 // status FSM: queued → running → complete | failed | cancelled
 //
@@ -1311,6 +1312,10 @@ model BackgroundJob {
 
   // Input metadata (lightweight summary, not full payload)
   inputSummary String? // e.g. "32 sections, tier 2"
+
+  // Optional cross-bid/source duplicate key. Market scrape jobs use this because
+  // they are keyed by MarketSource.relatedId rather than bidId.
+  dedupeKey String?
 
   // Result metadata (set on complete)
   resultSummary String? // e.g. "32 sections saved, $1.42"
@@ -1342,7 +1347,9 @@ model BackgroundJob {
   submittalItems SubmittalItem[]
 
   @@unique([bidId, jobType, activeSlot])
+  @@unique([dedupeKey, activeSlot])
   @@index([bidId])
+  @@index([dedupeKey])
   @@index([jobType, status])
   @@index([status, createdAt])
   @@index([externalJobId])

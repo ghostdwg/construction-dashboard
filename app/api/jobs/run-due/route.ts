@@ -183,14 +183,14 @@ export async function POST(request: Request) {
       await prisma.backgroundJob.update({
         where: { id: job.id },
         data: {
-          status: outcome.ok ? "completed" : "failed",
+          status: outcome.ok ? "complete" : "failed",
           completedAt: new Date(),
           resultSummary: outcome.summary.slice(0, 500),
           errorMessage: outcome.ok ? null : outcome.summary.slice(0, 500),
           activeSlot: null,
         },
       });
-      results.push({ jobId: job.id, status: outcome.ok ? "completed" : "failed", summary: outcome.summary });
+      results.push({ jobId: job.id, status: outcome.ok ? "complete" : "failed", summary: outcome.summary });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await prisma.backgroundJob.update({

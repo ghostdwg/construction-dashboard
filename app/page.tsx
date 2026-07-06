@@ -144,7 +144,7 @@ function TableHead({ cols }: { cols: string[] }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const STATUS_SORT: Record<string, number> = {
-  running: 0, failed: 1, queued: 2, complete: 3, cancelled: 4,
+  running: 0, failed: 1, queued: 2, complete: 3, completed: 3, cancelled: 4,
 };
 const QUEUE_SORT: Record<QueueLevel, number> = { blocked: 0, review: 1, live: 2 };
 
@@ -321,7 +321,7 @@ export default async function HomePage() {
   const runningJobs    = recentJobs.filter(j => ["queued", "running"].includes(j.status));
   const failedJobs     = recentJobs.filter(j => j.status === "failed");
   const completedNight = recentJobs.filter(
-    j => j.status === "complete" && j.completedAt && j.completedAt >= since24h,
+    j => ["complete", "completed"].includes(j.status) && j.completedAt && j.completedAt >= since24h,
   );
   const reviewRequired = failedJobs.length + staleBriefs.length + pendingGapFindings.length;
   const blockedCount   = failedJobs.length + overdueSubmittals.length;

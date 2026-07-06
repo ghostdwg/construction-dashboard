@@ -153,7 +153,7 @@ export default function SourcesPanel() {
         if (cancelled) return;
         const queued = data.jobs.filter((j) => j.status === "queued");
         const completedRecently = data.jobs.filter((j) =>
-          j.status === "completed" && j.completedAt &&
+          (j.status === "complete" || j.status === "completed") && j.completedAt &&
           Date.now() - new Date(j.completedAt).getTime() < 12 * 3_600_000
         ).length;
         const next = queued

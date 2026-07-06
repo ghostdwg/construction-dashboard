@@ -6,6 +6,8 @@
 //      Auth enabled → unauthenticated requests to protected routes redirect
 //      to /login. Public routes: /login, /api/auth/*, /api/health, /metrics,
 //      /api/jobs/run-due (worker token auth handled in the route),
+//      /api/procore/webhook (external webhook receiver, secret-verified in
+//      the route — see route docstring for the fail-closed contract),
 //      /_next/*, favicon.
 //
 //      /metrics (Phase O1.5.a): the Prometheus scrape endpoint is exempt
@@ -52,6 +54,7 @@ export default auth((req) => {
     pathname === "/api/health" ||
     pathname === "/metrics" ||                // Prometheus scrape (O1.5.a)
     pathname === "/api/jobs/run-due" ||      // worker token auth — see route
+    pathname === "/api/procore/webhook" ||   // external webhook receiver — see route
     pathname.startsWith("/_next/") ||
     pathname === "/favicon.ico";
 

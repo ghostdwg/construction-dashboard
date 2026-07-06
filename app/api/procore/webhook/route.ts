@@ -4,7 +4,7 @@
 //
 // Procore calls this URL when a subscribed event fires (RFI created/updated,
 // submittal status changed). The handler:
-//   1. Verifies the api_key header against PROCORE_WEBHOOK_SECRET (if set).
+//   1. Verifies the api_key header against PROCORE_WEBHOOK_SECRET.
 //   2. Stores the raw payload in ProcoreWebhookEvent.
 //   3. Marks the event processed immediately (manual pull buttons handle sync).
 //
@@ -27,13 +27,15 @@ type ProcoreWebhookPayload = {
 export async function POST(request: Request) {
   const payload = await request.text();
 
-  // Verify the secret key if configured
+  // Verify the secret key. The proxy allows this public route, so the handler
+  // must fail closed when the shared webhook secret is not configured.
   const configuredSecret = await getSetting("PROCORE_WEBHOOK_SECRET");
-  if (configuredSecret) {
-    const incomingKey = request.headers.get("Procore-Api-Key");
-    if (incomingKey !== configuredSecret) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!configuredSecret) {
+    return Response.json({ error: "Webhook secret not configured" }, { status: 503 });
+  }
+  const incomingKey = request.headers.get("Procore-Api-Key");
+  if (incomingKey !== configuredSecret) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let parsed: ProcoreWebhookPayload;
