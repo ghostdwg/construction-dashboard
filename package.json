@@ -36,7 +36,9 @@
     "backfill:project-graph": "tsx scripts/backfill-project-graph.ts",
     "backfill:project-graph:dry-run": "tsx scripts/backfill-project-graph.ts --dry-run",
     "backfill:project-graph:report-only": "tsx scripts/backfill-project-graph.ts --report-only",
-    "backfill:project-graph:rollback": "tsx scripts/rollback-project-backfill.ts"
+    "backfill:project-graph:rollback": "tsx scripts/rollback-project-backfill.ts",
+    "storage:inventory": "tsx scripts/storage-inventory-backfill.ts",
+    "storage:inventory:reverse": "tsx scripts/storage-inventory-backfill.ts --reverse"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
