@@ -13,6 +13,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
+import { resolveLocalPath } from "@/lib/services/specbook/storagePath";
 import {
   createJob,
   startJob,
@@ -134,11 +135,25 @@ export async function triggerSpecAnalysis(
     };
     if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
 
-    const sectionsPayload = specBook.sections.map((s) => ({
-      csi: s.csiNumber,
-      title: s.csiTitle,
-      pdf_path: s.pdfPath,
-    }));
+    // Resolve every section's stored pdfPath (relative BlobStore key, legacy
+    // cwd-rooted path, or production storage-root path — see
+    // lib/services/specbook/storagePath.ts) to a real local absolute path
+    // BEFORE calling the sidecar. The sidecar is a separate process with its
+    // own cwd: a bare relative key means nothing to it, and a legacy path
+    // may not even be readable from its container. If any section can't be
+    // resolved to an existing file, fail the whole job explicitly rather
+    // than send a partial/garbage payload or let the sidecar attempt a real
+    // Anthropic analysis call against a nonexistent/wrong file.
+    const sectionsPayload: Array<{ csi: string | null; title: string | null; pdf_path: string }> = [];
+    for (const s of specBook.sections) {
+      const resolved = s.pdfPath ? await resolveLocalPath(s.pdfPath) : { ok: false as const, reason: "missing" as const };
+      if (!resolved.ok) {
+        const message = `Section ${s.csiNumber ?? s.id} PDF is unavailable (${resolved.reason}) — re-run Split or re-upload the spec book.`;
+        await failJob(dbJob.id, message);
+        throw new TriggerError(404, message);
+      }
+      sectionsPayload.push({ csi: s.csiNumber, title: s.csiTitle, pdf_path: resolved.localPath });
+    }
 
     const res = await fetch(`${SIDECAR_URL}/parse/specs/analyze_split`, {
       method: "POST",

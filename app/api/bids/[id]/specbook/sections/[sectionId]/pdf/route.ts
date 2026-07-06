@@ -1,17 +1,5 @@
-import path from "path";
-import fs from "fs/promises";
 import { prisma } from "@/lib/prisma";
-import { getBlobStore } from "@/lib/storage/blobStore";
-
-// Pre-migration records may still hold a raw filesystem path from before
-// Spec Book storage moved to BlobStore (see upload/route.ts). Recognizing
-// this one known historic shape lets this route keep serving those rows
-// without a data migration — anything else is treated as a BlobStore key,
-// never opened as an arbitrary filesystem path.
-const LEGACY_UPLOAD_ROOT = path.join(process.cwd(), "uploads", "specbooks");
-function isLegacyUploadPath(p: string): boolean {
-  return path.isAbsolute(p) && (p === LEGACY_UPLOAD_ROOT || p.startsWith(LEGACY_UPLOAD_ROOT + path.sep));
-}
+import { readStoragePathBuffer } from "@/lib/services/specbook/storagePath";
 
 // GET /api/bids/[id]/specbook/sections/[sectionId]/pdf
 //
@@ -46,9 +34,7 @@ export async function GET(
   }
 
   try {
-    const buffer = isLegacyUploadPath(section.pdfPath)
-      ? await fs.readFile(section.pdfPath)
-      : await getBlobStore().get(section.pdfPath);
+    const buffer = await readStoragePathBuffer(section.pdfPath);
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {

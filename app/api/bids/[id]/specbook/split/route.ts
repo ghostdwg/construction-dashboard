@@ -1,18 +1,7 @@
-import path from "path";
-import fs from "fs/promises";
 import { prisma } from "@/lib/prisma";
-import { getBlobStore, localPathForKey } from "@/lib/storage/blobStore";
+import { localPathForKey } from "@/lib/storage/blobStore";
 import { lookupCanonicalTitles } from "@/lib/services/csi/canonicalTitle";
-
-// Pre-migration records may still hold a raw filesystem path from before
-// Spec Book storage moved to BlobStore (see upload/route.ts). Recognizing
-// this one known historic shape lets split/serve/delete keep working for
-// those rows without a data migration — anything else is treated as an
-// (invalid) BlobStore key, never opened as an arbitrary filesystem path.
-const LEGACY_UPLOAD_ROOT = path.join(process.cwd(), "uploads", "specbooks");
-function isLegacyUploadPath(p: string): boolean {
-  return path.isAbsolute(p) && (p === LEGACY_UPLOAD_ROOT || p.startsWith(LEGACY_UPLOAD_ROOT + path.sep));
-}
+import { resolveLocalPath } from "@/lib/services/specbook/storagePath";
 
 // POST /api/bids/[id]/specbook/split
 //
@@ -44,23 +33,14 @@ export async function POST(
   }
 
   // Resolve an absolute filesystem path for the sidecar handoff. New records
-  // store a relative BlobStore key; pre-migration records may still hold a
-  // legacy absolute path (see isLegacyUploadPath above).
-  const blobStore = getBlobStore();
-  let sourcePdfPath: string;
-  if (isLegacyUploadPath(specBook.filePath)) {
-    try {
-      await fs.access(specBook.filePath);
-    } catch {
-      return Response.json({ error: "Spec book file not found on disk" }, { status: 404 });
-    }
-    sourcePdfPath = specBook.filePath;
-  } else {
-    if (!(await blobStore.exists(specBook.filePath))) {
-      return Response.json({ error: "Spec book file not found on disk" }, { status: 404 });
-    }
-    sourcePdfPath = localPathForKey(specBook.filePath);
+  // store a relative BlobStore key; pre-migration records may hold a legacy
+  // cwd-rooted absolute path, or a production storage-root absolute path —
+  // see lib/services/specbook/storagePath.ts for the full shape breakdown.
+  const resolved = await resolveLocalPath(specBook.filePath);
+  if (!resolved.ok) {
+    return Response.json({ error: "Spec book file not found on disk" }, { status: 404 });
   }
+  const sourcePdfPath = resolved.localPath;
 
   // The sidecar writes split section PDFs directly onto the shared /storage
   // mount — both containers mount the same durable root at the same

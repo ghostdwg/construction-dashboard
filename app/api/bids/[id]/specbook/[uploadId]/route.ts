@@ -1,17 +1,5 @@
-import path from "path";
-import fs from "fs/promises";
 import { prisma } from "@/lib/prisma";
-import { getBlobStore } from "@/lib/storage/blobStore";
-
-// Pre-migration records may still hold a raw filesystem path from before
-// Spec Book storage moved to BlobStore (see upload/route.ts). Recognizing
-// this one known historic shape lets deletion keep working for those rows
-// without a data migration — anything else is treated as a BlobStore key,
-// never unlinked as an arbitrary filesystem path.
-const LEGACY_UPLOAD_ROOT = path.join(process.cwd(), "uploads", "specbooks");
-function isLegacyUploadPath(p: string): boolean {
-  return path.isAbsolute(p) && (p === LEGACY_UPLOAD_ROOT || p.startsWith(LEGACY_UPLOAD_ROOT + path.sep));
-}
+import { deleteStoragePath } from "@/lib/services/specbook/storagePath";
 
 // DELETE /api/bids/[id]/specbook/[uploadId]
 // Removes a spec book, its sections, and the files on disk.
@@ -52,15 +40,16 @@ export async function DELETE(
 
   // Clean up artifacts (best-effort — don't fail if any are already missing).
   // Only ever the specific keys/paths this spec book is known to own — never
-  // a bid/project-wide prefix sweep.
-  const blobStore = getBlobStore();
+  // a bid/project-wide prefix sweep. deleteStoragePath() dispatches by shape
+  // (see lib/services/specbook/storagePath.ts): canonical and production
+  // storage-root paths go through BlobStore.delete() against the derived
+  // key, legacy cwd-rooted paths are unlinked directly, and an invalid
+  // reference is a no-op.
   const artifacts = [
     specBook.filePath,
     ...specBook.sections.map((s) => s.pdfPath).filter(Boolean) as string[],
   ];
-  await Promise.allSettled(
-    artifacts.map((p) => (isLegacyUploadPath(p) ? fs.unlink(p) : blobStore.delete(p)))
-  );
+  await Promise.allSettled(artifacts.map((p) => deleteStoragePath(p)));
 
   return new Response(null, { status: 204 });
 }
