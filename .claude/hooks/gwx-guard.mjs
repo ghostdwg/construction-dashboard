@@ -56,12 +56,14 @@ process.stdin.on("end", () => {
   for (const seg of segments) {
     const words = seg.split(/\s+/).filter(Boolean);
     let i = 0;
-    // Skip leading env assignments, wrappers, and wrapper flags (-c, -u, ...).
+    // Skip leading env assignments, wrappers, wrapper flags (-c, -u, ...),
+    // and bare numeric wrapper args (`timeout 5`, `nice -n 10`).
     while (
       i < words.length &&
       (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) ||
         wrappers.has(words[i]) ||
-        /^-/.test(words[i]))
+        /^-/.test(words[i]) ||
+        /^\d+[smhd]?$/.test(words[i]))
     ) {
       i++;
     }

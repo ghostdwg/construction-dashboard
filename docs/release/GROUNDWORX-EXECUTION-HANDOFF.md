@@ -35,6 +35,30 @@ block only) via the `/gwx-handoff` skill.
 - **Parallel-safe local work:** Q11 (doc truth pass), Q13 (classifier error
   honesty); Q07's Opus decision may run anytime. Q12 waits for Q02.
 
+## Current Execution Delta (overrides stale status metadata)
+
+The protected canonical Queue (byte-identical to frozen `7b6ef13`) still words
+Q01/Q04a/Q06a as pending — e.g. "GWX-Q01 … ✦ FIRST". That wording is **stale
+by design**: the canonical files are deny-protected from model edits and are
+corrected only by the sanctioned documentation-sync card (GWX-Q11). **Until
+GWX-Q11 lands, THIS table overrides any status wording in the Ledger or Queue.
+It does not override their decisions, gates, claim rules, or card contents —
+status only.**
+
+| Card | Commit (Sprint 1, `fable/groundworx-delivery-sprint-1`) | Status |
+|---|---|---|
+| GWX-Q01 — fixture CLI safety hardening | `854eacf35697cdd0f4bd460af15047f358b4537e` | **COMPLETE** — local, reviewed, unmerged to integration |
+| GWX-Q04a — storage-inventory Prisma adapter | `ae04d0c8c2004cd7ca40a2f993af410841752e81` | **COMPLETE** — local, reviewed, unmerged to integration |
+| GWX-Q06a — upload-route suppression gates + smoke helpers | `4ec073fe458dcc52273bd1228f6230e75c22af78` | **COMPLETE** — local, reviewed, unmerged to integration |
+
+**Current next actionable item:** merge Sprint 1 + handoff docs into
+`integration/foundation-ci-divergence` (fast-forward — see the Integration
+import manifest in `docs/release/FABLE-EXIT-REVIEW.md`), then **GWX-Q02
+(Human, Josh)** — the first live gate. Q07's Opus decision and Q11/Q13-class
+local cards are the only model-runnable work meanwhile; the Q07 decision is
+read-only architecture adjudication and is never a reason to start, skip, or
+bypass Q02.
+
 ## Known-good proof (the complete list — nothing else is live-proven)
 
 1. **Spec Book storage smoke, 13/13** on staging, provider automation

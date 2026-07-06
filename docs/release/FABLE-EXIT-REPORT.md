@@ -12,7 +12,7 @@
 |---|---|
 | `docs/architecture/GROUNDWORX_EXECUTION_LEDGER.md` | Added — byte-identical to `7b6ef13` (blob `d203416`) |
 | `runtime/runbooks/GROUNDWORX_AGENT_QUEUE.md` | Added — byte-identical to `7b6ef13` (blob `a43caa3`) |
-| `CLAUDE.md` | Rewritten (108 → 118 lines): GroundWorX boot map replacing the stale session guide (kept `@AGENTS.md`, commit trailer, data-safety constraints) |
+| `CLAUDE.md` | Rewritten (108 → 116 lines): GroundWorX boot map replacing the stale session guide (kept `@AGENTS.md`, commit trailer, data-safety constraints) |
 | `.claude/rules/environments-deployment.md` | New |
 | `.claude/rules/migrations-checkpoints.md` | New |
 | `.claude/rules/secrets-providers.md` | New |
@@ -193,6 +193,11 @@ so the built tip contains Q01+Q04a+Q06a.
    require a one-time workspace-trust approval, and the guard has only been
    tested by direct invocation — first real session should confirm a blocked
    `docker ps` before relying on it.
+   **RESOLVED 2026-07-06 (acceptance review):** the guard fired inside a live
+   Claude Code v2.1.201 session (blocked a Bash call whose text matched the
+   migration-runner phrase, exit 2 + stderr surfaced). See
+   `docs/release/FABLE-EXIT-REVIEW.md` §hook-evidence; a wrapper-argument gap
+   (`timeout 5 turso …`) was found and fixed in the same review.
 2. **Canonical docs now trail Sprint 1** on three points (§3 "Known drift").
    Mitigated by CLAUDE.md + the handoff doc; permanently fixed only by the
    human-sanctioned GWX-Q11 pass (which must also decide how Ledger/Queue
