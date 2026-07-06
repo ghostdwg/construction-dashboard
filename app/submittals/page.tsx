@@ -104,14 +104,23 @@ export default async function SubmittalsPage({
   // (not per item), reusing checkFileAvailability() (Phase 3) so the
   // "View source section" action can be disabled honestly instead of
   // linking to a 404. Server component — safe to call directly here.
-  const linkedSections = new Map<number, string | null>();
+  //
+  // This query is NOT scoped to a single bid (it's the cross-project open
+  // register), so there is no single ambient bidId to thread through — each
+  // linked SpecSection's own owning bid (item.bid.id, the same bid every
+  // SubmittalItem is itself scoped to) is carried alongside its pdfPath so
+  // checkFileAvailability() is scoped to the correct bid per section, not a
+  // shared/wrong one.
+  const linkedSections = new Map<number, { pdfPath: string | null; bidId: number }>();
   for (const item of items) {
-    if (item.specSection) linkedSections.set(item.specSection.id, item.specSection.pdfPath);
+    if (item.specSection) {
+      linkedSections.set(item.specSection.id, { pdfPath: item.specSection.pdfPath, bidId: item.bid.id });
+    }
   }
   const availabilityEntries = await Promise.all(
     Array.from(linkedSections.entries())
-      .filter(([, pdfPath]) => pdfPath !== null)
-      .map(async ([sectionId, pdfPath]) => [sectionId, await checkFileAvailability(pdfPath)] as const)
+      .filter(([, v]) => v.pdfPath !== null)
+      .map(async ([sectionId, v]) => [sectionId, await checkFileAvailability(v.pdfPath, v.bidId)] as const)
   );
   const sectionAvailabilityById = new Map(availabilityEntries);
 

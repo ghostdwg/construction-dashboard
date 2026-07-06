@@ -34,13 +34,19 @@ export type FileAvailability =
  * resolves to "missing" like any other absent file, since the caller is
  * responsible for distinguishing "no reference recorded" from "referenced
  * but not split yet" at a higher level if that distinction matters to it.
+ *
+ * `bidId` must be the bid id the row owning `ref` (the SpecBook or the
+ * SpecSection's parent SpecBook) already belongs to — required so the
+ * shared storagePath classifier can structurally reject a reference that
+ * happens to resolve under the storage root but names a different bid.
  */
 export async function checkFileAvailability(
-  ref: string | null | undefined
+  ref: string | null | undefined,
+  bidId: number
 ): Promise<FileAvailability> {
   if (ref === null || ref === undefined || ref === "") return "missing";
 
-  const resolved = await resolveLocalPath(ref);
+  const resolved = await resolveLocalPath(ref, bidId);
   if (!resolved.ok) return resolved.reason; // "missing" | "invalid"
   return resolved.kind === "legacy-cwd" ? "legacy-present" : "durable-present";
 }

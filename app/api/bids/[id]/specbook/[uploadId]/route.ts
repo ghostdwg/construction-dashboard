@@ -49,7 +49,7 @@ export async function DELETE(
     specBook.filePath,
     ...specBook.sections.map((s) => s.pdfPath).filter(Boolean) as string[],
   ];
-  await Promise.allSettled(artifacts.map((p) => deleteStoragePath(p)));
+  await Promise.allSettled(artifacts.map((p) => deleteStoragePath(p, bidId)));
 
   return new Response(null, { status: 204 });
 }

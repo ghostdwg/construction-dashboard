@@ -146,7 +146,7 @@ export async function triggerSpecAnalysis(
     // Anthropic analysis call against a nonexistent/wrong file.
     const sectionsPayload: Array<{ csi: string | null; title: string | null; pdf_path: string }> = [];
     for (const s of specBook.sections) {
-      const resolved = s.pdfPath ? await resolveLocalPath(s.pdfPath) : { ok: false as const, reason: "missing" as const };
+      const resolved = s.pdfPath ? await resolveLocalPath(s.pdfPath, bidId) : { ok: false as const, reason: "missing" as const };
       if (!resolved.ok) {
         const message = `Section ${s.csiNumber ?? s.id} PDF is unavailable (${resolved.reason}) — re-run Split or re-upload the spec book.`;
         await failJob(dbJob.id, message);

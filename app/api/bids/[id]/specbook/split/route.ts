@@ -36,7 +36,7 @@ export async function POST(
   // store a relative BlobStore key; pre-migration records may hold a legacy
   // cwd-rooted absolute path, or a production storage-root absolute path —
   // see lib/services/specbook/storagePath.ts for the full shape breakdown.
-  const resolved = await resolveLocalPath(specBook.filePath);
+  const resolved = await resolveLocalPath(specBook.filePath, bidId);
   if (!resolved.ok) {
     return Response.json({ error: "Spec book file not found on disk" }, { status: 404 });
   }

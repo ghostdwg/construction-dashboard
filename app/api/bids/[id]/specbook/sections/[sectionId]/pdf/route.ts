@@ -34,7 +34,7 @@ export async function GET(
   }
 
   try {
-    const buffer = await readStoragePathBuffer(section.pdfPath);
+    const buffer = await readStoragePathBuffer(section.pdfPath, bidId);
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {

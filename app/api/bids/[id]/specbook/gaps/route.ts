@@ -73,10 +73,10 @@ export async function GET(
   const pdfAvailabilityEntries = await Promise.all(
     validSections
       .filter((s) => s.pdfPath !== null)
-      .map(async (s) => [s.id, await checkFileAvailability(s.pdfPath)] as const)
+      .map(async (s) => [s.id, await checkFileAvailability(s.pdfPath, bidId)] as const)
   );
   const pdfAvailabilityById = new Map(pdfAvailabilityEntries);
-  const sourceAvailability = await checkFileAvailability(specBook.filePath);
+  const sourceAvailability = await checkFileAvailability(specBook.filePath, bidId);
 
   // Clean up merged TOC titles — find earliest truncation point
   function cleanTitle(raw: string): string {

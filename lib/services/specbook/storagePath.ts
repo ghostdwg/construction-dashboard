@@ -10,18 +10,34 @@
 //   2. "legacy-cwd"           — a pre-BlobStore absolute path rooted at
 //                              path.join(process.cwd(), "uploads", "specbooks"),
 //                              from rows written before BlobStore existed.
-//   3. "legacy-storage-root"  — a production absolute path rooted at the
-//                              *current* storage root itself
-//                              (STORAGE_LOCAL_PATH, default "/storage"), e.g.
-//                              "/storage/uploads/specbooks/{bidId}/...".
-//                              Stripping the root prefix yields a valid,
-//                              already-on-disk BlobStore relative key — this
-//                              shape lives under the exact same physical root
+//   3. "legacy-storage-root"  — the exact production absolute path shape
+//                              rooted at the *current* storage root itself
+//                              (STORAGE_LOCAL_PATH, default "/storage"):
+//                                {root}/uploads/specbooks/{bidId}/<rest>
+//                              where {bidId} must equal the caller-supplied
+//                              expected bid id (see below) and <rest> is one
+//                              or more further path segments. This is the
+//                              one and only absolute-path shape production
+//                              actually ever writes to SpecBook.filePath /
+//                              SpecSection.pdfPath (verified against the
+//                              upload route's key-building and the sidecar
+//                              splitter's output-naming convention) —
+//                              anything else under the storage root (a
+//                              mismatched bid id, a different top-level
+//                              namespace, a bare file at the root,
+//                              `uploads/<not-specbooks>/...`) is "invalid",
+//                              not this shape. Stripping the root prefix
+//                              yields a valid, already-on-disk BlobStore
+//                              relative key — this shape lives under the
+//                              exact same physical root
 //                              getBlobStore()/localPathForKey() already
 //                              manage, just addressed absolutely.
 //   4. "invalid"              — anything else: an unrecognized absolute path,
 //                              a path-traversal attempt, a null byte, a
-//                              backslash-leading value, or empty.
+//                              backslash-leading value, empty, or an absolute
+//                              storage-root path that doesn't structurally
+//                              match shape 3 above (including a mismatched
+//                              bid id segment).
 //
 // This module was previously duplicated near-identically (recognizing only
 // shapes 1/2/4, treating shape 3 as invalid) across:
@@ -30,6 +46,23 @@
 //   - app/api/bids/[id]/specbook/sections/[sectionId]/pdf/route.ts
 //   - app/api/bids/[id]/specbook/[uploadId]/route.ts
 // All four now import from here instead of keeping their own copy.
+//
+// Every export below takes a required `bidId: number` — the bid id the
+// caller already validated the record (SpecBook/SpecSection) against (e.g.
+// via a `where: { id, bidId }` Prisma query, or a route's own already-parsed
+// path param). This makes bid-scoping structurally mandatory: shape 3 above
+// cannot be recognized at all without naming the bid it's expected to belong
+// to, closing the gap where a corrupted filePath/pdfPath pointing at some
+// *other* file under the shared storage mount (a different bid's artifact,
+// or an unrelated top-level namespace like "market/docs/...") would
+// otherwise be treated as a legitimate, deletable/readable BlobStore
+// reference. Canonical (relative key) and legacy-cwd shapes don't use the
+// value at all — bid-scoping is a no-op for them by design (a relative
+// BlobStore key has no bidId-segment convention to structurally enforce
+// here, and the legacy-cwd shape's existing vetted behavior is left as-is
+// per the task that introduced this constraint) — but the parameter is
+// still required so a caller can never accidentally omit it for the one
+// shape that does need it.
 //
 // `classifyStoragePath()` is a pure function — it never touches the
 // filesystem or BlobStore. The resolver helpers below it perform I/O, but
@@ -76,6 +109,10 @@ function getStorageRoot(): string {
 // Returns the derived relative key iff `p` is a real, separator-bounded
 // descendant of the current storage root — never a bare substring match
 // (e.g. root "/data/blobs" must not match "/data/blobs-decoy/...").
+// This alone is NOT sufficient to accept the path as the production
+// "legacy-storage-root" shape — see matchesProductionSpecbookShape() below,
+// which structurally validates the derived key against the one shape
+// production actually writes.
 function deriveStorageRootRelativeKey(p: string): string | null {
   const root = path.resolve(getStorageRoot());
   const resolved = path.resolve(p);
@@ -83,6 +120,24 @@ function deriveStorageRootRelativeKey(p: string): string | null {
   const rel = path.relative(root, resolved);
   if (!rel || rel === "." || rel.startsWith("..") || path.isAbsolute(rel)) return null;
   return rel.split(path.sep).join("/");
+}
+
+// Structural match for the one production-emitted absolute-path shape:
+//   uploads/specbooks/{bidId}/<one or more further segments>
+// `{bidId}` must equal the caller-supplied expected bid id exactly (string
+// form) — a syntactically-plausible relative key under the storage root
+// that names a *different* bid, or a different top-level namespace
+// entirely (e.g. "plan-room/...", "market/..."), or has no further segments
+// beyond the bid id, is rejected here (the caller classifies it "invalid").
+function matchesProductionSpecbookShape(relKey: string, bidId: number): boolean {
+  const segments = relKey.split("/");
+  return (
+    segments.length >= 4 &&
+    segments[0] === "uploads" &&
+    segments[1] === "specbooks" &&
+    segments[2] === String(bidId) &&
+    segments.slice(3).every((s) => s.length > 0)
+  );
 }
 
 // Reject path-traversal attempts, null bytes, and backslash-leading values
@@ -103,21 +158,29 @@ function looksMalformedOrUnsafe(ref: string): boolean {
  * Pure classification of a stored Spec Book / Spec Section reference. Never
  * touches the filesystem or BlobStore — safe to call with no I/O mocked at
  * all.
+ *
+ * `bidId` is the bid the caller already validated this reference's owning
+ * record against — required for every call, even though only the
+ * "legacy-storage-root" shape actually uses it (see module header).
  */
-export function classifyStoragePath(ref: string): ClassifyResult {
+export function classifyStoragePath(ref: string, bidId: number): ClassifyResult {
   if (looksMalformedOrUnsafe(ref)) return { kind: "invalid" };
 
   if (!path.isAbsolute(ref)) {
     // A relative value that passed the malformed/unsafe check above is a
     // canonical BlobStore key candidate — final validation (length, etc.)
-    // happens where BlobStore itself enforces it (assertSafeKey).
+    // happens where BlobStore itself enforces it (assertSafeKey). No
+    // bid-scoping check here: a relative key has no bidId-segment
+    // convention to structurally enforce.
     return { kind: "canonical", canonicalKey: ref };
   }
 
   if (isLegacyCwdPath(ref)) return { kind: "legacy-cwd" };
 
-  const canonicalKey = deriveStorageRootRelativeKey(ref);
-  if (canonicalKey) return { kind: "legacy-storage-root", canonicalKey };
+  const relKey = deriveStorageRootRelativeKey(ref);
+  if (relKey && matchesProductionSpecbookShape(relKey, bidId)) {
+    return { kind: "legacy-storage-root", canonicalKey: relKey };
+  }
 
   return { kind: "invalid" };
 }
@@ -143,9 +206,12 @@ export type ResolvedLocalPath =
  *     safe "invalid" result rather than an opaque thrown error (mirrors
  *     checkFileAvailability()'s existing catch-and-classify pattern for a
  *     surprise assertSafeKey throw).
+ *
+ * `bidId` must be the bid this reference's owning record is already scoped
+ * to (see module header) — passed straight through to classifyStoragePath().
  */
-export async function resolveLocalPath(ref: string): Promise<ResolvedLocalPath> {
-  const classified = classifyStoragePath(ref);
+export async function resolveLocalPath(ref: string, bidId: number): Promise<ResolvedLocalPath> {
+  const classified = classifyStoragePath(ref, bidId);
 
   if (classified.kind === "invalid") return { ok: false, reason: "invalid" };
 
@@ -175,8 +241,8 @@ export async function resolveLocalPath(ref: string): Promise<ResolvedLocalPath> 
 }
 
 /** True iff the reference resolves to a real, existing local file. */
-export async function storagePathExists(ref: string): Promise<boolean> {
-  return (await resolveLocalPath(ref)).ok;
+export async function storagePathExists(ref: string, bidId: number): Promise<boolean> {
+  return (await resolveLocalPath(ref, bidId)).ok;
 }
 
 /**
@@ -186,8 +252,8 @@ export async function storagePathExists(ref: string): Promise<boolean> {
  * unchanged. An "invalid" reference is rejected before any fs/BlobStore call
  * is made.
  */
-export async function readStoragePathBuffer(ref: string): Promise<Buffer> {
-  const classified = classifyStoragePath(ref);
+export async function readStoragePathBuffer(ref: string, bidId: number): Promise<Buffer> {
+  const classified = classifyStoragePath(ref, bidId);
   if (classified.kind === "invalid") {
     throw new Error("storagePath: invalid or unrecognized storage reference");
   }
@@ -204,8 +270,8 @@ export async function readStoragePathBuffer(ref: string): Promise<Buffer> {
  * Promise.allSettled for the legacy-cwd case, where a genuine ENOENT/other
  * fs.unlink error is not swallowed here (matching prior behavior).
  */
-export async function deleteStoragePath(ref: string): Promise<void> {
-  const classified = classifyStoragePath(ref);
+export async function deleteStoragePath(ref: string, bidId: number): Promise<void> {
+  const classified = classifyStoragePath(ref, bidId);
   if (classified.kind === "invalid") return;
   if (classified.kind === "legacy-cwd") {
     await fs.unlink(ref);

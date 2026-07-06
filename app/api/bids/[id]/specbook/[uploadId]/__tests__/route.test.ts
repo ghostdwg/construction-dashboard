@@ -106,6 +106,79 @@ describe("DELETE /api/bids/[id]/specbook/[uploadId]", () => {
     expect(updateArgs.where.specSectionId.in).toEqual([100]);
   });
 
+  test("deletes exactly the known BlobStore keys for a production-shaped (legacy-storage-root) filePath/pdfPath pair", async () => {
+    const { getBlobStore } = await import("@/lib/storage/blobStore");
+    const deleteSpy = vi.spyOn(getBlobStore(), "delete");
+    const originalKey = "uploads/specbooks/16/book.pdf";
+    const sectionKey = "uploads/specbooks/16/sections/03_30_00_cast_in_place_concrete.pdf";
+    await getBlobStore().put(originalKey, Buffer.from("original"));
+    await getBlobStore().put(sectionKey, Buffer.from("section"));
+
+    db.specBook = {
+      id: 16,
+      bidId: 16,
+      filePath: path.join(storageRoot, originalKey),
+      sections: [{ id: 400, pdfPath: path.join(storageRoot, sectionKey) }],
+    };
+
+    const { DELETE } = await import("../route");
+    const res = await DELETE(new Request("http://localhost/x", { method: "DELETE" }), routeParams(16, 16));
+
+    expect(res.status).toBe(204);
+    expect(await getBlobStore().exists(originalKey)).toBe(false);
+    expect(await getBlobStore().exists(sectionKey)).toBe(false);
+    expect(deleteSpy).toHaveBeenCalledWith(originalKey);
+    expect(deleteSpy).toHaveBeenCalledWith(sectionKey);
+    expect(fsUnlinkMock).not.toHaveBeenCalled();
+    deleteSpy.mockRestore();
+  });
+
+  test("a production-shaped filePath belonging to a DIFFERENT bid is rejected as invalid — no BlobStore.delete call, no raw unlink", async () => {
+    const { getBlobStore } = await import("@/lib/storage/blobStore");
+    const deleteSpy = vi.spyOn(getBlobStore(), "delete");
+    const otherBidKey = "uploads/specbooks/888/book.pdf";
+    await getBlobStore().put(otherBidKey, Buffer.from("someone else's bid data"));
+
+    // The row genuinely belongs to bid 17, but filePath has been corrupted
+    // to point at bid 888's artifact.
+    db.specBook = {
+      id: 17,
+      bidId: 17,
+      filePath: path.join(storageRoot, otherBidKey),
+      sections: [],
+    };
+
+    const { DELETE } = await import("../route");
+    const res = await DELETE(new Request("http://localhost/x", { method: "DELETE" }), routeParams(17, 17));
+
+    expect(res.status).toBe(204); // best-effort cleanup: DB delete still succeeds
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(fsUnlinkMock).not.toHaveBeenCalled();
+    // The other bid's blob is completely untouched.
+    expect(await getBlobStore().exists(otherBidKey)).toBe(true);
+    deleteSpy.mockRestore();
+  });
+
+  test("an unsupported absolute path under the storage root (wrong namespace) is rejected, not deleted via BlobStore or fs.unlink", async () => {
+    const { getBlobStore } = await import("@/lib/storage/blobStore");
+    const deleteSpy = vi.spyOn(getBlobStore(), "delete");
+
+    db.specBook = {
+      id: 18,
+      bidId: 18,
+      filePath: path.join(storageRoot, "uploads", "unrelated", "file.pdf"),
+      sections: [],
+    };
+
+    const { DELETE } = await import("../route");
+    const res = await DELETE(new Request("http://localhost/x", { method: "DELETE" }), routeParams(18, 18));
+
+    expect(res.status).toBe(204);
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(fsUnlinkMock).not.toHaveBeenCalled();
+    deleteSpy.mockRestore();
+  });
+
   test("does not touch unrelated keys under the same bid prefix", async () => {
     const { getBlobStore } = await import("@/lib/storage/blobStore");
     const originalKey = "plan-room/jobs/12/spec/original.pdf";

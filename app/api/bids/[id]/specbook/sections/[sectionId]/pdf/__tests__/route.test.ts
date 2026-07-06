@@ -87,6 +87,78 @@ describe("GET /api/bids/[id]/specbook/sections/[sectionId]/pdf", () => {
     expect(fsReadFileMock).not.toHaveBeenCalled();
   });
 
+  test("serves BlobStore content for a production-shaped legacy-storage-root path matching this section's own bid", async () => {
+    const { getBlobStore } = await import("@/lib/storage/blobStore");
+    const canonicalKey = "uploads/specbooks/9/sections/03_30_00_cast_in_place_concrete.pdf";
+    const getSpy = vi.spyOn(getBlobStore(), "get");
+    await getBlobStore().put(canonicalKey, Buffer.from("production section pdf bytes"));
+
+    db.section = {
+      id: 20,
+      pdfPath: path.join(storageRoot, canonicalKey),
+      pdfFileName: "03_30_00_cast_in_place_concrete.pdf",
+      specBook: { bidId: 9 },
+    };
+
+    const { GET } = await import("../route");
+    const res = await GET(new Request("http://localhost/x"), routeParams(9, 20));
+
+    expect(res.status).toBe(200);
+    const bytes = Buffer.from(await res.arrayBuffer());
+    expect(bytes.toString()).toBe("production section pdf bytes");
+    // Resolved through the derived relative key, never the raw absolute path.
+    expect(getSpy).toHaveBeenCalledWith(canonicalKey);
+    expect(fsReadFileMock).not.toHaveBeenCalled();
+    getSpy.mockRestore();
+  });
+
+  test("a production-shaped legacy-storage-root path belonging to a DIFFERENT bid is treated as invalid, not served", async () => {
+    const { getBlobStore } = await import("@/lib/storage/blobStore");
+    const canonicalKey = "uploads/specbooks/777/sections/other_bid.pdf";
+    const getSpy = vi.spyOn(getBlobStore(), "get");
+    await getBlobStore().put(canonicalKey, Buffer.from("someone else's bid data"));
+
+    // Section row itself genuinely belongs to bid 9, but its pdfPath value
+    // has been corrupted to point at bid 777's artifact.
+    db.section = {
+      id: 21,
+      pdfPath: path.join(storageRoot, canonicalKey),
+      pdfFileName: "other_bid.pdf",
+      specBook: { bidId: 9 },
+    };
+
+    const { GET } = await import("../route");
+    const res = await GET(new Request("http://localhost/x"), routeParams(9, 21));
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toBe("PDF file missing on disk");
+    expect(getSpy).not.toHaveBeenCalled();
+    getSpy.mockRestore();
+  });
+
+  test("a supported-looking but unrelated-namespace absolute path under the storage root is rejected, not served", async () => {
+    const { getBlobStore } = await import("@/lib/storage/blobStore");
+    const getSpy = vi.spyOn(getBlobStore(), "get");
+    const unrelatedPath = path.join(storageRoot, "uploads", "unrelated", "file.pdf");
+
+    db.section = {
+      id: 22,
+      pdfPath: unrelatedPath,
+      pdfFileName: "file.pdf",
+      specBook: { bidId: 9 },
+    };
+
+    const { GET } = await import("../route");
+    const res = await GET(new Request("http://localhost/x"), routeParams(9, 22));
+    const json = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(json.error).toBe("PDF file missing on disk");
+    expect(getSpy).not.toHaveBeenCalled();
+    getSpy.mockRestore();
+  });
+
   test("falls back to a direct read for a legacy absolute path", async () => {
     const legacyPath = path.join(process.cwd(), "uploads", "specbooks", "9", "sections", "old.pdf");
     db.section = { id: 6, pdfPath: legacyPath, pdfFileName: "old.pdf", specBook: { bidId: 9 } };

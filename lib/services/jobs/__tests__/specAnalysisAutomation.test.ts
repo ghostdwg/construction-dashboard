@@ -71,7 +71,7 @@ beforeEach(() => {
   // Default: every section's pdfPath resolves successfully to a synthetic
   // local absolute path derived from the (synthetic, non-sensitive) key —
   // tests that care about the exact resolved path override this per-case.
-  h.resolveLocalPath.mockImplementation(async (ref: string) => ({
+  h.resolveLocalPath.mockImplementation(async (ref: string, _bidId: number) => ({
     ok: true,
     localPath: `/storage/${ref}`,
     kind: "canonical" as const,
@@ -191,8 +191,8 @@ describe("triggerSpecAnalysis — section PDF resolution before sidecar handoff"
     const result = await triggerSpecAnalysis(1, { tier: 2, triggerSource: "user" });
 
     expect(result.status).toBe("triggered");
-    expect(h.resolveLocalPath).toHaveBeenCalledWith("plan-room/jobs/1/spec/sections/03.pdf");
-    expect(h.resolveLocalPath).toHaveBeenCalledWith("plan-room/jobs/1/spec/sections/09.pdf");
+    expect(h.resolveLocalPath).toHaveBeenCalledWith("plan-room/jobs/1/spec/sections/03.pdf", 1);
+    expect(h.resolveLocalPath).toHaveBeenCalledWith("plan-room/jobs/1/spec/sections/09.pdf", 1);
 
     const [, init] = fetchMock.mock.calls[0];
     const sentBody = JSON.parse(init.body as string);
@@ -212,7 +212,7 @@ describe("triggerSpecAnalysis — section PDF resolution before sidecar handoff"
 
   it("6. an unresolvable section PDF fails the job explicitly via failJob and NEVER calls the sidecar fetch", async () => {
     h.getSetting.mockResolvedValue(SENTINEL);
-    h.resolveLocalPath.mockImplementation(async (ref: string) => {
+    h.resolveLocalPath.mockImplementation(async (ref: string, _bidId: number) => {
       if (ref === "plan-room/jobs/1/spec/sections/09.pdf") {
         return { ok: false, reason: "missing" };
       }

@@ -198,7 +198,7 @@ export async function GET(
   const availabilityEntries = await Promise.all(
     Array.from(linkedSections.entries())
       .filter(([, pdfPath]) => pdfPath !== null)
-      .map(async ([sectionId, pdfPath]) => [sectionId, await checkFileAvailability(pdfPath)] as const)
+      .map(async ([sectionId, pdfPath]) => [sectionId, await checkFileAvailability(pdfPath, bidId)] as const)
   );
   const sectionAvailabilityById = new Map(availabilityEntries);
 
