@@ -9,8 +9,45 @@ import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/genera
 import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
 import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
 import { drawingStorageKey } from "@/lib/services/drawings/storagePath";
+import { env } from "@/lib/env";
+// isAdminAuthorized (lib/auth.ts) is imported dynamically below, only inside
+// the storage-smoke gate branch — this route is on the hot path for every
+// drawing upload, and lib/auth.ts pulls in the full next-auth module graph.
+// The overwhelming majority of requests never send the smoke marker header,
+// so deferring the import keeps their cost identical to before this feature
+// existed (no next-auth module load at all on that path).
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+
+// ── Storage-only smoke mode (work package: storage-smoke-isolation) ────────
+//
+// Lets an operator validate upload/serve/delete storage mechanics on staging
+// WITHOUT triggering a real Anthropic call, while a credential rotation is
+// pending. This is NOT a generic "skip AI" switch — suppression only ever
+// engages when ALL FOUR of the following hold simultaneously. Semantics are
+// IDENTICAL to the Spec Book gate at
+// app/api/bids/[id]/specbook/upload/route.ts (see that module's doc for the
+// full rationale) — only the marker header name differs (domain-scoped).
+//
+// Fail-closed contract: if the marker header (b) is ABSENT, this route
+// behaves exactly as it did before this feature existed — normal automation
+// fires unconditionally, no extra check is even performed. But if the marker
+// header IS present, this is treated as an EXPLICIT storage-smoke attempt —
+// and if any of the other three conditions (a/c/d) is not also true, the
+// request is REJECTED outright (a controlled, non-2xx response, before any
+// BlobStore write or DB persistence) rather than silently falling through to
+// normal automation.
+//
+//   a. Authenticated ADMIN session (reuses lib/auth.ts's isAdminAuthorized()).
+//   b. The caller sent the non-secret intent marker header below.
+//   c. STORAGE_SMOKE_MODE_ENABLED=true is set in the server's own process
+//      env. Defaults OFF/unset.
+//   d. env.APP_ENV === "staging" — a server-side identity fact, never
+//      derived from any part of an incoming request.
+//
+// The marker header value itself is never persisted (no DB row, no log line)
+// — it is read once into a boolean and discarded.
+const STORAGE_SMOKE_HEADER = "x-drawings-storage-smoke";
 
 // Valid discipline values for per-discipline uploads
 const VALID_DISCIPLINES = [
@@ -54,6 +91,42 @@ export async function POST(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  // ── Storage-only smoke gate — see module doc above for the full 4-condition
+  // contract. Checked FIRST, before any read/write below, because any request
+  // carrying the marker header is an EXPLICIT storage-smoke attempt and must
+  // NEVER be allowed to silently fall through into normal (real-provider-
+  // calling) automation just because one of the other three conditions isn't
+  // met.
+  //
+  // Cheapest, non-auth checks first, so the default (no marker header)
+  // request path — the overwhelming majority of traffic — pays for nothing
+  // beyond a single header read and short-circuits immediately.
+  const storageSmokeRequested = request.headers.get(STORAGE_SMOKE_HEADER) === "1";
+  let suppressAutomationForStorageSmoke = false;
+
+  if (storageSmokeRequested) {
+    if (env.APP_ENV !== "staging") {
+      return Response.json(
+        { error: "Storage-only smoke mode is only permitted on the staging environment" },
+        { status: 403 }
+      );
+    }
+    if (process.env.STORAGE_SMOKE_MODE_ENABLED !== "true") {
+      return Response.json(
+        { error: "Storage-only smoke mode is not enabled on this server" },
+        { status: 403 }
+      );
+    }
+    const { isAdminAuthorized } = await import("@/lib/auth");
+    const adminCheck = await isAdminAuthorized();
+    if (!adminCheck.authorized) {
+      return Response.json({ error: adminCheck.error }, { status: adminCheck.status });
+    }
+    // ALL FOUR conditions hold — proceed into the normal upload/parse
+    // mechanics below, but suppress the post-parse provider-bound jobs.
+    suppressAutomationForStorageSmoke = true;
+  }
 
   const bid = await prisma.bid.findUnique({ where: { id: bidId } });
   if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
@@ -185,15 +258,33 @@ export async function POST(
       const coveredCount = rows.filter((r) => r.tradeId !== null).length;
       const missingCount = rows.filter((r) => r.matchedTradeId !== null).length;
 
-      generateBidIntelligence(bidId).catch((err) =>
-        console.error("[drawings/upload] background intelligence generation failed:", err)
-      );
-      triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
-        console.error("[drawings/upload] background brief refresh failed:", err)
-      );
+      // The 4-condition storage-smoke gate at the top of this handler already
+      // decided suppression (or rejected the request outright, before any
+      // persistence, if the marker was present but any condition failed) — by
+      // the time execution reaches here, either no marker was sent, or all
+      // four conditions held. Nothing to re-check.
+      const automationStatus: "triggered" | "suppressed_for_storage_smoke" =
+        suppressAutomationForStorageSmoke ? "suppressed_for_storage_smoke" : "triggered";
+
+      if (automationStatus === "triggered") {
+        generateBidIntelligence(bidId).catch((err) =>
+          console.error("[drawings/upload] background intelligence generation failed:", err)
+        );
+        triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
+          console.error("[drawings/upload] background brief refresh failed:", err)
+        );
+      }
 
       return Response.json(
-        { id: drawingUpload.id, discipline, disciplineCount: prefixes.length, sheetCount: 0, coveredCount, missingCount },
+        {
+          id: drawingUpload.id,
+          discipline,
+          disciplineCount: prefixes.length,
+          sheetCount: 0,
+          coveredCount,
+          missingCount,
+          automationStatus,
+        },
         { status: 201 }
       );
     }
@@ -247,12 +338,19 @@ export async function POST(
     const coveredCount = rows.filter((r) => r.tradeId !== null).length;
     const missingCount = rows.filter((r) => r.matchedTradeId !== null).length;
 
-    generateBidIntelligence(bidId).catch((err) =>
-      console.error("[drawings/upload] background intelligence generation failed:", err)
-    );
-    triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
-      console.error("[drawings/upload] background brief refresh failed:", err)
-    );
+    // Same suppression contract as the early-return branch above — see the
+    // module doc and the gate at the top of this handler.
+    const automationStatus: "triggered" | "suppressed_for_storage_smoke" =
+      suppressAutomationForStorageSmoke ? "suppressed_for_storage_smoke" : "triggered";
+
+    if (automationStatus === "triggered") {
+      generateBidIntelligence(bidId).catch((err) =>
+        console.error("[drawings/upload] background intelligence generation failed:", err)
+      );
+      triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
+        console.error("[drawings/upload] background brief refresh failed:", err)
+      );
+    }
 
     return Response.json(
       {
@@ -262,6 +360,7 @@ export async function POST(
         sheetCount: sheets.length,
         coveredCount,
         missingCount,
+        automationStatus,
       },
       { status: 201 }
     );
