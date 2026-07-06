@@ -233,6 +233,16 @@ export async function createSubmittal(
   const enumError = validateEnums(input);
   if (enumError) return { ok: false, error: enumError };
 
+  if (input.specSectionId != null) {
+    const section = await prisma.specSection.findFirst({
+      where: { id: input.specSectionId, specBook: { bidId } },
+      select: { id: true },
+    });
+    if (!section) {
+      return { ok: false, error: "specSectionId does not belong to this bid" };
+    }
+  }
+
   const created = await prisma.submittalItem.create({
     data: {
       bidId,
@@ -266,6 +276,16 @@ export async function updateSubmittal(
 
   const enumError = validateEnums(input);
   if (enumError) return { ok: false, error: enumError };
+
+  if ("specSectionId" in input && input.specSectionId != null) {
+    const section = await prisma.specSection.findFirst({
+      where: { id: input.specSectionId, specBook: { bidId } },
+      select: { id: true },
+    });
+    if (!section) {
+      return { ok: false, error: "specSectionId does not belong to this bid" };
+    }
+  }
 
   const data: Record<string, unknown> = {};
   if ("title" in input && input.title != null) data.title = input.title.trim().slice(0, 200);
