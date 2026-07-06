@@ -660,6 +660,12 @@ model AddendumUpload {
   deltaJson        String?
   deltaGeneratedAt DateTime?
   summary          String?
+  // Relative BlobStore key for the durably-stored original PDF (added by the
+  // artifact-durability work). Nullable — historic rows written before this
+  // column existed have no on-disk reference at all (see
+  // lib/services/addendums/storagePath.ts's module doc) and are left null,
+  // never guessed at.
+  storageKey       String?
 
   bid Bid @relation(fields: [bidId], references: [id])
 }
@@ -1112,6 +1118,13 @@ model Meeting {
   location            String?
   status              String    @default("PENDING")
   audioFileName       String?
+  // Relative BlobStore key for the durably-stored hybrid-upload audio file
+  // (added by the artifact-durability work). Nullable — historic rows
+  // written before this column existed keep resolving via the existing
+  // naming-convention reconstruction (process.cwd()/uploads/meetings/{id}/
+  // {audioFileName}) in source-mapping/route.ts; this column is only
+  // populated going forward and only consulted when non-null.
+  audioStorageKey     String?
   durationSeconds     Int?
   transcriptionSource String?
   transcriptionJobId  String? // AssemblyAI transcript_id or WhisperX job id

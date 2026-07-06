@@ -3,6 +3,7 @@ import { saveEstimateFile, resolveFileType } from "@/lib/services/estimateStorag
 import { parseEstimateFile } from "@/lib/services/estimateParsers";
 import { separateScopeAndPricing } from "@/lib/services/scopePricingSeparator";
 import { redactEstimate, TOKEN_LABELS } from "@/lib/services/redaction/redactEstimate";
+import { resolveEstimateLocalPath } from "@/lib/services/estimates/storagePath";
 
 // GET /api/bids/[id]/estimates
 // Returns all EstimateUploads for the bid — never returns pricingData
@@ -106,9 +107,18 @@ export async function POST(
     include: { subcontractor: { select: { id: true, company: true } } },
   });
 
-  // Parse and separate — update record when done
+  // Parse and separate — update record when done. Resolve the just-written
+  // relative BlobStore key to a real local absolute path first (routed
+  // through the shared compat layer for consistency/future-proofing, even
+  // though there's no separate later "historic read" burden here — this is
+  // the same request that just wrote the key) — parseEstimateFile() reads
+  // the file from disk by path, and a bare relative key means nothing to fs.
   try {
-    const parsed = await parseEstimateFile(filePath, fileType);
+    const resolved = await resolveEstimateLocalPath(filePath, bidId, subcontractorId);
+    if (!resolved.ok) {
+      throw new Error(`Estimate file is unavailable (${resolved.reason}) after upload`);
+    }
+    const parsed = await parseEstimateFile(resolved.localPath, fileType);
     const { scopeLines, pricingData } = separateScopeAndPricing(
       parsed.rawText,
       parsed.rows

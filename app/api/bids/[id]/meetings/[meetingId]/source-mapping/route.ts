@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { readFile } from "fs/promises";
 import { join } from "path";
+import { readMeetingStorageBuffer } from "@/lib/services/meetings/storagePath";
 
 const SIDECAR_URL = process.env.SIDECAR_URL ?? "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
@@ -33,6 +34,7 @@ export async function POST(
       status: true,
       speakerMapping: true,
       audioFileName: true,
+      audioStorageKey: true,
       vttContent: true,
     },
   });
@@ -57,11 +59,22 @@ export async function POST(
     if (source.mode === "SHARED_MIC") numSpeakers += source.participantIds?.length ?? 0;
   }
 
+  // Resolve the stored audio via the new audioStorageKey column when present
+  // (relative BlobStore key, legacy cwd-rooted path, or production
+  // storage-root path — see lib/services/meetings/storagePath.ts). Historic
+  // rows written before this column existed have audioStorageKey === null —
+  // for those, and ONLY for those, fall back to the pre-existing
+  // naming-convention reconstruction (process.cwd()/uploads/meetings/{id}/
+  // {audioFileName}) exactly as before this change.
   let audioBytes: Buffer;
   try {
-    audioBytes = await readFile(
-      join(process.cwd(), "uploads", "meetings", String(mId), meeting.audioFileName ?? "")
-    );
+    if (meeting.audioStorageKey) {
+      audioBytes = await readMeetingStorageBuffer(meeting.audioStorageKey, mId);
+    } else {
+      audioBytes = await readFile(
+        join(process.cwd(), "uploads", "meetings", String(mId), meeting.audioFileName ?? "")
+      );
+    }
   } catch {
     await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
     return Response.json({ error: "Failed to read audio file" }, { status: 500 });

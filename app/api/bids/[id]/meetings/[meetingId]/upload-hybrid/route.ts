@@ -9,8 +9,8 @@
 //   2. Send audio to sidecar → GPU worker (WhisperX async job)
 
 import { prisma } from "@/lib/prisma";
-import { mkdir, writeFile } from "fs/promises";
-import { join } from "path";
+import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
+import { meetingAudioStorageKey } from "@/lib/services/meetings/storagePath";
 
 export async function POST(
   request: Request,
@@ -39,10 +39,16 @@ export async function POST(
   if (!vttText.includes("WEBVTT"))
     return Response.json({ error: "vtt file does not appear to be a valid WebVTT file" }, { status: 400 });
 
+  // Persist durably through BlobStore under a relative key matching
+  // production's namespace convention (uploads/meetings/{meetingId}/{safe
+  // name}) — never an absolute path. The sanitized name is also what's
+  // stored in audioFileName, so the new audioStorageKey column and the
+  // pre-existing naming-convention reconstruction (used for historic rows
+  // with no audioStorageKey) always agree on the on-disk filename.
+  const safeAudioName = safeBlobFileName(audioFile.name);
+  const storedAudioKey = meetingAudioStorageKey(mId, safeAudioName);
   try {
-    const audioDir = join(process.cwd(), "uploads", "meetings", String(mId));
-    await mkdir(audioDir, { recursive: true });
-    await writeFile(join(audioDir, audioFile.name), Buffer.from(await audioFile.arrayBuffer()));
+    await getBlobStore().put(storedAudioKey, Buffer.from(await audioFile.arrayBuffer()));
   } catch {
     await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
     return Response.json({ error: "Failed to save audio file" }, { status: 500 });
@@ -58,7 +64,8 @@ export async function POST(
     data: {
       status:          "AWAITING_SOURCE_MAP",
       processingMode:  "HYBRID",
-      audioFileName:   audioFile.name,
+      audioFileName:   safeAudioName,
+      audioStorageKey: storedAudioKey,
       vttContent:      vttText,
       speakerMapping:  JSON.stringify({ vtt_speakers: speakerLabels }),
       uploadedAt:      new Date(),

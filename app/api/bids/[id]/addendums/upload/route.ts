@@ -1,6 +1,7 @@
-import fs from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
+import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
+import { addendumStorageKey } from "@/lib/services/addendums/storagePath";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -49,12 +50,15 @@ export async function POST(
     return Response.json({ error: "Only PDF files are accepted" }, { status: 400 });
   }
 
-  // Save to disk
-  const dir = path.join(process.cwd(), "uploads", "addendums", String(bidId));
-  await fs.mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, file.name);
+  // Persist durably through BlobStore under a relative key matching
+  // production's namespace convention (uploads/addendums/{bidId}/{safe
+  // name}) — never an absolute path. AddendumUpload had no filePath/
+  // storageKey column at all before this work; the new `storageKey` column
+  // stores ONLY this relative key going forward (see
+  // lib/services/addendums/storagePath.ts's module doc).
   const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(filePath, buffer);
+  const storageKey = addendumStorageKey(bidId, safeBlobFileName(file.name));
+  await getBlobStore().put(storageKey, buffer);
 
   // Create record as processing
   const record = await prisma.addendumUpload.create({
@@ -63,6 +67,7 @@ export async function POST(
       addendumNumber,
       addendumDate,
       fileName: file.name,
+      storageKey,
       status: "processing",
     },
   });

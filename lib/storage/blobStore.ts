@@ -53,6 +53,20 @@ function sha256(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
 
+/**
+ * Sanitize a user-supplied filename for safe use as (part of) a BlobStore
+ * key segment — strips any directory component, replaces anything outside a
+ * conservative safe-character set, and bounds the length. Mirrors the
+ * production branch's `safeBlobFileName()` (feat/storage-auth-job-dedupe)
+ * byte-for-byte, so a future merge of that branch's call sites needs no
+ * reconciliation here.
+ */
+export function safeBlobFileName(fileName: string): string {
+  const base = path.basename(fileName).trim();
+  const cleaned = base.replace(/[^A-Za-z0-9._() -]/g, "_").slice(0, 180);
+  return cleaned || "upload.bin";
+}
+
 export class LocalBlobStore implements BlobStore {
   constructor(private readonly root: string) {
     if (!path.isAbsolute(root)) {

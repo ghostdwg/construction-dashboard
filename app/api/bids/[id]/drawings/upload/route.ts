@@ -1,4 +1,3 @@
-import fs from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import {
@@ -8,6 +7,8 @@ import {
 } from "@/lib/documents/drawingParser";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
+import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
+import { drawingStorageKey } from "@/lib/services/drawings/storagePath";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -85,12 +86,16 @@ export async function POST(
     return Response.json({ error: "Only PDF files are accepted" }, { status: 400 });
   }
 
-  // Save to disk
-  const dir = path.join(process.cwd(), "uploads", "drawings", String(bidId));
-  await fs.mkdir(dir, { recursive: true });
-  const filePath = path.join(dir, file.name);
+  // Persist durably through BlobStore under a relative key matching
+  // production's namespace convention (uploads/drawings/{bidId}/{safe name})
+  // — never an absolute path. Only a relative BlobStore key is ever stored
+  // in DrawingUpload.filePath going forward; resolving it back to a real
+  // local absolute path (for the sidecar analyze handoff) happens later, at
+  // that trusted boundary, via lib/services/drawings/storagePath.ts.
   const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(filePath, buffer);
+  const storedKey = drawingStorageKey(bidId, safeBlobFileName(file.name));
+  await getBlobStore().put(storedKey, buffer);
+  const filePath = storedKey;
 
   // Delete existing upload for this discipline only (sheets cascade)
   // If uploading FULLSET, also delete all per-discipline uploads (replacing everything)

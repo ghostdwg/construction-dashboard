@@ -1,5 +1,6 @@
-import fs from "fs/promises";
 import path from "path";
+import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
+import { estimateStorageKey } from "@/lib/services/estimates/storagePath";
 
 const ALLOWED_TYPES: Record<string, string> = {
   "application/pdf": "pdf",
@@ -37,18 +38,16 @@ export async function saveEstimateFile(
     );
   }
 
-  const dir = path.join(
-    process.cwd(),
-    "uploads",
-    "estimates",
-    String(bidId),
-    String(subcontractorId)
-  );
-  await fs.mkdir(dir, { recursive: true });
-
-  const filePath = path.join(dir, file.name);
+  // Persist durably through BlobStore under a relative key matching
+  // production's namespace convention
+  // (uploads/estimates/{bidId}/{subcontractorId}/{safe name}) — never an
+  // absolute path. Only this relative key is ever returned/stored; resolving
+  // it back to a real local absolute path (for the synchronous in-request
+  // parse call) happens at that trusted boundary, via
+  // lib/services/estimates/storagePath.ts.
   const buffer = Buffer.from(await file.arrayBuffer());
-  await fs.writeFile(filePath, buffer);
+  const filePath = estimateStorageKey(bidId, subcontractorId, safeBlobFileName(file.name));
+  await getBlobStore().put(filePath, buffer);
 
   return { filePath, fileType };
 }

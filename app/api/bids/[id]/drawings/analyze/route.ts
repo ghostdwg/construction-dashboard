@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
+import { resolveDrawingLocalPath } from "@/lib/services/drawings/storagePath";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -49,6 +50,26 @@ export async function POST(
     data: { analysisStatus: "processing", analysisTier: tier, analysisModel: model },
   });
 
+  // Resolve the stored filePath (relative BlobStore key, legacy cwd-rooted
+  // path, or production storage-root path — see
+  // lib/services/drawings/storagePath.ts) to a real local absolute path
+  // BEFORE calling the sidecar. The sidecar is a separate process with its
+  // own cwd: a bare relative key means nothing to it. Fail closed — no
+  // sidecar call at all — if the file can't be resolved, exactly mirroring
+  // the fix already applied to the Spec Book sidecar handoff
+  // (lib/services/jobs/specAnalysisAutomation.ts).
+  const resolved = await resolveDrawingLocalPath(upload.filePath, bidId);
+  if (!resolved.ok) {
+    await prisma.drawingUpload.update({
+      where: { id: upload.id },
+      data: { analysisStatus: "error" },
+    });
+    return Response.json(
+      { error: `Drawing file is unavailable (${resolved.reason}) — re-upload the drawing set.` },
+      { status: 404 }
+    );
+  }
+
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
@@ -56,7 +77,7 @@ export async function POST(
     const res = await fetch(`${SIDECAR_URL}/parse/drawings/analyze`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ file_path: upload.filePath, tier, model, api_key: apiKey }),
+      body: JSON.stringify({ file_path: resolved.localPath, tier, model, api_key: apiKey }),
       signal: AbortSignal.timeout(600_000), // 10 min ceiling for full sets
     });
 

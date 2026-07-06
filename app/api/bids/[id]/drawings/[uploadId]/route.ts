@@ -1,8 +1,13 @@
-import fs from "fs/promises";
 import { prisma } from "@/lib/prisma";
+import { deleteDrawingStoragePath } from "@/lib/services/drawings/storagePath";
 
 // DELETE /api/bids/[id]/drawings/[uploadId]
-// Removes a single drawing upload record, its sheets (cascade), and the PDF on disk.
+// Removes a single drawing upload record, its sheets (cascade), and the PDF
+// on disk. deleteDrawingStoragePath() dispatches by shape (see
+// lib/services/drawings/storagePath.ts): canonical and production
+// storage-root paths go through BlobStore.delete() against the derived key,
+// legacy cwd-rooted paths are unlinked directly, and an invalid/malformed or
+// wrong-bid reference is a no-op — never an arbitrary fs.unlink.
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string; uploadId: string }> }
@@ -24,7 +29,7 @@ export async function DELETE(
   await prisma.drawingUpload.delete({ where: { id: drawingUploadId } });
 
   // Clean up file from disk (best-effort)
-  await fs.unlink(upload.filePath).catch(() => {});
+  await deleteDrawingStoragePath(upload.filePath, bidId).catch(() => {});
 
   return new Response(null, { status: 204 });
 }

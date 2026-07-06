@@ -8,6 +8,15 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // process.env directly) and forward it across the network boundary to the
 // sidecar as an explicit `api_key` request-body field. No real HTTP call, no
 // real DB — `fetch` and `prisma` are both mocked.
+//
+// Also covers the storage-path-compat fix (artifact-durability work): the
+// route now resolves DrawingUpload.filePath (relative BlobStore key, legacy
+// cwd-rooted path, or production storage-root path — see
+// lib/services/drawings/storagePath.ts) to a real local absolute path BEFORE
+// calling the sidecar, and fails closed (no sidecar call at all) if it can't
+// be resolved — the identical fix already applied to the Spec Book sidecar
+// handoff. resolveDrawingLocalPath() is mocked; tests unrelated to resolution
+// mock it as an always-succeeding passthrough.
 
 const SENTINEL = "sk-test-sentinel-do-not-use-12345";
 
@@ -15,6 +24,7 @@ const h = vi.hoisted(() => ({
   getSetting: vi.fn(),
   findFirst: vi.fn(),
   update: vi.fn(),
+  resolveDrawingLocalPath: vi.fn(),
 }));
 
 vi.mock("@/lib/services/settings/appSettingsService", () => ({ getSetting: h.getSetting }));
@@ -25,6 +35,9 @@ vi.mock("@/lib/prisma", () => ({
       update: h.update,
     },
   },
+}));
+vi.mock("@/lib/services/drawings/storagePath", () => ({
+  resolveDrawingLocalPath: h.resolveDrawingLocalPath,
 }));
 
 import { POST } from "../route";
@@ -40,8 +53,16 @@ const params = Promise.resolve({ id: "1" });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.findFirst.mockResolvedValue({ id: 42, filePath: "/tmp/drawing.pdf" });
+  h.findFirst.mockResolvedValue({ id: 42, filePath: "uploads/drawings/1/drawing.pdf" });
   h.update.mockResolvedValue({});
+  // Default: resolves successfully to a synthetic local absolute path —
+  // tests that care about resolution failure override this per-case.
+  h.resolveDrawingLocalPath.mockImplementation(async (ref: string, _bidId: number) => ({
+    ok: true,
+    localPath: `/storage/${ref}`,
+    kind: "canonical" as const,
+    canonicalKey: ref,
+  }));
 });
 
 describe("POST /api/bids/[id]/drawings/analyze — N3 Option-A credential migration", () => {
@@ -61,6 +82,11 @@ describe("POST /api/bids/[id]/drawings/analyze — N3 Option-A credential migrat
     const [, init] = fetchMock.mock.calls[0];
     const sentBody = JSON.parse(init.body as string);
     expect(sentBody.api_key).toBe(SENTINEL);
+
+    // file_path sent to the sidecar is the RESOLVED local absolute path,
+    // never the raw relative DB value.
+    expect(h.resolveDrawingLocalPath).toHaveBeenCalledWith("uploads/drawings/1/drawing.pdf", 1);
+    expect(sentBody.file_path).toBe("/storage/uploads/drawings/1/drawing.pdf");
 
     vi.unstubAllGlobals();
   });
@@ -117,6 +143,26 @@ describe("POST /api/bids/[id]/drawings/analyze — N3 Option-A credential migrat
     expect(res.status).toBe(503);
     expect(payload.error).toMatch(/ANTHROPIC_API_KEY not configured/);
     expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("4. fails closed with a controlled 404 when the stored filePath can't be resolved to a real local file — never calls fetch", async () => {
+    h.getSetting.mockResolvedValue(SENTINEL);
+    h.resolveDrawingLocalPath.mockResolvedValue({ ok: false, reason: "missing" });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await POST(makeRequest({ tier: 1, model: "haiku" }), { params });
+    const payload = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(payload.error).toMatch(/unavailable.*missing/);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // Marked as error, not left "processing".
+    const errorUpdate = h.update.mock.calls.find((c) => c[0]?.data?.analysisStatus === "error");
+    expect(errorUpdate).toBeTruthy();
 
     vi.unstubAllGlobals();
   });
