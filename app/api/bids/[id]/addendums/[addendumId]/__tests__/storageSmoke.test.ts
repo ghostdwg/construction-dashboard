@@ -101,16 +101,27 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
     vi.clearAllMocks();
     h.appEnv.APP_ENV = "local";
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
+    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
+    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
   });
 
   // ── Test 1 — normal delete, all four conditions absent ────────────────────
-  test("1. normal delete (no marker, no opt-in, non-staging) still fires the brief refresh exactly as today, response byte-identical (no X-Automation-Status header)", async () => {
+  //
+  // CHANGED (master automation gate, release-hardening fix): this suite
+  // predates DOCUMENT_AUTOMATION_ENABLED, whose default is now OFF — so
+  // "fires the brief refresh" is no longer the unconditional default; it now
+  // also requires the master flag. This test's actual purpose is exercising
+  // the storage-smoke gate's absence, so DOCUMENT_AUTOMATION_ENABLED is set
+  // to "true" here to keep validating exactly what it always validated. The
+  // genuine new default-off case is covered by "1b" below.
+  test("1. normal delete (no marker, no opt-in, non-staging), master automation flag ON — still fires the brief refresh exactly as today, response byte-identical (no X-Automation-Status header)", async () => {
     h.appEnv.APP_ENV = "local";
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { DELETE } = await import("../route");
@@ -126,6 +137,42 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
     expect(triggerBriefRefreshMock).toHaveBeenCalledWith(31, { triggerSource: "upload" });
     // isAdminAuthorized is never even consulted on the default path.
     expect(h.isAdminAuthorized).not.toHaveBeenCalled();
+  });
+
+  // ── Test 1b — NEW: master automation flag default-off truth ───────────────
+  test("1b. DOCUMENT_AUTOMATION_ENABLED unset (default OFF) — refresh is skipped, response honestly carries X-Automation-Status: disabled, delete/blob-cleanup/stale-marking still happen", async () => {
+    h.appEnv.APP_ENV = "local";
+    h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+
+    const { DELETE } = await import("../route");
+    const res = await DELETE(deleteRequest(), routeParams);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ deleted: true }); // body shape unchanged
+    expect(res.headers.get("X-Automation-Status")).toBe("disabled");
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    // Delete + brief-stale marking still happen — only the refresh call is
+    // gated.
+    expect(db.deletedId).toBe(31);
+    expect(db.briefUpdateManyArgs).toEqual({ where: { bidId: 31 }, data: { isStale: true } });
+  });
+
+  // ── Test 1c — NEW: master automation flag explicitly "false" behaves the
+  // same as unset ────────────────────────────────────────────────────────────
+  test("1c. DOCUMENT_AUTOMATION_ENABLED=false — same as unset, X-Automation-Status: disabled", async () => {
+    h.appEnv.APP_ENV = "local";
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "false";
+    h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+
+    const { DELETE } = await import("../route");
+    const res = await DELETE(deleteRequest(), routeParams);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ deleted: true });
+    expect(res.headers.get("X-Automation-Status")).toBe("disabled");
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
   });
 
   // ── Test 2 — marker present, opt-in OFF ────────────────────────────────────
@@ -168,9 +215,13 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
   });
 
   // ── Test 3 — opt-in ON, staging, but marker ABSENT ─────────────────────────
-  test("3. opt-in ON and APP_ENV=staging, but marker header absent — refresh still fires, NOT suppressed, response unchanged", async () => {
+  //
+  // CHANGED (master automation gate): DOCUMENT_AUTOMATION_ENABLED set to
+  // "true" for the same reason as test 1 above.
+  test("3. opt-in ON and APP_ENV=staging, but marker header absent, master automation flag ON — refresh still fires, NOT suppressed, response unchanged", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { DELETE } = await import("../route");
@@ -185,9 +236,13 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
   });
 
   // ── Test 4 — ALL FOUR conditions met ───────────────────────────────────────
-  test("4. all four conditions met — refresh suppressed, X-Automation-Status header set, delete/blob-cleanup/stale-marking still happen, success body unchanged", async () => {
+  //
+  // CHANGED (master automation gate): DOCUMENT_AUTOMATION_ENABLED explicitly
+  // "true" to prove gate precedence — storage-smoke suppression still wins.
+  test("4. all four conditions met, master automation flag ON — refresh suppressed (smoke gate takes precedence), X-Automation-Status header set, delete/blob-cleanup/stale-marking still happen, success body unchanged", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
     db.record = { id: 31, bidId: 31, storageKey: "uploads/addendums/31/a.pdf" };
 

@@ -232,18 +232,30 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     vi.clearAllMocks();
     h.appEnv.APP_ENV = "local";
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
+    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
     stubSidecarSuccess();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
+    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
   });
 
   // ── Test 1 — normal upload, all four conditions absent ────────────────────
-  test("1. normal upload (no marker, no opt-in, non-staging) still fires automation exactly as today", async () => {
+  //
+  // CHANGED (master automation gate, release-hardening fix): this suite
+  // predates DOCUMENT_AUTOMATION_ENABLED, whose default is now OFF — so the
+  // "fires automation" behavior this test names is no longer the unconditional
+  // default; it now also requires the master flag. Since this test's actual
+  // purpose is exercising the storage-smoke gate's absence (not the master
+  // flag), DOCUMENT_AUTOMATION_ENABLED is set to "true" here so the test keeps
+  // validating exactly what it always validated. The genuine new default-off
+  // case is covered by "1b" below.
+  test("1. normal upload (no marker, no opt-in, non-staging), master automation flag ON — still fires automation exactly as today", async () => {
     h.appEnv.APP_ENV = "local";
     // STORAGE_SMOKE_MODE_ENABLED left unset (default OFF)
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { POST } = await import("../route");
@@ -258,6 +270,44 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     // marker header means the whole gate short-circuits before the auth
     // check, so it must not have been called.
     expect(h.isAdminAuthorized).not.toHaveBeenCalled();
+  });
+
+  // ── Test 1b — NEW: master automation flag default-off truth ───────────────
+  test("1b. DOCUMENT_AUTOMATION_ENABLED unset (default OFF) — automation is skipped, response honestly reports automationStatus 'disabled'", async () => {
+    h.appEnv.APP_ENV = "local";
+    // DOCUMENT_AUTOMATION_ENABLED left unset (default OFF) — deleted in
+    // beforeEach above.
+    h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+
+    const { POST } = await import("../route");
+    const res = await POST(uploadRequest(buildMinimalPdf("x")), routeParams);
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.automationStatus).toBe("disabled");
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    // Normal upload persistence still happens — only the two automation
+    // calls are gated.
+    expect(blobPutMock).toHaveBeenCalledWith("plan-room/jobs/1/spec/original.pdf", expect.any(Buffer));
+    expect(json.status).toBe("ready");
+  });
+
+  // ── Test 1c — NEW: master automation flag explicitly "false" behaves the
+  // same as unset ────────────────────────────────────────────────────────────
+  test("1c. DOCUMENT_AUTOMATION_ENABLED=false — same as unset, automationStatus 'disabled'", async () => {
+    h.appEnv.APP_ENV = "local";
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "false";
+    h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+
+    const { POST } = await import("../route");
+    const res = await POST(uploadRequest(buildMinimalPdf("x")), routeParams);
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.automationStatus).toBe("disabled");
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
   });
 
   // ── Test 2 — marker present, opt-in OFF ────────────────────────────────────
@@ -316,9 +366,14 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
   });
 
   // ── Test 3 — opt-in ON, staging, but marker ABSENT ─────────────────────────
-  test("3. opt-in ON and APP_ENV=staging, but marker header absent — automation still fires, NOT suppressed", async () => {
+  //
+  // CHANGED (master automation gate): DOCUMENT_AUTOMATION_ENABLED is set to
+  // "true" here for the same reason as test 1 above — this test's purpose is
+  // the storage-smoke gate's marker-absence behavior, not the master flag.
+  test("3. opt-in ON and APP_ENV=staging, but marker header absent, master automation flag ON — automation still fires, NOT suppressed", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { POST } = await import("../route");
@@ -335,9 +390,16 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
   });
 
   // ── Test 4 — ALL FOUR conditions met ───────────────────────────────────────
-  test("4. all four conditions met — automation suppressed, exact automationStatus returned, normal persistence still happens", async () => {
+  //
+  // CHANGED (master automation gate): DOCUMENT_AUTOMATION_ENABLED is
+  // explicitly set to "true" here to prove gate precedence — even when the
+  // master flag actively wants automation on, storage-smoke suppression
+  // still wins (see the module doc: "suppressed_for_storage_smoke" always
+  // takes precedence over the master flag).
+  test("4. all four conditions met, master automation flag ON — automation suppressed (smoke gate takes precedence), exact automationStatus returned, normal persistence still happens", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { POST } = await import("../route");

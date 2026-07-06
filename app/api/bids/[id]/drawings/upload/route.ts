@@ -49,6 +49,19 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 // — it is read once into a boolean and discarded.
 const STORAGE_SMOKE_HEADER = "x-drawings-storage-smoke";
 
+// ── Master document-automation gate (release-hardening: routine document
+// operations must not fire real, provider-bound automation with no master
+// gate) — IDENTICAL semantics to the gate in
+// app/api/bids/[id]/specbook/upload/route.ts (see that module's doc for the
+// full rationale). Defaults OFF/unset; only the literal string "true"
+// enables it; a direct process.env read, no lib/env.ts Zod entry, following
+// the same established convention as STORAGE_SMOKE_MODE_ENABLED and the
+// *_STUB_MODE flags. Independent of, and subordinate to, the 4-condition
+// storage-smoke gate above: `suppressed_for_storage_smoke` always wins.
+function isDocumentAutomationEnabled(): boolean {
+  return process.env.DOCUMENT_AUTOMATION_ENABLED === "true";
+}
+
 // Valid discipline values for per-discipline uploads
 const VALID_DISCIPLINES = [
   "FULLSET",
@@ -262,9 +275,15 @@ export async function POST(
       // decided suppression (or rejected the request outright, before any
       // persistence, if the marker was present but any condition failed) — by
       // the time execution reaches here, either no marker was sent, or all
-      // four conditions held. Nothing to re-check.
-      const automationStatus: "triggered" | "suppressed_for_storage_smoke" =
-        suppressAutomationForStorageSmoke ? "suppressed_for_storage_smoke" : "triggered";
+      // four conditions held. Nothing to re-check. Storage-smoke suppression
+      // takes precedence over the master automation flag — see
+      // isDocumentAutomationEnabled's doc above.
+      const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" =
+        suppressAutomationForStorageSmoke
+          ? "suppressed_for_storage_smoke"
+          : isDocumentAutomationEnabled()
+            ? "triggered"
+            : "disabled";
 
       if (automationStatus === "triggered") {
         generateBidIntelligence(bidId).catch((err) =>
@@ -340,8 +359,12 @@ export async function POST(
 
     // Same suppression contract as the early-return branch above — see the
     // module doc and the gate at the top of this handler.
-    const automationStatus: "triggered" | "suppressed_for_storage_smoke" =
-      suppressAutomationForStorageSmoke ? "suppressed_for_storage_smoke" : "triggered";
+    const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" =
+      suppressAutomationForStorageSmoke
+        ? "suppressed_for_storage_smoke"
+        : isDocumentAutomationEnabled()
+          ? "triggered"
+          : "disabled";
 
     if (automationStatus === "triggered") {
       generateBidIntelligence(bidId).catch((err) =>

@@ -46,6 +46,28 @@ import { env } from "@/lib/env";
 // line) — it is read once into a boolean and discarded.
 const STORAGE_SMOKE_HEADER = "x-addendums-storage-smoke";
 
+// ── Master document-automation gate (release-hardening: routine document
+// operations must not fire real, provider-bound automation with no master
+// gate) — IDENTICAL semantics to the gate in
+// app/api/bids/[id]/specbook/upload/route.ts and
+// app/api/bids/[id]/drawings/upload/route.ts (see those modules' docs for
+// the full rationale). Defaults OFF/unset; only the literal string "true"
+// enables it; a direct process.env read, no lib/env.ts Zod entry, following
+// the same established convention as STORAGE_SMOKE_MODE_ENABLED and the
+// *_STUB_MODE flags. Independent of, and subordinate to, the 4-condition
+// storage-smoke gate above: `suppressed_for_storage_smoke` always wins.
+//
+// This route already surfaces automation state via an ADDITIVE
+// `X-Automation-Status` response header rather than a body field (see the
+// suppressed-path doc above) — the "disabled" state follows that same,
+// already-established convention rather than introducing a body field this
+// route never had. The default path's body stays byte-identical
+// (`{ deleted: true }`); only the header is added when automation does not
+// fire.
+function isDocumentAutomationEnabled(): boolean {
+  return process.env.DOCUMENT_AUTOMATION_ENABLED === "true";
+}
+
 // DELETE /api/bids/[id]/addendums/[addendumId]
 // Deletes the addendum record, marks brief stale, fires regeneration, and
 // best-effort cleans up the durable blob if this row has a storageKey.
@@ -126,6 +148,16 @@ export async function DELETE(
     return Response.json(
       { deleted: true },
       { headers: { "X-Automation-Status": "suppressed_for_storage_smoke" } }
+    );
+  }
+
+  // Storage-smoke suppression does not apply — the master document-
+  // automation flag decides whether the real, provider-bound brief refresh
+  // fires. See isDocumentAutomationEnabled's doc above.
+  if (!isDocumentAutomationEnabled()) {
+    return Response.json(
+      { deleted: true },
+      { headers: { "X-Automation-Status": "disabled" } }
     );
   }
 

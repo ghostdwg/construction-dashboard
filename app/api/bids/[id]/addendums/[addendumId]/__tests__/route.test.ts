@@ -67,10 +67,18 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId]", () => {
     db.record = null;
     db.deletedId = null;
     db.briefUpdateManyArgs = null;
+    // CHANGED (master automation gate, release-hardening fix): this suite
+    // predates DOCUMENT_AUTOMATION_ENABLED, whose default is now OFF. This
+    // file's tests are about durability/blob-cleanup mechanics, not the
+    // master automation gate (that's covered by storageSmoke.test.ts's 1/1b/1c),
+    // so the flag is set ON here to preserve every existing test's original
+    // meaning without change.
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
   });
 
   test("deletes the durable blob when storageKey is present", async () => {
