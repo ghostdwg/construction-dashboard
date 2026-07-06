@@ -60,5 +60,7 @@ next-env.d.ts
 /sidecar/__pycache__/
 /sidecar/**/__pycache__/
 
+# Claude Code: shared config (settings.json, rules/, skills/, agents/, hooks/)
+# is committed; local-only state stays ignored.
 .claude/settings.local.json
-.claude/
+.claude/worktrees/

@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(docker *)",
+      "Bash(docker-compose *)",
+      "Bash(turso *)",
+      "Bash(flyctl *)",
+      "Bash(fly *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(rsync *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(psql *)",
+      "Bash(sqlite3 *)",
+      "Bash(systemctl *)",
+      "Bash(service *)",
+      "Bash(reboot)",
+      "Bash(shutdown *)",
+      "Bash(env)",
+      "Bash(printenv)",
+      "Bash(printenv *)",
+      "Bash(node scripts/apply-turso-migrations.mjs)",
+      "Bash(node scripts/apply-turso-migrations.mjs *)",
+      "Bash(npx prisma migrate *)",
+      "Bash(npx prisma db *)",
+      "Bash(prisma migrate *)",
+      "Bash(prisma db *)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Edit(docs/architecture/GROUNDWORX_EXECUTION_LEDGER.md)",
+      "Edit(runtime/runbooks/GROUNDWORX_AGENT_QUEUE.md)",
+      "Write(docs/architecture/GROUNDWORX_EXECUTION_LEDGER.md)",
+      "Write(runtime/runbooks/GROUNDWORX_AGENT_QUEUE.md)"
+    ],
+    "ask": [
+      "Bash(git push *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/gwx-guard.mjs\"",
+            "timeout": 10,
+            "statusMessage": "GroundWorX guard: checking command"
+          }
+        ]
+      }
+    ]
+  }
+}

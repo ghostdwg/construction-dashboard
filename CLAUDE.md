@@ -1,108 +1,116 @@
 @AGENTS.md
 
-# Construction Intelligence Platform — Session Guide
+# GroundWorX Continuation Guide
+
+You are working on the **GroundWorX execution line** of `construction-dashboard`
+(github.com/ghostdwg/construction-dashboard). This file is the boot map. The two
+canonical sources of truth are:
+
+1. `docs/architecture/GROUNDWORX_EXECUTION_LEDGER.md` — truth table, binding
+   decisions (§4), allowed/prohibited claims (§5), do-not-re-research list (§9).
+2. `runtime/runbooks/GROUNDWORX_AGENT_QUEUE.md` — the ordered, runnable work cards.
+
+**Read the Ledger before doing anything.** It supersedes `REALITY.md`,
+`CURRENT_STATE.md`, `ROADMAP.md`, and `staging-release-bridge.md` wherever they
+disagree (those contain known-stale claims — Ledger §9.9). Never "correct" the
+Ledger from those files. Do not duplicate or replace the Ledger/Queue with a
+new roadmap.
 
 ---
 
-## COMMIT AUTHORSHIP
+## Repo / worktree identity
+
+- **Active handoff branch:** `fable/groundworx-handoff-final` (built from Sprint 1
+  tip `4ec073f`; carries the Ledger/Queue byte-identical to the frozen archive).
+- **Integration baseline:** `integration/foundation-ci-divergence @ 625301a` —
+  the Ledger's base commit. Sprint 1 work is NOT yet merged into it.
+- **Sprint 1 (reviewed, local-only):** `fable/groundworx-delivery-sprint-1 @ 4ec073f`
+  — `854eacf`=GWX-Q01, `ae04d0c`=GWX-Q04a, `4ec073f`=GWX-Q06a.
+- **WORKTREE TRAP (Ledger §9.12):** fresh agent worktrees may check out `main`
+  (`160f6e8`, ~100 commits behind, contains none of this work). ALWAYS run
+  `git rev-parse HEAD` first; if stale, re-anchor or read via `git show <sha>:<path>`.
+
+## Frozen — never modify
+
+- **Production** (branch, DB, containers, storage): entirely frozen. First
+  authorized production touch is GWX-Q09 (read-only inventory), human-executed.
+- **`fable/groundworx-command-center @ 7b6ef13`:** the frozen command-center
+  archive. Never commit to it. This branch carries identical copies of its docs.
+- **`main @ 160f6e8`:** frozen until GWX-Q15 (post-cutover reconciliation).
+- **`integration/foundation-ci-divergence` and `fable/groundworx-delivery-sprint-1`:**
+  do not rewrite; merging Sprint 1 into integration is a reviewed, deliberate step.
+
+## Current queue state (as of 2026-07-06)
+
+- **Done (local, reviewed, unmerged to integration):** Q01, Q04a, Q06a.
+- **Next contract:** **GWX-Q02** — staging checkpoint + migration preflight +
+  apply. **Human-owned.** This is the first live gate; nothing after it runs
+  without it. No checkpoint ⇒ Q02 does not run (Ledger §7a).
+- **Then:** Q03 (first app-image build/pin/deploy gate, human) → Q04b → Q05 →
+  Q06b → Q07 → Q08 → Q09 → Q10. Order is load-bearing (Queue header).
+- **Parallel-safe local work anytime:** Q11 (doc truth pass), Q13 (classifier
+  error honesty). Q12 needs Q02 applied. Q07's Opus *decision* may run anytime.
+- **Proven so far:** Spec Book storage smoke 13/13 on staging (image
+  `e41b027-storage-smoke-failclosed`, automation suppressed); ONE controlled
+  Anthropic call → `LAST_REAL_SUCCESS`. Nothing else is live-proven.
+
+## Human / live gates — nothing below happens on model authority
+
+Every one of these requires explicit operator (Josh) approval **per invocation**
+(Ledger §6): migrations; image build/pin/recreate; any fixture-CLI or
+backfill/inventory run against a real DB; any real provider call; backup/restore
+drills; ANYTHING touching production; credential handling; deleting rows/blobs
+the tool didn't create. Models prepare commands and acceptance criteria; humans
+execute. A local hook or passing test NEVER substitutes for, or proves, human
+approval.
+
+## Core safety constraints
+
+- Never return `pricingData`/`rawPriceText` to the client or place it, sub
+  names, companies, or `isPreferred` into any AI prompt or sub-facing export.
+- No secret values, raw document content, or user project data in code, docs,
+  commits, or chat. Never print env/credential values.
+- **No manual DB edits, ever.** All writes go through the gated migration
+  runner, gated fixture CLI, or gated backfill apply.
+- `STORAGE_SMOKE_MODE_ENABLED` stays OFF outside an approved smoke run.
+- **P2-A0 is shadow-only** — describe it only as detection/telemetry, never as
+  redaction/blocking/enforcement (Ledger §5 prohibited claims).
+- Provider construction only via the two sanctioned gateways; no new allowlist
+  entries. Real provider calls require an approved queue card.
+- Migrations are forward-only, applied only via `scripts/apply-turso-migrations.mjs`,
+  never auto-run, never on model authority.
+- Do not reopen Ledger §4 decisions or re-research Ledger §9 settled questions.
+- Scoped rules live in `.claude/rules/` — read the ones matching your task:
+  `environments-deployment.md`, `migrations-checkpoints.md`,
+  `secrets-providers.md`, `verification-evidence.md`,
+  `local-only-implementation.md`.
+
+## Model routing
+
+- **Opus → `gwx-coordinator` agent:** sequencing, cross-cutting decisions,
+  adjudications (e.g. Q07, Q10 dossier, Q14). Read-only; never executes live
+  actions or writes product code.
+- **Sonnet → `gwx-builder` agent:** exactly ONE bounded local queue card per
+  session, in an isolated worktree anchored to the correct tip. Local code +
+  tests only.
+- **Sonnet/Haiku → `gwx-verifier` agent:** runs the local evidence suite,
+  reports PASS/FAIL with evidence. Never fixes, never speculates.
+- One session per card; do not mix planning and build execution in one session.
+
+## On-demand skills
+
+- **`/gwx-next`** — identifies exactly ONE next queue contract (card, owner,
+  prereqs, gates) from the Queue + current branch state. Never starts the work.
+- **`/gwx-verify`** — runs the applicable local evidence suite and reports
+  PASS/FAIL per check. Local, non-mutating; never "fixes" anything.
+- **`/gwx-handoff`** — updates the current-facts block of
+  `docs/release/GROUNDWORX-EXECUTION-HANDOFF.md` (SHAs, queue position, last
+  proof) without restating the project.
+
+## Commit authorship
+
 All commits must end with:
 ```
 Co-Authored-By: NeuroGlitch AI Engine <ai@neuroglitch.dev>
 ```
-
----
-
-## CONSTRAINTS
-
-### Never Do
-- Return `pricingData` to client or include it in any AI prompt
-- Include sub name, company, or `isPreferred` in any AI prompt or sub-facing export
-- Build Phase 5 modules in bid-dashboard — they belong in construction-dashboard
-- Build Tier F or auth fixes in construction-dashboard without syncing from bid-dashboard first
-- Mix planning and build execution in the same Claude Code session
-- Recreate `/bids/[id]/leveling` as a standalone page — it is a redirect
-- Commit `.claude/settings.local.json`
-
-### Every Session
-- One Claude Code session per build step — new session when the step changes
-- Commit to GitHub at end of session
-- Update `docs/architecture/CURRENT_STATE.md` at end of session
-- Update `docs/architecture/ROADMAP.md` when any status changes
-
----
-
-## CURRENT STATE
-
-**Repo:** `construction-dashboard` — github.com/ghostdwg/construction-dashboard
-**Parallel repo:** `bid-dashboard` — github.com/ghostdwg/bid-dashboard (stable, used on live bids)
-
-**Last completed:** Drawing cross-reference for submittal generation (Phase 5G extension) + CLAUDE.md restructure
-
-**System stage:** All planned phases complete. Working in maintenance and targeted refinement mode.
-
----
-
-## TWO-REPO RULES
-
-| | bid-dashboard | construction-dashboard |
-|---|---|---|
-| **Purpose** | Stable preconstruction tool, live bids | Phase 5 construction intelligence expansion |
-| **Rule** | Never break what works. Test on real jobs. | Experimental. Break freely. |
-| **Receives** | Tier F, auth fixes, bug fixes | Phase 5 modules + all bid-dashboard updates via sync |
-
-**Before starting any Phase 5 session** — pull bid-dashboard into construction-dashboard:
-```
-git fetch bid-dashboard main && git merge bid-dashboard/main --no-edit
-```
-Full sync protocol: `docs/architecture/ROADMAP.md` → Two-Repo Strategy
-
----
-
-## WHAT'S IN PLAY
-
-### Queued
-| Item | Repo | Priority |
-|------|------|----------|
-| Tier F — F5: Daily Log weather claim integration | bid-dashboard | NOT STARTED |
-| Auth B+C — Per-user isolation + RBAC | bid-dashboard | DEFERRED (needs real second user) |
-| Production Readiness — Postgres migration, HTTPS, deploy | both | DEFERRED (pre-deploy) |
-| Phase 5F — Drawing OCR + Quantity Takeoff | construction-dashboard | STRETCH (GPU hardware required) |
-| Phase 5G-4 — Submittal Workflow Templates | construction-dashboard | DEFERRED |
-
-### Minor Enhancements
-Pick up opportunistically when already touching the relevant module — don't build sessions around them.
-
-- H2: Auto-populate `originalBidAmount` from leveling data
-- H2: PO issuance to sub via email (reuses RFQ1 infra)
-- H3: Submittal attachments / file uploads
-- H3: Review round tracking
-- SET1: Per-bid cost ledger view (currently global only)
-- SET1: Budget alerts ("spent $X, set a cap?")
-- SET1: Real Anthropic tokenizer (replace chars/4 estimate)
-
----
-
-## REFERENCE ARCHIVE
-
-### ID Glossary
-Three naming systems appear across historical docs — all refer to features in this codebase:
-
-| System | Examples | Used For |
-|--------|---------|---------|
-| **Module IDs** | INT1, H1–H8, GNG1, RFQ1, P1–P4 | Pursuit + post-award feature modules |
-| **Tier labels** | Tier A – Tier F | Capability layers (A=AI core, B=procurement, C=estimate, D=assembly, E=handoff, F=Procore) |
-| **Phase 5 sub-phases** | 5A – 5H, 5G-1 – 5G-4 | Construction intelligence expansion (construction-dashboard only) |
-
-### Completed — Pursuit + Core (bid-dashboard origin)
-Tiers 1–3 (core schema, UI, nav), Tier A (AI/data model), Tier B (procurement P1–P4), Tier C (estimate C1–C3), Tier D (bid assembly + post-bid D1–D3). Modules: 2b (sub intelligence), 5b (estimate sanitization), 6a-6c (estimate intake + leveling + questions), 14 (document intelligence), 15/15a/15b (AI review, bid brief, per-trade gap analysis), GNG1 (go/no-go gate), 16a (addendum delta), RFQ1 (RFQ email distribution), INT1 (14-field job intake). Infrastructure: Procore CSV import, AI token config, dark mode, Auth Wall A, UI nav refactor.
-
-### Completed — Post-Award Handoff (Tier E)
-H1 (handoff packet, 8-sheet XLSX), H2 (buyout tracker, 7-stage lifecycle, financial rollup), H3 (submittal register, Procore CSV export), H4 (schedule seed, CSI sequence, MSP CSV), H5 (owner-facing estimate, trade-level XLSX), H6 (budget creation, GC overhead lines), H7 (contact handoff — Outlook/Google/vCard), H8 (award notifications — sub + internal emails).
-
-### Completed — Procore Bridge (Tier F)
-F1 (CSV/XLSX export package — vendor, budget, submittal, contact), F2 (REST API — OAuth 2.0, vendor/contact/budget/submittal push), F3 (bidirectional sync — RFI pull, submittal status sync, webhook receiver), F4 (schedule push — MSP XML 2007 generator, Procore schedule import API). F5 (Daily Log weather claims) not started.
-
-### Completed — Phase 5 Construction Intelligence
-5A (Python FastAPI sidecar at :8001, spec parsing via PyMuPDF4LLM, per-section AI analysis), 5B (spec splitting, CSI MasterFormat model, `SubmittalItem.source`, `generateFromAiAnalysis.ts`), 5C (ScheduleV2, 9-phase CPM template, full dependency engine, Gantt UI, MSP CSV export), 5D (meeting intelligence — transcription, diarization, Claude analysis, action items), 5E (superintendent briefing — auto-assembled PDF field report via WeasyPrint), 5G-1 (`SubmittalItem.specSectionId` auto-linkage), 5G-2 (schedule-tied due dates, backward math from install activity), 5G-3 (distribution templates, routing panel), 5G-3.5 (SubmittalPackage model, package-grouped register), 5G-3.6 (bulk-edit grid UI with inline editing), 5H near-term (warranty, training, inspections, and closeout registers from `aiExtractions`). Drawing cross-reference for submittal generation (drawing `analysisJson` → sidecar → `source: "drawing_analysis"` items).
-
-Full detail on any module or phase: `docs/architecture/ROADMAP.md`
+Never commit `.claude/settings.local.json`.
