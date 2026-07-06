@@ -16,11 +16,15 @@
 //     tool only ever imports the pure, synchronous `classify*` functions
 //     from those modules, never the I/O helpers.
 //   - No fetch/http/https/network call anywhere.
-//   - No real database connection: all DB access goes through
-//     `StorageInventoryDbAdapter` (see types.ts) — production wiring of a
-//     real Prisma-backed adapter is intentionally NOT built here (future
-//     work; a thin implementation of this interface is the only piece
-//     needed). Tests only ever inject an in-memory fake adapter.
+//   - No real database connection FROM THIS FILE OR ANY OTHER MODULE IN THIS
+//     DIRECTORY EXCEPT prismaAdapter.ts: all DB access goes through
+//     `StorageInventoryDbAdapter` (see types.ts). The real Prisma-backed
+//     implementation lives in lib/services/storageInventory/prismaAdapter.ts
+//     — the ONE sanctioned DB boundary — and is never imported from here (or
+//     from classify/report/apply/journal/reversal), only lazily `import()`ed
+//     by the CLI's real (invoked-as-script) execution path (see
+//     scripts/storage-inventory-backfill.ts). Tests inject an in-memory
+//     fake adapter, never a live/file-based DB.
 //   - Inventory mode (buildInventoryReport) never calls
 //     `adapter.updateField` — structurally incapable of writing anything.
 //   - Apply mode (runApply) calls `adapter.updateField` ONLY for rows

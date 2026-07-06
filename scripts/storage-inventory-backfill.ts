@@ -25,10 +25,15 @@
 //    --reverse --journal <path>    Read a journal file and undo its
 //                                  conversions (idempotent — safe to re-run).
 //
-//  This CLI is deliberately NOT wired to a real Prisma/database connection —
-//  that is intentional future work (see unimplementedAdapter() below and the
-//  task's own final report). Every code path here is exercised in tests via
-//  an injected in-memory fake adapter (see scripts/__tests__/
+//  Real-DB wiring: when this file is actually invoked as a script (the
+//  `invokedAsScript` guard at the bottom of this file), it lazily
+//  `import()`s the real Prisma-backed adapter
+//  (lib/services/storageInventory/prismaAdapter.ts) and passes it into
+//  runMain() — that dynamic import is the ONLY path by which this tool ever
+//  touches Prisma or a real database. Statically importing this module (as
+//  every test does) never reaches Prisma: nothing above this point imports
+//  `@/lib/prisma` or the adapter module. Every code path is exercised in
+//  tests via an injected in-memory fake adapter (see scripts/__tests__/
 //  storage-inventory-backfill.test.ts), never a live/file-based DB.
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -107,20 +112,21 @@ export function parseArgs(argv: string[]): ParsedArgs {
 }
 
 /**
- * No production database adapter is wired up in this deliverable —
- * intentional (see this file's header + task report). Core logic is fully
- * DB-agnostic behind StorageInventoryDbAdapter; a thin real-Prisma
- * implementation is future work. This stub throws immediately if the CLI is
- * ever actually run without an injected adapter, rather than silently doing
- * nothing or attempting a real connection.
+ * Fallback used only when `runMain()` is called directly with no adapter
+ * injected and NOT via this file's real (invoked-as-script) execution path —
+ * i.e. a caller bypassed both the test convention (inject a fake adapter)
+ * and the real CLI entrypoint (which lazily wires the real Prisma-backed
+ * adapter — see prismaAdapter.ts and the `invokedAsScript` block below).
+ * Throws immediately rather than silently doing nothing or attempting a
+ * real connection from here.
  */
 function unimplementedAdapter(): StorageInventoryDbAdapter {
   const fail = (): never => {
     throw new Error(
-      "[storage-inventory] No production database adapter is wired up yet in this deliverable. " +
-        "Wire a real Prisma-backed implementation of StorageInventoryDbAdapter " +
-        "(lib/services/storageInventory/types.ts) and pass it via runMain(argv, { adapter }) — " +
-        "not built here by design. See the task report for details."
+      "[storage-inventory] No production database adapter is wired up automatically for a direct " +
+        "runMain() call. Either pass one via runMain(argv, { adapter }) (tests: inject a fake adapter; " +
+        "real runs: invoke this file as a script, which lazily wires " +
+        "lib/services/storageInventory/prismaAdapter.ts)."
     );
   };
   return {
@@ -199,7 +205,18 @@ const invokedAsScript =
   resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 if (invokedAsScript) {
-  runMain().catch((err) => {
+  // Real execution path ONLY: lazily `import()` the real Prisma-backed
+  // adapter and inject it explicitly, rather than letting runMain() fall
+  // back to unimplementedAdapter(). This dynamic import is the single place
+  // in this whole tool where Prisma (or any DB connection) is ever reached —
+  // it never executes when this module is merely imported (by tests or
+  // anything else), only when the file is invoked directly as a script.
+  (async () => {
+    const { createPrismaStorageInventoryAdapter } = await import(
+      "@/lib/services/storageInventory/prismaAdapter"
+    );
+    await runMain(process.argv.slice(2), { adapter: createPrismaStorageInventoryAdapter() });
+  })().catch((err) => {
     console.error(err);
     process.exitCode = 2;
   });

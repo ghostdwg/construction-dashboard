@@ -85,10 +85,11 @@ export type StorageInventoryRow = {
 };
 
 /**
- * Adapter seam between this tool's pure logic and a real data source.
- * Production code can wire a thin real-Prisma implementation of this
- * interface later (not built here — see index.ts's header note); tests
- * inject an in-memory fake with fixture rows, never a live/file-based DB.
+ * Adapter seam between this tool's pure logic and a real data source. The
+ * real Prisma-backed implementation is
+ * lib/services/storageInventory/prismaAdapter.ts (the ONE sanctioned DB
+ * boundary for this tool — see index.ts's header note); tests inject an
+ * in-memory fake with fixture rows, never a live/file-based DB.
  */
 export type StorageInventoryDbAdapter = {
   findRows(model: ModelName): Promise<StorageInventoryRow[]>;
