@@ -64,6 +64,13 @@ COPY --from=builder /app/node_modules/@napi-rs ./node_modules/@napi-rs
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/@libsql ./node_modules/@libsql
 COPY --from=builder /app/node_modules/@prisma/adapter-libsql ./node_modules/@prisma/adapter-libsql
+# pdfjs-dist is a serverExternalPackages entry (next.config.ts), so Next's
+# standalone trace never bundles it, and it sets GlobalWorkerOptions.workerSrc
+# from a plain string ("./pdf.worker.mjs" in pdf.mjs) rather than a
+# statically-traceable import — the trace copies pdf.mjs itself but not the
+# worker file it loads at runtime. Copy the whole package explicitly, same
+# pattern as the other trace-gap packages above.
+COPY --from=builder /app/node_modules/pdfjs-dist ./node_modules/pdfjs-dist
 COPY --from=builder /app/prisma ./prisma
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
