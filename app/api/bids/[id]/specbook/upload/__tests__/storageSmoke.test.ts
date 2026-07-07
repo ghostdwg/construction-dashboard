@@ -83,11 +83,14 @@ const backgroundJobCreateMock = vi.fn(async () => ({ id: "fake" }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     appSetting: {
-      findUnique: vi.fn(async () =>
-        h.adminAutomation.value === null
+      findUnique: vi.fn(async () => {
+        if (h.adminAutomation.value === "__reject__") {
+          throw new Error("settings lookup failed (simulated DB outage)");
+        }
+        return h.adminAutomation.value === null
           ? null
-          : { id: 1, key: "documentAutomationEnabled", value: h.adminAutomation.value, updatedAt: new Date(0) }
-      ),
+          : { id: 1, key: "documentAutomationEnabled", value: h.adminAutomation.value, updatedAt: new Date(0) };
+      }),
     },
     bid: {
       findUnique: vi.fn(async () => (db.bidExists ? { id: 1 } : null)),
@@ -375,6 +378,23 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     const res = await POST(uploadRequest(buildMinimalPdf("x")), routeParams);
     const json = await res.json();
     expect(res.status).toBe(201);
+    expect(json.automationStatus).toBe("disabled");
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+  });
+
+  // ── Test 1g — persisted-setting read failure fails CLOSED ──────────────────
+  // (Mechanism is shared by all three gated routes via documentAutomationStatus;
+  // the drawings/addendums equivalents are covered at the service level.)
+  test("1g. settings lookup rejects — upload still succeeds, automationStatus 'disabled', provider-bound automation never invoked", async () => {
+    h.appEnv.APP_ENV = "local";
+    h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+    h.adminAutomation.value = "__reject__"; // appSetting.findUnique throws
+
+    const { POST } = await import("../route");
+    const res = await POST(uploadRequest(buildMinimalPdf("x")), routeParams);
+    const json = await res.json();
+    expect(res.status).toBe(201); // the document action itself is preserved
     expect(json.automationStatus).toBe("disabled");
     expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
     expect(triggerBriefRefreshMock).not.toHaveBeenCalled();

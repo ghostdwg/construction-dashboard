@@ -97,6 +97,19 @@ describe("documentAutomation — persisted Admin gate", () => {
     expect(await documentAutomationStatus()).toBe("disabled");
   });
 
+  test("f) settings-lookup failure fails CLOSED: status is 'disabled', never 'triggered'; admin state read still surfaces the error", async () => {
+    findUniqueMock.mockRejectedValueOnce(new Error("db unavailable (simulated)"));
+    expect(await documentAutomationStatus()).toBe("disabled");
+    // Admin-panel read path deliberately still rejects (operators must see
+    // the real error, not a fabricated "off").
+    findUniqueMock.mockRejectedValueOnce(new Error("db unavailable (simulated)"));
+    await expect(getDocumentAutomationState()).rejects.toThrow("db unavailable");
+    // Hard-disable lock is env-only and still wins even when the DB is down.
+    process.env.DOCUMENT_AUTOMATION_HARD_DISABLED = "true";
+    findUniqueMock.mockRejectedValueOnce(new Error("db unavailable (simulated)"));
+    expect(await documentAutomationStatus()).toBe("hard_disabled");
+  });
+
   test("freshness: every status check reads the DB (no long-lived cache)", async () => {
     await documentAutomationStatus();
     setRow("true");

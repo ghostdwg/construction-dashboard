@@ -179,26 +179,32 @@ Server-side, per `app/api/bids/[id]/specbook/upload/route.ts`:
 - On parse failure: `422` with `{ error: <message> }`; the `SpecBook` row is
   marked `status: "error"`.
 - **Fire-and-forget side effects** (do not block the response, do not affect
-  pass/fail of this step): document automation is **default-OFF** (Q03.2
-  master gate). `generateBidIntelligence(bidId)` and
-  `triggerBriefRefresh(bidId)` run in the background — and may themselves
-  call Anthropic — ONLY when the deploy-controlled env flag is set to the
-  exact literal `DOCUMENT_AUTOMATION_ENABLED=true`; absent, `false`, or any
-  other value fails closed and the calls are never made. If automation IS
-  enabled and the 401 is still live, expect async
+  pass/fail of this step): document automation is **default-OFF** and is
+  controlled by the GLOBAL persisted Admin setting **"Document AI
+  Enrichment" — Settings → AI Configuration** (Q03.2b, ADR 0003), effective
+  on the next document action with no rebuild or container recreate.
+  `generateBidIntelligence(bidId)` and `triggerBriefRefresh(bidId)` run in
+  the background — and may themselves call Anthropic — ONLY when an admin
+  has enabled that setting. There is NO env-var enablement: the old
+  `DOCUMENT_AUTOMATION_ENABLED` variable is dead and can never enable
+  automation. `DOCUMENT_AUTOMATION_HARD_DISABLED=true` (exact literal only)
+  is the emergency platform safety lock — it always forces automation OFF,
+  can never enable anything, and absent/malformed values change nothing.
+  If automation IS enabled and the 401 is still live, expect async
   `[specbook/upload] background intelligence generation failed:` /
   `background brief refresh failed:` lines in the app logs a few seconds
   after the `201` — this is expected noise, not an upload failure (§6).
   `automationStatus` in the response body tells you which happened:
-  `"disabled"` (the default — master flag off, no background call made),
-  `"triggered"` (flag explicitly `true` — these background calls fired), or
-  `"suppressed_for_storage_smoke"` (storage-only mode engaged — the calls
-  were never made regardless of the flag; suppression takes precedence, per
-  the four-condition contract in
+  `"disabled"` (the default — Admin setting off, or the settings lookup
+  failed: automation fails closed either way, no background call made),
+  `"hard_disabled"` (safety lock engaged), `"triggered"` (Admin setting on —
+  these background calls fired), or `"suppressed_for_storage_smoke"`
+  (storage-only mode engaged — the calls were never made regardless of the
+  setting; suppression takes precedence, per the four-condition contract in
   `app/api/bids/[id]/specbook/upload/route.ts`). A storage-smoke rehearsal
   proves storage mechanics and suppression only — it is never AI/provider
-  validation; enabling real automation remains a separate, deliberate
-  provider-validation gate.
+  validation; enabling real enrichment is a deliberate Admin action, and
+  validating real AI output remains a separate, human-gated activity.
 
 ### 2.2 Split
 

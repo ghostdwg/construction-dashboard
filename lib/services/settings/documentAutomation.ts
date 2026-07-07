@@ -66,9 +66,26 @@ export async function getDocumentAutomationState(): Promise<DocumentAutomationSt
  * "disabled" (Admin setting off — the default) and "hard_disabled"
  * (emergency lock engaged) both mean NO provider-bound call is made and the
  * response says so honestly.
+ *
+ * FAIL-CLOSED on lookup failure: if the persisted-setting read rejects
+ * (DB unavailable, etc.), provider-bound automation must never fire — the
+ * event is treated as "disabled" (honest: automation is off for this event)
+ * and the document action itself still succeeds. The hard-disable lock is
+ * still honored (it is a pure env read, independent of the DB). Admin-panel
+ * reads deliberately do NOT get this catch — getDocumentAutomationState()
+ * still rejects there so operators see the real error, not a fabricated
+ * "off" state.
  */
 export async function documentAutomationStatus(): Promise<DocumentAutomationStatus> {
-  const state = await getDocumentAutomationState();
-  if (state.hardDisabled) return "hard_disabled";
-  return state.adminEnabled ? "triggered" : "disabled";
+  if (isDocumentAutomationHardDisabled()) return "hard_disabled";
+  try {
+    const state = await getDocumentAutomationState();
+    return state.adminEnabled ? "triggered" : "disabled";
+  } catch (err) {
+    console.error(
+      "[documentAutomation] settings lookup failed — failing closed (automation disabled for this event):",
+      err instanceof Error ? err.message : err
+    );
+    return "disabled";
+  }
 }
