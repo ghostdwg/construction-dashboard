@@ -1162,6 +1162,13 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
   const [specUploading, setSpecUploading] = useState(false);
   const [specUploadError, setSpecUploadError] = useState<string | null>(null);
+  // Q03.2a UI honesty: automation is default-OFF (DOCUMENT_AUTOMATION_ENABLED).
+  // Only the API's "disabled" status gets a notice — "suppressed_for_storage_smoke"
+  // is an operator rehearsal state (no user-facing notice), and "triggered" keeps
+  // today's silent success. Never invents an AI-complete state.
+  const [specAutomationNotice, setSpecAutomationNotice] = useState<string | null>(null);
+  const [drawingAutomationNotice, setDrawingAutomationNotice] = useState<string | null>(null);
+  const [addendumAutomationNotice, setAddendumAutomationNotice] = useState<string | null>(null);
   const [specSplitting, setSpecSplitting] = useState(false);
   const [specSplitError, setSpecSplitError] = useState<string | null>(null);
   const [specSplitResult, setSpecSplitResult] = useState<{ sectionCount: number } | null>(null);
@@ -1369,6 +1376,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
   async function handleSpecUpload(file: File) {
     setSpecUploading(true);
     setSpecUploadError(null);
+    setSpecAutomationNotice(null);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -1388,6 +1396,9 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       if (!res.ok) {
         setSpecUploadError((result.error as string) ?? "Upload failed");
       } else {
+        if (result.automationStatus === "disabled") {
+          setSpecAutomationNotice("Document stored — AI enrichment is currently off.");
+        }
         setSpecData(await safeJson<SpecData>(await fetch(`/api/bids/${bidId}/specbook/gaps`)));
       }
     } catch (e) {
@@ -1548,6 +1559,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
     setDrawingUploading(true);
     setDisciplineUploading(discipline);
     setDrawingUploadError(null);
+    setDrawingAutomationNotice(null);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -1559,6 +1571,9 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       if (!res.ok) {
         setDrawingUploadError(result.error ?? "Upload failed");
       } else {
+        if (result.automationStatus === "disabled") {
+          setDrawingAutomationNotice("Document stored — AI enrichment is currently off.");
+        }
         setDrawingData(await safeJson<DrawingData>(await fetch(`/api/bids/${bidId}/drawings/gaps`)));
       }
     } catch (e) {
@@ -1650,9 +1665,16 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
   async function deleteAddendum(id: number) {
     setDeletingAddendumId(id);
+    setAddendumAutomationNotice(null);
     try {
       const res = await fetch(`/api/bids/${bidId}/addendums/${id}`, { method: "DELETE" });
       if (res.ok) {
+        // The gated DELETE signals via an additive response header (its body is
+        // a fixed { deleted: true } shape). "disabled" = master automation flag
+        // off; the smoke-suppression value gets no user-facing notice.
+        if (res.headers.get("X-Automation-Status") === "disabled") {
+          setAddendumAutomationNotice("Document removed — AI enrichment is currently off.");
+        }
         setBriefIsStale(true);
         await loadAddendums();
       }
@@ -1752,6 +1774,9 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
             error={specUploadError}
             onFile={handleSpecUpload}
           />
+          {specAutomationNotice && (
+            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{specAutomationNotice}</p>
+          )}
         </div>
       </div>
 
@@ -1978,6 +2003,9 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
               error={drawingUploadError}
               onFile={handleFullsetUpload}
             />
+            {drawingAutomationNotice && (
+              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{drawingAutomationNotice}</p>
+            )}
             {splitting && (
               <p className="text-xs text-zinc-500 mt-2 dark:text-zinc-400">
                 Analyzing drawing set — detecting disciplines by sheet number prefix…
@@ -2241,6 +2269,9 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
         )}
         {addendumLoadError && (
           <p className="text-sm text-red-500">{addendumLoadError}</p>
+        )}
+        {addendumAutomationNotice && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">{addendumAutomationNotice}</p>
         )}
 
         {/* Addendum list */}
