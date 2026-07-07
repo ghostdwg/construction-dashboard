@@ -310,6 +310,26 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
   });
 
+  // ── Test 1d — NEW (Q03.2): malformed/untrusted flag values fail closed —
+  // ONLY the literal lowercase string "true" enables automation ─────────────
+  test.each(["TRUE", "1", "yes", " true", "true "])(
+    "1d. DOCUMENT_AUTOMATION_ENABLED=%j (malformed) fails closed — automationStatus 'disabled', nothing invoked",
+    async (malformed) => {
+      h.appEnv.APP_ENV = "local";
+      process.env.DOCUMENT_AUTOMATION_ENABLED = malformed;
+      h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+
+      const { POST } = await import("../route");
+      const res = await POST(uploadRequest(buildMinimalPdf("x")), routeParams);
+      const json = await res.json();
+
+      expect(res.status).toBe(201);
+      expect(json.automationStatus).toBe("disabled");
+      expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+      expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    }
+  );
+
   // ── Test 2 — marker present, opt-in OFF ────────────────────────────────────
   test("2. marker present but STORAGE_SMOKE_MODE_ENABLED is OFF (staging tier) — controlled reject BEFORE persistence/automation, fail closed", async () => {
     h.appEnv.APP_ENV = "staging";

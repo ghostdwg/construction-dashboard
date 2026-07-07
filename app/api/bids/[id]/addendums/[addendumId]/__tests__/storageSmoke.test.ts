@@ -175,6 +175,26 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
     expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
   });
 
+  // ── Test 1d — NEW (Q03.2): malformed/untrusted flag values fail closed —
+  // ONLY the literal lowercase string "true" enables automation ─────────────
+  test.each(["TRUE", "1", "yes", " true", "true "])(
+    "1d. DOCUMENT_AUTOMATION_ENABLED=%j (malformed) fails closed — X-Automation-Status 'disabled', refresh not invoked",
+    async (malformed) => {
+      h.appEnv.APP_ENV = "local";
+      process.env.DOCUMENT_AUTOMATION_ENABLED = malformed;
+      h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+
+      const { DELETE } = await import("../route");
+      const res = await DELETE(deleteRequest(), routeParams);
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json).toEqual({ deleted: true });
+      expect(res.headers.get("X-Automation-Status")).toBe("disabled");
+      expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    }
+  );
+
   // ── Test 2 — marker present, opt-in OFF ────────────────────────────────────
   test("2. marker present but STORAGE_SMOKE_MODE_ENABLED is OFF (staging tier) — controlled reject BEFORE the delete/automation, fail closed", async () => {
     h.appEnv.APP_ENV = "staging";
