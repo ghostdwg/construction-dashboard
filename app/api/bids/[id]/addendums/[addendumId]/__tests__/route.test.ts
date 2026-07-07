@@ -33,8 +33,21 @@ const db = {
   briefUpdateManyArgs: null as unknown,
 };
 
+// Q03.2b: the persisted Admin "Document AI Enrichment" setting — null =
+// no AppSetting row (DB default OFF); a string = the row's stored value.
+const h = vi.hoisted(() => ({
+  adminAutomation: { value: null as string | null },
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    appSetting: {
+      findUnique: vi.fn(async () =>
+        h.adminAutomation.value === null
+          ? null
+          : { id: 1, key: "documentAutomationEnabled", value: h.adminAutomation.value, updatedAt: new Date(0) }
+      ),
+    },
     addendumUpload: {
       findUnique: vi.fn(async () => db.record),
       delete: vi.fn(async ({ where }: { where: { id: number } }) => {
@@ -73,12 +86,12 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId]", () => {
     // master automation gate (that's covered by storageSmoke.test.ts's 1/1b/1c),
     // so the flag is set ON here to preserve every existing test's original
     // meaning without change.
-    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
+    h.adminAutomation.value = "true"; // Admin setting ON (persisted)
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
+    h.adminAutomation.value = null; delete process.env.DOCUMENT_AUTOMATION_ENABLED; delete process.env.DOCUMENT_AUTOMATION_HARD_DISABLED;
   });
 
   test("deletes the durable blob when storageKey is present", async () => {

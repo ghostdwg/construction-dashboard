@@ -37,6 +37,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 const h = vi.hoisted(() => ({
   isAdminAuthorized: vi.fn(),
   appEnv: { APP_ENV: "local" as string },
+  // Q03.2b: the persisted Admin "Document AI Enrichment" setting — null =
+  // no AppSetting row (DB default OFF); a string = the row's stored value.
+  adminAutomation: { value: null as string | null },
 }));
 
 vi.mock("@/lib/auth", () => ({ isAdminAuthorized: h.isAdminAuthorized }));
@@ -76,6 +79,13 @@ const backgroundJobCreateMock = vi.fn(async () => ({ id: "fake" }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    appSetting: {
+      findUnique: vi.fn(async () =>
+        h.adminAutomation.value === null
+          ? null
+          : { id: 1, key: "documentAutomationEnabled", value: h.adminAutomation.value, updatedAt: new Date(0) }
+      ),
+    },
     bid: {
       findUnique: vi.fn(async () => (db.bidExists ? { id: 1 } : null)),
     },
@@ -182,13 +192,13 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
     vi.clearAllMocks();
     h.appEnv.APP_ENV = "local";
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
-    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
+    h.adminAutomation.value = null; delete process.env.DOCUMENT_AUTOMATION_ENABLED; delete process.env.DOCUMENT_AUTOMATION_HARD_DISABLED;
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
-    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
+    h.adminAutomation.value = null; delete process.env.DOCUMENT_AUTOMATION_ENABLED; delete process.env.DOCUMENT_AUTOMATION_HARD_DISABLED;
   });
 
   // ── Test 1 — normal upload, all four conditions absent ────────────────────
@@ -202,7 +212,7 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
   // genuine new default-off case is covered by "1b" below.
   test("1. normal upload (no marker, no opt-in, non-staging), master automation flag ON — still fires automation exactly as today", async () => {
     h.appEnv.APP_ENV = "local";
-    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
+    h.adminAutomation.value = "true"; // Admin setting ON (persisted)
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { POST } = await import("../route");
@@ -220,7 +230,7 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
   });
 
   // ── Test 1b — NEW: master automation flag default-off truth ───────────────
-  test("1b. DOCUMENT_AUTOMATION_ENABLED unset (default OFF) — automation is skipped, response honestly reports automationStatus 'disabled'", async () => {
+  test("1b. Admin setting absent (DB default OFF) — automation is skipped, response honestly reports automationStatus 'disabled'", async () => {
     h.appEnv.APP_ENV = "local";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
@@ -239,9 +249,9 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
 
   // ── Test 1c — NEW: master automation flag explicitly "false" behaves the
   // same as unset ────────────────────────────────────────────────────────────
-  test("1c. DOCUMENT_AUTOMATION_ENABLED=false — same as unset, automationStatus 'disabled'", async () => {
+  test("1c. Admin setting persisted \"false\" — same as unset, automationStatus 'disabled'", async () => {
     h.appEnv.APP_ENV = "local";
-    process.env.DOCUMENT_AUTOMATION_ENABLED = "false";
+    h.adminAutomation.value = "false";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { POST } = await import("../route");
@@ -257,10 +267,10 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
   // ── Test 1d — NEW (Q03.2): malformed/untrusted flag values fail closed —
   // ONLY the literal lowercase string "true" enables automation ─────────────
   test.each(["TRUE", "1", "yes", " true", "true "])(
-    "1d. DOCUMENT_AUTOMATION_ENABLED=%j (malformed) fails closed — automationStatus 'disabled', nothing invoked",
+    "1d. persisted Admin value %j (malformed) fails closed — automationStatus 'disabled', nothing invoked",
     async (malformed) => {
       h.appEnv.APP_ENV = "local";
-      process.env.DOCUMENT_AUTOMATION_ENABLED = malformed;
+      h.adminAutomation.value = malformed;
       h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
       const { POST } = await import("../route");
@@ -273,6 +283,46 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
       expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
     }
   );
+
+  // ── Test 1e — emergency hard-disable lock (exact-literal semantics) ────────
+  test("1e. DOCUMENT_AUTOMATION_HARD_DISABLED=true overrides Admin ON — 'hard_disabled', nothing invoked; malformed lock values do NOT engage the lock", async () => {
+    h.appEnv.APP_ENV = "local";
+    h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+    h.adminAutomation.value = "true"; // Admin setting ON
+
+    process.env.DOCUMENT_AUTOMATION_HARD_DISABLED = "true"; // exact literal engages the lock
+    const { POST } = await import("../route");
+    let res = await POST(uploadRequest(Buffer.from("%PDF-1.4 fake")), routeParams);
+    let json = await res.json();
+    expect(res.status).toBe(201);
+    expect(json.automationStatus).toBe("hard_disabled");
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+
+    process.env.DOCUMENT_AUTOMATION_HARD_DISABLED = "TRUE"; // malformed — lock NOT engaged; Admin ON governs
+    res = await POST(uploadRequest(Buffer.from("%PDF-1.4 fake")), routeParams);
+    json = await res.json();
+    expect(res.status).toBe(201);
+    expect(json.automationStatus).toBe("triggered");
+    expect(generateBidIntelligenceMock).toHaveBeenCalledTimes(1);
+    expect(triggerBriefRefreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Test 1f — legacy env flag is not a side-door ────────────────────────────
+  test("1f. legacy DOCUMENT_AUTOMATION_ENABLED=true cannot enable automation — Admin setting absent still yields 'disabled'", async () => {
+    h.appEnv.APP_ENV = "local";
+    h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "true"; // legacy flag — read nowhere
+    // h.adminAutomation.value stays null: no persisted row (DB default OFF)
+
+    const { POST } = await import("../route");
+    const res = await POST(uploadRequest(Buffer.from("%PDF-1.4 fake")), routeParams);
+    const json = await res.json();
+    expect(res.status).toBe(201);
+    expect(json.automationStatus).toBe("disabled");
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+  });
 
   // ── Test 2 — marker present, opt-in OFF ────────────────────────────────────
   test("2. marker present but STORAGE_SMOKE_MODE_ENABLED is OFF (staging tier) — controlled reject BEFORE persistence/automation, fail closed", async () => {
@@ -332,7 +382,7 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
   test("3. opt-in ON and APP_ENV=staging, but marker header absent, master automation flag ON — automation still fires, NOT suppressed", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
-    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
+    h.adminAutomation.value = "true"; // Admin setting ON (persisted)
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { POST } = await import("../route");
@@ -353,7 +403,7 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
   test("4. all four conditions met, master automation flag ON — automation suppressed (smoke gate takes precedence), exact automationStatus returned, normal persistence still happens", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
-    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
+    h.adminAutomation.value = "true"; // Admin setting ON (persisted)
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { POST } = await import("../route");

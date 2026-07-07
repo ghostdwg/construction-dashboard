@@ -4,6 +4,7 @@ import { getBlobStore } from "@/lib/storage/blobStore";
 import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
+import { documentAutomationStatus } from "@/lib/services/settings/documentAutomation";
 import { env } from "@/lib/env";
 // isAdminAuthorized (lib/auth.ts) is imported dynamically below, only inside
 // the storage-smoke gate branch — this route is on the hot path for every
@@ -59,30 +60,18 @@ import { env } from "@/lib/env";
 // — it is read once into a boolean and discarded.
 const STORAGE_SMOKE_HEADER = "x-specbook-storage-smoke";
 
-// ── Master document-automation gate (release-hardening: routine document
-// operations must not fire real, provider-bound automation with no master
-// gate) ──────────────────────────────────────────────────────────────────
+// ── Master document-automation gate (Q03.2b: Admin-controlled) ─────────────
 //
-// DOCUMENT_AUTOMATION_ENABLED gates the two post-upload fire-and-forget
-// calls (generateBidIntelligence, triggerBriefRefresh) — real, Anthropic-
-// calling jobs. Defaults OFF/unset, exactly like STORAGE_SMOKE_MODE_ENABLED
-// and the *_STUB_MODE flags (see lib/services/ai/providerReadiness.ts's
-// module doc): a direct, per-call process.env read with no DB-backed
-// override and no lib/env.ts Zod entry — this flag follows that exact,
-// already-established convention rather than introducing a new one. Only
-// the literal string "true" enables it; unset, "false", or any other value
-// is OFF.
-//
-// This is independent of, and sits alongside, the 4-condition storage-smoke
-// gate above — it does not alter that gate's conditions. Precedence: if the
-// storage-smoke gate already decided suppression, `suppressed_for_storage_smoke`
-// wins and this flag is never consulted for the automationStatus value.
-// Only when storage-smoke suppression does NOT apply does this flag decide
-// between "triggered" (today's real-call behavior) and "disabled" (default:
-// automation calls are skipped entirely, and the response says so honestly).
-function isDocumentAutomationEnabled(): boolean {
-  return process.env.DOCUMENT_AUTOMATION_ENABLED === "true";
-}
+// The two post-upload fire-and-forget calls (generateBidIntelligence,
+// triggerBriefRefresh — real, Anthropic-calling jobs) are gated by the
+// GLOBAL persisted Admin setting via documentAutomationStatus() in
+// lib/services/settings/documentAutomation.ts (default OFF; enabled only
+// from the authenticated Admin panel; DOCUMENT_AUTOMATION_HARD_DISABLED is
+// an exact-literal emergency lock that always wins; the legacy
+// DOCUMENT_AUTOMATION_ENABLED env var is read nowhere and can never enable
+// automation). Precedence is unchanged: if the 4-condition storage-smoke
+// gate above decided suppression, `suppressed_for_storage_smoke` wins and
+// the Admin setting is never consulted for the automationStatus value.
 
 // ── Sidecar integration ────────────────────────────────────────────────────
 
@@ -334,15 +323,12 @@ export async function POST(
     // persistence, if the marker was present but any condition failed) — by
     // the time execution reaches here, either no marker was sent, or all four
     // conditions held. Nothing to re-check. Storage-smoke suppression takes
-    // precedence over the master automation flag (see isDocumentAutomationEnabled
-    // doc above) — the flag is only consulted when storage-smoke suppression
-    // does not apply.
-    const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" =
+    // precedence over the Admin setting (see the gate doc above) — the
+    // setting is only consulted when storage-smoke suppression does not apply.
+    const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" | "hard_disabled" =
       suppressAutomationForStorageSmoke
         ? "suppressed_for_storage_smoke"
-        : isDocumentAutomationEnabled()
-          ? "triggered"
-          : "disabled";
+        : await documentAutomationStatus();
 
     if (automationStatus === "triggered") {
       // Fire-and-forget intelligence regeneration — does not block upload response

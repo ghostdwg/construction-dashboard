@@ -4,6 +4,7 @@ import { isAdminAuthorized } from "@/lib/auth";
 import EmailSettingsCard from "./EmailSettingsCard";
 import EstimatorSettingsCard from "./EstimatorSettingsCard";
 import AiSettingsCard from "./AiSettingsCard";
+import DocumentAutomationCard from "./DocumentAutomationCard";
 import AboutSettingsCard from "./AboutSettingsCard";
 import MeetingSettingsCard from "./MeetingSettingsCard";
 import ProcoreSettingsCard from "./ProcoreSettingsCard";
@@ -120,6 +121,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
         {/* Content */}
         <div className="flex-1 px-7 py-6 min-w-0 flex flex-col gap-5">
           {active === "ai"             && <AiSettingsCard />}
+          {active === "ai"             && <DocumentAutomationCard />}
           {active === "email"          && <EmailSettingsCard />}
           {active === "estimator"      && <EstimatorSettingsCard />}
           {active === "meetings"       && <MeetingSettingsCard />}

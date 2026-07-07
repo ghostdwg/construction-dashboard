@@ -1398,6 +1398,8 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       } else {
         if (result.automationStatus === "disabled") {
           setSpecAutomationNotice("Document stored — AI enrichment is currently off.");
+        } else if (result.automationStatus === "hard_disabled") {
+          setSpecAutomationNotice("Document stored — AI enrichment is locked off by the platform.");
         }
         setSpecData(await safeJson<SpecData>(await fetch(`/api/bids/${bidId}/specbook/gaps`)));
       }
@@ -1573,6 +1575,8 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       } else {
         if (result.automationStatus === "disabled") {
           setDrawingAutomationNotice("Document stored — AI enrichment is currently off.");
+        } else if (result.automationStatus === "hard_disabled") {
+          setDrawingAutomationNotice("Document stored — AI enrichment is locked off by the platform.");
         }
         setDrawingData(await safeJson<DrawingData>(await fetch(`/api/bids/${bidId}/drawings/gaps`)));
       }
@@ -1670,10 +1674,14 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
       const res = await fetch(`/api/bids/${bidId}/addendums/${id}`, { method: "DELETE" });
       if (res.ok) {
         // The gated DELETE signals via an additive response header (its body is
-        // a fixed { deleted: true } shape). "disabled" = master automation flag
-        // off; the smoke-suppression value gets no user-facing notice.
-        if (res.headers.get("X-Automation-Status") === "disabled") {
+        // a fixed { deleted: true } shape). "disabled" = Admin setting off;
+        // "hard_disabled" = platform safety lock; the smoke-suppression value
+        // gets no user-facing notice.
+        const autoHeader = res.headers.get("X-Automation-Status");
+        if (autoHeader === "disabled") {
           setAddendumAutomationNotice("Document removed — AI enrichment is currently off.");
+        } else if (autoHeader === "hard_disabled") {
+          setAddendumAutomationNotice("Document removed — AI enrichment is locked off by the platform.");
         }
         setBriefIsStale(true);
         await loadAddendums();

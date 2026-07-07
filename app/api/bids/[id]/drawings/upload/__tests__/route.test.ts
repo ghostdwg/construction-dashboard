@@ -40,6 +40,10 @@ function resetDb() {
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    // Q03.2b: the route consults the persisted Admin automation setting;
+    // no row = default OFF, which is what these storage-mechanics tests want
+    // (automation side effects are separately covered in storageSmoke.test.ts).
+    appSetting: { findUnique: vi.fn(async () => null) },
     bid: {
       findUnique: vi.fn(async () => (db.bidExists ? { id: 1 } : null)),
     },

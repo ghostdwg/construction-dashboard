@@ -7,6 +7,7 @@ import {
 } from "@/lib/documents/drawingParser";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
+import { documentAutomationStatus } from "@/lib/services/settings/documentAutomation";
 import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
 import { drawingStorageKey } from "@/lib/services/drawings/storagePath";
 import { env } from "@/lib/env";
@@ -49,18 +50,13 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 // — it is read once into a boolean and discarded.
 const STORAGE_SMOKE_HEADER = "x-drawings-storage-smoke";
 
-// ── Master document-automation gate (release-hardening: routine document
-// operations must not fire real, provider-bound automation with no master
-// gate) — IDENTICAL semantics to the gate in
-// app/api/bids/[id]/specbook/upload/route.ts (see that module's doc for the
-// full rationale). Defaults OFF/unset; only the literal string "true"
-// enables it; a direct process.env read, no lib/env.ts Zod entry, following
-// the same established convention as STORAGE_SMOKE_MODE_ENABLED and the
-// *_STUB_MODE flags. Independent of, and subordinate to, the 4-condition
-// storage-smoke gate above: `suppressed_for_storage_smoke` always wins.
-function isDocumentAutomationEnabled(): boolean {
-  return process.env.DOCUMENT_AUTOMATION_ENABLED === "true";
-}
+// ── Master document-automation gate (Q03.2b: Admin-controlled) — IDENTICAL
+// semantics to app/api/bids/[id]/specbook/upload/route.ts (see that module's
+// doc): gated by the GLOBAL persisted Admin setting via
+// documentAutomationStatus() (default OFF; DOCUMENT_AUTOMATION_HARD_DISABLED
+// emergency lock always wins; legacy env var read nowhere). Independent of,
+// and subordinate to, the 4-condition storage-smoke gate above:
+// `suppressed_for_storage_smoke` always wins.
 
 // Valid discipline values for per-discipline uploads
 const VALID_DISCIPLINES = [
@@ -276,14 +272,11 @@ export async function POST(
       // persistence, if the marker was present but any condition failed) — by
       // the time execution reaches here, either no marker was sent, or all
       // four conditions held. Nothing to re-check. Storage-smoke suppression
-      // takes precedence over the master automation flag — see
-      // isDocumentAutomationEnabled's doc above.
-      const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" =
+      // takes precedence over the Admin setting — see the gate doc above.
+      const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" | "hard_disabled" =
         suppressAutomationForStorageSmoke
           ? "suppressed_for_storage_smoke"
-          : isDocumentAutomationEnabled()
-            ? "triggered"
-            : "disabled";
+          : await documentAutomationStatus();
 
       if (automationStatus === "triggered") {
         generateBidIntelligence(bidId).catch((err) =>
@@ -359,12 +352,10 @@ export async function POST(
 
     // Same suppression contract as the early-return branch above — see the
     // module doc and the gate at the top of this handler.
-    const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" =
+    const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" | "hard_disabled" =
       suppressAutomationForStorageSmoke
         ? "suppressed_for_storage_smoke"
-        : isDocumentAutomationEnabled()
-          ? "triggered"
-          : "disabled";
+        : await documentAutomationStatus();
 
     if (automationStatus === "triggered") {
       generateBidIntelligence(bidId).catch((err) =>

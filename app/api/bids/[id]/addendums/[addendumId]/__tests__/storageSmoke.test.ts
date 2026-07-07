@@ -36,6 +36,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 const h = vi.hoisted(() => ({
   isAdminAuthorized: vi.fn(),
   appEnv: { APP_ENV: "local" as string },
+  // Q03.2b: the persisted Admin "Document AI Enrichment" setting — null =
+  // no AppSetting row (DB default OFF); a string = the row's stored value.
+  adminAutomation: { value: null as string | null },
 }));
 
 vi.mock("@/lib/auth", () => ({ isAdminAuthorized: h.isAdminAuthorized }));
@@ -59,6 +62,13 @@ const findUniqueMock = vi.fn(async () => db.record);
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    appSetting: {
+      findUnique: vi.fn(async () =>
+        h.adminAutomation.value === null
+          ? null
+          : { id: 1, key: "documentAutomationEnabled", value: h.adminAutomation.value, updatedAt: new Date(0) }
+      ),
+    },
     addendumUpload: {
       findUnique: findUniqueMock,
       delete: vi.fn(async ({ where }: { where: { id: number } }) => {
@@ -101,13 +111,13 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
     vi.clearAllMocks();
     h.appEnv.APP_ENV = "local";
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
-    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
+    h.adminAutomation.value = null; delete process.env.DOCUMENT_AUTOMATION_ENABLED; delete process.env.DOCUMENT_AUTOMATION_HARD_DISABLED;
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
-    delete process.env.DOCUMENT_AUTOMATION_ENABLED;
+    h.adminAutomation.value = null; delete process.env.DOCUMENT_AUTOMATION_ENABLED; delete process.env.DOCUMENT_AUTOMATION_HARD_DISABLED;
   });
 
   // ── Test 1 — normal delete, all four conditions absent ────────────────────
@@ -121,7 +131,7 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
   // genuine new default-off case is covered by "1b" below.
   test("1. normal delete (no marker, no opt-in, non-staging), master automation flag ON — still fires the brief refresh exactly as today, response byte-identical (no X-Automation-Status header)", async () => {
     h.appEnv.APP_ENV = "local";
-    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
+    h.adminAutomation.value = "true"; // Admin setting ON (persisted)
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { DELETE } = await import("../route");
@@ -140,7 +150,7 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
   });
 
   // ── Test 1b — NEW: master automation flag default-off truth ───────────────
-  test("1b. DOCUMENT_AUTOMATION_ENABLED unset (default OFF) — refresh is skipped, response honestly carries X-Automation-Status: disabled, delete/blob-cleanup/stale-marking still happen", async () => {
+  test("1b. Admin setting absent (DB default OFF) — refresh is skipped, response honestly carries X-Automation-Status: disabled, delete/blob-cleanup/stale-marking still happen", async () => {
     h.appEnv.APP_ENV = "local";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
@@ -160,9 +170,9 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
 
   // ── Test 1c — NEW: master automation flag explicitly "false" behaves the
   // same as unset ────────────────────────────────────────────────────────────
-  test("1c. DOCUMENT_AUTOMATION_ENABLED=false — same as unset, X-Automation-Status: disabled", async () => {
+  test("1c. Admin setting persisted \"false\" — same as unset, X-Automation-Status: disabled", async () => {
     h.appEnv.APP_ENV = "local";
-    process.env.DOCUMENT_AUTOMATION_ENABLED = "false";
+    h.adminAutomation.value = "false";
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { DELETE } = await import("../route");
@@ -178,10 +188,10 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
   // ── Test 1d — NEW (Q03.2): malformed/untrusted flag values fail closed —
   // ONLY the literal lowercase string "true" enables automation ─────────────
   test.each(["TRUE", "1", "yes", " true", "true "])(
-    "1d. DOCUMENT_AUTOMATION_ENABLED=%j (malformed) fails closed — X-Automation-Status 'disabled', refresh not invoked",
+    "1d. persisted Admin value %j (malformed) fails closed — X-Automation-Status 'disabled', refresh not invoked",
     async (malformed) => {
       h.appEnv.APP_ENV = "local";
-      process.env.DOCUMENT_AUTOMATION_ENABLED = malformed;
+      h.adminAutomation.value = malformed;
       h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
       const { DELETE } = await import("../route");
@@ -194,6 +204,43 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
       expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
     }
   );
+
+  // ── Test 1e — emergency hard-disable lock (exact-literal semantics) ────────
+  test("1e. DOCUMENT_AUTOMATION_HARD_DISABLED=true overrides Admin ON — X-Automation-Status 'hard_disabled', refresh not invoked; malformed lock values do NOT engage the lock", async () => {
+    h.appEnv.APP_ENV = "local";
+    h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+    h.adminAutomation.value = "true"; // Admin setting ON
+
+    process.env.DOCUMENT_AUTOMATION_HARD_DISABLED = "true"; // exact literal engages the lock
+    const { DELETE } = await import("../route");
+    let res = await DELETE(deleteRequest(), routeParams);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    expect(res.headers.get("X-Automation-Status")).toBe("hard_disabled");
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+
+    process.env.DOCUMENT_AUTOMATION_HARD_DISABLED = "TRUE"; // malformed — lock NOT engaged; Admin ON governs
+    res = await DELETE(deleteRequest(), routeParams);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    expect(res.headers.get("X-Automation-Status")).toBeNull(); // triggered path adds no header
+    expect(triggerBriefRefreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Test 1f — legacy env flag is not a side-door ────────────────────────────
+  test("1f. legacy DOCUMENT_AUTOMATION_ENABLED=true cannot enable automation — Admin setting absent still yields X-Automation-Status 'disabled'", async () => {
+    h.appEnv.APP_ENV = "local";
+    h.isAdminAuthorized.mockResolvedValue({ authorized: true });
+    process.env.DOCUMENT_AUTOMATION_ENABLED = "true"; // legacy flag — read nowhere
+    // h.adminAutomation.value stays null: no persisted row (DB default OFF)
+
+    const { DELETE } = await import("../route");
+    const res = await DELETE(deleteRequest(), routeParams);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: true });
+    expect(res.headers.get("X-Automation-Status")).toBe("disabled");
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+  });
 
   // ── Test 2 — marker present, opt-in OFF ────────────────────────────────────
   test("2. marker present but STORAGE_SMOKE_MODE_ENABLED is OFF (staging tier) — controlled reject BEFORE the delete/automation, fail closed", async () => {
@@ -241,7 +288,7 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
   test("3. opt-in ON and APP_ENV=staging, but marker header absent, master automation flag ON — refresh still fires, NOT suppressed, response unchanged", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
-    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
+    h.adminAutomation.value = "true"; // Admin setting ON (persisted)
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
 
     const { DELETE } = await import("../route");
@@ -262,7 +309,7 @@ describe("DELETE /api/bids/[id]/addendums/[addendumId] — storage-only smoke su
   test("4. all four conditions met, master automation flag ON — refresh suppressed (smoke gate takes precedence), X-Automation-Status header set, delete/blob-cleanup/stale-marking still happen, success body unchanged", async () => {
     h.appEnv.APP_ENV = "staging";
     process.env.STORAGE_SMOKE_MODE_ENABLED = "true";
-    process.env.DOCUMENT_AUTOMATION_ENABLED = "true";
+    h.adminAutomation.value = "true"; // Admin setting ON (persisted)
     h.isAdminAuthorized.mockResolvedValue({ authorized: true });
     db.record = { id: 31, bidId: 31, storageKey: "uploads/addendums/31/a.pdf" };
 
