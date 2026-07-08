@@ -786,10 +786,14 @@ model SubmittalItem {
   type            String  @default("OTHER")
 
   // Provenance — "manual" | "regex_seed" | "ai_extraction" | "csi_baseline"
-  // | "ai_organized" | "drawing_analysis". Any non-"manual" value is
-  // wipeable by a later AI regeneration/organize pass; updateSubmittal()
-  // promotes a row to "manual" the moment a user edits it, so a corrected
-  // auto row is never silently replaced.
+  // | "ai_organized" | "drawing_analysis". updateSubmittal() promotes a row
+  // to "manual" the moment a user edits it, so a corrected auto row is
+  // never silently replaced. "regex_seed" and "manual" are handled
+  // consistently by every wipe path (WP1a). The other auto sources are NOT
+  // uniformly wipeable today: generateFromAiAnalysis.ts's wipe omits
+  // "drawing_analysis" while organizeWithAi.ts's includes it — a
+  // drawing_analysis row survives regeneration but not organize.
+  // Reconciling that asymmetry is a separate future card, not covered here.
   source String @default("manual")
 
   // Lifecycle
