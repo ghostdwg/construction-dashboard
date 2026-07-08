@@ -36,6 +36,12 @@ const ITEM_SELECT = {
   type: true,
   status: true,
   requiredBy: true,
+  // Additive — provenance only, never a quality/verification claim. Powers
+  // the display-only badge in SubmittalsTab (WP1b). See WP1a
+  // (seedSubmittalRegister.ts / submittalService.ts) for how this value is
+  // kept trustworthy: the seeder stamps it correctly and updateSubmittal()
+  // promotes an edited auto row to "manual".
+  source: true,
   specSection: {
     select: {
       id: true,
@@ -74,6 +80,7 @@ type DbItem = {
   type: string;
   status: string;
   requiredBy: Date | null;
+  source: string;
   specSection: {
     id: number;
     csiNumber: string;
@@ -114,6 +121,8 @@ function mapItem(
     type: it.type,
     status: it.status,
     requiredBy: it.requiredBy?.toISOString() ?? null,
+    // Additive — provenance only (see ITEM_SELECT comment above).
+    source: it.source,
     specSectionNumber: it.specSection?.csiNumber ?? null,
     specSectionTitle: it.specSection?.csiCanonicalTitle ?? it.specSection?.csiTitle ?? null,
     // Additive — schema-backed FK to SpecSection (SubmittalItem.specSectionId).

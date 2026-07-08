@@ -14,6 +14,7 @@ import {
   resolveSourceSectionAction,
   type SourceSectionAction,
 } from "@/lib/services/specbook/sourceSectionLink";
+import { getProvenanceLabel } from "@/lib/services/submittal/provenanceLabels";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,11 @@ type PackageItemRow = {
   description: string | null;
   isOverdue: boolean;
   severity: "CRITICAL" | "HIGH" | "MODERATE" | "LOW" | "INFO" | null;
+  // Provenance only (WP1b) — origin of the row, never a quality/verification
+  // claim. See lib/services/submittal/provenanceLabels.ts for the display
+  // mapping and prisma/schema.prisma's SubmittalItem.source comment (WP1a)
+  // for the trust contract.
+  source: string;
   tradeName?: string | null;
   // AI Organizer
   priority: string | null;
@@ -1694,6 +1700,7 @@ function SubmittalGridRow({
               </span>
             )}
             {item.releasePhase && <ReleasePhaseBadge phase={item.releasePhase} />}
+            <ProvenanceBadge source={item.source} />
           </div>
           {item.tradeName && (
             <div className="text-[10px] text-zinc-400 dark:text-zinc-500">
@@ -1867,6 +1874,24 @@ function SubmittalGridRow({
 }
 
 // ── Severity Badge ─────────────────────────────────────────────────────────
+
+// Display-only provenance badge (WP1b) — shows where a row came from
+// (manual / regex-seeded / AI-derived / etc.), never whether it's correct.
+// The label mapping lives in provenanceLabels.ts as a pure, independently
+// testable function with an explicit fallback for any unrecognized value —
+// unlike SeverityBadge below, `source` is a plain DB string, not a closed TS
+// union, so an unmapped runtime value is a real possibility to guard against.
+function ProvenanceBadge({ source }: { source: PackageItemRow["source"] }) {
+  const { text, className } = getProvenanceLabel(source);
+  return (
+    <span
+      className={`shrink-0 mt-0.5 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${className}`}
+      title="Where this row came from — not a quality or review status"
+    >
+      {text}
+    </span>
+  );
+}
 
 function SeverityBadge({
   severity,

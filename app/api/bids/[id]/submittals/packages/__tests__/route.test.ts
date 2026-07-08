@@ -45,6 +45,7 @@ type ItemFixture = {
   type: string;
   status: string;
   requiredBy: Date | null;
+  source: string;
   specSection: {
     id: number;
     csiNumber: string;
@@ -76,6 +77,7 @@ function item(overrides: Partial<ItemFixture> & { id: number; title: string }): 
     type: "PRODUCT_DATA",
     status: "PENDING",
     requiredBy: null,
+    source: "manual",
     specSection: null,
     responsibleSubId: null,
     responsibleSub: null,
@@ -167,6 +169,23 @@ describe("GET /api/bids/[id]/submittals/packages — source section linkage", ()
       specSectionId: null,
       sourceSectionPdfAvailability: null,
     });
+  });
+
+  // WP1b — the provenance badge in SubmittalsTab reads `source` from this
+  // route's response shape; lock that the field actually flows through
+  // ITEM_SELECT -> DbItem -> mapItem rather than being silently dropped.
+  test("source (WP1a provenance stamp) flows through to the response shape", async () => {
+    db.unassignedItems = [
+      item({ id: 102, title: "Regex-seeded item", source: "regex_seed" }),
+      item({ id: 103, title: "Manually added item", source: "manual" }),
+    ];
+
+    const { GET } = await import("../route");
+    const res = await GET(new Request("http://localhost/x"), routeParams(7));
+    const body = await res.json();
+
+    expect(body.unassigned[0]).toMatchObject({ id: 102, source: "regex_seed" });
+    expect(body.unassigned[1]).toMatchObject({ id: 103, source: "manual" });
   });
 
   test("an item linked to a section whose PDF is missing reports sourceSectionPdfAvailability: missing", async () => {
