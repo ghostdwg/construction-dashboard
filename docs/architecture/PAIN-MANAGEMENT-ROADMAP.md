@@ -677,6 +677,14 @@ Shared constraints (apply to every WP; restated once):
 - **Provider/cost:** zero provider calls.
 - **Acceptance:** derived gate view matches orchestrate's risk semantics;
   flags disappear when the underlying dates/statuses clear; vitest green.
+- **Schedule-provenance sharpening (Addendum 2026-07-08, operator pain:
+  "schedules copied from old templates with wrong project names"):** this WP
+  must also close the capability-matrix finding that `applyAiResults` never
+  writes `ScheduleActivityV2.aiGenerated`/`aiConfidence`/`layerSource` —
+  every activity row a seed or AI pass touches must be stamped with its
+  provenance so a template-copied or AI-suggested activity is visibly
+  distinct from a human-entered one. Additive writes to existing columns
+  only; no schema change.
 - **Dependencies:** WP1. Complements WP4 (buyout/decision inputs).
 - **Agent prompt:**
 
@@ -856,3 +864,77 @@ WP8 (weekly briefing)             — WP2 + WP5 + WP7
 
 Every WP: local-only build → review → human-gated staging image → operator
 verification. No WP is authorized by this document.
+
+---
+
+## Addendum 2026-07-08 — reconciliation with the operator pain-point note
+
+Provenance: Josh provided a product-vision note describing the construction
+pain this system should solve. It is treated here as OPERATOR PAIN/CONTEXT
+ONLY — it is not evidence that any module is built, and nothing below
+upgrades any capability, proof, or approval status (Ledger claim rules,
+CAPABILITY-MATRIX-2026-07, and the Q03.3 PENDING / NOT EXECUTABLE governance
+record all stand unchanged).
+
+### Item-by-item classification against this roadmap
+
+| Operator pain point | Classification |
+|---|---|
+| AI-assisted submittal extraction with citations | **Covered well** — item 1 (NOW), WP1 |
+| Submittal schedule / lead-time gates | **Covered well** — item 3 (NEXT), WP5 |
+| Warranty register | **Covered well** — item 6 (NEXT), WP2 |
+| Training register | **Covered well** — item 6 (NEXT), WP2 |
+| Closeout checklist | **Covered well** — items 6/9 (NEXT/LATER), WP2 |
+| Testing / inspection / do-not-cover gates | **Covered well** — item 5 (split verdict; blocking field enforcement stays DO-NOT-BUILD) |
+| Superintendent day-one briefing | **Covered well** — item 8 (day-one built `[V]`, verify; weekly = WP8 LATER) |
+| Spec vs drawings vs bid scope/exclusion reconciliation | **Covered well** — item 4 (NEXT), WP6 |
+| Owner-selection / long-lead / procurement deadlines | **Covered well** — item 2 (NEXT), WP4 |
+| Procore-ready export path | **Covered well** — item 10 (NOW = pin one-way posture, WP3; auto-apply stays DO-NOT-BUILD) |
+| Schedules copied from old templates / wrong project names | **Was missing — now sharpened** into WP5 (schedule-provenance stamping; see WP5 addendum note). Root cause matches the capability-matrix finding that AI/seed schedule writes carry zero provenance |
+| Estimator→super context handoff as the product frame | **Covered implicitly — now stated explicitly** (below) |
+
+### The organizing frame: the estimator→super context handoff
+
+The note's underlying thesis unifies this roadmap: spec requirements are
+read once, by the estimator, at bid time — then buried; the superintendent
+inherits the job without that context, and submittals/closeout/testing
+obligations resurface as emergencies on live jobs. The shared
+requirement/evidence spine (SPEC-INTELLIGENCE-PIPELINE.md) IS the handoff
+vehicle: requirements are extracted once with citations, human-reviewed
+once, and then ROUTED — to the submittal register, the schedule's gates,
+procurement deadlines, field test/inspection lists, and the closeout
+registers — so the super starts from reviewed, cited obligations instead of
+a 900-page PDF. The superintendent briefing (item 8 / WP8) is a CONSUMER of
+that spine, not a separate AI feature.
+
+This is also why **one shared spine precedes five separate AI registers**:
+five independent extraction features would each re-parse the spec, each
+invent its own provenance/review/waiver semantics, each need its own
+provider-cost gate, and none could answer "who is responsible for this
+requirement and where did it come from?" consistently. One spine gives one
+citation model, one review FSM, one audit trail, one admin-gated provider
+policy (ADR 0003) — and every register becomes a cheap view.
+
+### Guardrails restated (binding on every item above)
+
+Every AI extraction is draft-first, carries a verifiable source citation,
+and becomes a commitment ONLY through explicit human review/approve/waive.
+No extraction may silently create schedule/procurement commitments, send
+communications, or mutate project records. AI output quality remains
+unproven (no validated real provider call through the admin-gated path;
+Q03.3 PENDING). Drawings/Addendums storage-proof status is exactly as stated
+in CAPABILITY-MATRIX-2026-07 — unchanged by this addendum. Procore remains
+one-way export/ingest-only; nothing here authorizes push or sync.
+
+### Priorities after this review (unchanged in substance, re-affirmed)
+
+- **NOW:** WP1 submittal citation hardening (the H3+ vertical slice — first
+  build), WP3 Procore one-way pinning (parallel-safe), verify the existing
+  day-one super brief.
+- **NEXT:** WP2 spine registers (warranty/training/inspections/closeout),
+  WP4 owner-selection/decision deadlines, WP5 schedule gates + provenance
+  stamping, WP6 scope coverage matrix, WP7 open-changes register.
+- **LATER:** WP8 weekly field briefing, closeout burn-down, citation-grade
+  scope reconciliation.
+- **DO NOT BUILD:** blocking field-gate enforcement, Procore webhook
+  auto-apply/bidirectional sync, auto-send of any communication.
