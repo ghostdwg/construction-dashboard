@@ -24,8 +24,12 @@
 #     Everything the target script prints goes only into the log file
 #     inside the tmux pane. This command's own stdout is limited to the
 #     session name, PID, log path, status path, and reconnect commands.
-#   - Log and status files are created via `mktemp` (random suffix, never a
-#     predictable path) and chmod'd 600 immediately.
+#   - Log/status/launcher files are created via `mktemp` (random suffix,
+#     never a predictable path) and chmod'd 600/700 immediately.
+#   - The target is NEVER invoked through shell string interpolation of
+#     operator-supplied paths/args. A mktemp launcher file (fixed-charset
+#     path) is generated with `printf %q` argv quoting and executed by bash;
+#     the only string tmux's `sh -c` ever parses is `bash <mktemp-path>`.
 #   - Refuses to launch a target script whose source contains an obvious
 #     secret-printing pattern (bare `printenv`, `cat .env*`, `env` with no
 #     args), mirroring .claude/hooks/gwx-guard.mjs's philosophy for this
@@ -35,6 +39,9 @@
 # USAGE:
 #   run-detached.sh <target-script> [target-args...]
 #   run-detached.sh --interactive --attach <target-script> [target-args...]
+#   run-detached.sh --scan-only <target-script>       # scans, exits 0/1, no launch
+#   run-detached.sh --dry-run <target-script> [args]  # scans + generates launcher,
+#                                                     # prints it, NO tmux, no run
 #
 # This script does not run docker, compose, or any deploy command itself —
 # it only launches whatever target script the operator names, inside tmux.
@@ -43,18 +50,22 @@ set -euo pipefail
 
 INTERACTIVE=0
 ATTACH=0
+SCAN_ONLY=0
+DRY_RUN=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --interactive) INTERACTIVE=1; shift ;;
     --attach) ATTACH=1; shift ;;
+    --scan-only) SCAN_ONLY=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
     --) shift; break ;;
     *) break ;;
   esac
 done
 
 if [ $# -lt 1 ]; then
-  echo "Usage: $0 [--interactive --attach] <target-script> [target-args...]" >&2
+  echo "Usage: $0 [--interactive --attach|--scan-only|--dry-run] <target-script> [target-args...]" >&2
   exit 2
 fi
 
@@ -62,24 +73,50 @@ TARGET="$1"
 shift
 TARGET_ARGS=("$@")
 
-command -v tmux >/dev/null 2>&1 || { echo "FAIL: tmux is required and was not found"; exit 1; }
+if [ "$SCAN_ONLY" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
+  command -v tmux >/dev/null 2>&1 || { echo "FAIL: tmux is required and was not found"; exit 1; }
+fi
 [ -f "$TARGET" ] && [ -r "$TARGET" ] || { echo "FAIL: target script not found/readable: $TARGET"; exit 1; }
 
 echo "== Pre-flight: interactive-read scan =="
-# Best-effort static scan: a `read` builtin call, not preceded by the
-# explicit acknowledgment marker on the immediately preceding non-blank
-# line. This cannot parse arbitrary shell perfectly — it is a guard, not a
-# proof — but it catches every pattern used by this repo's own scripts to
-# date (bare `read -r ...`, `read -r -p ...`).
+# Static scan for interactive `read` invocations in COMMAND POSITION. Each
+# line is split into command segments on ; | & && || ( ) and backticks, then
+# each segment's leading VAR=value assignments and wrapper words (if, while,
+# until, elif, then, do, else, !, {, time, builtin, command, exec, sudo) are
+# skipped; if the next word is exactly `read`, the line is flagged. This
+# catches: bare `read`; `read foo`; `read -r foo`; `IFS= read -r foo`;
+# `builtin read foo`; `command read foo`; `do_thing; read foo`;
+# `do_thing && read foo`; `do_thing || read foo`; `if read foo`;
+# `while read foo; do`; `x | read foo`; `(read foo)`.
+# HONEST BOUNDARY (also in README): this is a guard, not a shell parser.
+# It does NOT see `read` inside strings passed to `sh -c`/`bash -c`, inside
+# `eval`, or inside files the target `source`s; and text like "; read x"
+# INSIDE a quoted string can false-positive (fail-closed direction).
+# The per-line escape hatch is a `# detached-runner:interactive-ok` comment
+# on the immediately preceding line.
 UNMARKED_READS=$(awk '
   /^[[:space:]]*#/ { last_marker = ($0 ~ /detached-runner:interactive-ok/) ? 1 : 0; next }
   /^[[:space:]]*$/ { next }
-  /^[[:space:]]*read[[:space:]]/ {
-    if (!last_marker) print NR": "$0
+  {
+    line = $0
+    gsub(/&&|\|\||[;|&()`]/, "\n", line)
+    n = split(line, segs, "\n")
+    flagged = 0
+    for (i = 1; i <= n; i++) {
+      m = split(segs[i], w, /[ \t]+/)
+      j = 1
+      while (j <= m && (w[j] == "" || \
+             w[j] ~ /^[A-Za-z_][A-Za-z0-9_]*=/ || \
+             w[j] == "if" || w[j] == "while" || w[j] == "until" || \
+             w[j] == "elif" || w[j] == "then" || w[j] == "do" || \
+             w[j] == "else" || w[j] == "!" || w[j] == "{" || \
+             w[j] == "time" || w[j] == "builtin" || w[j] == "command" || \
+             w[j] == "exec" || w[j] == "sudo")) j++
+      if (j <= m && w[j] == "read") flagged = 1
+    }
+    if (flagged && !last_marker) print NR": "$0
     last_marker = 0
-    next
   }
-  { last_marker = 0 }
 ' "$TARGET")
 
 if [ -n "$UNMARKED_READS" ]; then
@@ -99,13 +136,22 @@ else
 fi
 
 echo "== Pre-flight: secret-printing pattern scan =="
-DANGEROUS_PATTERNS=$(grep -nE '(^|[^A-Za-z0-9_])(printenv|env)([[:space:]]*($|\|)|[[:space:]]+[A-Za-z_]+[[:space:]]*$)|cat[[:space:]]+[^|;&]*\.env(\.|$|[[:space:]])' "$TARGET" || true)
+# NOTE: `env` must not be preceded by `/` — otherwise every
+# `#!/usr/bin/env bash` shebang (and any /usr/bin/env invocation of an
+# interpreter) false-positives as an env dump. `env` at line start or after
+# any other non-word char is still caught.
+DANGEROUS_PATTERNS=$(grep -nE '(^|[^A-Za-z0-9_/])(printenv|env)([[:space:]]*($|\|)|[[:space:]]+[A-Za-z_]+[[:space:]]*$)|cat[[:space:]]+[^|;&]*\.env(\.|$|[[:space:]])' "$TARGET" || true)
 if [ -n "$DANGEROUS_PATTERNS" ]; then
   echo "FAIL: target script contains a pattern that could print secret values — refusing to launch:" >&2
   echo "$DANGEROUS_PATTERNS" >&2
   exit 1
 fi
 echo "OK: no obvious secret-printing pattern found (best-effort scan, not a guarantee)"
+
+if [ "$SCAN_ONLY" -eq 1 ]; then
+  echo "SCAN-ONLY: scans passed; nothing launched."
+  exit 0
+fi
 
 SESSION="gwx-deploy-$(basename "$TARGET" .sh)-$(date +%s)-$$"
 SESSION="${SESSION//[^A-Za-z0-9_-]/-}"
@@ -119,15 +165,43 @@ printf 'STATE=PENDING TS=%s SCRIPT=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(bas
 RUNNER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-and-track.sh"
 [ -f "$RUNNER_LIB" ] || { echo "FAIL: missing $RUNNER_LIB"; exit 1; }
 
-if [ "$INTERACTIVE" -eq 1 ] && [ "$ATTACH" -eq 1 ]; then
-  echo "== Launching ATTACHED (interactive) — you will be dropped into the session now =="
-  exec tmux new-session -s "$SESSION" \
-    "bash '$RUNNER_LIB' '$STATUS_FILE' '$LOG_FILE' '$TARGET' ${TARGET_ARGS[*]@Q}"
+# Launcher file: the ONLY thing tmux's `sh -c` ever parses is
+# `bash <mktemp-path>` (fixed charset). All operator-supplied paths/args are
+# written into this bash-executed file via `printf %q` — paths with spaces,
+# quotes, shell metacharacters, or command-substitution-looking text execute
+# literally as single argv words. No eval anywhere.
+LAUNCHER=$(mktemp /tmp/gwx-detached-XXXXXX.launch)
+chmod 700 "$LAUNCHER"
+{
+  printf '#!/usr/bin/env bash\n'
+  printf '# generated by run-detached.sh — self-deletes on start\n'
+  printf 'rm -f -- "$0"\n'
+  printf 'exec bash'
+  printf ' %q' "$RUNNER_LIB" "$STATUS_FILE" "$LOG_FILE" "$TARGET" ${TARGET_ARGS[@]+"${TARGET_ARGS[@]}"}
+  printf '\n'
+} > "$LAUNCHER"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "DRY-RUN: launcher generated, NOTHING launched (no tmux)."
+  echo "  launcher path : $LAUNCHER"
+  echo "  launcher body :"
+  sed 's/^/    | /' "$LAUNCHER"
+  echo "  (launcher retained for inspection — it self-deletes only if executed; remove with: rm -f $LAUNCHER)"
+  exit 0
 fi
 
-tmux new-session -d -s "$SESSION" \
-  "bash '$RUNNER_LIB' '$STATUS_FILE' '$LOG_FILE' '$TARGET' ${TARGET_ARGS[*]@Q}"
+if [ "$INTERACTIVE" -eq 1 ] && [ "$ATTACH" -eq 1 ]; then
+  echo "== Launching ATTACHED (interactive) — you will be dropped into the session now =="
+  exec tmux new-session -s "$SESSION" "bash $LAUNCHER"
+fi
+
+# remain-on-exit BEFORE the target starts (no fast-exit race): create the
+# session running an idle shell (cannot exit on its own), set the window
+# option, then respawn the pane onto the real command — by the time the
+# target script can exit, remain-on-exit is already in force.
+tmux new-session -d -s "$SESSION"
 tmux set-window-option -t "$SESSION" remain-on-exit on >/dev/null
+tmux respawn-pane -k -t "$SESSION" "bash $LAUNCHER"
 
 PANE_PID=$(tmux list-panes -t "$SESSION" -F '#{pane_pid}' 2>/dev/null || echo "unavailable")
 

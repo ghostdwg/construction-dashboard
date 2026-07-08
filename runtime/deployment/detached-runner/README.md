@@ -24,19 +24,38 @@ deploy packets to opt into.
 
 ## Noninteractive contract
 
-`run-detached.sh` statically scans the target script for `read` calls before
-launching. A `read` not immediately preceded by the comment
-`# detached-runner:interactive-ok` on its own line causes a refusal — the
-script will not be launched detached. This is deliberate: a prompt inside an
-unattended detached session helps no one, since nobody is there to answer
-it. If a script genuinely needs interactive input, run it directly (outside
-this tool) or launch it with `--interactive --attach`, which runs it
-**attached** — you are dropped straight into the tmux session instead of it
-running in the background — so you're present for any prompt. Historical
-scripts with `read -r -p` confirmation gates (the smoke wrappers) are
-correctly outside this tool's default path for exactly this reason; keep
-interactive confirmations and cookie entry (`--cookie-prompt`) in their own,
+`run-detached.sh` statically scans the target script for `read` invocations
+in COMMAND POSITION before launching. Lines are split into command segments
+on `;`, `|`, `&`, `&&`, `||`, `(`, `)`, and backticks; leading `VAR=value`
+assignments and wrapper words (`if`, `while`, `until`, `elif`, `then`, `do`,
+`else`, `!`, `{`, `time`, `builtin`, `command`, `exec`, `sudo`) are skipped;
+if the next word is exactly `read`, the line is flagged. This catches, at
+minimum: bare `read`; `read foo`; `read -r foo`; `IFS= read -r foo`;
+`builtin read foo`; `command read foo`; `do_thing; read foo`;
+`do_thing && read foo`; `do_thing || read foo`; `if read foo; then`;
+`while read foo; do`; `x | read foo`; `(read foo)`.
+
+**Honest boundary — this is a guard, not a shell parser.** It does NOT see
+`read` inside strings handed to `sh -c`/`bash -c`, inside `eval`, or inside
+files the target `source`s at runtime; conversely, text like `"; read x"`
+inside a quoted string can be flagged even though it never executes — the
+scanner errs fail-closed. A flagged `read` not immediately preceded by the
+comment `# detached-runner:interactive-ok` on its own line causes a refusal
+— the script will not be launched detached. This is deliberate: a prompt
+inside an unattended detached session helps no one, since nobody is there to
+answer it. If a script genuinely needs interactive input, run it directly
+(outside this tool) or launch it with `--interactive --attach`, which runs
+it **attached** — you are dropped straight into the tmux session instead of
+it running in the background — so you're present for any prompt (a marked
+script launched this way runs attached, never detached). Historical scripts
+with `read -r -p` confirmation gates (the smoke wrappers) are correctly
+outside this tool's default path for exactly this reason; keep interactive
+confirmations and cookie entry (`--cookie-prompt`) in their own,
 separately-run smoke workflows, not inside a future detached deploy script.
+
+Two validation flags run the pre-flight without tmux: `--scan-only` (scans,
+exits 0/1, launches nothing) and `--dry-run` (scans, generates and prints
+the launcher file, launches nothing).
 
 The scanner also refuses to launch a target script containing an obvious
 secret-printing pattern (bare `printenv`, bare `env`, `cat` on a `.env*`
@@ -67,9 +86,23 @@ tmux attach -t <session-name>
 ```
 The tmux server is a host process independent of any particular SSH/browser
 connection — it keeps running regardless of what killed your client session.
-`remain-on-exit` is set on the window, so even if the target script already
-finished before you reconnect, the pane's final output is still there to
-scroll back through, not auto-closed.
+`remain-on-exit` is set on the window **before the target command starts**:
+the session is created running an idle shell, the option is applied, and the
+pane is then `respawn-pane -k`'d onto the real command — so even a target
+that exits almost instantly cannot close the pane before the option is in
+force. The pane's final output is always there to scroll back through, not
+auto-closed.
+
+### Argv safety (paths/args with spaces, quotes, metacharacters)
+
+Operator-supplied paths and arguments are never spliced into a shell string.
+`run-detached.sh` writes a `mktemp` launcher file (mode 700, fixed-charset
+path, self-deleting on start) whose single `exec bash …` line is generated
+with `printf %q` for the runner library, status file, log file, target path,
+and every target argument. The only string tmux's `sh -c` ever parses is
+`bash <mktemp-path>`. Hostile-looking names (spaces, single/double quotes,
+`;`, `$(…)`, backticks) are passed through as literal argv words; there is
+no `eval` anywhere. Inspect exactly what would run with `--dry-run`.
 
 ### Inspect final state without reconnecting
 
