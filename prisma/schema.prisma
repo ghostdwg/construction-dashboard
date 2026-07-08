@@ -785,7 +785,11 @@ model SubmittalItem {
   description     String?
   type            String  @default("OTHER")
 
-  // Provenance — "manual" | "regex_seed" | "ai_extraction"
+  // Provenance — "manual" | "regex_seed" | "ai_extraction" | "csi_baseline"
+  // | "ai_organized" | "drawing_analysis". Any non-"manual" value is
+  // wipeable by a later AI regeneration/organize pass; updateSubmittal()
+  // promotes a row to "manual" the moment a user edits it, so a corrected
+  // auto row is never silently replaced.
   source String @default("manual")
 
   // Lifecycle

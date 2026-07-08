@@ -295,6 +295,7 @@ export async function seedSubmittalRegister(bidId: number): Promise<SeedResult> 
           type: item.type,
           status: "PENDING",
           responsibleSubId,
+          source: "regex_seed",
         },
       });
 

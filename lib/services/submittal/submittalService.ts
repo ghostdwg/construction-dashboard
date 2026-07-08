@@ -269,7 +269,7 @@ export async function updateSubmittal(
 ): Promise<MutationResult> {
   const existing = await prisma.submittalItem.findUnique({
     where: { id: itemId },
-    select: { id: true, bidId: true, status: true },
+    select: { id: true, bidId: true, status: true, source: true },
   });
   if (!existing) return { ok: false, error: "Submittal not found" };
   if (existing.bidId !== bidId) return { ok: false, error: "Submittal does not belong to this bid" };
@@ -331,6 +331,17 @@ export async function updateSubmittal(
     ) {
       data.approvedAt = now;
     }
+  }
+
+  // Promote-on-edit: updateSubmittal is only ever reached from a user-driven
+  // API call (the seeder/AI paths write via prisma.submittalItem.create
+  // directly, never through here), so any material change applied to a
+  // still-auto row means a human just took ownership of it. Stamping it
+  // "manual" here is what makes generateFromAiAnalysis's and organizeWithAi's
+  // existing wipe-non-manual-rows logic protect the edit — without touching
+  // that wipe logic at all.
+  if (Object.keys(data).length > 0 && existing.source !== "manual") {
+    data.source = "manual";
   }
 
   await prisma.submittalItem.update({ where: { id: itemId }, data });

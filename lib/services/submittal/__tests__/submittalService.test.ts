@@ -126,7 +126,10 @@ describe("createSubmittal — bid-scoped specSectionId enforcement", () => {
 
 describe("updateSubmittal — bid-scoped specSectionId enforcement", () => {
   beforeEach(() => {
-    h.findUniqueItem.mockResolvedValue({ id: ITEM_ID, bidId: BID, status: "PENDING" });
+    // source: "manual" — these tests are about the cross-tenant check, not
+    // provenance; giving them an already-manual row keeps the WP1a
+    // promote-on-edit logic (below) a no-op here, so it can't interfere.
+    h.findUniqueItem.mockResolvedValue({ id: ITEM_ID, bidId: BID, status: "PENDING", source: "manual" });
   });
 
   it("rejects a specSectionId that does not exist at all — whole update is never applied", async () => {
@@ -192,6 +195,83 @@ describe("updateSubmittal — bid-scoped specSectionId enforcement", () => {
 
     expect(result).toEqual({ ok: false, error: "Submittal does not belong to this bid" });
     expect(h.findFirstSpecSection).not.toHaveBeenCalled();
+    expect(h.updateItem).not.toHaveBeenCalled();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// WP1a — promote-on-edit. updateSubmittal is only ever reached from a
+// user-driven API call (the seeder/AI paths write via
+// prisma.submittalItem.create directly, never through here) — so any
+// material change applied to a still-auto row means a human just took
+// ownership of it, and it must be protected from a later AI wipe by being
+// stamped "manual". Genuinely manual rows must not be touched by this at all.
+// ──────────────────────────────────────────────────────────────────────────────
+describe("updateSubmittal — promote-on-edit provenance", () => {
+  it("editing a regex_seed row promotes it to manual", async () => {
+    h.findUniqueItem.mockResolvedValue({ id: ITEM_ID, bidId: BID, status: "PENDING", source: "regex_seed" });
+
+    const result = await updateSubmittal(BID, ITEM_ID, { title: "Corrected title" });
+
+    expect(result).toEqual({ ok: true });
+    expect(h.updateItem).toHaveBeenCalledTimes(1);
+    const call = h.updateItem.mock.calls[0][0];
+    expect(call.data.title).toBe("Corrected title");
+    expect(call.data.source).toBe("manual");
+  });
+
+  it("editing an ai_extraction row promotes it to manual", async () => {
+    h.findUniqueItem.mockResolvedValue({ id: ITEM_ID, bidId: BID, status: "PENDING", source: "ai_extraction" });
+
+    await updateSubmittal(BID, ITEM_ID, { description: "Corrected description" });
+
+    const call = h.updateItem.mock.calls[0][0];
+    expect(call.data.source).toBe("manual");
+  });
+
+  it("editing an ai_organized row promotes it to manual", async () => {
+    h.findUniqueItem.mockResolvedValue({ id: ITEM_ID, bidId: BID, status: "PENDING", source: "ai_organized" });
+
+    await updateSubmittal(BID, ITEM_ID, { responsibleSubId: 7 });
+
+    const call = h.updateItem.mock.calls[0][0];
+    expect(call.data.source).toBe("manual");
+  });
+
+  it("a genuinely manual row stays manual and the promotion path is a no-op", async () => {
+    h.findUniqueItem.mockResolvedValue({ id: ITEM_ID, bidId: BID, status: "PENDING", source: "manual" });
+
+    const result = await updateSubmittal(BID, ITEM_ID, { title: "Another edit" });
+
+    expect(result).toEqual({ ok: true });
+    const call = h.updateItem.mock.calls[0][0];
+    expect(call.data.title).toBe("Another edit");
+    // "manual" was already the value — promotion logic must not even need to
+    // set it again, but if it does, it must never set anything else.
+    expect(call.data.source === undefined || call.data.source === "manual").toBe(true);
+  });
+
+  it("an update with no actual field changes does not promote (nothing to protect)", async () => {
+    h.findUniqueItem.mockResolvedValue({ id: ITEM_ID, bidId: BID, status: "PENDING", source: "regex_seed" });
+
+    // Empty input object: no fields in `data` at all after processing.
+    const result = await updateSubmittal(BID, ITEM_ID, {});
+
+    expect(result).toEqual({ ok: true });
+    const call = h.updateItem.mock.calls[0][0];
+    expect("source" in call.data).toBe(false);
+  });
+
+  it("a rejected update (bad specSectionId) never reaches the promotion logic", async () => {
+    h.findUniqueItem.mockResolvedValue({ id: ITEM_ID, bidId: BID, status: "PENDING", source: "regex_seed" });
+    h.findFirstSpecSection.mockResolvedValue(null);
+
+    const result = await updateSubmittal(BID, ITEM_ID, {
+      title: "Should not persist",
+      specSectionId: SECTION_ID,
+    });
+
+    expect(result.ok).toBe(false);
     expect(h.updateItem).not.toHaveBeenCalled();
   });
 });
