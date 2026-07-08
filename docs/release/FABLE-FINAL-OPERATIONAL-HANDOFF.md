@@ -20,10 +20,24 @@
   app image `groundworx-app:2d20767-admin-ai-control` `[OP]`; internal
   `/api/health` 200 + `X-App-Env: staging`; public preview
   `https://staging.groundworx.neuroglitch.ai` answering 200 `[OP]`.
-- Q02 migrations applied (parity 88/88, incl. both `20260521*`) `[OP]`;
-  storage-only lifecycle proofs: Spec Book 13/13, Drawings 5/5, Addendums 5/5,
-  all with suppression asserted `[OP]`. Estimates deliberately not smoked (no
-  delete route — uncleanable residual) `[V]`.
+- Q02 migrations applied (parity 88/88, incl. both `20260521*`) `[OP]`.
+- Storage-only lifecycle proofs, each bound to the image it ran on — none has
+  been re-proven on the CURRENT `2d20767` image:
+  - Spec Book 13/13 `[OP]` (Ledger §1; Q03-era image, suppression asserted).
+  - Drawings 5/5 and Addendums 5/5 `[OP]` at image
+    `groundworx-app:471a73f-pdfjs-worker-fix`, run 2026-07-07T19:27:34Z
+    (bid 5, suppression assertions 1b/3b passed). Durable-enough evidence =
+    stable local artifacts, cited exactly: `/tmp/gwx-q03.1-status.J5deUM`
+    (content `PASS`, sha256 `c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431`)
+    and `/tmp/gwx-q03.1-log.ly7Z6j` (sha256
+    `03c6c3dd5d73cd3707fa819f678778bf7562e3be812e153adf900b7b7ea32a0c`,
+    containing both exact `… ARTIFACTS SMOKE — 5 pass · 0 fail` lines).
+    **Caveat: these live in `/tmp` and are NOT reboot-durable — operator
+    should copy them into a durable evidence store.** Q03.2x changed only
+    automation gating on those routes `[V]`, but that is inference, not
+    re-proof, for the current image.
+  - Estimates deliberately never smoked (no delete route — uncleanable
+    residual) `[V]`; meetings lifecycle never run live.
 - **Document AI Enrichment**: global persisted Admin setting, DEFAULT OFF,
   admin-only GET/PATCH, audited toggles, per-event fresh DB read,
   fail-closed on settings-lookup failure, `DOCUMENT_AUTOMATION_HARD_DISABLED`
@@ -40,9 +54,12 @@
 **IMPLEMENTED BUT UNPROVEN**
 - All AI output quality (brief/gap/analysis content) — no validated real call
   through the new admin-gated path (Q03.3 PENDING, §4).
-- Meetings audio-availability probe (`c079c0f` line): shipped in the image but
-  its human staging proof (fresh hybrid upload → `durable-present`, zero
-  transcription) has not been run.
+- Meetings audio-availability probe (`c079c0f`): **NOT in the deployed image**
+  — `c079c0f` is not an ancestor of `2d20767` `[V]` (`git merge-base
+  --is-ancestor` fails); the probe exists only on the unmerged
+  release-hardening lane (`fable/groundworx-release-hardening @ 228b778`).
+  It is locally reviewed/tested code; integrating it and running its human
+  staging proof both remain pending future, separately-approved steps.
 - "Unavailable vs invalid" storage honesty: unit-tested; never exercised
   against a live transient storage failure.
 
@@ -124,7 +141,9 @@ transcribed by a model from conversation text.
   handoff branches, `main` (frozen).
 
 **Do NOT rerun:** Q03/Q03.1/Q03.2x deployment steps (live and proven);
-the storage smokes (proven at this image — rerun only after the NEXT image);
+the storage smokes (Spec Book proven at the Q03-era image; Drawings/Addendums
+at `471a73f` — rerun only when proving a NEW image, incl. `2d20767` if that
+proof is wanted);
 Q02 migrations (applied; forward-only); any `/tmp/q03*` script against the
 current stack without re-reading it first (several were single-purpose for
 the 471a73f→2d20767 window); and never "re-verify" production by touching it.
