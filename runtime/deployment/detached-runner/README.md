@@ -58,10 +58,20 @@ exits 0/1, launches nothing) and `--dry-run` (scans, generates and prints
 the launcher file, launches nothing).
 
 The scanner also refuses to launch a target script containing an obvious
-secret-printing pattern (bare `printenv`, bare `env`, `cat` on a `.env*`
-file) — defense in depth, mirroring `.claude/hooks/gwx-guard.mjs`'s
-philosophy for this repo's other tooling. It is a best-effort static guard,
-not a guarantee that a launched script is silent about secrets — that
+secret-DISCLOSURE command: bare `printenv`/`env` dumps, the explicit
+`/usr/bin/env` dump form, `cat` of a dotfile env path (a basename that
+STARTS with `.env` — `.env`, `.env.staging`, `/opt/…/.env.local`), or `cat`
+of a variable the script statically assigned to such a path
+(`ENV_FILE=/opt/…/.env.staging` … `cat "$ENV_FILE"`). It deliberately does
+NOT flag mere filename references: shebangs and comment lines are never
+scanned; plain assignments, `source "$ENV_FILE"`, `docker compose
+--env-file …`, `test -r`, and `grep -q KEY "$ENV_FILE"` checks pass; and
+generated artifact names merely ENDING in `.env` (e.g.
+`/tmp/q03.2b-baseline-images.env`) are not secret files and pass. Honest
+boundary: `grep`-based dumping, dynamically constructed paths, and
+indirection the static pass cannot see are not detected — this is
+defense in depth, mirroring `.claude/hooks/gwx-guard.mjs`'s philosophy,
+not a guarantee that a launched script is silent about secrets. That
 remains the target script's own responsibility (as it always has been for
 every packet this session produced: `config -q`/`config --images` only,
 never a bare rendered `config` dump; `--cookie-prompt` for credential entry,

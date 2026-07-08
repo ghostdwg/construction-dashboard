@@ -136,11 +136,45 @@ else
 fi
 
 echo "== Pre-flight: secret-printing pattern scan =="
-# NOTE: `env` must not be preceded by `/` — otherwise every
-# `#!/usr/bin/env bash` shebang (and any /usr/bin/env invocation of an
-# interpreter) false-positives as an env dump. `env` at line start or after
-# any other non-word char is still caught.
-DANGEROUS_PATTERNS=$(grep -nE '(^|[^A-Za-z0-9_/])(printenv|env)([[:space:]]*($|\|)|[[:space:]]+[A-Za-z_]+[[:space:]]*$)|cat[[:space:]]+[^|;&]*\.env(\.|$|[[:space:]])' "$TARGET" || true)
+# Flags actual secret-DISCLOSURE commands, not mere filename references:
+#   - bare `env`/`printenv` dumps (word-boundary, `/`-preceded excluded so
+#     `/usr/bin/env <interpreter>` invocations don't false-positive) and the
+#     explicit `/usr/bin/env` dump form (shebangs are comments — never
+#     scanned);
+#   - `cat` of a DOTFILE env path — a basename that STARTS with `.env`
+#     (`.env`, `.env.staging`, `/opt/…/.env.local`), quoted or not,
+#     immediate or later argument. Filenames merely ENDING in `.env`
+#     (generated artifacts like `q03.2b-baseline-images.env`) are NOT
+#     secret files and are NOT flagged;
+#   - `cat` of a variable the script statically assigned to a dotfile env
+#     path earlier (e.g. `ENV_FILE=/opt/…/.env.staging` … `cat "$ENV_FILE"`).
+# NOT flagged (safe references): comment lines (incl. shebang); plain
+# assignments; `source`/`--env-file`/`test -r`/`grep -q` uses of such a
+# variable (they do not print the file); log/status filenames ending
+# in `.env`. Boundary: `grep`-based dumping and dynamically built paths are
+# not detected — best-effort guard, not a guarantee (see README).
+DANGEROUS_PATTERNS=$(awk '
+  /^[[:space:]]*#/ { next }
+  {
+    if (match($0, /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=["'\'']?(\/[^"'\''[:space:]]*\/)?\.env[A-Za-z0-9_.-]*["'\'']?[[:space:]]*$/)) {
+      v = $0; sub(/^[[:space:]]+/, "", v); sub(/=.*$/, "", v); envvar[v] = 1; next
+    }
+    flagged = 0
+    # command-position predecessors only (^ ; | & ( ` or whitespace) — a
+    # token merely ENDING in ".env"/"env" (e.g. baseline-images.env) is a
+    # filename, not a dump command, and must not match.
+    if ($0 ~ /(^|[;|&(`[:space:]])(printenv|env)([[:space:]]*($|\|)|[[:space:]]+[A-Za-z_]+[[:space:]]*$)/) flagged = 1
+    if ($0 ~ /(^|[[:space:]])\/usr\/bin\/env([[:space:]]*($|\|)|[[:space:]]+[A-Za-z_]+[[:space:]]*$)/) flagged = 1
+    if ($0 ~ /(^|[^A-Za-z0-9_])cat[[:space:]]+["'\'']?\.env(\.|[[:space:]"'\'']|$)/) flagged = 1
+    if ($0 ~ /(^|[^A-Za-z0-9_])cat[[:space:]]+[^|;&]*[\/"'\''[:space:]]\.env(\.|[[:space:]"'\'']|$)/) flagged = 1
+    if (!flagged && $0 ~ /(^|[^A-Za-z0-9_])cat[[:space:]]/) {
+      for (v in envvar) {
+        if (index($0, "$" v) > 0 || index($0, "${" v "}") > 0) flagged = 1
+      }
+    }
+    if (flagged) print NR": "$0
+  }
+' "$TARGET")
 if [ -n "$DANGEROUS_PATTERNS" ]; then
   echo "FAIL: target script contains a pattern that could print secret values — refusing to launch:" >&2
   echo "$DANGEROUS_PATTERNS" >&2
