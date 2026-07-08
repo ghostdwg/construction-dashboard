@@ -37,8 +37,11 @@
   verifiable provenance removes the highest-tedium precon task.
 - **What already exists `[V]`:**
   - Models: `SubmittalItem` (prisma/schema.prisma:776) with provenance
-    `source` ("manual" | "regex_seed" | "ai_extraction", :789),
-    `specSectionId` FK (:780), audit `sourceJobId` → `BackgroundJob` (:816);
+    `source` (six known values, :788-797: "manual" | "regex_seed" |
+    "ai_extraction" | "csi_baseline" | "ai_organized" | "drawing_analysis" —
+    trustworthy since WP1a `c51f28b`, displayed as a badge since WP1b
+    `0ce2604`), `specSectionId` FK (:780), audit `sourceJobId` →
+    `BackgroundJob` (:816);
     `SubmittalPackage` (:720); `SubmittalDistributionTemplate` per-trade
     routing (reviewers/distribution JSON, :850); `CsiMasterformat` reference
     (:767).
@@ -441,6 +444,21 @@ Shared constraints (apply to every WP; restated once):
 
 ### WP1 — Submittal evidence & citation hardening (vertical slice)
 
+- **Status update:** the seeder provenance-stamp bug this card's badge work
+  depends on is fixed and merged (**WP1a**, `c51f28b`: regex seeder now
+  writes `source="regex_seed"`; `updateSubmittal()` promotes an edited auto
+  row to `"manual"` so a real correction stays protected from a later wipe,
+  without touching wipe logic). The provenance badge itself is built and
+  merged (**WP1b**, `0ce2604`): `packages/route.ts` now selects/emits
+  `source`, and `SubmittalsTab.tsx`'s packages grid renders an origin-only
+  badge (never a quality/review/approval claim) via the pure, fallback-safe
+  `lib/services/submittal/provenanceLabels.ts`. **Not yet built:** the
+  page-anchored link into the split section PDF (`pdfPath`/`pageStart`/
+  `pageEnd` extension to `sourceSectionLink.ts`), and the same badge in
+  `app/submittals/page.tsx`'s cross-bid register — both deliberately
+  deferred as a separate follow-on slice, not part of WP1a/WP1b. No provider
+  call, no AI-quality proof, no Procore write, and no migration were
+  introduced by either merged slice.
 - **Objective / user outcome:** every AI-derived submittal row shows *where
   it came from* — provenance badge (`source`, `sourceJobId`) and a
   page-anchored link into the split section PDF — so the operator can trust
