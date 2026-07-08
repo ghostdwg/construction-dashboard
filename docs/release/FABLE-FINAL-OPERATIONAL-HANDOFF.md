@@ -21,21 +21,17 @@
   `/api/health` 200 + `X-App-Env: staging`; public preview
   `https://staging.groundworx.neuroglitch.ai` answering 200 `[OP]`.
 - Q02 migrations applied (parity 88/88, incl. both `20260521*`) `[OP]`.
-- Storage-only lifecycle proofs, each bound to the image it ran on — none has
-  been re-proven on the CURRENT `2d20767` image:
-  - Spec Book 13/13 `[OP]` (Ledger §1; Q03-era image, suppression asserted).
-  - Drawings 5/5 and Addendums 5/5 `[OP]` at image
-    `groundworx-app:471a73f-pdfjs-worker-fix`, run 2026-07-07T19:27:34Z
-    (bid 5, suppression assertions 1b/3b passed). Durable-enough evidence =
-    stable local artifacts, cited exactly: `/tmp/gwx-q03.1-status.J5deUM`
-    (content `PASS`, sha256 `c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431`)
-    and `/tmp/gwx-q03.1-log.ly7Z6j` (sha256
-    `03c6c3dd5d73cd3707fa819f678778bf7562e3be812e153adf900b7b7ea32a0c`,
-    containing both exact `… ARTIFACTS SMOKE — 5 pass · 0 fail` lines).
-    **Caveat: these live in `/tmp` and are NOT reboot-durable — operator
-    should copy them into a durable evidence store.** Q03.2x changed only
-    automation gating on those routes `[V]`, but that is inference, not
-    re-proof, for the current image.
+- Storage-lifecycle proof status (canonical, per Ledger §1):
+  - **Spec Book 13/13 is the ONLY Ledger-recorded staging-proven storage
+    lifecycle** `[OP]` (Q03-era image, suppression asserted). Nothing has
+    been proven on the CURRENT `2d20767` image.
+  - **Drawings and Addendums lifecycles are NOT staging-proven** — they are
+    code + unit-tested only in canonical terms. A Q03.1-style smoke run was
+    locally observed against image `471a73f`, but its only traces are
+    non-durable local notes in `/tmp` (status/log files), which **do not and
+    cannot change Ledger status**; canonical proof requires a future
+    Ledger/Queue-approved evidence record. Do not treat these lifecycles as
+    equivalent to the Spec Book proof.
   - Estimates deliberately never smoked (no delete route — uncleanable
     residual) `[V]`; meetings lifecycle never run live.
 - **Document AI Enrichment**: global persisted Admin setting, DEFAULT OFF,
@@ -141,9 +137,9 @@ transcribed by a model from conversation text.
   handoff branches, `main` (frozen).
 
 **Do NOT rerun:** Q03/Q03.1/Q03.2x deployment steps (live and proven);
-the storage smokes (Spec Book proven at the Q03-era image; Drawings/Addendums
-at `471a73f` — rerun only when proving a NEW image, incl. `2d20767` if that
-proof is wanted);
+the Spec Book storage smoke (the one Ledger-proven lifecycle, Q03-era image —
+rerun only when proving a NEW image; Drawings/Addendums remain canonically
+unproven until a Ledger/Queue-approved evidence run records them);
 Q02 migrations (applied; forward-only); any `/tmp/q03*` script against the
 current stack without re-reading it first (several were single-purpose for
 the 471a73f→2d20767 window); and never "re-verify" production by touching it.
