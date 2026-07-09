@@ -408,6 +408,16 @@ export async function listComments(bidId: number, itemId: number) {
 
 // ── Attachments (metadata; bytes handled by the route via BlobStore) ───────
 
+/** Bid-scoped existence probe — used by the attachment route to enforce
+ *  tenancy BEFORE any blob byte is written. */
+export async function trackedItemExists(bidId: number, itemId: number): Promise<boolean> {
+  const item = await prisma.trackedItem.findFirst({
+    where: { id: itemId, bidId },
+    select: { id: true },
+  });
+  return item !== null;
+}
+
 export interface AttachmentMetaInput {
   storageKey: string;
   fileName: string;

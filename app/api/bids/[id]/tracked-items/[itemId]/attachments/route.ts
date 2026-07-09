@@ -17,6 +17,7 @@ import { getBlobStore } from "@/lib/storage/blobStore";
 import {
   listAttachments,
   recordAttachment,
+  trackedItemExists,
 } from "@/lib/services/trackedItems";
 import {
   trackedItemStorageKey,
@@ -89,22 +90,56 @@ export async function POST(
 
   const storageKey = trackedItemStorageKey(bidId, tid, validation.safeFileName);
 
-  // Record metadata FIRST (it also enforces the bid-scoped tenancy check) so
-  // a blob is never written for an item outside this bid; then write bytes.
-  const result = await recordAttachment(bidId, tid, actor, {
-    storageKey,
-    fileName: validation.safeFileName,
-    mimeType: file.type,
-    byteSize: buffer.byteLength,
-    kind: validation.kind,
-    caption,
-  });
+  // Ordering contract (Codex review fix): (1) bid/item tenancy is enforced
+  // BEFORE any byte is written, so a blob can never land for an item outside
+  // this bid; (2) bytes are written; (3) ONLY after a successful blob write
+  // is the metadata row created — a failed blob write therefore leaves NO
+  // metadata row pointing at missing bytes; (4) if the metadata insert fails
+  // after the blob landed, the blob is best-effort deleted so neither side
+  // orphans the other.
+  const exists = await trackedItemExists(bidId, tid);
+  if (!exists) return Response.json({ error: "Not found" }, { status: 404 });
+
+  const store = getBlobStore();
+  try {
+    await store.put(storageKey, buffer, { contentType: file.type });
+  } catch (err) {
+    console.error("[tracked-items] attachment blob write failed:", err);
+    return Response.json(
+      { error: "Storage write failed — attachment not saved" },
+      { status: 500 }
+    );
+  }
+
+  let result: Awaited<ReturnType<typeof recordAttachment>>;
+  try {
+    result = await recordAttachment(bidId, tid, actor, {
+      storageKey,
+      fileName: validation.safeFileName,
+      mimeType: file.type,
+      byteSize: buffer.byteLength,
+      kind: validation.kind,
+      caption,
+    });
+  } catch (err) {
+    await store.delete(storageKey).catch((cleanupErr) => {
+      console.error(
+        "[tracked-items] blob cleanup after metadata failure also failed — orphan blob at",
+        storageKey,
+        cleanupErr
+      );
+    });
+    console.error("[tracked-items] attachment metadata insert failed (blob cleaned up):", err);
+    return Response.json(
+      { error: "Attachment could not be recorded — upload rolled back" },
+      { status: 500 }
+    );
+  }
   if (!result.ok) {
+    await store.delete(storageKey).catch(() => {});
     const status = result.error === "Not found" ? 404 : 400;
     return Response.json({ error: result.error }, { status });
   }
-
-  await getBlobStore().put(storageKey, buffer, { contentType: file.type });
 
   return Response.json(
     { id: result.value.id, storageKeyRecorded: true },

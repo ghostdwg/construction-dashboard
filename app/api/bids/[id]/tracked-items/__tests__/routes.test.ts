@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
 }));
 
 const putMock = vi.hoisted(() => vi.fn(async () => ({ key: "x" })));
+const deleteMock = vi.hoisted(() => vi.fn(async () => undefined));
 const auditMock = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
@@ -22,7 +23,7 @@ vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
 vi.mock("@/lib/storage/blobStore", () => ({
-  getBlobStore: () => ({ put: putMock }),
+  getBlobStore: () => ({ put: putMock, delete: deleteMock }),
   safeBlobFileName: (name: string) => {
     const base = name.split("/").pop()!.trim();
     return base.replace(/[^A-Za-z0-9._() -]/g, "_").slice(0, 180) || "upload.bin";
@@ -123,6 +124,7 @@ beforeEach(() => {
   h.bidExists = true;
   h.nextId = 1;
   putMock.mockClear();
+  deleteMock.mockClear();
   auditMock.mockClear();
 });
 
@@ -242,5 +244,44 @@ describe("tracked-items routes", () => {
     );
     expect(wrong.status).toBe(404);
     expect(putMock).not.toHaveBeenCalled();
+  });
+
+  test("attachment ordering: blob-write failure leaves NO metadata row (Codex blocker)", async () => {
+    await createPOST(jsonReq({ kind: "FIELD_ITEM", title: "photo item" }), p("5"));
+    putMock.mockRejectedValueOnce(new Error("disk full (simulated)"));
+
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([1, 2])], "a.jpg", { type: "image/jpeg" }));
+    const res = await attachmentsPOST(
+      new Request("http://t", { method: "POST", body: form }),
+      pi("5", "1")
+    );
+
+    expect(res.status).toBe(500);
+    expect(h.attachments.length).toBe(0); // no orphan metadata for missing bytes
+    expect(deleteMock).not.toHaveBeenCalled(); // nothing to clean — blob never landed
+  });
+
+  test("attachment ordering: metadata failure after blob write cleans up the blob", async () => {
+    await createPOST(jsonReq({ kind: "FIELD_ITEM", title: "photo item" }), p("5"));
+    const prismaModule = await import("@/lib/prisma");
+    const attachCreate = prismaModule.prisma.trackedItemAttachment
+      .create as ReturnType<typeof vi.fn>;
+    attachCreate.mockRejectedValueOnce(new Error("db write failed (simulated)"));
+
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([1, 2])], "b.jpg", { type: "image/jpeg" }));
+    const res = await attachmentsPOST(
+      new Request("http://t", { method: "POST", body: form }),
+      pi("5", "1")
+    );
+
+    expect(res.status).toBe(500);
+    expect(putMock).toHaveBeenCalledTimes(1); // blob DID land first...
+    expect(deleteMock).toHaveBeenCalledTimes(1); // ...and was cleaned up
+    expect((deleteMock.mock.calls[0] as unknown[])[0]).toBe(
+      "plan-room/jobs/5/tracked-items/1/b.jpg"
+    );
+    expect(h.attachments.length).toBe(0); // and no metadata row survived
   });
 });
