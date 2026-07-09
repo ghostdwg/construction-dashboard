@@ -162,6 +162,7 @@ model Bid {
   backgroundJobs        BackgroundJob[]
   marketLeads           MarketLead[]
   trackedItems          TrackedItem[]
+  fieldReports          FieldReport[]
 }
 
 model BidSubmission {
@@ -3968,10 +3969,11 @@ model TrackedItem {
   carriedFromDate  String? // ISO date — mirrors MeetingActionItem.carriedFromDate
 
   // ── Embedded source citation ────────────────────────────────────────────
-  sourceKind                String  @default("manual") // manual | meeting | spec_section (field_report / jso_report reserved for later slices)
+  sourceKind                String  @default("manual") // manual | meeting | spec_section | field_report (jso_report reserved for a later slice)
   sourceMeetingId           Int?
   sourceMeetingActionItemId Int?    @unique // at most one TrackedItem per promoted MeetingActionItem (bridge duplicate guard)
   sourceSpecSectionId       Int?
+  sourceFieldReportId       Int? // Slice 2 — items created from a FieldReport cite it here (SetNull: report deletion never destroys the item)
   evidenceExcerpt           String? // verbatim/paraphrased source text carried forward at promotion time
   sourceLocator             String? // page / timestamp / transcript-anchor hint; rough or null in V1
   extractionMethod          String  @default("manual") // manual | meeting_analysis | regex | heuristic | ai_claude — every producer writes this EXPLICITLY (never rely on the default; see the WP1a seeder-provenance lesson)
@@ -3991,6 +3993,7 @@ model TrackedItem {
   sourceMeeting           Meeting?           @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
   sourceMeetingActionItem MeetingActionItem? @relation(fields: [sourceMeetingActionItemId], references: [id], onDelete: SetNull)
   sourceSpecSection       SpecSection?       @relation(fields: [sourceSpecSectionId], references: [id], onDelete: SetNull)
+  sourceFieldReport       FieldReport?       @relation(fields: [sourceFieldReportId], references: [id], onDelete: SetNull)
   comments                TrackedItemComment[]
   attachments             TrackedItemAttachment[]
 
@@ -4020,6 +4023,39 @@ model TrackedItemComment {
 // (lib/services/trackedItems/storagePath.ts). MIME-allowlisted (jpeg/png/
 // webp/pdf), size-capped, served only through authenticated routes. No
 // EXIF/GPS processing, no thumbnails in V1.
+// ── Module OPS2 (Slice 2) — Field Report source documents ───────────────────
+//
+// A FieldReport is SOURCE EVIDENCE, not a second tracker: uploaded field/
+// daily reports live here (metadata + BlobStore key), and operations items
+// created from them are TrackedItem rows (kind FIELD_ITEM, sourceKind
+// "field_report", sourceFieldReportId citation) — HUMAN-created one at a
+// time, never auto-extracted. parseStatus is a placeholder vocabulary in V0
+// ("UNPARSED" only); OCR/AI parse stages are later, separately-gated slices.
+
+model FieldReport {
+  id                  Int       @id @default(autoincrement())
+  bidId               Int
+  title               String
+  reportDate          DateTime?
+  authorName          String?
+  // Original uploaded file (nullable — a report row may be created before
+  // its file is uploaded). Bytes in BlobStore under
+  // plan-room/jobs/{bidId}/field-reports/{fieldReportId}/{safeFileName}.
+  sourceFileStorageKey String?
+  originalFileName     String?
+  mimeType             String?
+  byteSize             Int?
+  parseStatus          String   @default("UNPARSED") // UNPARSED only in V0 — no OCR/AI parse states exist yet
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  bid          Bid           @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  trackedItems TrackedItem[]
+
+  @@index([bidId])
+  @@index([bidId, reportDate])
+}
+
 model TrackedItemAttachment {
   id            Int      @id @default(autoincrement())
   trackedItemId Int

@@ -36,6 +36,7 @@ export async function GET(
     sourceMeetingId: item.sourceMeetingId,
     sourceMeetingActionItemId: item.sourceMeetingActionItemId,
     sourceSpecSectionId: item.sourceSpecSectionId,
+    sourceFieldReportId: item.sourceFieldReportId,
     evidenceExcerpt: item.evidenceExcerpt,
     sourceLocator: item.sourceLocator,
     extractionMethod: item.extractionMethod,

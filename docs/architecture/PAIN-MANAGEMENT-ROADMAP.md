@@ -978,3 +978,17 @@ This partially supersedes WP2's shape (the four derived registers will
 persist as TrackedItem kinds in a later slice). Field/JSO ingesters,
 warranty/closeout seeding from `aiExtractions`, attachment byte-serving/
 preview, and any AI extraction remain out of scope and unbuilt.
+
+**Slice 2 update (2026-07-09, branch `gwx/slice2-field-report-ingester`) —
+LOCAL CODE BUILT only; NOT deployed, NOT staging-proven, migration created
+but NOT applied, no `[OP]` facts:** Field Report ingester V0 on the spine —
+additive `FieldReport` source-document model + `TrackedItem.sourceFieldReportId`
+citation column (migration `20260709020000_ops2_field_reports`), private
+source-file upload (pdf/jpeg/png/webp, 25 MiB, Slice-1 blob-before-metadata
+ordering with cleanup, superseded-blob cleanup on re-upload), routes under
+`app/api/bids/[id]/field-reports/**`, and HUMAN-triggered item creation
+(kind FIELD_ITEM, sourceKind `field_report`, extractionMethod `manual`,
+citationVerified false) surfaced in the Operations tab. **No OCR, no AI
+extraction, no auto-created items (`parseStatus` is permanently `UNPARSED`
+in V0), no file preview, no JSO ingester, and no warranty/closeout seeding
+claim.**

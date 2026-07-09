@@ -12,6 +12,7 @@
 // notifications, no auto-anything.
 
 import { useCallback, useEffect, useState } from "react";
+import FieldReportsSection from "./FieldReportsSection";
 
 type TrackedItemRow = {
   id: number;
@@ -25,6 +26,7 @@ type TrackedItemRow = {
   sourceKind: string;
   sourceMeetingId: number | null;
   sourceMeetingActionItemId: number | null;
+  sourceFieldReportId: number | null;
   evidenceExcerpt: string | null;
   sourceLocator: string | null;
   extractionMethod: string;
@@ -171,6 +173,10 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
           </table>
         </div>
       )}
+
+      {/* Slice 2 — Field Report source documents (items created from a
+          report land in the register above as FIELD ITEM). */}
+      <FieldReportsSection bidId={bidId} onItemsChanged={load} />
     </div>
   );
 }
@@ -181,6 +187,11 @@ function sourceSummary(item: TrackedItemRow): string {
     return `${meeting}${item.sourceMeetingActionItemId ? ` · action item #${item.sourceMeetingActionItemId}` : ""}`;
   }
   if (item.sourceKind === "spec_section") return "spec section";
+  if (item.sourceKind === "field_report") {
+    return item.sourceFieldReportId
+      ? `field report #${item.sourceFieldReportId}`
+      : "field report";
+  }
   return "manual entry";
 }
 

@@ -249,6 +249,79 @@ export async function promoteMeetingActionItem(
   }
 }
 
+// ── Field Report bridge (Slice 2): create an item FROM a report ─────────────
+//
+// HUMAN-TRIGGERED only — never fired by upload/parse. Unlike the OAC
+// promotion (which copies an existing action item), this creates a fresh
+// item whose content the human typed, citing the report as its source. A
+// report may source many items (no uniqueness), and deleting the report
+// SetNulls the citation without touching the item.
+
+export interface CreateItemFromFieldReportInput {
+  title: string;
+  description?: string | null;
+  priority?: string | null;
+  assigneeName?: string | null;
+  dueDate?: Date | null;
+  /** Optional human-typed excerpt from the report (V0 has no OCR/text). */
+  evidenceExcerpt?: string | null;
+  /** Optional page/line hint, e.g. "p.2, safety section". */
+  sourceLocator?: string | null;
+}
+
+export async function createItemFromFieldReport(
+  bidId: number,
+  fieldReportId: number,
+  input: CreateItemFromFieldReportInput,
+  actor: Actor
+): Promise<ServiceResult<{ id: number }>> {
+  // Tenancy: the report must belong to THIS bid — a cross-bid report can
+  // never source an item.
+  const report = await prisma.fieldReport.findFirst({
+    where: { id: fieldReportId, bidId },
+    select: { id: true },
+  });
+  if (!report) return { ok: false, error: "Field report not found for this bid" };
+
+  const title = input.title?.trim();
+  if (!title) return { ok: false, error: "title is required" };
+  const priority = input.priority ?? "MEDIUM";
+  if (!(TRACKED_ITEM_PRIORITIES as readonly string[]).includes(priority)) {
+    return { ok: false, error: `Unknown priority: ${priority}` };
+  }
+
+  const created = await prisma.trackedItem.create({
+    data: {
+      bidId,
+      kind: "FIELD_ITEM",
+      title: title.slice(0, MAX_TITLE_LENGTH),
+      description: input.description?.trim() || null,
+      priority,
+      assigneeName: input.assigneeName?.trim() || null,
+      dueDate: input.dueDate ?? null,
+      sourceKind: "field_report",
+      sourceFieldReportId: fieldReportId,
+      evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
+      sourceLocator: input.sourceLocator?.trim() || null,
+      // Human typed this item while reading the report — manual, explicitly.
+      extractionMethod: "manual",
+      citationVerified: false,
+    },
+    select: { id: true },
+  });
+
+  await audit(
+    "tracked_item_create",
+    bidId,
+    String(created.id),
+    actor,
+    "created_from_field_report",
+    { kind: "FIELD_ITEM", sourceKind: "field_report", fieldReportId }
+  );
+
+  return { ok: true, value: created };
+}
+
 // ── Update (non-status fields) ───────────────────────────────────────────────
 
 export interface UpdateTrackedItemInput {

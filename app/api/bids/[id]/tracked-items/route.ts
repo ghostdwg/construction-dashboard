@@ -51,6 +51,7 @@ export async function GET(
       sourceMeetingId: i.sourceMeetingId,
       sourceMeetingActionItemId: i.sourceMeetingActionItemId,
       sourceSpecSectionId: i.sourceSpecSectionId,
+      sourceFieldReportId: i.sourceFieldReportId,
       evidenceExcerpt: i.evidenceExcerpt,
       sourceLocator: i.sourceLocator,
       extractionMethod: i.extractionMethod,
