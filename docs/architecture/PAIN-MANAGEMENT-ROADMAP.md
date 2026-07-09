@@ -41,7 +41,7 @@
     "ai_extraction" | "csi_baseline" | "ai_organized" | "drawing_analysis" —
     trustworthy since WP1a `c51f28b`, displayed as a badge since WP1b
     `0ce2604`), `specSectionId` FK (:780), audit `sourceJobId` →
-    `BackgroundJob` (:816);
+    `BackgroundJob` (:824);
     `SubmittalPackage` (:720); `SubmittalDistributionTemplate` per-trade
     routing (reviewers/distribution JSON, :850); `CsiMasterformat` reference
     (:767).
