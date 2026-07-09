@@ -177,7 +177,7 @@ model RequirementCandidate {
                                      // precedent (schema.prisma:1389,1398);
                                      // regex candidates = HIGH by construction
   sourceJobId      String?           // BackgroundJob attribution — exact
-                                     // precedent: SubmittalItem.sourceJobId (:816)
+                                     // precedent: SubmittalItem.sourceJobId (:824)
 
   // ── Review lifecycle (Principle 3) ──
   status          String    @default("draft")
