@@ -24,6 +24,7 @@ import MeetingsTab from "./MeetingsTab";
 import TasksTab from "./TasksTab";
 import BriefingTab from "./BriefingTab";
 import ProcoreTab from "./ProcoreTab";
+import OperationsRegisterTab from "./OperationsRegisterTab";
 import WarrantiesTab from "./WarrantiesTab";
 import TrainingTab from "./TrainingTab";
 import InspectionsTab from "./InspectionsTab";
@@ -361,6 +362,11 @@ export default async function BidDetailPage({
           {tab === "procore" && (
             <TabErrorBoundary tabName="Procore">
               <ProcoreTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "operations" && (
+            <TabErrorBoundary tabName="Operations">
+              <OperationsRegisterTab bidId={bid.id} />
             </TabErrorBoundary>
           )}
           {tab === "warranties" && (

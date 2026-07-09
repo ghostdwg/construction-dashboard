@@ -52,6 +52,7 @@ export const AUDIT_CATEGORIES = [
   "ingestion_pipeline_error", // stdout-only fireAndForget failure path
   "system_health",            // backup verified, scraper failed, etc.
   "ai_prompt_scan",           // P2-A0 — shadow, non-blocking heuristic prompt scan (gateway.ts)
+  "register_action",          // OPS1 tracked-item register: status transitions, close/waive, attachment upload, OAC promotion (human-only actions)
 ] as const;
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 
@@ -171,6 +172,7 @@ export const DB_PERSISTED_CATEGORIES = new Set<AuditCategory>([
   "calibration_adjustment",    // operator-applied calibration writes only — emitter must filter
   "ingestion_pipeline_error",  // stdout-only failures elevated to DB
   "system_health",
+  "register_action",           // OPS1 — operator-consequential register mutations persist forever
 ]);
 
 export function shouldPersistToDb(category: AuditCategory): boolean {

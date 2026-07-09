@@ -956,3 +956,25 @@ one-way export/ingest-only; nothing here authorizes push or sync.
   scope reconciliation.
 - **DO NOT BUILD:** blocking field-gate enforcement, Procore webhook
   auto-apply/bidirectional sync, auto-send of any communication.
+
+---
+
+## Status note 2026-07-09 — Operations Register Slice 1: LOCAL CODE BUILT
+
+The shared tracked-item register spine (Module OPS1) is **built and
+unit-tested locally on branch `gwx/slice1-tracked-item-spine-oac-register`
+— NOT deployed, NOT staging-proven, migration NOT applied** `[V local]`:
+`TrackedItem`/`TrackedItemComment`/`TrackedItemAttachment` additive schema
+(+ hand-written forward-only migration `20260709010000_ops1_tracked_item_spine`,
+awaiting the gated runner), human-only status FSM
+(`lib/services/trackedItems/fsm.ts`), attachment key/MIME/size policy
+(`storagePath.ts`, `plan-room/jobs/{bidId}/tracked-items/…`), service +
+routes (`app/api/bids/[id]/tracked-items/**` incl. FSM `status`, append-only
+`comments`, allowlisted `attachments` upload, and the one-at-a-time,
+human-chosen `promote` bridge from `MeetingActionItem` — source rows never
+mutated, duplicates blocked by unique constraint), audited under the new
+`register_action` category, and surfaced as the bid-level OPERATIONS tab.
+This partially supersedes WP2's shape (the four derived registers will
+persist as TrackedItem kinds in a later slice). Field/JSO ingesters,
+warranty/closeout seeding from `aiExtractions`, attachment byte-serving/
+preview, and any AI extraction remain out of scope and unbuilt.

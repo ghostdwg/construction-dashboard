@@ -68,9 +68,11 @@ describe("severity ranking", () => {
 });
 
 describe("category + severity completeness", () => {
-  test("22 categories registered", () => {
-    // Bumped from 21 for P2-A0's "ai_prompt_scan" addition (taxonomy.ts).
-    expect(AUDIT_CATEGORIES.length).toBe(22);
+  test("23 categories registered", () => {
+    // Bumped from 21 for P2-A0's "ai_prompt_scan", then from 22 for OPS1's
+    // "register_action" (tracked-item register mutations — taxonomy.ts).
+    expect(AUDIT_CATEGORIES.length).toBe(23);
+    expect(AUDIT_CATEGORIES).toContain("register_action");
   });
 
   test("6 severities registered", () => {
