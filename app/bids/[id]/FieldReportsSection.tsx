@@ -135,8 +135,11 @@ export default function FieldReportsSection({
                   {r.authorName ? ` · ${r.authorName}` : ""}
                 </span>
               </span>
-              <span className="text-zinc-400">
-                {r.hasFile ? `📄 ${r.originalFileName}` : "no file"} · {r.trackedItemCount} item
+              <span
+                className="text-zinc-400"
+                title="Tracked items created from this report — they live in the register above as FIELD ITEM"
+              >
+                {r.hasFile ? `📄 ${r.originalFileName}` : "no file"} · {r.trackedItemCount} tracked item
                 {r.trackedItemCount === 1 ? "" : "s"}
               </span>
             </button>

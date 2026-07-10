@@ -13,6 +13,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import FieldReportsSection from "./FieldReportsSection";
+import {
+  actionItemOptionLabel,
+  isOverdue,
+  promotedActionItemIds,
+  statusCounts,
+} from "./registerViewHelpers";
 
 type TrackedItemRow = {
   id: number;
@@ -136,8 +142,32 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
           ))}
         </select>
         <CreateItemForm bidId={bidId} onCreated={load} />
-        <PromoteForm bidId={bidId} onPromoted={load} />
+        <PromoteForm bidId={bidId} promotedIds={promotedActionItemIds(items)} onPromoted={load} />
       </div>
+
+      {!loading && items.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {statusCounts(items).map(({ status, count }) => (
+            <span
+              key={status}
+              className={`rounded px-2 py-0.5 font-semibold ${STATUS_STYLES[status] ?? "bg-zinc-100 text-zinc-600"}`}
+            >
+              {status.replaceAll("_", " ")} {count}
+            </span>
+          ))}
+          {(() => {
+            const overdue = items.filter((i) => isOverdue(i.dueDate, i.status)).length;
+            return overdue > 0 ? (
+              <span className="rounded bg-red-100 px-2 py-0.5 font-semibold text-red-700 dark:bg-red-900 dark:text-red-300">
+                OVERDUE {overdue}
+              </span>
+            ) : null;
+          })()}
+          {(kindFilter || statusFilter) && (
+            <span className="text-zinc-400">(counts reflect the current filter)</span>
+          )}
+        </div>
+      )}
 
       {loadError && <p className="text-sm text-red-500">{loadError}</p>}
       {loading && <p className="text-sm text-zinc-500">Loading…</p>}
@@ -145,7 +175,7 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
       {!loading && items.length === 0 && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           No tracked items yet. Create one manually, or promote a meeting action item
-          from the Meetings tab (by its item number) using “Promote”.
+          with “Promote from meeting…” (pick it from the list — or enter its # directly).
         </p>
       )}
 
@@ -240,8 +270,15 @@ function ItemRow({
         </td>
         <td className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-300">{item.priority}</td>
         <td className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-300">{item.assigneeName ?? "—"}</td>
-        <td className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-300">
+        <td
+          className={
+            isOverdue(item.dueDate, item.status)
+              ? "px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400"
+              : "px-3 py-2 text-xs text-zinc-600 dark:text-zinc-300"
+          }
+        >
           {item.dueDate ? new Date(item.dueDate).toLocaleDateString() : "—"}
+          {isOverdue(item.dueDate, item.status) && " (overdue)"}
         </td>
         <td className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">{sourceSummary(item)}</td>
         <td className="px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400">
@@ -586,46 +623,159 @@ function CreateItemForm({ bidId, onCreated }: { bidId: number; onCreated: () => 
   );
 }
 
-function PromoteForm({ bidId, onPromoted }: { bidId: number; onPromoted: () => Promise<void> | void }) {
-  const [value, setValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
+type PickerOption = {
+  id: number;
+  meetingTitle: string;
+  description: string;
+  status: string;
+};
 
-  async function submit() {
+// Promote-from-meeting picker. Loads the bid's meetings and their action
+// items on demand (same read endpoints the Meetings tab uses) and lets the
+// user pick one instead of memorizing its number; a manual "# " entry is
+// kept as a fallback. `promotedIds` is a hint derived from the register
+// rows currently loaded — options it contains are annotated/disabled, but
+// the server's unique guard (409) stays the source of truth, since a
+// filtered register view can under-report.
+function PromoteForm({
+  bidId,
+  promotedIds,
+  onPromoted,
+}: {
+  bidId: number;
+  promotedIds: Set<number>;
+  onPromoted: () => Promise<void> | void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [options, setOptions] = useState<PickerOption[] | null>(null);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [selected, setSelected] = useState("");
+  const [manual, setManual] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function loadOptions() {
+    setPickerError(null);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/meetings`);
+      if (!res.ok) throw new Error(`Meetings load failed (${res.status})`);
+      const { meetings } = (await res.json()) as {
+        meetings: Array<{ id: number; title: string }>;
+      };
+      const perMeeting = await Promise.all(
+        meetings.map(async (m) => {
+          const r = await fetch(`/api/bids/${bidId}/meetings/${m.id}/action-items`);
+          if (!r.ok) return [] as PickerOption[];
+          const data = (await r.json()) as {
+            actionItems: Array<{ id: number; description: string; status: string }>;
+          };
+          return data.actionItems.map((a) => ({
+            id: a.id,
+            meetingTitle: m.title,
+            description: a.description,
+            status: a.status,
+          }));
+        })
+      );
+      setOptions(perMeeting.flat());
+    } catch (e) {
+      setPickerError(e instanceof Error ? e.message : "Load failed");
+      setOptions(null);
+    }
+  }
+
+  async function promote(idNum: number) {
     setError(null);
-    const idNum = parseInt(value, 10);
-    if (isNaN(idNum)) {
-      setError("Enter a meeting action item #");
-      return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/bids/${bidId}/tracked-items/promote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meetingActionItemId: idNum }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (res.status === 409) {
+        setError("Already tracked in the register.");
+        return;
+      }
+      if (!res.ok) {
+        setError(json.error ?? "Promote failed");
+        return;
+      }
+      setSelected("");
+      setManual("");
+      await onPromoted();
+    } finally {
+      setBusy(false);
     }
-    const res = await fetch(`/api/bids/${bidId}/tracked-items/promote`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ meetingActionItemId: idNum }),
-    });
-    const json = (await res.json()) as { error?: string };
-    if (!res.ok) {
-      setError(json.error ?? "Promote failed");
-      return;
-    }
-    setValue("");
-    await onPromoted();
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => {
+          setOpen(true);
+          void loadOptions();
+        }}
+        className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:border-zinc-400 dark:border-zinc-600 dark:text-zinc-300"
+        title="Promote an existing meeting action item (see the Meetings tab) into this register — one at a time, your choice, never automatic."
+      >
+        Promote from meeting…
+      </button>
+    );
   }
 
   return (
-    <span className="flex items-center gap-1">
+    <span className="flex flex-wrap items-center gap-1">
+      {options === null && !pickerError && (
+        <span className="text-xs text-zinc-400">Loading action items…</span>
+      )}
+      {pickerError && <span className="text-xs text-red-500">{pickerError}</span>}
+      {options !== null && options.length === 0 && (
+        <span className="text-xs text-zinc-400">
+          No meeting action items on this bid yet — record them in the Meetings tab first.
+        </span>
+      )}
+      {options !== null && options.length > 0 && (
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="max-w-[22rem] rounded border border-zinc-300 px-1 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+        >
+          <option value="">Pick a meeting action item…</option>
+          {options.map((o) => {
+            const alreadyTracked = promotedIds.has(o.id);
+            return (
+              <option key={o.id} value={o.id} disabled={alreadyTracked}>
+                {actionItemOptionLabel({ ...o, alreadyTracked })}
+              </option>
+            );
+          })}
+        </select>
+      )}
       <input
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="action item #"
-        className="w-24 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-        title="Promote an existing meeting action item (see the Meetings tab) into this register — one at a time, your choice, never automatic."
+        value={manual}
+        onChange={(e) => setManual(e.target.value)}
+        placeholder="or #"
+        className="w-16 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+        title="Fallback: enter a meeting action item number directly."
       />
       <button
-        onClick={submit}
-        disabled={!value.trim()}
+        onClick={() => {
+          const idNum = selected ? parseInt(selected, 10) : parseInt(manual, 10);
+          if (isNaN(idNum)) {
+            setError("Pick an action item or enter its #");
+            return;
+          }
+          void promote(idNum);
+        }}
+        disabled={busy || (!selected && !manual.trim())}
         className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:border-zinc-400 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-300"
       >
         Promote
+      </button>
+      <button onClick={() => setOpen(false)} className="text-xs text-zinc-500">
+        Cancel
       </button>
       {error && <span className="text-xs text-red-500">{error}</span>}
     </span>

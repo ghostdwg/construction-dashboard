@@ -1026,3 +1026,22 @@ already tracked, never automatic) plus an honest empty state. **UX/copy only
 involvement, existing APIs unchanged.** Copy contract pinned by
 `app/bids/[id]/__tests__/opsAcceptanceUxCopy.test.ts` (17 source-string
 assertions; no React render harness exists or was added).
+
+**OPS operational polish V1 (2026-07-10, branch
+`gwx/ops-next-operational-polish` @ base `d4b7f6c`) — LOCAL CODE BUILT only;
+NOT deployed, NOT staging-proven, no schema change, no migration, no `[OP]`
+facts:** register workflow polish for the superintendent path. Promote gains
+a picker — "Promote from meeting…" loads the bid's meetings and action items
+via the EXISTING read endpoints and lists them as "#id · meeting — description"
+options, with already-tracked options annotated/disabled as a hint (the
+promote route's unique guard / 409 remains the source of truth; a manual "#"
+entry is kept as fallback, and an empty state says to record action items in
+the Meetings tab first — nothing fabricated, nothing auto-promoted). The
+register header now shows status summary chips plus an OVERDUE chip, and due
+cells highlight "(overdue)" — computed by pure helpers in
+`app/bids/[id]/registerViewHelpers.ts` (terminal CLOSED/WAIVED never flagged;
+counts under an active filter are labeled as filtered). Field-report rows
+relabel the existing server count as "N tracked items" with a tooltip.
+**No new endpoints, no data-model change, no AI/OCR, no provider/Procore.**
+Tests: `registerViewHelpers.test.ts` (direct unit tests) +
+`opsPolishUxCopy.test.ts` (copy contract); prior suites unchanged.
