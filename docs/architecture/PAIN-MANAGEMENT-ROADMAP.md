@@ -992,3 +992,18 @@ citationVerified false) surfaced in the Operations tab. **No OCR, no AI
 extraction, no auto-created items (`parseStatus` is permanently `UNPARSED`
 in V0), no file preview, no JSO ingester, and no warranty/closeout seeding
 claim.**
+
+**Private download V0 (2026-07-09, branch `gwx/ops-private-file-serving-v0`)
+— LOCAL CODE BUILT only; NOT deployed, NOT staging-proven, no schema change,
+no migration, no `[OP]` facts:** authenticated download routes for
+tracked-item attachments
+(`…/tracked-items/[itemId]/attachments/[attachmentId]/download`) and
+field-report source files (`…/field-reports/[fieldReportId]/download`).
+Clients supply ids only — blob reads use SERVER-stored keys, so arbitrary
+storage keys cannot be requested; tenancy is verified before any blob read;
+responses use attachment disposition with sanitized filenames, allowlisted
+Content-Type (else `application/octet-stream`), `X-Content-Type-Options:
+nosniff`, and `Cache-Control: private, no-store`. Download/open only —
+**no inline preview, no signed URLs, no public links, no OCR/AI extraction,
+no provider or Procore involvement.** UI: Download links in the Operations
+register attachment list and the Field Reports section.

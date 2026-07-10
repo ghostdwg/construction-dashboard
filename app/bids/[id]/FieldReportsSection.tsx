@@ -219,8 +219,16 @@ function ReportDetail({
         {report.hasFile && report.byteSize != null && (
           <span className="text-zinc-400">
             {Math.max(1, Math.round(report.byteSize / 1024))} KB · status {report.parseStatus}
-            {" "}(no preview/OCR yet)
+            {" "}(download only — no preview/OCR yet)
           </span>
+        )}
+        {report.hasFile && (
+          <a
+            href={`${base}/download`}
+            className="text-zinc-500 underline hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+          >
+            Download
+          </a>
         )}
       </div>
 

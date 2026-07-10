@@ -442,7 +442,7 @@ function ItemDetail({
 
       <div>
         <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-          Attachments (jpeg/png/webp/pdf · metadata only in V1 — no preview yet)
+          Attachments (jpeg/png/webp/pdf · download only — preview/OCR/AI extraction not built yet)
         </p>
         {attachments === null ? (
           <p className="text-xs text-zinc-400">Loading…</p>
@@ -455,7 +455,13 @@ function ItemDetail({
                 {a.kind === "photo" ? "🖼" : "📄"} {a.fileName}{" "}
                 <span className="text-zinc-400">
                   ({Math.max(1, Math.round(a.byteSize / 1024))} KB{a.caption ? ` · ${a.caption}` : ""})
-                </span>
+                </span>{" "}
+                <a
+                  href={`${base}/attachments/${a.id}/download`}
+                  className="text-zinc-500 underline hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+                >
+                  Download
+                </a>
               </li>
             ))}
           </ul>
