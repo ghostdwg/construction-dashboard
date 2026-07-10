@@ -60,11 +60,22 @@ function sha256(buf: Buffer): string {
  * production branch's `safeBlobFileName()` (feat/storage-auth-job-dedupe)
  * byte-for-byte, so a future merge of that branch's call sites needs no
  * reconciliation here.
+ *
+ * A pure sequence of dots ("." / ".." / "...") is rejected the same as an
+ * empty result: `.` is in the allowed character set, so `path.basename(".")`
+ * and `path.basename("..")` pass through unchanged — a caller building a key
+ * as `{prefix}/{safeBlobFileName(name)}` from a file literally named "." or
+ * ".." would otherwise get a key ending in "/.." (traversal-shaped) or "/."
+ * (meaningless). `assertSafeKey` already rejects a key ending in "/.."
+ * downstream, but a real traversal attempt like "../../etc/passwd" is
+ * unaffected either way — `path.basename` already reduces it to "passwd"
+ * before this function ever sees a dot-only string.
  */
 export function safeBlobFileName(fileName: string): string {
   const base = path.basename(fileName).trim();
   const cleaned = base.replace(/[^A-Za-z0-9._() -]/g, "_").slice(0, 180);
-  return cleaned || "upload.bin";
+  if (!cleaned || /^\.+$/.test(cleaned)) return "upload.bin";
+  return cleaned;
 }
 
 export class LocalBlobStore implements BlobStore {

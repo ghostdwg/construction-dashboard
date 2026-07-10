@@ -11,7 +11,7 @@ import fsSync from "fs";
 import os from "os";
 import path from "path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { LocalBlobStore, localPathForKey } from "../blobStore";
+import { LocalBlobStore, localPathForKey, safeBlobFileName } from "../blobStore";
 
 let storageRoot: string;
 
@@ -51,5 +51,43 @@ describe("localPathForKey (module-level helper, uses the configured singleton st
 
   test("rejects traversal the same way put/get/delete do", () => {
     expect(() => localPathForKey("../outside.pdf")).toThrow(/traversal/i);
+  });
+});
+
+describe("safeBlobFileName", () => {
+  test("normal PDF filename passes through unchanged", () => {
+    expect(safeBlobFileName("original.pdf")).toBe("original.pdf");
+  });
+
+  test("normal image filename passes through unchanged", () => {
+    expect(safeBlobFileName("site-photo (1).jpg")).toBe("site-photo (1).jpg");
+  });
+
+  test("bare '.' falls back to upload.bin", () => {
+    expect(safeBlobFileName(".")).toBe("upload.bin");
+  });
+
+  test("bare '..' falls back to upload.bin", () => {
+    expect(safeBlobFileName("..")).toBe("upload.bin");
+  });
+
+  test("'./' falls back to upload.bin", () => {
+    expect(safeBlobFileName("./")).toBe("upload.bin");
+  });
+
+  test("'../' falls back to upload.bin", () => {
+    expect(safeBlobFileName("../")).toBe("upload.bin");
+  });
+
+  test("traversal attempt reduces to the trailing basename, not a fallback", () => {
+    expect(safeBlobFileName("../../etc/passwd")).toBe("passwd");
+  });
+
+  test("empty string falls back to upload.bin", () => {
+    expect(safeBlobFileName("")).toBe("upload.bin");
+  });
+
+  test("whitespace-only name falls back to upload.bin", () => {
+    expect(safeBlobFileName("   ")).toBe("upload.bin");
   });
 });
