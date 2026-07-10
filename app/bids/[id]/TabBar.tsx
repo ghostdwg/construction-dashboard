@@ -97,9 +97,9 @@ export default function TabBar({
         </p>
       </div>
       <NavItem
-        href={`/bids/${bidId}?tab=warranties`}
+        href={`/bids/${bidId}?tab=operations`}
         label="Construction"
-        sub="warranties · inspections · closeout"
+        sub="operations register · field reports · closeout"
         active={isConstructionActive}
       />
     </nav>

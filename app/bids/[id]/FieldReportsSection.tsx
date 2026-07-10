@@ -108,14 +108,17 @@ export default function FieldReportsSection({
           disabled={!title.trim()}
           className="rounded bg-zinc-900 px-2 py-1 text-xs text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
         >
-          Add report
+          New Field Report
         </button>
         {createError && <span className="text-xs text-red-500">{createError}</span>}
       </div>
 
       {loadError && <p className="text-xs text-red-500">{loadError}</p>}
       {reports.length === 0 && !loadError && (
-        <p className="text-xs text-zinc-400">No field reports yet.</p>
+        <p className="text-xs text-zinc-400">
+          No field reports yet. Create a Field Report to attach site reports/photos/PDFs
+          and generate tracked items.
+        </p>
       )}
 
       <ul className="space-y-1">
@@ -256,7 +259,7 @@ function ReportDetail({
           disabled={!itemTitle.trim()}
           className="rounded bg-emerald-700 px-2 py-1 text-xs text-white disabled:opacity-40"
         >
-          Create tracked item
+          Create tracked item from this report
         </button>
       </div>
       <p className="text-[11px] text-zinc-400">

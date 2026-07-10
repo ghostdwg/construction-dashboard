@@ -1007,3 +1007,22 @@ nosniff`, and `Cache-Control: private, no-store`. Download/open only —
 **no inline preview, no signed URLs, no public links, no OCR/AI extraction,
 no provider or Procore involvement.** UI: Download links in the Operations
 register attachment list and the Field Reports section.
+
+**OPS acceptance UX hardening V1 (2026-07-10, branch
+`gwx/ops-acceptance-ux-hardening-v1` @ base `79f46b8`) — LOCAL CODE BUILT
+only; NOT deployed, NOT staging-proven, no schema change, no migration, no
+`[OP]` facts:** discoverability/labeling pass so an operator starting from
+Project → Deliver → Tasks can find the OPS1/OPS2 surfaces. Construction nav
+item now lands on `?tab=operations` with "operations register · field
+reports · closeout" copy; Deliver → Tasks header links to Construction →
+Operations; register heading reads "Tasks / Operations Register" with
+expand-for-comments/attachments help, ▸/▾ row expand indicators, plain
+Comments/Attachments labels, and a collapsible 8-step first-run walkthrough;
+Field Reports actions renamed "New Field Report" / "Create tracked item from
+this report" with a directive empty state; Meetings → all-action-items rows
+gained a human-only "Promote to Tracked Item" button (201 → tracked, 409 →
+already tracked, never automatic) plus an honest empty state. **UX/copy only
+— no new capability, no AI/OCR/EXIF/thumbnails, no provider or Procore
+involvement, existing APIs unchanged.** Copy contract pinned by
+`app/bids/[id]/__tests__/opsAcceptanceUxCopy.test.ts` (17 source-string
+assertions; no React render harness exists or was added).

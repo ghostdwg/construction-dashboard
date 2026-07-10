@@ -120,7 +120,16 @@ export default function TasksTab({ bidId }: { bidId: number }) {
         <div>
           <h2 className="text-[20px] font-[700] tracking-[-0.03em]" style={{ color: "var(--text)" }}>Tasks</h2>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--text-soft)" }}>
-            Action items + manual tasks for this project
+            Action items + manual tasks for this project.{" "}
+            <a
+              href={`/bids/${bidId}?tab=operations`}
+              className="underline"
+              style={{ color: "var(--text-soft)" }}
+            >
+              Looking for the Operations Register (tracked OAC / field-report /
+              closeout items with comments &amp; attachments)? It&apos;s under
+              Construction → Operations.
+            </a>
           </p>
         </div>
         <div className="flex items-center gap-1.5">

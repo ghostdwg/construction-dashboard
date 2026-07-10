@@ -100,12 +100,18 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Operations Register</h3>
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+          Tasks / Operations Register
+        </h3>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-          One tracked-item register for OAC actions, field/JSO items, warranty, closeout,
-          training, O&M, testing, and attic stock. Every item cites its source; status
-          changes are yours alone — nothing here closes, assigns, or notifies automatically.
+          Tasks are tracked operations items for OAC, field reports, closeout, and
+          follow-up — one shared register (warranty, training, O&M, testing, attic
+          stock included). Every item cites its source; status changes are yours alone —
+          nothing here closes, assigns, or notifies automatically.{" "}
+          <span className="font-medium">Click a row to expand it and add comments and
+          attachments.</span>
         </p>
+        <AcceptanceHelper />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -148,6 +154,7 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
           <table className="min-w-full text-sm">
             <thead className="bg-zinc-50 text-left text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
               <tr>
+                <th className="w-6 px-2 py-2" aria-label="Expand" />
                 <th className="px-3 py-2">Kind</th>
                 <th className="px-3 py-2">Title</th>
                 <th className="px-3 py-2">Status</th>
@@ -155,7 +162,9 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
                 <th className="px-3 py-2">Assignee</th>
                 <th className="px-3 py-2">Due</th>
                 <th className="px-3 py-2">Source</th>
-                <th className="px-3 py-2">💬/📎</th>
+                <th className="px-3 py-2" title="Comments / attachments — click the row to expand">
+                  💬 Comments / 📎 Files
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -212,8 +221,12 @@ function ItemRow({
     <>
       <tr
         onClick={onToggle}
+        title={expanded ? "Collapse" : "Expand to add comments and attachments"}
         className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50"
       >
+        <td className="px-2 py-2 text-xs text-zinc-400 dark:text-zinc-500" aria-hidden>
+          {expanded ? "▾" : "▸"}
+        </td>
         <td className="px-3 py-2">
           <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200">
             {KIND_LABELS[item.kind] ?? item.kind}
@@ -237,7 +250,7 @@ function ItemRow({
       </tr>
       {expanded && (
         <tr className="border-t border-zinc-100 bg-zinc-50/50 dark:border-zinc-800 dark:bg-zinc-800/30">
-          <td colSpan={8} className="px-4 py-3">
+          <td colSpan={9} className="px-4 py-3">
             <ItemDetail bidId={bidId} item={item} onChanged={onChanged} />
           </td>
         </tr>
@@ -405,7 +418,7 @@ function ItemDetail({
       {error && <p className="text-xs text-red-500">{error}</p>}
 
       <div>
-        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Comments</p>
+        <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">Comments</p>
         {comments === null ? (
           <p className="text-xs text-zinc-400">Loading…</p>
         ) : comments.length === 0 ? (
@@ -441,8 +454,11 @@ function ItemDetail({
       </div>
 
       <div>
-        <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-          Attachments (jpeg/png/webp/pdf · download only — preview/OCR/AI extraction not built yet)
+        <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+          Attachments{" "}
+          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+            (jpeg/png/webp/pdf · download only — preview/OCR/AI extraction not built yet)
+          </span>
         </p>
         {attachments === null ? (
           <p className="text-xs text-zinc-400">Loading…</p>
@@ -613,5 +629,37 @@ function PromoteForm({ bidId, onPromoted }: { bidId: number; onPromoted: () => P
       </button>
       {error && <span className="text-xs text-red-500">{error}</span>}
     </span>
+  );
+}
+
+const ACCEPTANCE_STEPS = [
+  "Create a task (use “New item” — pick a kind like OAC, closeout, or warranty)",
+  "Expand the item (click its row — the ▸ arrow turns to ▾)",
+  "Add a comment in the expanded panel",
+  "Upload an attachment (jpeg/png/webp/pdf, 25 MB max)",
+  "Download the attachment via its Download link",
+  "Create a Field Report (in the Field Reports section below)",
+  "Upload and download the report file",
+  "Create a tracked item from that report — it appears in this register as FIELD ITEM",
+];
+
+function AcceptanceHelper() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+      >
+        {open ? "Hide" : "Show"} first-run walkthrough
+      </button>
+      {open && (
+        <ol className="mt-2 list-decimal space-y-1 rounded border border-zinc-200 bg-zinc-50 px-6 py-3 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">
+          {ACCEPTANCE_STEPS.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }

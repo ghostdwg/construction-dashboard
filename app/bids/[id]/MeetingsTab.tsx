@@ -2185,6 +2185,26 @@ function AllActionItemsView({
   const [items, setItems] = useState<(ActionItem & { meetingTitle: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ActionStatus | "ALL">("OPEN");
+  // OPS UX hardening: per-item promote state for the Operations Register
+  // bridge. HUMAN-chosen, one item at a time — the server's unique guard
+  // makes double-promotion impossible; 409 renders as "already tracked".
+  const [promoted, setPromoted] = useState<Record<number, string>>({});
+
+  async function promoteToTracked(item: ActionItem & { meetingTitle: string }) {
+    const res = await fetch(`/api/bids/${bidId}/tracked-items/promote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ meetingActionItemId: item.id }),
+    });
+    if (res.status === 201) {
+      setPromoted((p) => ({ ...p, [item.id]: "Tracked ✓ (see Construction → Operations)" }));
+    } else if (res.status === 409) {
+      setPromoted((p) => ({ ...p, [item.id]: "Already tracked" }));
+    } else {
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      setPromoted((p) => ({ ...p, [item.id]: json.error ?? "Promote failed" }));
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -2300,9 +2320,29 @@ function AllActionItemsView({
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
+              {promoted[item.id] ? (
+                <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
+                  {promoted[item.id]}
+                </span>
+              ) : (
+                <button
+                  onClick={() => promoteToTracked(item)}
+                  className="shrink-0 rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-600 hover:border-zinc-400 dark:border-zinc-600 dark:text-zinc-300"
+                  title="Copy this action item into the shared Operations Register (Construction → Operations) as a tracked OAC item with comments/attachments/closeout. The meeting action item itself is unchanged."
+                >
+                  Promote to Tracked Item
+                </button>
+              )}
             </div>
           </div>
         ))}
+        {filtered.length === 0 && (
+          <p className="py-4 text-center text-sm text-zinc-500 dark:text-zinc-400">
+            {items.length === 0
+              ? "No meeting action items available to promote on this bid."
+              : "No action items match this filter."}
+          </p>
+        )}
       </div>
     </div>
   );
