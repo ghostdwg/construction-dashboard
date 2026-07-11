@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { type TabKey, PURSUIT_KEYS, POST_AWARD_KEYS, CONSTRUCTION_KEYS } from "./tabConfig";
+import {
+  type TabKey,
+  PURSUIT_KEYS,
+  COORDINATION_KEYS,
+  FIELD_KEYS,
+  CLOSEOUT_KEYS,
+  REFERENCE_KEYS,
+} from "./tabConfig";
 
 export default function TabBar({
   bidId,
@@ -19,8 +26,10 @@ export default function TabBar({
   const isPostAward = bidStatus === "awarded" || isProject;
 
   const isPursuitActive      = !isProject && PURSUIT_KEYS.has(active);
-  const isPostAwardActive    = POST_AWARD_KEYS.has(active);
-  const isConstructionActive = CONSTRUCTION_KEYS.has(active);
+  const isCoordinationActive = COORDINATION_KEYS.has(active);
+  const isFieldActive        = FIELD_KEYS.has(active);
+  const isCloseoutActive     = CLOSEOUT_KEYS.has(active);
+  const isReferenceActive    = REFERENCE_KEYS.has(active);
 
   return (
     <nav
@@ -75,32 +84,58 @@ export default function TabBar({
         </>
       )}
 
-      {/* ── Deliver ───────────────────────────────────────────────────── */}
+      {/* ── Coordinate ────────────────────────────────────────────────── */}
       <div className="px-3 pt-4 pb-1">
         <p className="font-mono text-[9px] uppercase tracking-[0.11em] mb-1.5" style={{ color: "var(--text-dim)" }}>
-          deliver
+          coordinate
         </p>
       </div>
       <NavItem
         href={`/bids/${bidId}?tab=handoff`}
-        label="Post-Award"
-        sub="handoff · buyout · submittals"
-        active={isPostAwardActive}
-        meta={isPostAward && !isConstructionActive ? "●" : undefined}
+        label="Coordination"
+        sub="startup · meetings · action items"
+        active={isCoordinationActive}
+        meta={isPostAward && !isFieldActive && !isCloseoutActive && !isReferenceActive ? "●" : undefined}
         metaColor="var(--signal)"
       />
 
-      {/* ── Closeout ──────────────────────────────────────────────────── */}
+      {/* ── Build ─────────────────────────────────────────────────────── */}
       <div className="px-3 pt-4 pb-1">
         <p className="font-mono text-[9px] uppercase tracking-[0.11em] mb-1.5" style={{ color: "var(--text-dim)" }}>
-          closeout
+          build
         </p>
       </div>
       <NavItem
         href={`/bids/${bidId}?tab=operations`}
-        label="Construction"
-        sub="operations register · field reports · closeout"
-        active={isConstructionActive}
+        label="Field"
+        sub="register · field reports"
+        active={isFieldActive}
+      />
+
+      {/* ── Close out ─────────────────────────────────────────────────── */}
+      <div className="px-3 pt-4 pb-1">
+        <p className="font-mono text-[9px] uppercase tracking-[0.11em] mb-1.5" style={{ color: "var(--text-dim)" }}>
+          close out
+        </p>
+      </div>
+      <NavItem
+        href={`/bids/${bidId}?tab=closeout`}
+        label="Closeout"
+        sub="closeout checklist"
+        active={isCloseoutActive}
+      />
+
+      {/* ── Reference ─────────────────────────────────────────────────── */}
+      <div className="px-3 pt-4 pb-1">
+        <p className="font-mono text-[9px] uppercase tracking-[0.11em] mb-1.5" style={{ color: "var(--text-dim)" }}>
+          reference
+        </p>
+      </div>
+      <NavItem
+        href={`/bids/${bidId}?tab=warranties`}
+        label="Reference"
+        sub="warranties · training · inspections"
+        active={isReferenceActive}
       />
     </nav>
   );

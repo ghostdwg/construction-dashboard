@@ -109,7 +109,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
   }
 
   async function deleteTask(t: Task) {
-    if (!confirm(`Delete task "${t.description}"?`)) return;
+    if (!confirm(`Delete action item "${t.description}"?`)) return;
     await fetch(`/api/tasks/${t.id}`, { method: "DELETE" });
     load();
   }
@@ -118,18 +118,10 @@ export default function TasksTab({ bidId }: { bidId: number }) {
     <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-[20px] font-[700] tracking-[-0.03em]" style={{ color: "var(--text)" }}>Tasks</h2>
+          <h2 className="text-[20px] font-[700] tracking-[-0.03em]" style={{ color: "var(--text)" }}>Action Items</h2>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--text-soft)" }}>
-            Action items + manual tasks for this project.{" "}
-            <a
-              href={`/bids/${bidId}?tab=operations`}
-              className="underline"
-              style={{ color: "var(--text-soft)" }}
-            >
-              Looking for the Operations Register (tracked OAC / field-report /
-              closeout items with comments &amp; attachments)? It&apos;s under
-              Construction → Operations.
-            </a>
+            The project-wide execution queue — action items from meetings plus
+            manually added work.
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -152,7 +144,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
               border: `1px solid ${showNew ? "rgba(0,255,100,0.3)" : "var(--line)"}`,
               background: showNew ? "rgba(0,255,100,0.06)" : "transparent",
             }}>
-            + Add Task
+            + Add Action Item
           </button>
         </div>
       </div>
@@ -183,7 +175,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
             <button onClick={createTask} disabled={saving || !desc.trim()}
               className="text-xs px-4 py-1.5 rounded font-[600] disabled:opacity-40 transition-colors"
               style={{ background: "var(--signal)", color: "#000" }}>
-              {saving ? "Saving…" : "Add Task"}
+              {saving ? "Saving…" : "Add Action Item"}
             </button>
           </div>
         </div>
@@ -193,7 +185,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
         <p className="text-[12px]" style={{ color: "var(--text-dim)" }}>Loading…</p>
       ) : tasks.length === 0 ? (
         <div className="px-4 py-12 text-center text-[13px]" style={{ color: "var(--text-dim)" }}>
-          No {filter !== "all" ? filter : ""} tasks for this project.
+          No {filter !== "all" ? filter : ""} action items for this project.
         </div>
       ) : (
         <div className="border border-[var(--line)] rounded-[var(--radius)] overflow-hidden"
@@ -201,7 +193,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {["", "Task", "Assigned", "Priority", "Due", "Status", ""].map((h, i) => (
+                {["", "Action Item", "Assigned", "Priority", "Due", "Status", ""].map((h, i) => (
                   <th key={i} className="px-4 py-3 font-mono text-[10px] uppercase tracking-[0.09em] text-left border-b border-[var(--line)]"
                     style={{ color: "var(--text-dim)", background: "rgba(255,255,255,0.015)" }}>
                     {h}
@@ -252,7 +244,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => deleteTask(t)}
-                        title="Delete task"
+                        title="Delete action item"
                         className="font-mono text-[11px] px-2 py-1 rounded"
                         style={{ color: "var(--text-dim)", border: "1px solid var(--line)" }}>
                         ✕

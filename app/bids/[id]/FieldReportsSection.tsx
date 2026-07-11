@@ -78,9 +78,10 @@ export default function FieldReportsSection({
       <div>
         <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Field Reports</h4>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-          Source documents (dailies, site reports). Upload the file, then create tracked
-          items from it yourself — nothing is auto-extracted. File preview, OCR, and AI
-          extraction are not built yet; files are stored privately (metadata shown only).
+          Contractor-authored project field records documenting site activity, progress,
+          conditions, and follow-up. Upload the file, then create Register Items from it
+          yourself — nothing is auto-extracted. File preview, OCR, and AI extraction are
+          not built yet; files are stored privately (metadata shown only).
         </p>
       </div>
 
@@ -117,7 +118,7 @@ export default function FieldReportsSection({
       {reports.length === 0 && !loadError && (
         <p className="text-xs text-zinc-400">
           No field reports yet. Create a Field Report to attach site reports/photos/PDFs
-          and generate tracked items.
+          and create Register Items.
         </p>
       )}
 
@@ -137,9 +138,9 @@ export default function FieldReportsSection({
               </span>
               <span
                 className="text-zinc-400"
-                title="Tracked items created from this report — they live in the register above as FIELD ITEM"
+                title="Register Items created from this report — they live in the register above as FIELD ITEM"
               >
-                {r.hasFile ? `📄 ${r.originalFileName}` : "no file"} · {r.trackedItemCount} tracked item
+                {r.hasFile ? `📄 ${r.originalFileName}` : "no file"} · {r.trackedItemCount} Register Item
                 {r.trackedItemCount === 1 ? "" : "s"}
               </span>
             </button>
@@ -242,7 +243,7 @@ function ReportDetail({
         <input
           value={itemTitle}
           onChange={(e) => setItemTitle(e.target.value)}
-          placeholder="tracked item from this report (title)"
+          placeholder="register item from this report (title)"
           className="w-64 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
         />
         <input
@@ -262,12 +263,12 @@ function ReportDetail({
           disabled={!itemTitle.trim()}
           className="rounded bg-emerald-700 px-2 py-1 text-xs text-white disabled:opacity-40"
         >
-          Create tracked item from this report
+          Create Register Item from this report
         </button>
       </div>
       <p className="text-[11px] text-zinc-400">
-        Items land in the register above as FIELD ITEM, citing this report. You choose
-        each item — nothing is extracted automatically.
+        Register Items land in the register above as FIELD ITEM, citing this report.
+        You choose each item — nothing is extracted automatically.
       </p>
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>

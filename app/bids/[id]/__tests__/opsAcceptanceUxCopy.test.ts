@@ -20,27 +20,50 @@ const register = read("OperationsRegisterTab.tsx");
 const fieldReports = read("FieldReportsSection.tsx");
 const meetings = read("MeetingsTab.tsx");
 
-describe("navigation labeling (TabBar)", () => {
-  it("Construction nav item lands on the operations tab, not warranties", () => {
+describe("navigation labeling (TabBar) — Phase 0 IA", () => {
+  it("Field nav item lands on the operations tab with register-first copy", () => {
     expect(tabBar).toContain("?tab=operations");
-    expect(tabBar).toContain("operations register · field reports · closeout");
-    expect(tabBar).not.toContain('sub="warranties');
+    expect(tabBar).toContain('label="Field"');
+    expect(tabBar).toContain("register · field reports");
+  });
+
+  it("Coordination group carries startup, meetings, and action items", () => {
+    expect(tabBar).toContain('label="Coordination"');
+    expect(tabBar).toContain("startup · meetings · action items");
+    expect(tabBar).toContain("?tab=handoff");
+  });
+
+  it("Closeout and Reference are their own groups", () => {
+    expect(tabBar).toContain('label="Closeout"');
+    expect(tabBar).toContain("?tab=closeout");
+    expect(tabBar).toContain('label="Reference"');
+    expect(tabBar).toContain("warranties · training · inspections");
+  });
+
+  it("retired labels are gone", () => {
+    expect(tabBar).not.toContain('label="Construction"');
+    expect(tabBar).not.toContain('label="Post-Award"');
   });
 });
 
-describe("Deliver → Tasks cross-link (TasksTab)", () => {
-  it("points users at the Operations Register under Construction", () => {
-    expect(tasksTab).toContain("Looking for the Operations Register");
-    expect(tasksTab).toContain("Construction → Operations");
-    expect(tasksTab).toContain("?tab=operations");
+describe("Action Items page (TasksTab reframed in place)", () => {
+  it("is titled Action Items and framed as the project-wide queue", () => {
+    expect(tasksTab).toContain(">Action Items</h2>");
+    expect(tasksTab).toContain("project-wide execution queue");
+  });
+
+  it("no longer carries the stale cross-link crutch copy", () => {
+    expect(tasksTab).not.toContain("Looking for the Operations Register");
+    expect(tasksTab).not.toContain("Construction → Operations");
   });
 });
 
 describe("Operations Register heading and help copy", () => {
-  it("renders the required heading and task definition", () => {
-    expect(register).toContain("Tasks / Operations Register");
+  it("renders the ratified heading and subtitle", () => {
+    expect(register).toContain("Operations Register");
+    expect(register).not.toContain("Tasks / Operations Register");
     expect(register).toContain(
-      "Tasks are tracked operations items for OAC, field reports, closeout, and"
+      "Accountable project conditions and follow-up through resolution."
     );
   });
 
@@ -67,20 +90,20 @@ describe("Operations Register heading and help copy", () => {
   });
 
   it("shows an honest empty state that explains create vs promote", () => {
-    expect(register).toContain("No tracked items yet. Create one manually");
+    expect(register).toContain("No Register Items yet. Create one manually");
     expect(register).toContain("promote a meeting action item");
   });
 
   it("ships the first-run acceptance walkthrough checklist", () => {
     expect(register).toContain("first-run walkthrough");
-    expect(register).toContain("Create a task");
+    expect(register).toContain("Create a Register Item");
     expect(register).toContain("Expand the item");
     expect(register).toContain("Add a comment");
     expect(register).toContain("Upload an attachment");
     expect(register).toContain("Download the attachment");
     expect(register).toContain("Create a Field Report");
     expect(register).toContain("Upload and download the report file");
-    expect(register).toContain("Create a tracked item from that report");
+    expect(register).toContain("Create a Register Item from that report");
   });
 
   it("mounts Field Reports on the same Operations surface", () => {
@@ -92,17 +115,23 @@ describe("Operations Register heading and help copy", () => {
 describe("Field Reports copy", () => {
   it("uses the explicit action labels", () => {
     expect(fieldReports).toContain("New Field Report");
-    expect(fieldReports).toContain("Create tracked item from this report");
+    expect(fieldReports).toContain("Create Register Item from this report");
     expect(fieldReports).toMatch(/"Replace file" : "Upload file"/);
     expect(fieldReports).toContain("Download");
     expect(fieldReports).toMatch(/\$\{base\}\/download/);
+  });
+
+  it("defines the surface as contractor-authored field records", () => {
+    expect(fieldReports).toContain(
+      "Contractor-authored project field records documenting site activity, progress,"
+    );
   });
 
   it("has a directive empty state", () => {
     expect(fieldReports).toContain(
       "Create a Field Report to attach site reports/photos/PDFs"
     );
-    expect(fieldReports).toContain("generate tracked items");
+    expect(fieldReports).toContain("create Register Items");
   });
 
   it("keeps the honest no-preview/no-OCR/no-auto-extraction copy", () => {

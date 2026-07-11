@@ -264,7 +264,7 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
   }
 
   if (loading) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading handoff packet…</p>;
+    return <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading startup packet…</p>;
   }
   if (error || !packet) {
     return (
@@ -282,7 +282,7 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
-            Handoff Packet
+            Startup Packet
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5 dark:text-zinc-400">
             Compiled from intake, awarded subs, open items, and uploaded documents.
@@ -293,7 +293,7 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
           disabled={downloading}
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          {downloading ? "Generating…" : isAwarded ? "Download Handoff Packet" : "Download Preview"}
+          {downloading ? "Generating…" : isAwarded ? "Download Startup Packet" : "Download Preview"}
         </button>
       </div>
 
@@ -303,7 +303,7 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
           <strong>Preview mode.</strong> This bid has not been awarded yet (status:{" "}
           <span className="font-mono">{packet.status}</span>). Once status changes to{" "}
           <span className="font-mono">awarded</span>, this packet becomes the official
-          handoff for project execution.
+          startup packet for project execution.
         </div>
       )}
 

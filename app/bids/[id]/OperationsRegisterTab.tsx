@@ -107,13 +107,12 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          Tasks / Operations Register
+          Operations Register
         </h3>
         <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-          Tasks are tracked operations items for OAC, field reports, closeout, and
-          follow-up — one shared register (warranty, training, O&M, testing, attic
-          stock included). Every item cites its source; status changes are yours alone —
-          nothing here closes, assigns, or notifies automatically.{" "}
+          Accountable project conditions and follow-up through resolution. Every
+          Register Item cites its source; status changes are yours alone — nothing
+          here closes, assigns, or notifies automatically.{" "}
           <span className="font-medium">Click a row to expand it and add comments and
           attachments.</span>
         </p>
@@ -174,7 +173,7 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
 
       {!loading && items.length === 0 && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          No tracked items yet. Create one manually, or promote a meeting action item
+          No Register Items yet. Create one manually, or promote a meeting action item
           with “Promote from meeting…” (pick it from the list — or enter its # directly).
         </p>
       )}
@@ -575,7 +574,7 @@ function CreateItemForm({ bidId, onCreated }: { bidId: number; onCreated: () => 
         onClick={() => setOpen(true)}
         className="rounded bg-zinc-900 px-2 py-1 text-xs text-white dark:bg-zinc-100 dark:text-zinc-900"
       >
-        New item…
+        New Register Item…
       </button>
     );
   }
@@ -783,14 +782,14 @@ function PromoteForm({
 }
 
 const ACCEPTANCE_STEPS = [
-  "Create a task (use “New item” — pick a kind like OAC, closeout, or warranty)",
+  "Create a Register Item (use “New item” — pick a kind like OAC, closeout, or warranty)",
   "Expand the item (click its row — the ▸ arrow turns to ▾)",
   "Add a comment in the expanded panel",
   "Upload an attachment (jpeg/png/webp/pdf, 25 MB max)",
   "Download the attachment via its Download link",
   "Create a Field Report (in the Field Reports section below)",
   "Upload and download the report file",
-  "Create a tracked item from that report — it appears in this register as FIELD ITEM",
+  "Create a Register Item from that report — it appears in this register as FIELD ITEM",
 ];
 
 function AcceptanceHelper() {

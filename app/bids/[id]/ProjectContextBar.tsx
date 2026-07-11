@@ -4,11 +4,15 @@ import Link from "next/link";
 import StatusButton from "./StatusButton";
 import {
   PURSUIT_SUBTABS,
-  POST_AWARD_SUBTABS,
-  CONSTRUCTION_SUBTABS,
+  COORDINATION_SUBTABS,
+  FIELD_SUBTABS,
+  CLOSEOUT_SUBTABS,
+  REFERENCE_SUBTABS,
   PURSUIT_KEYS,
-  POST_AWARD_KEYS,
-  CONSTRUCTION_KEYS,
+  COORDINATION_KEYS,
+  FIELD_KEYS,
+  CLOSEOUT_KEYS,
+  REFERENCE_KEYS,
   type TabKey,
 } from "./tabConfig";
 
@@ -22,22 +26,26 @@ const STATUS_COLOR: Record<string, { color: string; bg: string; border: string }
   cancelled: { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.03)",  border: "rgba(255,255,255,0.08)" },
 };
 
-type PhaseKey = "overview" | "pursue" | "deliver" | "closeout";
+type PhaseKey = "overview" | "pursue" | "coordination" | "field" | "closeout" | "reference";
 
 function resolvePhase(tab: string, isProject: boolean): PhaseKey {
   const t = tab as TabKey;
   if (t === "overview") return "overview";
   if (!isProject && PURSUIT_KEYS.has(t)) return "pursue";
-  if (POST_AWARD_KEYS.has(t)) return "deliver";
-  if (CONSTRUCTION_KEYS.has(t)) return "closeout";
+  if (COORDINATION_KEYS.has(t)) return "coordination";
+  if (FIELD_KEYS.has(t)) return "field";
+  if (CLOSEOUT_KEYS.has(t)) return "closeout";
+  if (REFERENCE_KEYS.has(t)) return "reference";
   return "overview";
 }
 
 const PHASE_ENTRY: Record<PhaseKey, TabKey> = {
-  overview: "overview",
-  pursue:   "documents",
-  deliver:  "handoff",
-  closeout: "warranties",
+  overview:     "overview",
+  pursue:       "documents",
+  coordination: "handoff",
+  field:        "operations",
+  closeout:     "closeout",
+  reference:    "warranties",
 };
 
 export default function ProjectContextBar({
@@ -61,8 +69,10 @@ export default function ProjectContextBar({
 
   const subtabs =
     activePhase === "pursue" && !isProject ? PURSUIT_SUBTABS
-    : activePhase === "deliver"            ? POST_AWARD_SUBTABS
-    : activePhase === "closeout"           ? CONSTRUCTION_SUBTABS
+    : activePhase === "coordination"       ? COORDINATION_SUBTABS
+    : activePhase === "field"              ? FIELD_SUBTABS
+    : activePhase === "closeout"           ? CLOSEOUT_SUBTABS
+    : activePhase === "reference"          ? REFERENCE_SUBTABS
     : null;
 
   return (
@@ -129,14 +139,24 @@ export default function ProjectContextBar({
           />
         )}
         <PhaseBtn
-          href={`/bids/${bidId}?tab=${PHASE_ENTRY.deliver}`}
-          label="Deliver"
-          active={activePhase === "deliver"}
+          href={`/bids/${bidId}?tab=${PHASE_ENTRY.coordination}`}
+          label="Coordination"
+          active={activePhase === "coordination"}
+        />
+        <PhaseBtn
+          href={`/bids/${bidId}?tab=${PHASE_ENTRY.field}`}
+          label="Field"
+          active={activePhase === "field"}
         />
         <PhaseBtn
           href={`/bids/${bidId}?tab=${PHASE_ENTRY.closeout}`}
           label="Closeout"
           active={activePhase === "closeout"}
+        />
+        <PhaseBtn
+          href={`/bids/${bidId}?tab=${PHASE_ENTRY.reference}`}
+          label="Reference"
+          active={activePhase === "reference"}
         />
       </div>
 

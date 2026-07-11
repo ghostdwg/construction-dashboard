@@ -1045,3 +1045,24 @@ relabel the existing server count as "N tracked items" with a tooltip.
 **No new endpoints, no data-model change, no AI/OCR, no provider/Procore.**
 Tests: `registerViewHelpers.test.ts` (direct unit tests) +
 `opsPolishUxCopy.test.ts` (copy contract); prior suites unchanged.
+
+**Phase 0 IA & terminology (2026-07-11, branch
+`gwx/ops-next-operational-polish` @ base `5403ea4`) — LOCAL CODE BUILT only;
+NOT deployed, NOT staging-proven, no schema change, no migration, no `[OP]`
+facts:** the ratified information-architecture correction, presentation and
+copy only. Sidebar regrouped to Overview · Pursuit · Coordination (Startup /
+Meetings / Action Items / Submittals / Schedule / Briefing / Procore) ·
+Field (Register) · Closeout · Reference; the per-bid Tasks page reframed in
+place as "Action Items — the project-wide execution queue"; register heading
+"Operations Register" with the ratified subtitle "Accountable project
+conditions and follow-up through resolution."; user-facing "tracked item"
+prose renamed "Register Item(s)"; Handoff packet copy renamed "Startup
+Packet"; Field Reports defined as contractor-authored field records; the
+stale Construction → Operations cross-link crutch removed. **Internal tab
+keys (`handoff`, `tasks`, `operations`, …), every route, query parameter,
+API, model, and permission are byte-identical** — deep links and browser
+history unaffected. Explicitly excluded per the acceptance card: the
+COMPLETED/CLOSED per-bid status defect (separate HIGH-priority bug card),
+Meeting publish/amend, Closeout↔Register wiring, and any Consultant Reports
+surface. Copy contract updated in the same commit
+(`opsAcceptanceUxCopy.test.ts`, `opsPolishUxCopy.test.ts`).

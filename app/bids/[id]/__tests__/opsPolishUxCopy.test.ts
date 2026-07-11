@@ -58,10 +58,10 @@ describe("register status summary and overdue signal", () => {
 });
 
 describe("field report linkage label", () => {
-  it("labels the server-provided count as tracked items with context", () => {
-    expect(fieldReports).toContain("tracked item");
+  it("labels the server-provided count as Register Items with context", () => {
+    expect(fieldReports).toContain("Register Item");
     expect(fieldReports).toContain(
-      "Tracked items created from this report — they live in the register above as FIELD ITEM"
+      "Register Items created from this report — they live in the register above as FIELD ITEM"
     );
   });
 });

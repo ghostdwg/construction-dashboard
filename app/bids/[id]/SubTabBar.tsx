@@ -4,11 +4,15 @@ import Link from "next/link";
 import {
   type TabKey,
   PURSUIT_KEYS,
-  POST_AWARD_KEYS,
-  CONSTRUCTION_KEYS,
+  COORDINATION_KEYS,
+  FIELD_KEYS,
+  CLOSEOUT_KEYS,
+  REFERENCE_KEYS,
   PURSUIT_SUBTABS,
-  POST_AWARD_SUBTABS,
-  CONSTRUCTION_SUBTABS,
+  COORDINATION_SUBTABS,
+  FIELD_SUBTABS,
+  CLOSEOUT_SUBTABS,
+  REFERENCE_SUBTABS,
 } from "./tabConfig";
 
 export default function SubTabBar({
@@ -25,8 +29,10 @@ export default function SubTabBar({
 
   let subtabs: { key: TabKey; label: string }[] | null = null;
   if (!isProject && PURSUIT_KEYS.has(active))   subtabs = PURSUIT_SUBTABS;
-  else if (POST_AWARD_KEYS.has(active))          subtabs = POST_AWARD_SUBTABS;
-  else if (CONSTRUCTION_KEYS.has(active))        subtabs = CONSTRUCTION_SUBTABS;
+  else if (COORDINATION_KEYS.has(active))        subtabs = COORDINATION_SUBTABS;
+  else if (FIELD_KEYS.has(active))               subtabs = FIELD_SUBTABS;
+  else if (CLOSEOUT_KEYS.has(active))            subtabs = CLOSEOUT_SUBTABS;
+  else if (REFERENCE_KEYS.has(active))           subtabs = REFERENCE_SUBTABS;
 
   if (!subtabs) return null;
 
