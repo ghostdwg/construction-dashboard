@@ -24,9 +24,16 @@ export function statusCounts(
 }
 
 /**
- * An item is overdue when it has a due date before the start of "today"
- * and is still actionable. CLOSED/WAIVED items are never overdue —
- * flagging finished work would be noise, not signal.
+ * An item is overdue when its due DATE is before today's date and it is
+ * still actionable. CLOSED/WAIVED items are never overdue — flagging
+ * finished work would be noise, not signal.
+ *
+ * Date-only, timezone-stable comparison: due dates are stored/serialized
+ * as UTC midnight (CreateItemForm sends `new Date("YYYY-MM-DD")`), so the
+ * due date's calendar day is read in UTC and compared against `now`'s
+ * LOCAL calendar day as plain y/m/d — never as instants. Comparing
+ * instants against local midnight made items due "today" appear overdue
+ * a day early in negative-UTC-offset runtimes.
  */
 export function isOverdue(
   dueDate: string | null,
@@ -36,8 +43,10 @@ export function isOverdue(
   if (!dueDate || TERMINAL_STATUSES.has(status)) return false;
   const due = new Date(dueDate);
   if (isNaN(due.getTime())) return false;
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return due.getTime() < startOfToday.getTime();
+  const dueDay =
+    due.getUTCFullYear() * 10000 + (due.getUTCMonth() + 1) * 100 + due.getUTCDate();
+  const today = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+  return dueDay < today;
 }
 
 /**

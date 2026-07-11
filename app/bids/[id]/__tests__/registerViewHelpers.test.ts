@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   actionItemOptionLabel,
   isOverdue,
@@ -41,27 +41,69 @@ describe("statusCounts", () => {
 });
 
 describe("isOverdue", () => {
-  const now = new Date(2026, 6, 10, 14, 30); // 2026-07-10 local
+  // Due dates use the app's storage convention: UTC-midnight ISO strings
+  // (CreateItemForm serializes `new Date("YYYY-MM-DD").toISOString()`).
+  const now = new Date(2026, 6, 10, 14, 30); // 2026-07-10 local wall clock
 
-  it("is overdue for a past due date on an actionable item", () => {
+  it("due yesterday is overdue (all actionable statuses)", () => {
     expect(isOverdue("2026-07-09T00:00:00.000Z", "OPEN", now)).toBe(true);
     expect(isOverdue("2026-01-01T00:00:00.000Z", "IN_PROGRESS", now)).toBe(true);
     expect(isOverdue("2026-07-01T00:00:00.000Z", "READY_TO_CLOSE", now)).toBe(true);
   });
 
-  it("is never overdue for terminal statuses", () => {
-    expect(isOverdue("2026-01-01T00:00:00.000Z", "CLOSED", now)).toBe(false);
-    expect(isOverdue("2026-01-01T00:00:00.000Z", "WAIVED", now)).toBe(false);
+  it("due today is not overdue", () => {
+    expect(isOverdue("2026-07-10T00:00:00.000Z", "OPEN", now)).toBe(false);
   });
 
-  it("is not overdue when due today or in the future", () => {
-    expect(isOverdue(new Date(2026, 6, 10, 9, 0).toISOString(), "OPEN", now)).toBe(false);
-    expect(isOverdue(new Date(2026, 6, 11).toISOString(), "OPEN", now)).toBe(false);
+  it("due tomorrow is not overdue", () => {
+    expect(isOverdue("2026-07-11T00:00:00.000Z", "OPEN", now)).toBe(false);
+  });
+
+  it("CLOSED due yesterday is not overdue", () => {
+    expect(isOverdue("2026-07-09T00:00:00.000Z", "CLOSED", now)).toBe(false);
+  });
+
+  it("WAIVED due yesterday is not overdue", () => {
+    expect(isOverdue("2026-07-09T00:00:00.000Z", "WAIVED", now)).toBe(false);
   });
 
   it("handles null and unparseable due dates", () => {
     expect(isOverdue(null, "OPEN", now)).toBe(false);
     expect(isOverdue("not-a-date", "OPEN", now)).toBe(false);
+  });
+
+  describe("in a negative-UTC-offset runtime (America/New_York)", () => {
+    // Node ≥13 re-reads process.env.TZ, so local-Date behavior inside this
+    // block is genuinely UTC-4/-5. Restored afterAll so no other test in
+    // this worker inherits it.
+    const originalTz = process.env.TZ;
+    beforeAll(() => {
+      process.env.TZ = "America/New_York";
+    });
+    afterAll(() => {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    });
+
+    it("a UTC-midnight due date for today does not become overdue a day early", () => {
+      // Local NY morning of the due day. Under the old instant-vs-local-
+      // midnight comparison, 2026-07-10T00:00Z < NY midnight (04:00Z) made
+      // this falsely overdue.
+      const nyNow = new Date(2026, 6, 10, 0, 30);
+      expect(isOverdue("2026-07-10T00:00:00.000Z", "OPEN", nyNow)).toBe(false);
+    });
+
+    it("due yesterday is still overdue and terminal statuses still exempt", () => {
+      const nyNow = new Date(2026, 6, 10, 0, 30);
+      expect(isOverdue("2026-07-09T00:00:00.000Z", "OPEN", nyNow)).toBe(true);
+      expect(isOverdue("2026-07-09T00:00:00.000Z", "CLOSED", nyNow)).toBe(false);
+      expect(isOverdue("2026-07-09T00:00:00.000Z", "WAIVED", nyNow)).toBe(false);
+    });
+
+    it("due tomorrow is not overdue", () => {
+      const nyNow = new Date(2026, 6, 10, 23, 30);
+      expect(isOverdue("2026-07-11T00:00:00.000Z", "OPEN", nyNow)).toBe(false);
+    });
   });
 });
 
