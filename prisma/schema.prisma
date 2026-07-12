@@ -132,37 +132,40 @@ model Bid {
   // Tier F F2 — Procore REST API
   procoreProjectId String?
 
-  bidTrades             BidTrade[]
-  selections            BidInviteSelection[]
-  exportBatches         ExportBatch[]
-  scopeItems            ScopeItem[]
-  aiExportBatches       AiExportBatch[]
-  gapFindings           AiGapFinding[]
-  outreachLogs          OutreachLog[]
-  estimateUploads       EstimateUpload[]
-  levelingSession       LevelingSession?
-  generatedQuestions    GeneratedQuestion[]
-  specBooks             SpecBook[]
-  drawingUploads        DrawingUpload[]
-  addendums             AddendumUpload[]
-  intelligenceBrief     BidIntelligenceBrief?
-  submission            BidSubmission?
-  buyoutItems           BuyoutItem[]
-  submittalItems        SubmittalItem[]
-  submittalPackages     SubmittalPackage[]
-  distributionTemplates SubmittalDistributionTemplate[]
-  projectContacts       ProjectContact[]
-  scheduleActivities    ScheduleActivity[]
-  schedules             Schedule[]
-  meetings              Meeting[]
-  meetingActionItems    MeetingActionItem[]
-  decisions             BidDecision[]
-  procorePushes         ProcorePush[]
-  rfiItems              RfiItem[]
-  backgroundJobs        BackgroundJob[]
-  marketLeads           MarketLead[]
-  trackedItems          TrackedItem[]
-  fieldReports          FieldReport[]
+  bidTrades                 BidTrade[]
+  selections                BidInviteSelection[]
+  exportBatches             ExportBatch[]
+  scopeItems                ScopeItem[]
+  aiExportBatches           AiExportBatch[]
+  gapFindings               AiGapFinding[]
+  outreachLogs              OutreachLog[]
+  estimateUploads           EstimateUpload[]
+  levelingSession           LevelingSession?
+  generatedQuestions        GeneratedQuestion[]
+  specBooks                 SpecBook[]
+  drawingUploads            DrawingUpload[]
+  addendums                 AddendumUpload[]
+  intelligenceBrief         BidIntelligenceBrief?
+  submission                BidSubmission?
+  buyoutItems               BuyoutItem[]
+  submittalItems            SubmittalItem[]
+  submittalPackages         SubmittalPackage[]
+  distributionTemplates     SubmittalDistributionTemplate[]
+  projectContacts           ProjectContact[]
+  scheduleActivities        ScheduleActivity[]
+  schedules                 Schedule[]
+  meetings                  Meeting[]
+  meetingActionItems        MeetingActionItem[]
+  decisions                 BidDecision[]
+  procorePushes             ProcorePush[]
+  rfiItems                  RfiItem[]
+  backgroundJobs            BackgroundJob[]
+  marketLeads               MarketLead[]
+  trackedItems              TrackedItem[]
+  fieldReports              FieldReport[]
+  consultantReports         ConsultantReport[]
+  consultantReportRevisions ConsultantReportRevision[]
+  consultantObservations    ConsultantObservation[]
 }
 
 model BidSubmission {
@@ -1095,7 +1098,7 @@ model AiUsageLog {
   costUsd      Float
   bidId        Int?
   status       String   @default("ok") // "ok" (real success) | "error" (real failure) | "stub" (no provider call attempted — see lib/services/ai/aiUsageLog.ts module doc)
-  errorMessage String?  // ONLY a bounded AiFailureClass value when status="error" — never raw provider error text (see classifyAiFailure())
+  errorMessage String? // ONLY a bounded AiFailureClass value when status="error" — never raw provider error text (see classifyAiFailure())
   createdAt    DateTime @default(now())
 
   @@index([callKey])
@@ -1215,9 +1218,9 @@ model MeetingActionItem {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  bid        Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  meeting    Meeting?            @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  assignedTo MeetingParticipant? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  bid         Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meeting     Meeting?            @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignedTo  MeetingParticipant? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
   // Slice 1 OAC bridge: a promoted action item's TrackedItem (at most one —
   // TrackedItem.sourceMeetingActionItemId is unique). Promotion never edits
   // or deletes this row; it remains the source evidence.
@@ -1447,19 +1450,19 @@ model MarketLead {
 // signalType: PERMIT | MEETING_MINUTE | PLAN_ROOM_JOB | PLAN_ROOM_VIEW |
 //             LAND_ACQUISITION | BROKER_LISTING | ARCHITECT_PROJECT | MANUAL
 model MarketSignal {
-  id               String    @id @default(cuid())
-  leadId           String?
-  sourceDocId      String? // FK to MarketSourceDoc when auto-detected
-  signalType       String // PERMIT | MEETING_MINUTE | PLAN_ROOM_* | ...
-  signalSubtype    String? // SUP_CUP | REZONING | PLAT | VARIANCE | SITE_PLAN | ... (P&Z item types)
-  source           String?
-  sourceUrl        String?
-  sourceDate       DateTime?
-  headline         String
-  rawText          String?
-  metadata         String? // JSON: source-specific fields (permit no., parcel id, etc.)
-  aiRelevanceScore Int? // 0–100
-  nextMeetingDate  DateTime? // Set when status=CONTINUED — watch the next agenda
+  id                       String    @id @default(cuid())
+  leadId                   String?
+  sourceDocId              String? // FK to MarketSourceDoc when auto-detected
+  signalType               String // PERMIT | MEETING_MINUTE | PLAN_ROOM_* | ...
+  signalSubtype            String? // SUP_CUP | REZONING | PLAT | VARIANCE | SITE_PLAN | ... (P&Z item types)
+  source                   String?
+  sourceUrl                String?
+  sourceDate               DateTime?
+  headline                 String
+  rawText                  String?
+  metadata                 String? // JSON: source-specific fields (permit no., parcel id, etc.)
+  aiRelevanceScore         Int? // 0–100
+  nextMeetingDate          DateTime? // Set when status=CONTINUED — watch the next agenda
   // ── Phase O2.2 PR3 — heuristic classifier output (signalHeuristics.ts) ───
   // Populated when persistSidecarPayload runs the deterministic classifier.
   // Null when skipHeuristics was true OR when the row pre-dates PR3.
@@ -1467,9 +1470,9 @@ model MarketSignal {
   // MEDIUM_EMERGENCE, LOW_EMERGENCE} or null).
   heuristicsJson           String? // JSON array of HeuristicFactor
   heuristicsVersion        String? // e.g. "v1"
-  heuristicsScore          Float?  // clamped [0, 1]
+  heuristicsScore          Float? // clamped [0, 1]
   heuristicsClassification String?
-  createdAt        DateTime  @default(now())
+  createdAt                DateTime  @default(now())
 
   lead      MarketLead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
   sourceDoc MarketSourceDoc? @relation(fields: [sourceDocId], references: [id], onDelete: SetNull)
@@ -3969,33 +3972,46 @@ model TrackedItem {
   carriedFromDate  String? // ISO date — mirrors MeetingActionItem.carriedFromDate
 
   // ── Embedded source citation ────────────────────────────────────────────
-  sourceKind                String  @default("manual") // manual | meeting | spec_section | field_report (jso_report reserved for a later slice)
-  sourceMeetingId           Int?
-  sourceMeetingActionItemId Int?    @unique // at most one TrackedItem per promoted MeetingActionItem (bridge duplicate guard)
-  sourceSpecSectionId       Int?
-  sourceFieldReportId       Int? // Slice 2 — items created from a FieldReport cite it here (SetNull: report deletion never destroys the item)
-  evidenceExcerpt           String? // verbatim/paraphrased source text carried forward at promotion time
-  sourceLocator             String? // page / timestamp / transcript-anchor hint; rough or null in V1
-  extractionMethod          String  @default("manual") // manual | meeting_analysis | regex | heuristic | ai_claude — every producer writes this EXPLICITLY (never rely on the default; see the WP1a seeder-provenance lesson)
-  extractorVersion          String?
-  citationVerified          Boolean @default(false) // true only when the excerpt was verified against the stored source text
+  sourceKind                    String  @default("manual") // manual | meeting | spec_section | field_report | consultant_report (jso_report reserved for a later slice)
+  sourceMeetingId               Int?
+  sourceMeetingActionItemId     Int?    @unique // at most one TrackedItem per promoted MeetingActionItem (bridge duplicate guard)
+  sourceSpecSectionId           Int?
+  sourceFieldReportId           Int? // Slice 2 — items created from a FieldReport cite it here (SetNull: report deletion never destroys the item)
+  sourceConsultantObservationId Int?    @unique // Phase 1A — the ONE originating consultant observation (accept-new duplicate guard; supporting citations live on ConsultantObservation.registerItemId)
+  evidenceExcerpt               String? // verbatim/paraphrased source text carried forward at promotion time
+  sourceLocator                 String? // page / timestamp / transcript-anchor hint; rough or null in V1
+  extractionMethod              String  @default("manual") // manual | meeting_analysis | regex | heuristic | ai_claude — every producer writes this EXPLICITLY (never rely on the default; see the WP1a seeder-provenance lesson)
+  extractorVersion              String?
+  citationVerified              Boolean @default(false) // true only when the excerpt was verified against the stored source text
 
   closedAt     DateTime?
   closedBy     String? // required by fsm.ts for CLOSED
   waivedReason String? // required by fsm.ts for WAIVED
 
+  // ── Formal response (Phase 1A) ──────────────────────────────────────────
+  // ONE current formal response per item — the deliberate statement we make
+  // back to the consultant. Explicit save only (no autosave). Every edit is
+  // an audited PATCH; the immediately-prior value is kept here (bounded) AND
+  // in the audit event's payloadJson. Never sourced from TrackedItemComment.
+  formalResponse      String?
+  formalResponseBy    String?
+  formalResponseAt    DateTime?
+  formalResponsePrior String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bid                     Bid                @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  projectContact          ProjectContact?    @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
-  trade                   Trade?             @relation(fields: [tradeId], references: [id], onDelete: SetNull)
-  sourceMeeting           Meeting?           @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
-  sourceMeetingActionItem MeetingActionItem? @relation(fields: [sourceMeetingActionItemId], references: [id], onDelete: SetNull)
-  sourceSpecSection       SpecSection?       @relation(fields: [sourceSpecSectionId], references: [id], onDelete: SetNull)
-  sourceFieldReport       FieldReport?       @relation(fields: [sourceFieldReportId], references: [id], onDelete: SetNull)
-  comments                TrackedItemComment[]
-  attachments             TrackedItemAttachment[]
+  bid                         Bid                     @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  projectContact              ProjectContact?         @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
+  trade                       Trade?                  @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  sourceMeeting               Meeting?                @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
+  sourceMeetingActionItem     MeetingActionItem?      @relation(fields: [sourceMeetingActionItemId], references: [id], onDelete: SetNull)
+  sourceSpecSection           SpecSection?            @relation(fields: [sourceSpecSectionId], references: [id], onDelete: SetNull)
+  sourceFieldReport           FieldReport?            @relation(fields: [sourceFieldReportId], references: [id], onDelete: SetNull)
+  sourceConsultantObservation ConsultantObservation?  @relation("TrackedItemOriginatingObservation", fields: [sourceConsultantObservationId], references: [id], onDelete: SetNull)
+  supportingObservations      ConsultantObservation[] @relation("ObservationRegisterItem")
+  comments                    TrackedItemComment[]
+  attachments                 TrackedItemAttachment[]
 
   @@index([bidId])
   @@index([bidId, kind])
@@ -4033,11 +4049,11 @@ model TrackedItemComment {
 // ("UNPARSED" only); OCR/AI parse stages are later, separately-gated slices.
 
 model FieldReport {
-  id                  Int       @id @default(autoincrement())
-  bidId               Int
-  title               String
-  reportDate          DateTime?
-  authorName          String?
+  id                   Int       @id @default(autoincrement())
+  bidId                Int
+  title                String
+  reportDate           DateTime?
+  authorName           String?
   // Original uploaded file (nullable — a report row may be created before
   // its file is uploaded). Bytes in BlobStore under
   // plan-room/jobs/{bidId}/field-reports/{fieldReportId}/{safeFileName}.
@@ -4045,15 +4061,118 @@ model FieldReport {
   originalFileName     String?
   mimeType             String?
   byteSize             Int?
-  parseStatus          String   @default("UNPARSED") // UNPARSED only in V0 — no OCR/AI parse states exist yet
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  parseStatus          String    @default("UNPARSED") // UNPARSED only in V0 — no OCR/AI parse states exist yet
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   bid          Bid           @relation(fields: [bidId], references: [id], onDelete: Cascade)
   trackedItems TrackedItem[]
 
   @@index([bidId])
   @@index([bidId, reportDate])
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Module OPS3 (Phase 1A) — Consultant Reports.
+//
+//  Reports received FROM consultants (architect/engineer field reports,
+//  commissioning, testing/inspection) — business-document identity split
+//  from immutable file rows (revisions). Observations are durable rows a
+//  human enters while reading the PDF; accepting one creates/links a
+//  TrackedItem on the shared register spine. This module NEVER: parses,
+//  extracts, OCRs, calls a provider, auto-creates items, auto-closes
+//  anything, or hard-deletes a report/revision/observation. Voiding is a
+//  status flip; files and history are always retained.
+// ──────────────────────────────────────────────────────────────────────────────
+
+model ConsultantReport {
+  id                     Int       @id @default(autoincrement())
+  bidId                  Int
+  vendorName             String // consultant firm, verbatim (e.g. "IMEG") — never hardcoded in code/copy
+  title                  String? // consultant's own document title, metadata only (e.g. "Job Site Observation")
+  reportNumber           String? // original-verbatim number (e.g. "#14")
+  reportNumberNormalized String? // lowercased/trimmed for soft duplicate-warning queries — NO hard uniqueness (consultant numbering is too inconsistent)
+  // Fixed category vocabulary (API-validated string, never a Prisma enum):
+  // ARCHITECT_FIELD_REPORT | ENGINEER_FIELD_REPORT | COMMISSIONING_REPORT |
+  // TESTING_INSPECTION_REPORT | OTHER_CONSULTANT_REPORT
+  reportType             String
+  reportDate             DateTime?
+  status                 String    @default("ACTIVE") // ACTIVE | VOIDED — void is a flip, never a delete
+  voidedBy               String?
+  voidedAt               DateTime?
+  uploadedBy             String?
+  uploadedAt             DateTime  @default(now())
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  bid          Bid                        @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  revisions    ConsultantReportRevision[]
+  observations ConsultantObservation[]
+
+  @@index([bidId])
+  @@index([bidId, status])
+  @@index([bidId, reportNumberNormalized])
+}
+
+// Immutable per-file row. Revision 0 is created inside the upload
+// transaction; a corrected file for the SAME report identity appends a new
+// revision with supersedesRevisionId set (set-once). Both files stay
+// downloadable forever. A later periodic report is a NEW ConsultantReport,
+// never a revision.
+model ConsultantReportRevision {
+  id                   Int      @id @default(autoincrement())
+  reportId             Int
+  bidId                Int // denormalized for the [bidId, checksum] duplicate guard + bid-scoped fetches
+  revisionIndex        Int      @default(0)
+  storedKey            String // content-addressed: plan-room/jobs/{bidId}/consultant-reports/{sha256}.pdf — NEVER client-supplied
+  originalFilename     String
+  fileSizeBytes        Int
+  mimeType             String // application/pdf only in 1A
+  checksum             String // sha-256 hex of the exact bytes
+  uploadedBy           String?
+  uploadedAt           DateTime @default(now())
+  replacementReason    String?
+  supersedesRevisionId Int?     @unique // self-FK, set-once, SetNull
+
+  report             ConsultantReport          @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  bid                Bid                       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  supersedesRevision ConsultantReportRevision? @relation("RevisionSupersedes", fields: [supersedesRevisionId], references: [id], onDelete: SetNull)
+  supersededBy       ConsultantReportRevision? @relation("RevisionSupersedes")
+
+  @@unique([bidId, checksum]) // the sole hard uniqueness constraint in Phase 1A — same bytes in the same bid is a duplicate, never silently re-stored
+  @@index([reportId])
+  @@index([bidId])
+}
+
+// Durable observation row — a human's manual entry while reading the PDF.
+// State machine (service-enforced, never a Prisma enum):
+//   ENTERED → ACCEPTED_NEW_ITEM | ACCEPTED_LINKED_ITEM | DISMISSED
+//   DISMISSED → ENTERED (reinstate) ; ACCEPTED_LINKED_ITEM → ACCEPTED_LINKED_ITEM (relink correction)
+// Source-verbatim fields (observationText, sourcePage, consultantTargetDate)
+// FREEZE the instant a row leaves ENTERED — post-acceptance corrections
+// happen on the TrackedItem, never here.
+model ConsultantObservation {
+  id                   Int       @id @default(autoincrement())
+  reportId             Int
+  bidId                Int // denormalized for bid-scoped fetches + the application-layer same-bid link check (SQLite cannot express a cross-table same-value constraint)
+  observationText      String
+  sourcePage           String? // verbatim locator (e.g. "p.2") — frozen after resolution like every verbatim field
+  consultantTargetDate DateTime? // consultant-reported target — NEVER synced with TrackedItem.dueDate in either direction
+  state                String    @default("ENTERED") // ENTERED | ACCEPTED_NEW_ITEM | ACCEPTED_LINKED_ITEM | DISMISSED
+  registerItemId       Int? // many observations may support ONE TrackedItem (set at acceptance/link; SetNull)
+  dismissedReason      String?
+  createdBy            String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  report         ConsultantReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  bid            Bid              @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  registerItem   TrackedItem?     @relation("ObservationRegisterItem", fields: [registerItemId], references: [id], onDelete: SetNull)
+  originatedItem TrackedItem?     @relation("TrackedItemOriginatingObservation")
+
+  @@index([reportId, state])
+  @@index([bidId])
+  @@index([registerItemId])
 }
 
 model TrackedItemAttachment {

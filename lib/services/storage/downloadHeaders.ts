@@ -52,3 +52,22 @@ export function privateDownloadHeaders(input: {
   }
   return headers;
 }
+
+/** Phase 1A sibling variant — identical policy in every respect except
+ *  Content-Disposition: inline, so the browser's NATIVE viewer renders the
+ *  document in a same-origin frame (consultant-report PDFs). Not a new
+ *  capability class: same allowlisted Content-Type, same nosniff, same
+ *  private/no-store; PDFs rendered natively by the browser do not execute
+ *  script. Callers still authenticate + tenancy-check before any blob read. */
+export function privateInlineHeaders(input: {
+  mimeType: string | null | undefined;
+  fileName: string | null | undefined;
+  byteSize?: number | null;
+}): Headers {
+  const headers = privateDownloadHeaders(input);
+  headers.set(
+    "Content-Disposition",
+    `inline; filename="${sanitizedDispositionFileName(input.fileName)}"`
+  );
+  return headers;
+}

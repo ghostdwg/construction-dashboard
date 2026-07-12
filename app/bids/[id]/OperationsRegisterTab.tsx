@@ -13,6 +13,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import FieldReportsSection from "./FieldReportsSection";
+import ConsultantReportsSection, {
+  FormalResponseEditor,
+} from "./ConsultantReportsSection";
 import {
   actionItemOptionLabel,
   isOverdue,
@@ -33,12 +36,16 @@ type TrackedItemRow = {
   sourceMeetingId: number | null;
   sourceMeetingActionItemId: number | null;
   sourceFieldReportId: number | null;
+  sourceConsultantObservationId: number | null;
   evidenceExcerpt: string | null;
   sourceLocator: string | null;
   extractionMethod: string;
   citationVerified: boolean;
   closedBy: string | null;
   waivedReason: string | null;
+  formalResponse: string | null;
+  formalResponseBy: string | null;
+  formalResponseAt: string | null;
   commentCount: number;
   attachmentCount: number;
 };
@@ -215,6 +222,10 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
       {/* Slice 2 — Field Report source documents (items created from a
           report land in the register above as FIELD ITEM). */}
       <FieldReportsSection bidId={bidId} onItemsChanged={load} />
+
+      {/* Phase 1A — Consultant Reports (observations accepted here land in
+          the register above, citing their originating observation). */}
+      <ConsultantReportsSection bidId={bidId} onItemsChanged={load} />
     </div>
   );
 }
@@ -229,6 +240,11 @@ function sourceSummary(item: TrackedItemRow): string {
     return item.sourceFieldReportId
       ? `field report #${item.sourceFieldReportId}`
       : "field report";
+  }
+  if (item.sourceKind === "consultant_report") {
+    return item.sourceConsultantObservationId
+      ? `consultant observation #${item.sourceConsultantObservationId}`
+      : "consultant report";
   }
   return "manual entry";
 }
@@ -407,6 +423,24 @@ function ItemDetail({
       {item.status === "CLOSED" && item.closedBy && (
         <p className="text-xs text-zinc-500">Closed by {item.closedBy}</p>
       )}
+
+      {/* Phase 1A — formal response, surface #1 (surface #2 lives on the
+          Consultant Report detail; both PATCH the identical field). */}
+      <FormalResponseEditor
+        bidId={bidId}
+        itemId={item.id}
+        current={item.formalResponse}
+        byline={
+          item.formalResponseBy
+            ? `Response by ${item.formalResponseBy}${
+                item.formalResponseAt
+                  ? ` · ${new Date(item.formalResponseAt).toLocaleDateString()}`
+                  : ""
+              }`
+            : null
+        }
+        onSaved={onChanged}
+      />
 
       {nexts.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
