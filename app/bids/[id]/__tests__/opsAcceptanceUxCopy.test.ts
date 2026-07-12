@@ -142,15 +142,17 @@ describe("Field Reports copy", () => {
 });
 
 describe("OAC promote path (MeetingsTab)", () => {
-  it("offers an explicit, human-only Promote to Tracked Item action", () => {
-    expect(meetings).toContain("Promote to Tracked Item");
+  it("offers an explicit, human-only Promote to Register Item action", () => {
+    expect(meetings).toContain("Promote to Register Item");
+    expect(meetings).not.toContain("Promote to Tracked Item");
+    expect(meetings).not.toContain("Construction → Operations");
     expect(meetings).toContain("/tracked-items/promote");
     expect(meetings).toContain("meetingActionItemId: item.id");
   });
 
   it("handles already-tracked (409) honestly and never auto-promotes", () => {
     expect(meetings).toContain('"Already tracked"');
-    expect(meetings).toContain("Tracked ✓");
+    expect(meetings).toContain("Promoted ✓");
     // promote fires only from the button's click handler
     expect(meetings).toContain("onClick={() => promoteToTracked(item)}");
     expect(meetings).not.toMatch(/useEffect\([^)]*promoteToTracked/);

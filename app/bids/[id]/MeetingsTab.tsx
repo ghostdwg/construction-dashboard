@@ -2197,7 +2197,7 @@ function AllActionItemsView({
       body: JSON.stringify({ meetingActionItemId: item.id }),
     });
     if (res.status === 201) {
-      setPromoted((p) => ({ ...p, [item.id]: "Tracked ✓ (see Construction → Operations)" }));
+      setPromoted((p) => ({ ...p, [item.id]: "Promoted ✓ (see Field → Register)" }));
     } else if (res.status === 409) {
       setPromoted((p) => ({ ...p, [item.id]: "Already tracked" }));
     } else {
@@ -2328,9 +2328,9 @@ function AllActionItemsView({
                 <button
                   onClick={() => promoteToTracked(item)}
                   className="shrink-0 rounded border border-zinc-300 px-2 py-0.5 text-xs text-zinc-600 hover:border-zinc-400 dark:border-zinc-600 dark:text-zinc-300"
-                  title="Copy this action item into the shared Operations Register (Construction → Operations) as a tracked OAC item with comments/attachments/closeout. The meeting action item itself is unchanged."
+                  title="Copy this action item into the shared Operations Register (Field → Register) as an OAC Register Item with comments/attachments/closeout. The meeting action item itself is unchanged."
                 >
-                  Promote to Tracked Item
+                  Promote to Register Item
                 </button>
               )}
             </div>

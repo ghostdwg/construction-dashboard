@@ -1066,3 +1066,7 @@ COMPLETED/CLOSED per-bid status defect (separate HIGH-priority bug card),
 Meeting publish/amend, Closeout↔Register wiring, and any Consultant Reports
 surface. Copy contract updated in the same commit
 (`opsAcceptanceUxCopy.test.ts`, `opsPolishUxCopy.test.ts`).
+Follow-up commit: MeetingsTab's promote button, success toast, and tooltip
+were still saying "Tracked Item" and pointing at the retired Construction →
+Operations nav path; corrected to "Register Item" and Field → Register
+(copy only, promote behavior unchanged).
