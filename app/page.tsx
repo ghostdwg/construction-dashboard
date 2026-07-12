@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
+import { computeLeadScore } from "@/lib/services/marketIntelligence/leadScore";
 
 // ── Job type display metadata ─────────────────────────────────────────────────
 const JOB_META: Record<string, { label: string; owner: string }> = {
@@ -175,6 +176,7 @@ export default async function HomePage() {
     calMeetings,
     procurementBlocked,
     procurementAtRisk,
+    openLeads,
   ] = await Promise.all([
     // Background jobs: active + last 48h completed
     prisma.backgroundJob.findMany({
@@ -304,7 +306,35 @@ export default async function HomePage() {
 
     // Procurement — at-risk packages
     prisma.submittalPackage.count({ where: { riskStatus: "AT_RISK" } }),
+
+    // Top leads: open market leads for scoring + dashboard card
+    prisma.marketLead.findMany({
+      where: { status: { in: ["NEW", "REVIEWING", "QUALIFIED"] } },
+      orderBy: { detectedAt: "desc" },
+      take: 100,
+      select: {
+        id: true, title: true, leadType: true, jurisdiction: true,
+        estimatedValue: true, aiScore: true, aiInsights: true,
+        detectedAt: true, status: true,
+        signals: { select: { aiRelevanceScore: true, heuristicsClassification: true } },
+      },
+    }),
   ]);
+
+  // ── Top leads ─────────────────────────────────────────────────────────────
+  const topLeads = openLeads
+    .map((l) => ({
+      ...l,
+      score: computeLeadScore({
+        aiScore: l.aiScore,
+        signals: l.signals,
+        estimatedValue: l.estimatedValue,
+        detectedAt: l.detectedAt,
+        now,
+      }).score,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
 
   // ── Sidecar health (non-blocking, short timeout) ──────────────────────────
   const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
@@ -986,6 +1016,68 @@ export default async function HomePage() {
               })}
             </div>
           </RailCard>
+
+          {/* Top Leads — only shown when open leads exist */}
+          {topLeads.length > 0 && (
+            <RailCard>
+              <PanelHead
+                title="Top Leads"
+                sub="Highest-scored open market leads"
+                right={String(openLeads.length)}
+              />
+              <div className="divide-y divide-[var(--line)]">
+                {topLeads.map((lead) => {
+                  const scoreLevel: QueueLevel =
+                    lead.score >= 70 ? "live" : lead.score >= 40 ? "review" : "blocked";
+                  const chip = QUEUE_CHIP[scoreLevel];
+                  const fmtVal = (v: number | null) => {
+                    if (v == null) return null;
+                    if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+                    if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+                    return `$${v}`;
+                  };
+                  const daysAgoStr = (() => {
+                    const d = Math.floor((now.getTime() - lead.detectedAt.getTime()) / 86_400_000);
+                    return d === 0 ? "today" : d === 1 ? "1d ago" : `${d}d ago`;
+                  })();
+                  const truncTitle = lead.title.length > 58 ? `${lead.title.slice(0, 55)}…` : lead.title;
+                  return (
+                    <div key={lead.id} className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <Link
+                          href={`/market-intelligence/${lead.id}`}
+                          className="text-[12px] font-[600] leading-snug transition-colors hover:text-emerald-400 flex-1 min-w-0"
+                          style={{ color: "var(--text)" }}
+                        >
+                          {truncTitle}
+                        </Link>
+                        <span
+                          className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full font-mono text-[9px] uppercase tracking-[0.07em]"
+                          style={{ color: chip.color, background: chip.bg, border: `1px solid ${chip.border}` }}
+                        >
+                          {lead.score}
+                        </span>
+                      </div>
+                      <p className="font-mono text-[10px]" style={{ color: "var(--text-dim)" }}>
+                        {lead.leadType} · {lead.jurisdiction ?? "—"}
+                        {fmtVal(lead.estimatedValue) ? ` · ${fmtVal(lead.estimatedValue)}` : ""}
+                        {" · "}{daysAgoStr}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="px-4 py-2.5 border-t border-[var(--line)]">
+                <Link
+                  href="/market-intelligence"
+                  className="font-mono text-[9px] uppercase tracking-[0.07em] transition-colors hover:opacity-80"
+                  style={{ color: "var(--signal-soft)" }}
+                >
+                  All leads →
+                </Link>
+              </div>
+            </RailCard>
+          )}
 
           {/* Quick actions */}
           <RailCard>

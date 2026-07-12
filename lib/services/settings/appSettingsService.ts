@@ -261,6 +261,18 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
     envVar: "APP_URL",
     placeholder: "https://groundworx.neuroglitch.ai",
   },
+  // Display-only monthly budget for market intelligence AI spend. Nothing gates
+  // or blocks calls when this threshold is exceeded — a cutoff would silently
+  // break scheduled scrapes and Spec Book jobs. Used only for warning banners.
+  {
+    key: "MARKET_COST_CAP_USD",
+    label: "Market Intelligence Monthly Cost Cap (USD)",
+    description: "Display-only monthly spend threshold for market intelligence scraping. Shows a warning banner in the Sources panel when exceeded. Does NOT block or gate any AI calls.",
+    category: "ai",
+    secret: false,
+    envVar: "MARKET_COST_CAP_USD",
+    placeholder: "50",
+  },
 ];
 
 const KEYS_BY_CATEGORY = SETTING_DEFINITIONS.reduce(

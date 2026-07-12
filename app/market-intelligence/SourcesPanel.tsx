@@ -132,6 +132,7 @@ export default function SourcesPanel() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [queueSummary, setQueueSummary] = useState<{ queuedCount: number; nextRunAt: string | null; recentlyCompleted: number }>({ queuedCount: 0, nextRunAt: null, recentlyCompleted: 0 });
   const [, startTransition]     = useTransition();
+  const [monthlyCost, setMonthlyCost] = useState<{ monthCostUsd: number; capUsd: number | null } | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/market-intelligence/sources", { cache: "no-store" });
@@ -141,6 +142,13 @@ export default function SourcesPanel() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    fetch("/api/market-intelligence/cost-summary", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() as Promise<{ monthCostUsd: number; capUsd: number | null }> : null)
+      .then((d) => { if (d) setMonthlyCost(d); })
+      .catch(() => { /* non-blocking */ });
+  }, []);
 
   // Poll queue status every 30s so the user sees background scrapes finish
   useEffect(() => {
@@ -223,6 +231,24 @@ export default function SourcesPanel() {
           <p className="text-[11px] mt-0.5" style={{ color: "var(--text-dim)" }}>
             Configured municipality feeds · date-bounded · per-source relevance &amp; value floors
           </p>
+          {monthlyCost != null && (
+            <p className="font-mono text-[10px] mt-1" style={{
+              color: monthlyCost.capUsd != null && monthlyCost.monthCostUsd >= monthlyCost.capUsd
+                ? "#ff968f"
+                : monthlyCost.capUsd != null && monthlyCost.monthCostUsd >= monthlyCost.capUsd * 0.8
+                ? "#ffcc72"
+                : "var(--text-dim)",
+            }}>
+              Cost this month: ${monthlyCost.monthCostUsd.toFixed(2)}
+              {monthlyCost.capUsd != null && (
+                <> · {monthlyCost.monthCostUsd >= monthlyCost.capUsd
+                  ? `⚠ over $${monthlyCost.capUsd} cap — review spend`
+                  : monthlyCost.monthCostUsd >= monthlyCost.capUsd * 0.8
+                  ? `⚠ near $${monthlyCost.capUsd} cap`
+                  : `of $${monthlyCost.capUsd} cap`}</>
+              )}
+            </p>
+          )}
           {(queueSummary.queuedCount > 0 || queueSummary.recentlyCompleted > 0) && (
             <p className="font-mono text-[10px] mt-1" style={{ color: "var(--text-soft)" }}>
               {queueSummary.queuedCount > 0 && (

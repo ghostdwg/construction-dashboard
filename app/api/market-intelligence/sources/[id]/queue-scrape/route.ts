@@ -58,6 +58,7 @@ export async function POST(
     jobType: "market_scrape",
     status: "queued",
     relatedId: source.id,
+    dedupeKey: `market_scrape:${source.id}`,
     inputSummary: JSON.stringify(overrideParams),
     triggerSource: "user",
     ...({ runAfter } as MaybeRunAfter),
