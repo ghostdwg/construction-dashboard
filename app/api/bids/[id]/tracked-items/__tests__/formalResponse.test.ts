@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   items: [] as Row[],
   auditRows: [] as Array<Record<string, unknown>>,
   emits: [] as Array<Record<string, unknown>>,
+  authOk: true,
 }));
 
 const emitMock = vi.hoisted(() =>
@@ -17,6 +18,20 @@ const emitMock = vi.hoisted(() =>
     h.emits.push(input);
   })
 );
+
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () =>
+    h.authOk
+      ? { ok: true, user: { id: "u1", role: "admin" } }
+      : {
+          ok: false,
+          response: Response.json(
+            { error: "Authentication required" },
+            { status: 401 }
+          ),
+        }
+  ),
+}));
 
 vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: emitMock }));
 vi.mock("@/lib/auth", () => ({
@@ -65,6 +80,7 @@ const RESPONSE_TEXT = "We will re-install the handrail per detail 5/A501 by 7/15
 let consoleSpies: Array<ReturnType<typeof vi.spyOn>> = [];
 
 beforeEach(() => {
+  h.authOk = true;
   h.items.length = 0;
   h.auditRows.length = 0;
   h.emits.length = 0;

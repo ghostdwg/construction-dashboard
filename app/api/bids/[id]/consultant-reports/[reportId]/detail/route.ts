@@ -10,6 +10,7 @@
 // responses with zero copying.
 
 import { getConsultantReport } from "@/lib/services/consultantReports";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 export async function GET(
   _request: Request,
@@ -20,6 +21,9 @@ export async function GET(
   const rid = parseInt(reportId, 10);
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const report = await getConsultantReport(bidId, rid);
   if (!report) return Response.json({ error: "Not found" }, { status: 404 });

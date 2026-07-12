@@ -11,9 +11,13 @@
 // duplicate check before any store.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore } from "@/lib/storage/blobStore";
 import { uploadCorrectedRevision } from "@/lib/services/consultantReports";
-import { validateConsultantReportUpload } from "@/lib/services/consultantReports/pdfValidation";
+import {
+  CONSULTANT_REPORT_MAX_UPLOAD_BYTES,
+  validateConsultantReportUpload,
+} from "@/lib/services/consultantReports/pdfValidation";
 
 export async function POST(
   request: Request,
@@ -24,6 +28,9 @@ export async function POST(
   const rid = parseInt(reportId, 10);
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let form: FormData;
   try {
@@ -40,6 +47,18 @@ export async function POST(
   }
   const originalFilename = String((file as File).name || "report.pdf");
   const mimeType = file.type || "application/octet-stream";
+
+  // Size gate BEFORE buffering (Codex blocker 2): reject on the Blob's own
+  // size so an oversized upload never allocates a 25 MiB+ buffer. The
+  // validator re-checks the real byte length after read (defense in depth).
+  if (file.size > CONSULTANT_REPORT_MAX_UPLOAD_BYTES) {
+    return Response.json(
+      {
+        error: `File is too large (${file.size} bytes; max ${CONSULTANT_REPORT_MAX_UPLOAD_BYTES})`,
+      },
+      { status: 400 }
+    );
+  }
   const bytes = Buffer.from(await file.arrayBuffer());
 
   const validation = validateConsultantReportUpload({ mimeType, bytes });

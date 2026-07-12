@@ -12,12 +12,16 @@
 // NO parsing, NO OCR, NO extraction, NO provider call — ever, on any path.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore } from "@/lib/storage/blobStore";
 import {
   listConsultantReports,
   uploadConsultantReport,
 } from "@/lib/services/consultantReports";
-import { validateConsultantReportUpload } from "@/lib/services/consultantReports/pdfValidation";
+import {
+  CONSULTANT_REPORT_MAX_UPLOAD_BYTES,
+  validateConsultantReportUpload,
+} from "@/lib/services/consultantReports/pdfValidation";
 
 export async function GET(
   _request: Request,
@@ -26,6 +30,9 @@ export async function GET(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const reports = await listConsultantReports(bidId);
   return Response.json({
@@ -54,6 +61,9 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   let form: FormData;
   try {
     form = await request.formData();
@@ -70,8 +80,17 @@ export async function POST(
   const originalFilename = String((file as File).name || "report.pdf");
   const mimeType = file.type || "application/octet-stream";
 
-  // Size gate BEFORE buffering trusts the Blob's own size; the buffer is
-  // re-checked after read (both go through the same validator).
+  // Size gate BEFORE buffering (Codex blocker 2): reject on the Blob's own
+  // size so an oversized upload never allocates a 25 MiB+ buffer. The
+  // validator re-checks the real byte length after read (defense in depth).
+  if (file.size > CONSULTANT_REPORT_MAX_UPLOAD_BYTES) {
+    return Response.json(
+      {
+        error: `File is too large (${file.size} bytes; max ${CONSULTANT_REPORT_MAX_UPLOAD_BYTES})`,
+      },
+      { status: 400 }
+    );
+  }
   const bytes = Buffer.from(await file.arrayBuffer());
   const validation = validateConsultantReportUpload({ mimeType, bytes });
   if (!validation.ok) return Response.json({ error: validation.error }, { status: 400 });

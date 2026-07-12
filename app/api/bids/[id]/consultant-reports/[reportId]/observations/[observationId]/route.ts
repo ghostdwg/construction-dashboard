@@ -9,6 +9,7 @@
 // TrackedItem, never on the source row.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { editObservation } from "@/lib/services/consultantReports/observations";
 
 export async function PATCH(
@@ -23,6 +24,9 @@ export async function PATCH(
   const oid = parseInt(observationId, 10);
   if (isNaN(bidId) || isNaN(rid) || isNaN(oid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let body: {
     observationText?: unknown;

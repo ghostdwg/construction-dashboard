@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   reports: [] as Row[],
   revisions: [] as Row[],
   blobs: new Map<string, Buffer>(),
+  authOk: true,
 }));
 
 const getMock = vi.hoisted(() =>
@@ -20,6 +21,20 @@ const getMock = vi.hoisted(() =>
     return buf;
   })
 );
+
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () =>
+    h.authOk
+      ? { ok: true, user: { id: "u1", role: "admin" } }
+      : {
+          ok: false,
+          response: Response.json(
+            { error: "Authentication required" },
+            { status: 401 }
+          ),
+        }
+  ),
+}));
 
 vi.mock("@/lib/storage/blobStore", () => ({
   getBlobStore: () => ({ get: getMock }),
@@ -59,6 +74,7 @@ const req = (url = "http://test/x") => new Request(url);
 const PDF = Buffer.from("%PDF-1.7\nreport body", "ascii");
 
 beforeEach(() => {
+  h.authOk = true;
   h.reports.length = 0;
   h.revisions.length = 0;
   h.blobs.clear();
@@ -166,6 +182,13 @@ describe("GET [reportId]/download (attachment)", () => {
   test("cross-project request → 404 identically, blob never read", async () => {
     const res = await downloadGET(req(), pr("2", "10"));
     expect(res.status).toBe(404);
+    expect(getMock).not.toHaveBeenCalled();
+  });
+
+  test("unauthenticated → 401 from the route-local guard on BOTH dispositions, blob never read", async () => {
+    h.authOk = false;
+    expect((await inlineGET(req(), pr("1", "10"))).status).toBe(401);
+    expect((await downloadGET(req(), pr("1", "10"))).status).toBe(401);
     expect(getMock).not.toHaveBeenCalled();
   });
 });

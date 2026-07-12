@@ -12,6 +12,7 @@
 // formal response.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { setFormalResponse } from "@/lib/services/consultantReports/formalResponse";
 
 export async function PATCH(
@@ -23,6 +24,9 @@ export async function PATCH(
   const tid = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(tid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let body: { formalResponse?: unknown };
   try {

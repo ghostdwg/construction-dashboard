@@ -9,6 +9,7 @@
 // TrackedItem.dueDate, NEVER synced into it in either direction.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import { createObservation } from "@/lib/services/consultantReports/observations";
 
@@ -21,6 +22,9 @@ export async function GET(
   const rid = parseInt(reportId, 10);
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const report = await prisma.consultantReport.findFirst({
     where: { id: rid, bidId },
@@ -49,6 +53,9 @@ export async function POST(
   const rid = parseInt(reportId, 10);
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let body: {
     observationText?: unknown;

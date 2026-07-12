@@ -6,6 +6,7 @@
 // an open observation; its dismissal remains in the audit trail.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { reinstateObservation } from "@/lib/services/consultantReports/observations";
 
 export async function POST(
@@ -20,6 +21,9 @@ export async function POST(
   const oid = parseInt(observationId, 10);
   if (isNaN(bidId) || isNaN(rid) || isNaN(oid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const session = await auth().catch(() => null);
   const user = session?.user as { name?: string | null; email?: string | null } | undefined;

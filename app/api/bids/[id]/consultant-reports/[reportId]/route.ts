@@ -13,6 +13,7 @@
 // 404, never a fabricated body.
 
 import { getBlobStore } from "@/lib/storage/blobStore";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { privateInlineHeaders } from "@/lib/services/storage/downloadHeaders";
 import { resolveServableRevision } from "@/lib/services/consultantReports";
 
@@ -25,6 +26,9 @@ export async function GET(
   const rid = parseInt(reportId, 10);
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const revisionIdRaw = new URL(request.url).searchParams.get("revisionId");
   let revisionId: number | null = null;

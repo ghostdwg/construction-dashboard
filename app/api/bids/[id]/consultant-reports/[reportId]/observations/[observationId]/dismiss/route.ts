@@ -7,6 +7,7 @@
 // record") and can be reinstated — never deleted.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { dismissObservation } from "@/lib/services/consultantReports/observations";
 
 export async function POST(
@@ -21,6 +22,9 @@ export async function POST(
   const oid = parseInt(observationId, 10);
   if (isNaN(bidId) || isNaN(rid) || isNaN(oid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let reason: string | null = null;
   try {

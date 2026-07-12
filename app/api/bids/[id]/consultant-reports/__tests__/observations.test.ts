@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   items: [] as Row[],
   audits: [] as Array<{ action: string; payload: Record<string, unknown> | undefined }>,
   nextId: 1,
+  authOk: true,
 }));
 
 const auditMock = vi.hoisted(() =>
@@ -18,6 +19,20 @@ const auditMock = vi.hoisted(() =>
     h.audits.push({ action: input.action, payload: input.payload });
   })
 );
+
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () =>
+    h.authOk
+      ? { ok: true, user: { id: "u1", role: "admin" } }
+      : {
+          ok: false,
+          response: Response.json(
+            { error: "Authentication required" },
+            { status: 401 }
+          ),
+        }
+  ),
+}));
 
 vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
 vi.mock("@/lib/auth", () => ({
@@ -108,6 +123,7 @@ const jsonReq = (body: unknown, method = "POST") =>
   });
 
 beforeEach(() => {
+  h.authOk = true;
   h.reports.length = 0;
   h.observations.length = 0;
   h.items.length = 0;

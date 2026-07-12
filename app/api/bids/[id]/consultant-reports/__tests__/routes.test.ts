@@ -30,6 +30,17 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/auth-helpers", () => ({
   ROLES: { ADMIN: "admin", ESTIMATOR: "estimator", PM: "pm" },
   getUser: vi.fn(async () => h.currentUser),
+  requireBidAccess: vi.fn(async () =>
+    h.currentUser
+      ? { ok: true, user: h.currentUser }
+      : {
+          ok: false,
+          response: Response.json(
+            { error: "Authentication required" },
+            { status: 401 }
+          ),
+        }
+  ),
 }));
 vi.mock("@/lib/storage/blobStore", () => ({
   getBlobStore: () => ({
@@ -286,6 +297,37 @@ describe("POST /consultant-reports (upload)", () => {
       p("999")
     );
     expect(res.status).toBe(404);
+    expect(h.blobs.size).toBe(0);
+  });
+
+  test("unauthenticated → 401 from the route-local guard, zero rows (upload + list)", async () => {
+    h.currentUser = null;
+    const upload = await uploadPOST(
+      uploadReq(baseFields, { name: "a.pdf", content: PDF_BYTES, type: "application/pdf" }),
+      p("1")
+    );
+    expect(upload.status).toBe(401);
+    expect(h.reports).toHaveLength(0);
+    expect(h.blobs.size).toBe(0);
+    expect((await listGET(new Request("http://test/x"), p("1"))).status).toBe(401);
+  });
+
+  test("oversized upload rejected via file.size BEFORE buffering", async () => {
+    // A real File whose .size getter is overridden to report > 25 MiB while
+    // holding only 10 bytes — proves the route gates on the size property
+    // and never calls arrayBuffer() for oversized files.
+    const fake = new File([new Uint8Array(10)], "huge.pdf", {
+      type: "application/pdf",
+    });
+    Object.defineProperty(fake, "size", { value: 25 * 1024 * 1024 + 1 });
+    const bufferSpy = vi.spyOn(fake, "arrayBuffer");
+    const req = {
+      formData: async () => ({ get: (k: string) => (k === "file" ? fake : null) }),
+    } as unknown as Request;
+    const res = await uploadPOST(req, p("1"));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/too large/);
+    expect(bufferSpy).not.toHaveBeenCalled();
     expect(h.blobs.size).toBe(0);
   });
 });

@@ -7,6 +7,7 @@
 // NEVER modify lib/auth.ts directly. Add new auth utilities here.
 
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 // ── Role constants ─────────────────────────────────────────────────────────
 
@@ -112,4 +113,53 @@ export function canAccessPhase(
   const isConstruction = workflowType === "PROJECT" || status === "awarded";
   if (isConstruction) return user.role === ROLES.PM;
   return user.role === ROLES.ESTIMATOR;
+}
+
+// ── Route-local bid access guard ───────────────────────────────────────────
+
+export type BidAccessResult =
+  | { ok: true; user: AppUser }
+  | { ok: false; response: Response };
+
+/**
+ * Explicit route-local guard for bid-scoped API routes: requireUser() +
+ * bid fetch + assertBidAccess(), composed. Returns the 401/404/403
+ * Response as a VALUE instead of relying on thrown-Response handling in
+ * the route runtime — callers write:
+ *
+ *   const access = await requireBidAccess(bidId);
+ *   if (!access.ok) return access.response;
+ *
+ * Defense in depth alongside the proxy.ts session wall — never a
+ * replacement for it, and never skipped because "middleware already
+ * checked". An unknown bid is a 404 (indistinguishable from
+ * out-of-tenancy, per the cross-project 404 discipline).
+ */
+export async function requireBidAccess(bidId: number): Promise<BidAccessResult> {
+  let user: AppUser;
+  try {
+    user = await requireUser();
+  } catch (thrown) {
+    if (thrown instanceof Response) return { ok: false, response: thrown };
+    throw thrown;
+  }
+
+  const bid = await prisma.bid.findUnique({
+    where: { id: bidId },
+    select: { createdById: true },
+  });
+  if (!bid) {
+    return {
+      ok: false,
+      response: Response.json({ error: "Not found" }, { status: 404 }),
+    };
+  }
+
+  try {
+    assertBidAccess(user, bid);
+  } catch (thrown) {
+    if (thrown instanceof Response) return { ok: false, response: thrown };
+    throw thrown;
+  }
+  return { ok: true, user };
 }

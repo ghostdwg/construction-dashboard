@@ -12,6 +12,7 @@
 // 404 with ZERO mutation, never a data leak.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 import {
   linkObservationToItem,
@@ -27,6 +28,9 @@ export async function POST(
   const tid = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(tid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let body: { reportId?: unknown; observationId?: unknown };
   try {
