@@ -10,6 +10,10 @@
 //
 // AUTH_DISABLED=true in .env.local bypasses authentication entirely —
 // every request gets a fake admin session. This is the solo-dev escape hatch.
+// lib/env.ts refuses to boot with AUTH_DISABLED=true when APP_ENV=production.
+//
+// Session: 30 min absolute lifetime, sliding refresh every 5 min of activity.
+// Cookie: httpOnly, sameSite=lax, secure in production, 30 min maxAge.
 
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
@@ -19,10 +23,29 @@ import { prisma } from "@/lib/prisma";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    // 30 min absolute session lifetime; refresh the token if the user is
+    // active within the last 5 min. Client-side inactivity detection
+    // (lib/hooks/useSessionTimeout.ts) signs the user out at the same
+    // 30 min mark so the client and the cookie expiry agree.
+    maxAge: 1800,
+    updateAge: 300,
+  },
   trustHost: true,
   pages: {
     signIn: "/login",
+  },
+  cookies: {
+    sessionToken: {
+      options: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 1800,
+        path: "/",
+      },
+    },
   },
   providers: [
     Credentials({

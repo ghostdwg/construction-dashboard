@@ -6,6 +6,7 @@ import AuthProvider from "./components/AuthProvider";
 import UserNav from "./components/UserNav";
 import AppSidebar from "./components/AppSidebar";
 import { EnvironmentBanner } from "./components/EnvironmentBanner";
+import SessionTimeoutMonitor from "./components/SessionTimeoutMonitor";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,9 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <AuthProvider>
           <ThemeProvider>
+
+            {/* ── Session inactivity timeout (30 min, warns at 28) ───────── */}
+            <SessionTimeoutMonitor />
 
             {/* ── Environment Banner (Phase R5) ───────────────────────── */}
             {/* Renders for local + staging tiers only; production = null. */}

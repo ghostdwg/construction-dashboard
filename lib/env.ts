@@ -85,3 +85,15 @@ const schema = z.object({
 
 export const env = schema.parse(process.env)
 export type AppEnv = z.infer<typeof schema>['APP_ENV']
+
+// AUTH_DISABLED is a solo-dev escape hatch (see proxy.ts's bypass branch).
+// The superRefine above already refuses to boot with it set in production;
+// this just makes it loudly visible whenever it's set at all, since a
+// forgotten AUTH_DISABLED=true in a shared staging env file would otherwise
+// fail silently — every request there gets a fake admin session.
+if (env.AUTH_DISABLED === 'true') {
+  console.warn(
+    `[env] AUTH_DISABLED=true — authentication is bypassed (APP_ENV=${env.APP_ENV}). ` +
+    'This must never be set outside local development.'
+  )
+}
