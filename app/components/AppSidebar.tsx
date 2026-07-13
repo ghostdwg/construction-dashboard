@@ -1,8 +1,15 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import {
+  Activity, TrendingUp, Building2, Layers, CheckSquare, Settings2,
+  Pin, X, Menu,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+const PINNED_KEY = "gwx-sidebar-pinned";
 
 type SidebarCounts = {
   projects: number;
@@ -11,187 +18,218 @@ type SidebarCounts = {
   openActionItems: number;
 };
 
+type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean };
+
+const NAV_ITEMS: NavItem[] = [
+  { href: "/",                     label: "Operations",          icon: Activity,    exact: true },
+  { href: "/market-intelligence",  label: "Market Intelligence", icon: TrendingUp },
+  { href: "/bids",                 label: "Projects",            icon: Building2 },
+  { href: "/portfolio",            label: "Portfolio",           icon: Layers },
+  { href: "/tasks",                label: "Tasks",               icon: CheckSquare },
+  { href: "/settings",             label: "Settings",            icon: Settings2 },
+];
+
+function getMeta(href: string, counts: SidebarCounts): string | null {
+  if (href === "/")                    return counts.activeJobs > 0 ? String(counts.activeJobs) : null;
+  if (href === "/market-intelligence") return counts.newSignals > 0 ? String(counts.newSignals) : null;
+  if (href === "/bids")                return counts.projects > 0 ? String(counts.projects) : null;
+  if (href === "/portfolio")           return counts.projects > 0 ? String(counts.projects) : null;
+  if (href === "/tasks")               return counts.openActionItems > 0 ? String(counts.openActionItems) : null;
+  return null;
+}
+
 export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [pinned,     setPinned]     = useState(false);
+  const [hovered,    setHovered]    = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Close on route change (tapping a nav link on mobile)
-  useEffect(() => { setOpen(false); }, [pathname]);
+  const expanded = pinned || hovered;
+  // On mobile the overlay always shows full-width; desktop animates 64↔240
+  const sidebarWidth = mobileOpen ? 240 : (expanded ? 240 : 64);
 
-  function isActive(prefix: string, exact = false) {
-    if (exact) return pathname === prefix;
-    return pathname.startsWith(prefix);
+  // Restore pinned preference
+  useEffect(() => {
+    try { setPinned(localStorage.getItem(PINNED_KEY) === "1"); } catch {}
+  }, []);
+
+  // Close mobile panel on route change
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  // Expose --sidebar-width for any CSS consumers
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--sidebar-width",
+      `${expanded ? 240 : 64}px`
+    );
+  }, [expanded]);
+
+  function togglePin() {
+    const next = !pinned;
+    setPinned(next);
+    if (!next) setHovered(false);
+    try { localStorage.setItem(PINNED_KEY, next ? "1" : "0"); } catch {}
+  }
+
+  function isActive(href: string, exact?: boolean) {
+    return exact ? pathname === href : pathname.startsWith(href);
   }
 
   return (
     <>
-      {/* Hamburger — mobile only, always visible when sidebar is closed */}
+      {/* ── Mobile hamburger ─────────────────────────────────────────────── */}
       <button
         className="md:hidden fixed top-[72px] left-3 z-50 flex items-center justify-center w-9 h-9 rounded-[6px] border"
         style={{
           background: "var(--color-bg-surface)",
           borderColor: "var(--color-border)",
           color: "var(--color-text-primary)",
-          fontSize: "18px",
-          lineHeight: 1,
         }}
-        onClick={() => setOpen(true)}
+        onClick={() => setMobileOpen(true)}
         aria-label="Open navigation"
       >
-        ☰
+        <Menu size={18} />
       </button>
 
-      {/* Backdrop — mobile only, rendered when sidebar is open */}
-      {open && (
+      {/* ── Mobile backdrop ──────────────────────────────────────────────── */}
+      {mobileOpen && (
         <div
           className="md:hidden fixed inset-0 z-30 bg-black/60"
-          onClick={() => setOpen(false)}
+          onClick={() => setMobileOpen(false)}
           aria-hidden="true"
         />
       )}
 
-      {/* Sidebar */}
+      {/* ── Rail ─────────────────────────────────────────────────────────── */}
       <aside
-        className={[
-          // Mobile: fixed overlay; desktop: static in flex row
-          "fixed md:static",
-          "top-[62px] md:top-auto bottom-0 md:bottom-auto",
-          "left-0",
-          // Width & base layout
-          "flex flex-col w-[240px] shrink-0",
-          "border-r border-[var(--color-border)]",
-          "py-[18px] overflow-y-auto",
-          // Stacking
-          "z-40 md:z-auto",
-          // Slide transition on mobile only
-          "transition-transform duration-200 ease-in-out md:transition-none",
-          open ? "translate-x-0" : "-translate-x-full md:translate-x-0",
-        ].join(" ")}
-        style={{ background: "linear-gradient(180deg, var(--color-bg-surface), var(--color-bg-overlay))" }}
+        className={`gwx-rail flex flex-col${mobileOpen ? " gwx-rail-open" : ""}`}
+        style={{
+          width: sidebarWidth,
+          transition: "width 200ms ease",
+          background: "var(--color-bg-surface)",
+          borderRight: "1px solid var(--color-border)",
+          overflow: "hidden",
+        }}
+        onMouseEnter={() => { if (!pinned) setHovered(true);  }}
+        onMouseLeave={() => { if (!pinned) setHovered(false); }}
       >
-        {/* Close button — mobile only, top-right of panel */}
-        <button
-          className="md:hidden self-end mr-3 mb-1 flex items-center justify-center w-7 h-7 rounded"
+        {/* Mobile close ────────────────────────────────────────────────── */}
+        <div className="md:hidden flex justify-end px-3 pt-3 pb-1">
+          <button
+            style={{ background: "transparent", border: "none", cursor: "pointer",
+                     color: "var(--color-text-dim)", padding: 4 }}
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close navigation"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Nav items ───────────────────────────────────────────────────── */}
+        <nav className="flex flex-col flex-1 gap-0.5 px-2 py-3">
+          {NAV_ITEMS.map((item) => {
+            const active = isActive(item.href, item.exact);
+            const meta   = getMeta(item.href, counts);
+            const Icon   = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 0",
+                  paddingLeft: active ? 5 : 8,
+                  paddingRight: 8,
+                  borderRadius: 7,
+                  borderLeft: active
+                    ? "3px solid var(--color-accent)"
+                    : "3px solid transparent",
+                  background: active ? "var(--color-bg-elevated)" : "transparent",
+                  color: active ? "var(--color-accent)" : "var(--color-text-dim)",
+                  transition: "background 0.15s, color 0.15s",
+                  textDecoration: "none",
+                  overflow: "hidden",
+                  justifyContent: expanded || mobileOpen ? "flex-start" : "center",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) {
+                    e.currentTarget.style.color = "var(--color-text-secondary)";
+                    e.currentTarget.style.background = "var(--color-bg-elevated)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) {
+                    e.currentTarget.style.color = "var(--color-text-dim)";
+                    e.currentTarget.style.background = "transparent";
+                  }
+                }}
+              >
+                <Icon size={18} style={{ flexShrink: 0, color: "inherit" }} />
+                <span style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                  opacity: (expanded || mobileOpen) ? 1 : 0,
+                  transition: "opacity 150ms ease",
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: "hidden",
+                }}>
+                  {item.label}
+                </span>
+                {meta && (
+                  <span style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: "var(--color-text-dim)",
+                    flexShrink: 0,
+                    opacity: (expanded || mobileOpen) ? 1 : 0,
+                    transition: "opacity 150ms ease 50ms",
+                  }}>
+                    {meta}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Pin toggle — desktop only, visible when expanded ───────────── */}
+        <div
+          className="hidden md:flex justify-end px-3 py-2 border-t"
           style={{
-            background: "transparent",
-            border: "none",
-            color: "var(--color-text-secondary)",
-            fontSize: "14px",
-            cursor: "pointer",
+            borderColor: "var(--color-border)",
+            opacity: expanded ? 1 : 0,
+            transition: "opacity 150ms ease",
+            pointerEvents: expanded ? "auto" : "none",
           }}
-          onClick={() => setOpen(false)}
-          aria-label="Close navigation"
         >
-          ✕
-        </button>
-
-        {/* ── command ───────────────────────────────────────────────────── */}
-        <SectionLabel label="command" />
-        <SidebarItem
-          href="/"
-          label="Operations"
-          sub="overnight jobs + reviews"
-          meta={counts.activeJobs > 0 ? String(counts.activeJobs) : "—"}
-          active={isActive("/", true)}
-        />
-        <SidebarItem
-          href="/market-intelligence"
-          label="Market Intelligence"
-          sub="signals + pipeline scan"
-          meta={counts.newSignals > 0 ? String(counts.newSignals) : "—"}
-          active={isActive("/market-intelligence")}
-        />
-        <SidebarItem
-          href="/bids"
-          label="Projects"
-          sub="job setup + execution"
-          meta={String(counts.projects)}
-          active={isActive("/bids")}
-        />
-        <SidebarItem
-          href="/portfolio"
-          label="Portfolio"
-          sub="grouped pursuits + projects"
-          meta={String(counts.projects)}
-          active={isActive("/portfolio")}
-        />
-
-        {/* ── execution ─────────────────────────────────────────────────── */}
-        <SectionLabel label="execution" />
-        <SidebarItem
-          href="/tasks"
-          label="Tasks"
-          sub="action items + manual tasks"
-          meta={counts.openActionItems > 0 ? String(counts.openActionItems) : "—"}
-          active={isActive("/tasks")}
-        />
-
-        {/* ── system ────────────────────────────────────────────────────── */}
-        <SectionLabel label="system" />
-        <SidebarItem
-          href="/settings"
-          label="Settings"
-          sub="providers + integrations"
-          meta="ok"
-          active={isActive("/settings")}
-        />
+          <button
+            onClick={togglePin}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: pinned ? "var(--color-accent)" : "var(--color-text-dim)",
+              padding: "4px 6px",
+              borderRadius: 4,
+              fontSize: 11,
+              fontFamily: "var(--font-mono, monospace)",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              transition: "color 0.15s",
+            }}
+            title={pinned ? "Unpin sidebar" : "Pin sidebar open"}
+          >
+            <Pin size={12} />
+            <span>{pinned ? "pinned" : "pin"}</span>
+          </button>
+        </div>
       </aside>
     </>
-  );
-}
-
-function SectionLabel({ label }: { label: string }) {
-  return (
-    <p
-      className="font-mono text-[9px] uppercase tracking-[0.11em] px-4 pt-4 pb-1.5"
-      style={{ color: "var(--text-dim)" }}
-    >
-      {label}
-    </p>
-  );
-}
-
-function SidebarItem({
-  href, label, sub, meta, active, dim = false,
-}: {
-  href: string;
-  label: string;
-  sub: string;
-  meta: string;
-  active: boolean;
-  dim?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className="relative flex items-center justify-between gap-3 mx-2 mb-1 px-3 py-[11px] rounded-[7px] border transition-colors"
-      style={
-        active
-          ? {
-              background: "var(--color-bg-elevated)",
-              borderColor: "transparent",
-              color: "var(--color-text-primary)",
-              boxShadow: "inset 2px 0 0 var(--color-accent)",
-            }
-          : {
-              borderColor: "transparent",
-              color: dim ? "var(--text-dim)" : "var(--text-soft)",
-              background: "transparent",
-            }
-      }
-    >
-      <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="text-[13px] font-[600] tracking-[-0.01em] truncate">{label}</span>
-        <span
-          className="text-[10px] truncate"
-          style={{ color: "var(--text-dim)" }}
-        >
-          {sub}
-        </span>
-      </div>
-      <span className="font-mono text-[10px] shrink-0" style={{ color: "var(--text-dim)" }}>
-        {meta}
-      </span>
-    </Link>
   );
 }
