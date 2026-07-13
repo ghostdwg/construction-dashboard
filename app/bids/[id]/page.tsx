@@ -35,6 +35,7 @@ import MeetingActionsPanel from "./MeetingActionsPanel";
 import AiBidUsageCard from "./AiBidUsageCard";
 import ProjectStatusStrip from "./ProjectStatusStrip";
 import TabErrorBoundary from "./TabErrorBoundary";
+import DailyBriefCard from "./DailyBriefCard";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +128,39 @@ export default async function BidDetailPage({
     ["received", "reviewing", "accepted"].includes(s.rfqStatus)
   ).length;
 
+  // ── Daily Brief card data (always fetched — card appears on all tabs) ────
+  const [dailyBriefRecord, dailyBriefActionCount, dailyBriefDecisions] = await Promise.all([
+    prisma.bidIntelligenceBrief.findUnique({
+      where: { bidId },
+      select: { riskFlags: true, status: true },
+    }),
+    prisma.meetingActionItem.count({
+      where: { bidId, status: { in: ["OPEN", "IN_PROGRESS"] } },
+    }),
+    prisma.bidDecision.findMany({
+      where: { bidId, status: { not: "VOID" } },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      select: { category: true, decision: true },
+    }),
+  ]);
+
+  // Parse risk flags from stored JSON; sort critical-first; cap at 3
+  type ParsedFlag = { flag: string; severity: string };
+  let dailyBriefFlags: ParsedFlag[] = [];
+  if (dailyBriefRecord?.riskFlags) {
+    try {
+      const raw = JSON.parse(dailyBriefRecord.riskFlags);
+      if (Array.isArray(raw)) {
+        const SEV_ORDER: Record<string, number> = { critical: 0, moderate: 1, low: 2 };
+        dailyBriefFlags = (raw as ParsedFlag[])
+          .filter((f) => f.flag?.trim())
+          .sort((a, b) => (SEV_ORDER[a.severity] ?? 3) - (SEV_ORDER[b.severity] ?? 3))
+          .slice(0, 3);
+      }
+    } catch { /* malformed JSON — degrade gracefully */ }
+  }
+
   return (
     <div className="flex flex-col min-h-full">
       <ProjectContextBar
@@ -136,6 +170,13 @@ export default async function BidDetailPage({
         status={bid.status}
         workflowType={bid.workflowType ?? "BID"}
         activeTab={tab}
+      />
+
+      <DailyBriefCard
+        bidId={bid.id}
+        riskFlags={dailyBriefFlags}
+        openActionItems={dailyBriefActionCount}
+        decisions={dailyBriefDecisions}
       />
 
       <div className="px-6 py-6 min-w-0 flex-1">
