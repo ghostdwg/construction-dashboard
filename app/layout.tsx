@@ -113,7 +113,7 @@ export default async function RootLayout({
             </header>
 
             {/* ── Below topbar: sidebar + main ────────────────────────── */}
-            <div className="flex flex-1 min-h-0">
+            <div className="flex flex-1 min-h-0 overflow-x-hidden">
               <AppSidebar
                 counts={{ projects: bidCount, activeJobs: activeJob, newSignals, openActionItems: globalOpenActionItems }}
               />
