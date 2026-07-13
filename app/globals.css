@@ -56,8 +56,8 @@
   --color-warning-bg: rgba(245, 158, 11, 0.12);
   --color-danger: #EF4444;
   --color-danger-bg: rgba(239, 68, 68, 0.12);
-  --color-success: #22C55E;
-  --color-success-bg: rgba(34, 197, 94, 0.12);
+  --color-success: #06B6D4;
+  --color-success-bg: rgba(6, 182, 212, 0.12);
   --color-info: #2D7BFF;
   --color-info-bg: rgba(45, 123, 255, 0.12);
 }
@@ -85,7 +85,7 @@
   /* Status hues identical; tints slightly darker for light surfaces */
   --color-warning-bg: rgba(245, 158, 11, 0.16);
   --color-danger-bg: rgba(239, 68, 68, 0.14);
-  --color-success-bg: rgba(34, 197, 94, 0.14);
+  --color-success-bg: rgba(6, 182, 212, 0.14);
   --color-info-bg: rgba(26, 95, 204, 0.12);
 }
 
@@ -271,4 +271,23 @@ body::before {
     linear-gradient(rgba(45, 123, 255, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(45, 123, 255, 0.03) 1px, transparent 1px);
   background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+}
+
+/* ── Table overflow — thin blue scrollbar ───────────────────────────────── */
+.overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(45, 123, 255, 0.45) rgba(255, 255, 255, 0.04);
+}
+.overflow-x-auto::-webkit-scrollbar {
+  height: 4px;
+}
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: rgba(45, 123, 255, 0.45);
+  border-radius: 2px;
+}
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(45, 123, 255, 0.65);
 }
