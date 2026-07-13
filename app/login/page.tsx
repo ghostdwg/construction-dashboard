@@ -198,6 +198,7 @@ const styles = {
     position: "relative" as const,
     overflow: "hidden",
     padding: "24px",
+    boxSizing: "border-box" as const,
   },
   blueprintGrid: {
     position: "absolute" as const,
@@ -228,6 +229,7 @@ const styles = {
     zIndex: 1,
     width: "100%",
     maxWidth: 380,
+    boxSizing: "border-box" as const,
     background: "var(--color-bg-surface)",
     border: "1px solid var(--color-border-accent)",
     borderRadius: 12,
@@ -309,7 +311,7 @@ const styles = {
   submitBtn: {
     width: "100%",
     background: "var(--color-accent)",
-    color: "#fff",
+    color: "#0A0E1A",
     fontWeight: 600,
     fontSize: 14,
     padding: "12px 20px",
