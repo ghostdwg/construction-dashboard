@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import QuickPushButton from "./QuickPushButton";
 import ProjectContextBar from "./ProjectContextBar";
 import TradesTab from "./TradesTab";
 import SubsTab from "./SubsTab";
@@ -169,6 +170,8 @@ export default async function BidDetailPage({
                 levelingUploadCount={overviewLevelingUploadCount}
                 hasBrief={overviewHasBrief}
               />
+
+              <QuickPushButton bidId={bid.id} />
 
               <section className="grid grid-cols-2 gap-4">
                 <div>
