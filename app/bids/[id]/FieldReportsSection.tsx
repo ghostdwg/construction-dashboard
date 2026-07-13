@@ -7,6 +7,7 @@
 // preview, no OCR, no AI extraction — parseStatus stays UNPARSED.
 
 import { useCallback, useEffect, useState } from "react";
+import SpecGapHint from "./SpecGapHint";
 
 type FieldReportRow = {
   id: number;
@@ -239,32 +240,35 @@ function ReportDetail({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1">
-        <input
-          value={itemTitle}
-          onChange={(e) => setItemTitle(e.target.value)}
-          placeholder="register item from this report (title)"
-          className="w-64 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-        />
-        <input
-          value={excerpt}
-          onChange={(e) => setExcerpt(e.target.value)}
-          placeholder="evidence excerpt (optional, typed)"
-          className="w-56 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-        />
-        <input
-          value={locator}
-          onChange={(e) => setLocator(e.target.value)}
-          placeholder="locator (e.g. p.2)"
-          className="w-24 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-        />
-        <button
-          onClick={createItem}
-          disabled={!itemTitle.trim()}
-          className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs text-white disabled:opacity-40"
-        >
-          Create Register Item from this report
-        </button>
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-1">
+          <input
+            value={itemTitle}
+            onChange={(e) => setItemTitle(e.target.value)}
+            placeholder="register item from this report (title)"
+            className="w-64 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+          <input
+            value={excerpt}
+            onChange={(e) => setExcerpt(e.target.value)}
+            placeholder="evidence excerpt (optional, typed)"
+            className="w-56 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+          <input
+            value={locator}
+            onChange={(e) => setLocator(e.target.value)}
+            placeholder="locator (e.g. p.2)"
+            className="w-24 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+          <button
+            onClick={createItem}
+            disabled={!itemTitle.trim()}
+            className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs text-white disabled:opacity-40"
+          >
+            Create Register Item from this report
+          </button>
+        </div>
+        <SpecGapHint bidId={bidId} title={itemTitle} />
       </div>
       <p className="text-[11px] text-zinc-400">
         Register Items land in the register above as FIELD ITEM, citing this report.

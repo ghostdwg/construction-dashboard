@@ -21,6 +21,26 @@ import {
 } from "@/lib/services/trackedItems";
 import { deriveConsultantBadge } from "@/lib/services/trackedItems/consultantBadge";
 
+const GAP_HINT_STOPWORDS = new Set([
+  "with", "from", "that", "this", "have", "will", "more", "than",
+  "when", "also", "were", "been", "being", "they", "their", "over",
+  "under", "each", "some", "into", "work", "area", "type",
+]);
+
+function tokenizeForHint(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !GAP_HINT_STOPWORDS.has(w));
+}
+
+function countMatchingSections(itemTitle: string, sectionTitles: string[]): number {
+  const tokens = tokenizeForHint(itemTitle);
+  if (tokens.length === 0) return 0;
+  return sectionTitles.filter((st) => tokens.some((t) => st.includes(t))).length;
+}
+
 async function sessionActor() {
   const session = await auth().catch(() => null);
   const user = session?.user as { name?: string | null; email?: string | null } | undefined;
@@ -47,6 +67,14 @@ export async function GET(
     bidId,
     items.map((i) => i.id)
   );
+
+  // Spec gap hints: load uncovered sections once, compute keyword-overlap count per item.
+  const specBook = await prisma.specBook.findFirst({
+    where: { bidId },
+    orderBy: { uploadedAt: "desc" },
+    select: { sections: { where: { covered: false }, select: { csiTitle: true } } },
+  });
+  const uncoveredTitles = (specBook?.sections ?? []).map((s) => s.csiTitle.toLowerCase());
 
   return Response.json({
     items: items.map((i) => ({
@@ -84,6 +112,7 @@ export async function GET(
       commentCount: i._count.comments,
       attachmentCount: i._count.attachments,
       createdAt: i.createdAt.toISOString(),
+      gapHintCount: countMatchingSections(i.title, uncoveredTitles),
     })),
   });
 }

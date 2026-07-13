@@ -33,6 +33,8 @@ vi.mock("@/lib/storage/blobStore", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bid: { findUnique: vi.fn(async () => (h.bidExists ? { id: 1 } : null)) },
+    // Spec gap hint count: no specBook in test data → all items get gapHintCount 0.
+    specBook: { findFirst: vi.fn(async () => null) },
     // Phase 1B — badge derivation queries this model on every list read.
     consultantDispositionRecord: { findMany: vi.fn(async () => []) },
     trackedItem: {

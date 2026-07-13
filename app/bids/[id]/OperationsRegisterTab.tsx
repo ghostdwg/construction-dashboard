@@ -16,6 +16,7 @@ import FieldReportsSection from "./FieldReportsSection";
 import ConsultantReportsSection, {
   FormalResponseEditor,
 } from "./ConsultantReportsSection";
+import SpecGapHint from "./SpecGapHint";
 import {
   actionItemOptionLabel,
   isOverdue,
@@ -48,6 +49,7 @@ type TrackedItemRow = {
   formalResponseAt: string | null;
   commentCount: number;
   attachmentCount: number;
+  gapHintCount?: number;
 };
 
 type CommentRow = { id: number; authorName: string | null; authorEmail: string | null; body: string; createdAt: string };
@@ -277,7 +279,17 @@ function ItemRow({
             {KIND_LABELS[item.kind] ?? item.kind}
           </span>
         </td>
-        <td className="px-3 py-2 text-zinc-900 dark:text-zinc-100">{item.title}</td>
+        <td className="px-3 py-2 text-zinc-900 dark:text-zinc-100">
+          {item.title}
+          {(item.gapHintCount ?? 0) > 0 && (
+            <span
+              className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+              title={`${item.gapHintCount} uncovered spec section${item.gapHintCount === 1 ? "" : "s"} may relate`}
+            >
+              {item.gapHintCount} spec
+            </span>
+          )}
+        </td>
         <td className="px-3 py-2">
           <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STATUS_STYLES[item.status] ?? ""}`}>
             {item.status.replaceAll("_", " ")}
@@ -613,46 +625,49 @@ function CreateItemForm({ bidId, onCreated }: { bidId: number; onCreated: () => 
     );
   }
   return (
-    <span className="flex flex-wrap items-center gap-1">
-      <select
-        value={kind}
-        onChange={(e) => setKind(e.target.value)}
-        className="rounded border border-zinc-300 px-1 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-      >
-        {Object.entries(KIND_LABELS).map(([k, label]) => (
-          <option key={k} value={k}>{label}</option>
-        ))}
-      </select>
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="title"
-        className="w-48 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-      />
-      <input
-        value={assignee}
-        onChange={(e) => setAssignee(e.target.value)}
-        placeholder="assignee"
-        className="w-28 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-      />
-      <input
-        type="date"
-        value={due}
-        onChange={(e) => setDue(e.target.value)}
-        className="rounded border border-zinc-300 px-1 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-      />
-      <button
-        onClick={submit}
-        disabled={!title.trim()}
-        className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs text-white disabled:opacity-40"
-      >
-        Create
-      </button>
-      <button onClick={() => setOpen(false)} className="text-xs text-zinc-500">
-        Cancel
-      </button>
-      {error && <span className="text-xs text-red-500">{error}</span>}
-    </span>
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1">
+        <select
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+          className="rounded border border-zinc-300 px-1 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+        >
+          {Object.entries(KIND_LABELS).map(([k, label]) => (
+            <option key={k} value={k}>{label}</option>
+          ))}
+        </select>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="title"
+          className="w-48 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+        />
+        <input
+          value={assignee}
+          onChange={(e) => setAssignee(e.target.value)}
+          placeholder="assignee"
+          className="w-28 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+        />
+        <input
+          type="date"
+          value={due}
+          onChange={(e) => setDue(e.target.value)}
+          className="rounded border border-zinc-300 px-1 py-1 text-xs dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+        />
+        <button
+          onClick={submit}
+          disabled={!title.trim()}
+          className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs text-white disabled:opacity-40"
+        >
+          Create
+        </button>
+        <button onClick={() => setOpen(false)} className="text-xs text-zinc-500">
+          Cancel
+        </button>
+        {error && <span className="text-xs text-red-500">{error}</span>}
+      </div>
+      <SpecGapHint bidId={bidId} title={title} />
+    </div>
   );
 }
 
