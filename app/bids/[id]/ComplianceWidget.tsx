@@ -35,7 +35,7 @@ const CATEGORY_ORDER: ComplianceCategory[] = ["bonding", "labor", "dbe", "docume
 
 function statusColor(summary: ComplianceSummary): { bg: string; border: string; text: string } {
   const pct = summary.total > 0 ? summary.checked / summary.total : 0;
-  if (pct >= 1) return { bg: "bg-green-50", border: "border-green-200", text: "text-green-700" };
+  if (pct >= 1) return { bg: "bg-[var(--color-success-bg)]", border: "border-[var(--color-border-accent)]", text: "text-[var(--color-success)]" };
   if (pct >= 0.5) return { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700" };
   return { bg: "bg-red-50", border: "border-red-200", text: "text-red-700" };
 }

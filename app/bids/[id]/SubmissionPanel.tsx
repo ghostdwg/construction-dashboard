@@ -49,7 +49,7 @@ function parseSnap<T>(s: string | null): T | null {
 }
 
 const OUTCOME_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  won: { bg: "bg-green-100", text: "text-green-700", label: "Won" },
+  won: { bg: "bg-[var(--color-success-bg)]", text: "text-[var(--color-success)]", label: "Won" },
   lost: { bg: "bg-red-100", text: "text-red-700", label: "Lost" },
   withdrawn: { bg: "bg-zinc-100", text: "text-zinc-600", label: "Withdrawn" },
   no_decision: { bg: "bg-blue-100", text: "text-blue-700", label: "No Decision" },
@@ -159,7 +159,7 @@ export default function SubmissionPanel({ bidId }: { bidId: number }) {
             {submission.outcome === "won" && (
               <Link
                 href={`/bids/${bidId}?tab=handoff`}
-                className="text-xs font-medium text-green-700 hover:underline dark:text-green-400"
+                className="text-xs font-medium text-[var(--color-success)] hover:underline"
               >
                 View Handoff Packet →
               </Link>

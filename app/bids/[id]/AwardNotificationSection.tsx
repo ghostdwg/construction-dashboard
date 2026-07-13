@@ -28,7 +28,7 @@ type NotificationStatus = {
 const STATUS_BADGE: Record<string, string> = {
   QUEUED: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
   SENT: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
-  DELIVERED: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  DELIVERED: "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   OPENED: "bg-[rgba(45,123,255,0.12)] text-[#60A5FA]",
   BOUNCED: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   FAILED: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",

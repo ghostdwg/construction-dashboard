@@ -42,7 +42,7 @@ const TRIGGER_LABELS: Record<string, string> = {
 // Left border accent colors per status — signal green is STATE only
 const STATUS_META: Record<JobStatus, { border: string; chip: string; label: string }> = {
   complete: {
-    border: "border-l-emerald-500",
+    border: "border-l-[var(--color-border-accent)]",
     chip:   "text-[#60A5FA]",
     label:  "COMPLETE",
   },

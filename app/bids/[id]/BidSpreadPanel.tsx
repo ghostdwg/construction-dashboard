@@ -60,14 +60,14 @@ function fmtDollar(n: number): string {
 }
 
 const VALUE_FLAG_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  best_value: { bg: "bg-green-100", text: "text-green-700", label: "Best Value" },
+  best_value: { bg: "bg-[var(--color-success-bg)]", text: "text-[var(--color-success)]", label: "Best Value" },
   low_coverage: { bg: "bg-red-100", text: "text-red-700", label: "Low Coverage" },
   high_cost: { bg: "bg-amber-100", text: "text-amber-700", label: "High Cost" },
   ok: { bg: "bg-zinc-100", text: "text-zinc-600", label: "OK" },
 };
 
 const COST_POS_STYLES: Record<string, string> = {
-  low: "text-green-600",
+  low: "text-[var(--color-success)]",
   median: "text-zinc-600",
   high: "text-amber-600",
 };

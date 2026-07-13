@@ -15,7 +15,7 @@ type Props = {
 const TIERS = ["preferred", "approved", "new", "inactive"] as const;
 
 const TIER_COLORS: Record<string, string> = {
-  preferred: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  preferred: "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   approved: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   new: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
   inactive: "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-400",

@@ -147,7 +147,7 @@ export default function RfqSendModal({
                       </div>
                     )}
                   </div>
-                  <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                  <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-[var(--color-success-bg)] text-[var(--color-success)]">
                     Will send
                   </span>
                 </div>

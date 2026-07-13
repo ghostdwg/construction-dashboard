@@ -29,7 +29,7 @@ type TimelineResponse = {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<string, string> = {
-  ON_TRACK: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  ON_TRACK: "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   AT_RISK:  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   OVERDUE:  "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   COMPLETE: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
@@ -261,7 +261,7 @@ export default function TradesTab({
   const PANEL_HEADER_STYLES: Record<string, string> = {
     red:   "bg-red-50 border-red-200 text-red-700 dark:bg-red-900/30 dark:text-red-300",
     amber: "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-    green: "bg-green-50 border-green-200 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+    green: "bg-[var(--color-success-bg)] border-[var(--color-border-accent)] text-[var(--color-success)]",
     gray:  "bg-zinc-50 border-zinc-200 text-zinc-400 dark:bg-zinc-900/40 dark:text-zinc-400",
   };
 

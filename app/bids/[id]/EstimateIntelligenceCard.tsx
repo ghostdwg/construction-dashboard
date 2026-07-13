@@ -67,7 +67,7 @@ export default function EstimateIntelligenceCard({ bidId }: { bidId: number }) {
     ? { bg: "bg-red-50", border: "border-red-200", text: "text-red-800" }
     : cautionCount > 0
     ? { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-800" }
-    : { bg: "bg-green-50", border: "border-green-200", text: "text-green-800" };
+    : { bg: "bg-[var(--color-success-bg)]", border: "border-[var(--color-border-accent)]", text: "text-[var(--color-success)]" };
 
   return (
     <div className="flex flex-col gap-2">

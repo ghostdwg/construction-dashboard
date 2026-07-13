@@ -259,32 +259,32 @@ function CoveredSection({ rows }: { rows: (SectionRow | DrawingSheetRow)[] }) {
   const [open, setOpen] = useState(false);
   if (rows.length === 0) return null;
   return (
-    <div className="rounded-md border border-green-200 bg-green-50 overflow-hidden">
+    <div className="rounded-md border border-[var(--color-border-accent)] bg-[var(--color-success-bg)] overflow-hidden">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-green-800 hover:bg-green-100 transition-colors dark:text-green-300"
+        className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium text-[var(--color-success)] hover:bg-[var(--color-success-bg)] transition-colors"
       >
         <span>Covered — {rows.length} trade{rows.length !== 1 ? "s" : ""}</span>
-        <span className="text-green-600 text-xs">{open ? "▲ hide" : "▼ show"}</span>
+        <span className="text-[var(--color-success)] text-xs">{open ? "▲ hide" : "▼ show"}</span>
       </button>
       {open && (
-        <div className="border-t border-green-200">
+        <div className="border-t border-[var(--color-border-accent)]">
           {rows.map((row) => (
             <div
               key={row.id}
-              className="flex items-center gap-3 px-4 py-2 border-b border-green-100 last:border-0 text-sm text-green-900"
+              className="flex items-center gap-3 px-4 py-2 border-b border-[var(--color-border-accent)] last:border-0 text-sm text-[var(--color-success)]"
             >
               {"csiNumber" in row ? (
                 <>
-                  <span className="font-mono text-xs text-green-700 w-20 shrink-0">
+                  <span className="font-mono text-xs text-[var(--color-success)] w-20 shrink-0">
                     {row.csiNumber}
                   </span>
                   <span>{row.csiTitle}</span>
-                  <span className="ml-auto text-xs text-green-600">{row.trade?.name}</span>
+                  <span className="ml-auto text-xs text-[var(--color-success)]">{row.trade?.name}</span>
                 </>
               ) : (
                 <>
-                  <span className="font-mono text-xs text-green-700 w-16 shrink-0">
+                  <span className="font-mono text-xs text-[var(--color-success)] w-16 shrink-0">
                     {DISCIPLINE_LABELS[row.discipline] ?? row.discipline}
                   </span>
                   <span>{row.trade?.name}</span>
@@ -585,7 +585,7 @@ function AiSpecResults({
                           <div key={i} className="text-xs text-zinc-700 dark:text-zinc-300">
                             <span className="font-medium">{p.manufacturer}</span> — {p.product}
                             {p.basis_of_design && (
-                              <span className="ml-1 text-[10px] text-green-600 dark:text-green-400">(BOD)</span>
+                              <span className="ml-1 text-[10px] text-[var(--color-success)]">(BOD)</span>
                             )}
                           </div>
                         ))}
@@ -766,7 +766,7 @@ function SpecSectionsByDivision({
                         <SeverityBadge severity={sec.aiExtractions.severity} />
                       )}
                       {sec.tradeId && sec.trade && (
-                        <span className="text-[10px] text-green-600 dark:text-green-400">
+                        <span className="text-[10px] text-[var(--color-success)]">
                           ✓ {sec.trade.name}
                         </span>
                       )}
@@ -1922,8 +1922,8 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
 
           {/* Results summary */}
           {analyzeResult && (
-            <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-900 dark:bg-green-900/20">
-              <p className="text-sm font-medium text-green-800 dark:text-green-200">
+            <div className="mt-3 rounded-md border border-[var(--color-border-accent)] bg-[var(--color-success-bg)] p-3">
+              <p className="text-sm font-medium text-[var(--color-success)]">
                 Analysis complete — {analyzeResult.sectionsAnalyzed} sections reviewed
               </p>
               <div className="flex flex-wrap gap-3 mt-2">
@@ -1948,7 +1948,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-green-600 dark:text-green-400 mt-2">
+              <p className="text-[10px] text-[var(--color-success)] mt-2">
                 Cost: ${analyzeResult.totalCost.toFixed(2)}
               </p>
             </div>
@@ -2124,9 +2124,9 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
               </span>
             )}
             {totalCovered > 0 && (
-              <span className="text-green-700">
+              <span className="text-[var(--color-success)]">
                 <span className="font-semibold">{totalCovered}</span>{" "}
-                <span className="text-green-600">covered</span>
+                <span className="text-[var(--color-success)]">covered</span>
               </span>
             )}
             {totalMissing > 0 && (
@@ -2210,7 +2210,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
           {totalMissing === 0 &&
             (specData?.unknownCount ?? 0) === 0 &&
             totalCovered > 0 && (
-              <p className="text-sm text-green-700 font-medium">
+              <p className="text-sm text-[var(--color-success)] font-medium">
                 All documented trades are covered on this bid.
               </p>
             )}
@@ -2302,7 +2302,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                 deltaStatusClass = "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300";
               } else if (isProcessed) {
                 deltaStatusLabel = "Processed";
-                deltaStatusClass = "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300";
+                deltaStatusClass = "bg-[var(--color-success-bg)] text-[var(--color-success)]";
               }
 
               return (
@@ -2399,14 +2399,14 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                         <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wide dark:text-zinc-400">Net Impact:</span>
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                           delta.netCostDirection === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                          : delta.netCostDirection === "DECREASE" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                          : delta.netCostDirection === "DECREASE" ? "bg-[var(--color-success-bg)] text-[var(--color-success)]"
                           : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                         }`}>
                           {delta.netCostDirection === "INCREASE" ? "↑" : delta.netCostDirection === "DECREASE" ? "↓" : "="} Cost {delta.netCostDirection}
                         </span>
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                           delta.netScheduleDirection === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                          : delta.netScheduleDirection === "DECREASE" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                          : delta.netScheduleDirection === "DECREASE" ? "bg-[var(--color-success-bg)] text-[var(--color-success)]"
                           : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                         }`}>
                           {delta.netScheduleDirection === "INCREASE" ? "↑" : delta.netScheduleDirection === "DECREASE" ? "↓" : "="} Schedule {delta.netScheduleDirection}
@@ -2427,14 +2427,14 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                                 </span>
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                                   sc.costImpact === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                                  : sc.costImpact === "DECREASE" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                                  : sc.costImpact === "DECREASE" ? "bg-[var(--color-success-bg)] text-[var(--color-success)]"
                                   : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                                 }`}>
                                   Cost: {sc.costImpact}
                                 </span>
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                                   sc.scheduleImpact === "INCREASE" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-                                  : sc.scheduleImpact === "DECREASE" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                                  : sc.scheduleImpact === "DECREASE" ? "bg-[var(--color-success-bg)] text-[var(--color-success)]"
                                   : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                                 }`}>
                                   Schedule: {sc.scheduleImpact}
@@ -2504,7 +2504,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                           <ul className="flex flex-col gap-1">
                             {delta.resolvedItems.map((item, i) => (
                               <li key={i} className="flex gap-2 items-start text-xs text-zinc-600 dark:text-zinc-300">
-                                <span className="text-green-600 font-bold shrink-0 mt-0.5">✓</span>
+                                <span className="text-[var(--color-success)] font-bold shrink-0 mt-0.5">✓</span>
                                 <span>{item}</span>
                               </li>
                             ))}
@@ -2532,7 +2532,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
                                 >
                                   <span className={`shrink-0 mt-0.5 w-4 h-4 rounded border flex items-center justify-center text-xs ${
                                     checked
-                                      ? "border-green-500 bg-green-500 text-white"
+                                      ? "border-[var(--color-border-accent)] bg-[var(--color-success-bg)]0 text-white"
                                       : "border-zinc-300 bg-white text-transparent"
                                   }`}>
                                     ✓

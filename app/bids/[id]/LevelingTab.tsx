@@ -87,7 +87,7 @@ function formatFileSize(bytes: number): string {
 
 const STATUS_CONFIG: Record<string, { label: string; badge: string }> = {
   unreviewed: { label: "Unreviewed", badge: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400" },
-  included: { label: "Included", badge: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" },
+  included: { label: "Included", badge: "bg-[var(--color-success-bg)] text-[var(--color-success)]" },
   excluded: { label: "Excluded", badge: "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400" },
   clarification_needed: { label: "Clarify", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
 };
@@ -195,7 +195,7 @@ function SubUploadRow({
         ) : (
           <>
             <div>
-              <p className="text-xs text-green-700 font-medium">
+              <p className="text-xs text-[var(--color-success)] font-medium">
                 Ready — {scopeLineCount(current.scopeLines)} scope lines
               </p>
               <p className="text-xs text-zinc-400 mt-0.5 dark:text-zinc-500">
@@ -329,7 +329,7 @@ function ScopeRowCard({
           </button>
         )}
         {questionSent && (
-          <span className="ml-auto text-xs text-green-600">Sent ✓</span>
+          <span className="ml-auto text-xs text-[var(--color-success)]">Sent ✓</span>
         )}
       </div>
 
@@ -355,7 +355,7 @@ function ScopeRowCard({
 // ---- SanitizationReviewSection ----
 
 const SANIT_STATUS: Record<string, { label: string; badge: string }> = {
-  complete:     { label: "Clean",        badge: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" },
+  complete:     { label: "Clean",        badge: "bg-[var(--color-success-bg)] text-[var(--color-success)]" },
   needs_review: { label: "Needs Review", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
   error:        { label: "Error",        badge: "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400" },
   pending:      { label: "Pending",      badge: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400" },
@@ -522,7 +522,7 @@ function SanitizationReviewCard({
             </span>
           )}
           {local.approvedForAi && (
-            <span className="text-xs text-green-700 font-medium">Approved for AI ✓</span>
+            <span className="text-xs text-[var(--color-success)] font-medium">Approved for AI ✓</span>
           )}
         </div>
         <button
@@ -620,7 +620,7 @@ function SanitizationReviewCard({
               title={hasFlagged ? "Resolve all flagged lines first" : undefined}
               className={`text-xs px-4 py-1.5 rounded border font-medium transition-colors disabled:opacity-50 ${
                 local.approvedForAi
-                  ? "border-green-400 bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                  ? "border-[var(--color-border-accent)] bg-[var(--color-success-bg)] text-[var(--color-success)]"
                   : "border-black bg-black text-white hover:bg-zinc-800"
               }`}
             >

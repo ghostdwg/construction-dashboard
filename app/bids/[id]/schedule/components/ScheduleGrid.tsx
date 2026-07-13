@@ -126,7 +126,7 @@ function fmtDate(iso: string | null): string {
 const STATUS_COLORS: Record<string, string> = {
   not_started: "bg-slate-700 text-slate-300",
   in_progress: "bg-blue-700 text-blue-100",
-  complete: "bg-green-700 text-green-100",
+  complete: "bg-[var(--color-success)] text-[#E8EEFF]",
   on_hold: "bg-amber-700 text-amber-100",
 };
 const STATUS_LABELS: Record<string, string> = {

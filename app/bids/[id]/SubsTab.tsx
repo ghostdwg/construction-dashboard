@@ -87,7 +87,7 @@ const DELIVERY_STATUS_STYLES: Record<string, string> = {
   QUEUED:    "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
   SENT:      "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
   DELIVERED: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  OPENED:    "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  OPENED:    "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   BOUNCED:   "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   FAILED:    "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
 };
@@ -139,12 +139,12 @@ const STATUS_PILL: Record<string, string> = {
   invited:     "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   received:    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   reviewing:   "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
-  accepted:    "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  accepted:    "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   declined:    "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
 };
 
 const TIMELINE_STATUS_STYLES: Record<string, string> = {
-  ON_TRACK: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  ON_TRACK: "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   AT_RISK:  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   OVERDUE:  "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   COMPLETE: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
@@ -337,7 +337,7 @@ function ProcurementTimeline({
                   {/* RFQ send date */}
                   <td className={`px-4 py-3 text-xs ${rfqDateClass}`}>
                     {entry.rfqSentAt
-                      ? <span className="text-green-700">Sent {fmtDate(entry.rfqSentAt)}</span>
+                      ? <span className="text-[var(--color-success)]">Sent {fmtDate(entry.rfqSentAt)}</span>
                       : fmtDate(entry.rfqSendDate)
                     }
                   </td>

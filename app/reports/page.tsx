@@ -282,7 +282,7 @@ export default function ReportsPage() {
                     <td className="px-4 py-2.5 text-right">{row.subCount}</td>
                     <td className="px-4 py-2.5">
                       {row.subCount > 0 ? (
-                        <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                        <span className="inline-block text-xs font-medium px-2 py-0.5 rounded-full bg-[var(--color-success-bg)] text-[var(--color-success)]">
                           Covered
                         </span>
                       ) : (

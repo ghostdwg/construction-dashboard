@@ -54,7 +54,7 @@ const STATUS_LABELS: Record<RfiStatus, string> = {
 const STATUS_COLORS: Record<RfiStatus, string> = {
   OPEN: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   SENT: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
-  ANSWERED: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  ANSWERED: "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   CLOSED: "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
   NO_RESPONSE: "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400",
 };
@@ -674,7 +674,7 @@ function QuestionCard({
 
       {/* Response (when answered) */}
       {isAnswered && question.responseText && (
-        <div className="rounded-md border border-green-100 bg-green-50 p-3 flex flex-col gap-1">
+        <div className="rounded-md border border-[var(--color-border-accent)] bg-[var(--color-success-bg)] p-3 flex flex-col gap-1">
           <p className="text-sm text-zinc-700 dark:text-zinc-200">{question.responseText}</p>
           {(question.respondedBy || question.respondedAt) && (
             <p className="text-xs text-zinc-400 dark:text-zinc-500">

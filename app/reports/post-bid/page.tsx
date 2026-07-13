@@ -51,7 +51,7 @@ function fmtDollar(n: number | null): string {
 }
 
 const OUTCOME_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  won: { bg: "bg-green-100", text: "text-green-700", label: "Won" },
+  won: { bg: "bg-[var(--color-success-bg)]", text: "text-[var(--color-success)]", label: "Won" },
   lost: { bg: "bg-red-100", text: "text-red-700", label: "Lost" },
   withdrawn: { bg: "bg-zinc-100", text: "text-zinc-600", label: "Withdrawn" },
   no_decision: { bg: "bg-blue-100", text: "text-blue-700", label: "Pending" },
@@ -139,7 +139,7 @@ export default function PostBidReportsPage() {
                 <tr key={type}>
                   <td className="px-4 py-2.5 font-medium">{type}</td>
                   <td className="px-4 py-2.5 text-right">{stats.submitted}</td>
-                  <td className="px-4 py-2.5 text-right text-green-600">{stats.won}</td>
+                  <td className="px-4 py-2.5 text-right text-[var(--color-success)]">{stats.won}</td>
                   <td className="px-4 py-2.5 text-right text-red-600">{stats.lost}</td>
                   <td className="px-4 py-2.5 text-right font-medium">{stats.winRate}%</td>
                 </tr>
@@ -235,7 +235,7 @@ function SummaryCard({
   accent?: "green" | "amber" | "red";
 }) {
   const accentClass = accent === "green"
-    ? "border-green-200 bg-green-50"
+    ? "border-[var(--color-border-accent)] bg-[var(--color-success-bg)]"
     : accent === "amber"
     ? "border-amber-200 bg-amber-50"
     : accent === "red"

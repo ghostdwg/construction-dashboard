@@ -65,8 +65,8 @@ export default function TradesSection({
               title={isPreferred ? "Remove preferred" : "Mark as preferred for this trade"}
               className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
                 isPreferred
-                  ? "bg-green-100 text-green-700 hover:bg-red-50 hover:text-red-600 dark:bg-green-900/40 dark:text-green-300"
-                  : "bg-zinc-100 text-zinc-500 hover:bg-green-50 hover:text-green-600 dark:bg-zinc-800 dark:text-zinc-400"
+                  ? "bg-[var(--color-success-bg)] text-[var(--color-success)] hover:bg-red-50 hover:text-red-600"
+                  : "bg-zinc-100 text-zinc-500 hover:bg-[var(--color-success-bg)] hover:text-[var(--color-success)] dark:bg-zinc-800 dark:text-zinc-400"
               }`}
             >
               <span>{isPreferred ? "★" : "☆"}</span>

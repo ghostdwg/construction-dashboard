@@ -79,7 +79,7 @@ const STATUS_STYLES: Record<SubmittalStatus, string> = {
   UNDER_REVIEW:
     "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   APPROVED:
-    "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+    "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   APPROVED_AS_NOTED:
     "bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300",
   REJECTED: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
@@ -1544,7 +1544,7 @@ function PackageSection({
           <div className="flex items-center gap-1.5">
             <div className="w-16 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
               <div
-                className="h-full rounded-full bg-green-500 transition-all"
+                className="h-full rounded-full bg-[var(--color-success-bg)]0 transition-all"
                 style={{ width: `${pct}%` }}
               />
             </div>

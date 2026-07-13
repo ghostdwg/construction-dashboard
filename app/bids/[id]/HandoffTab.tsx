@@ -163,7 +163,7 @@ const CONTRACT_STATUS_STYLES: Record<string, string> = {
   CONTRACT_SENT:   "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   CONTRACT_SIGNED: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
   PO_ISSUED:       "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-  ACTIVE:          "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  ACTIVE:          "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   CLOSED:          "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
 };
 

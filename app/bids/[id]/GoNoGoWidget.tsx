@@ -35,9 +35,9 @@ type GnoGData = {
 
 const BANNER_STYLES: Record<Score, { border: string; bg: string; text: string; label: string }> = {
   GO: {
-    border: "border-green-200",
-    bg: "bg-green-50",
-    text: "text-green-800",
+    border: "border-[var(--color-border-accent)]",
+    bg: "bg-[var(--color-success-bg)]",
+    text: "text-[var(--color-success)]",
     label: "GO — Ready to bid",
   },
   CAUTION: {
@@ -55,13 +55,13 @@ const BANNER_STYLES: Record<Score, { border: string; bg: string; text: string; l
 };
 
 const BADGE_STYLES: Record<Score, string> = {
-  GO: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  GO: "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   CAUTION: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   "NO-GO": "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
 };
 
 const CHECK_STYLES: Record<CheckStatus, { icon: string; color: string }> = {
-  pass: { icon: "✓", color: "text-green-600" },
+  pass: { icon: "✓", color: "text-[var(--color-success)]" },
   caution: { icon: "⚠", color: "text-amber-500" },
   fail: { icon: "✗", color: "text-red-500" },
 };

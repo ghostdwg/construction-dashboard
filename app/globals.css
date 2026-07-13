@@ -7,14 +7,13 @@
   --font-sans: var(--font-barlow);
   --font-mono: var(--font-ibm-plex-mono);
 
-  /* Design System V2: the old "remap emerald → neon signal green" is gone.
-     Emerald now maps to the construction-standard success palette so every
-     existing `emerald-*` utility reads as status-green, never neon. */
-  --color-emerald-300: #86efac;
-  --color-emerald-400: #4ade80;
-  --color-emerald-500: #22c55e;
-  --color-emerald-600: #16a34a;
-  --color-emerald-700: #15803d;
+  /* Design System V2: emerald utilities remapped to success-cyan so any
+     residual emerald-* class renders on-brand rather than green. */
+  --color-emerald-300: #67E8F9;
+  --color-emerald-400: #22D3EE;
+  --color-emerald-500: #06B6D4;
+  --color-emerald-600: #0891B2;
+  --color-emerald-700: #0E7490;
 }
 
 /* ══ DESIGN SYSTEM V2 — electric blue / deep navy ═══════════════════════════

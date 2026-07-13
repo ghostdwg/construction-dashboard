@@ -39,7 +39,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   exported: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
   sent: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  responded: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  responded: "bg-[var(--color-success-bg)] text-[var(--color-success)]",
   declined: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   needs_follow_up: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
 };

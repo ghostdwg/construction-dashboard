@@ -142,7 +142,7 @@ function FindingCard({
             disabled={adding || added}
             className={`shrink-0 rounded px-2.5 py-1 text-xs font-medium transition-colors ${
               added
-                ? "bg-green-100 text-green-700 cursor-default dark:bg-green-900/40 dark:text-green-300"
+                ? "bg-[var(--color-success-bg)] text-[var(--color-success)] cursor-default"
                 : "bg-zinc-800 text-white hover:bg-zinc-700 disabled:opacity-50"
             }`}
           >

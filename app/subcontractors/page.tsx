@@ -143,7 +143,7 @@ export default async function SubcontractorsPage({
                       <span
                         className={`text-xs font-medium capitalize ${
                           sub.status === "preferred"
-                            ? "text-green-700"
+                            ? "text-[var(--color-success)]"
                             : sub.status === "inactive"
                             ? "text-zinc-400"
                             : "text-zinc-600"

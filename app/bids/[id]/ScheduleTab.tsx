@@ -270,7 +270,7 @@ export default function ScheduleTab({ bidId }: { bidId: number }) {
 
       {/* ── Seed result banner ── */}
       {seedBanner && (
-        <div className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700 dark:border-green-900 dark:bg-green-900/30 dark:text-green-300">
+        <div className="rounded-md border border-[var(--color-border-accent)] bg-[var(--color-success-bg)] px-4 py-2 text-sm text-[var(--color-success)]">
           Scanned {seedBanner.tradesScanned} trades — created{" "}
           <strong>{seedBanner.activitiesCreated}</strong> construction activities
           {seedBanner.milestonesCreated > 0 &&

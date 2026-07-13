@@ -327,7 +327,7 @@ function TradeSection({
                       <span
                         className={`rounded px-1.5 py-0.5 text-xs ${
                           item.inclusion
-                            ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                            ? "bg-[var(--color-success-bg)] text-[var(--color-success)]"
                             : "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400"
                         }`}
                       >
@@ -388,7 +388,7 @@ function TradeSection({
                 onClick={() => setForm((f) => ({ ...f, inclusion: true }))}
                 className={`flex-1 py-2 text-center ${
                   form.inclusion
-                    ? "bg-green-600 text-white"
+                    ? "bg-[var(--color-success)] text-white"
                     : "bg-white text-zinc-500 hover:bg-zinc-50 dark:text-zinc-400"
                 }`}
               >

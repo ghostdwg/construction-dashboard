@@ -152,9 +152,9 @@ export default function ImportSubsPage() {
         <Link href="/subcontractors" className="text-sm text-zinc-500 hover:underline dark:text-zinc-400">← Subcontractors</Link>
         <h1 className="text-2xl font-semibold mt-3 mb-6">Import Complete</h1>
 
-        <div className="rounded-md border border-green-200 bg-green-50 p-6 mb-6">
-          <p className="text-base font-semibold text-green-800 mb-3">Import successful</p>
-          <ul className="text-sm text-green-700 flex flex-col gap-1">
+        <div className="rounded-md border border-[var(--color-border-accent)] bg-[var(--color-success-bg)] p-6 mb-6">
+          <p className="text-base font-semibold text-[var(--color-success)] mb-3">Import successful</p>
+          <ul className="text-sm text-[var(--color-success)] flex flex-col gap-1">
             <li><strong>{result.createdCount}</strong> new subcontractors created</li>
             <li><strong>{result.updatedCount}</strong> existing subcontractors updated</li>
             <li><strong>{result.skippedCount}</strong> rows skipped</li>
@@ -213,7 +213,7 @@ export default function ImportSubsPage() {
         {/* Summary banner */}
         <div className="rounded-md border border-zinc-200 bg-zinc-50 px-5 py-3 mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
           <span className="text-zinc-700 dark:text-zinc-200">
-            <span className="font-semibold text-green-700">{willCreate}</span> create
+            <span className="font-semibold text-[var(--color-success)]">{willCreate}</span> create
           </span>
           <span className="text-zinc-700 dark:text-zinc-200">
             <span className="font-semibold text-blue-700">{willUpdate}</span> update
@@ -285,7 +285,7 @@ export default function ImportSubsPage() {
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {rows.map((row, idx) => {
                 const tradesDisplay = row.resolvedTrades.map((t) => {
-                  if (t.confidence === "exact") return <span key={t.source} className="text-green-700">{t.matchedName}</span>;
+                  if (t.confidence === "exact") return <span key={t.source} className="text-[var(--color-success)]">{t.matchedName}</span>;
                   if (t.confidence === "fuzzy") return <span key={t.source} className="text-amber-700" title={`Source: ${t.source}`}>~{t.matchedName}</span>;
                   return <span key={t.source} className="text-red-600 line-through" title="Not matched">{t.source}</span>;
                 });
