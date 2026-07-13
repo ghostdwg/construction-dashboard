@@ -7,50 +7,128 @@
   --font-sans: var(--font-barlow);
   --font-mono: var(--font-ibm-plex-mono);
 
-  /* Remap emerald → signal green throughout the app */
-  --color-emerald-300: #6bff9f;
-  --color-emerald-400: #3dff82;
-  --color-emerald-500: #00ff64;
-  --color-emerald-600: #00cc50;
-  --color-emerald-700: #009940;
+  /* Design System V2: the old "remap emerald → neon signal green" is gone.
+     Emerald now maps to the construction-standard success palette so every
+     existing `emerald-*` utility reads as status-green, never neon. */
+  --color-emerald-300: #86efac;
+  --color-emerald-400: #4ade80;
+  --color-emerald-500: #22c55e;
+  --color-emerald-600: #16a34a;
+  --color-emerald-700: #15803d;
 }
 
-/* ── Design system tokens ───────────────────────────────────────────────── */
+/* ══ DESIGN SYSTEM V2 — electric blue / deep navy ═══════════════════════════
+   Canonical tokens. Dark is the default (:root); light applies under
+   [data-theme="light"] (set by ThemeToggle on <html>). Legacy V1 vars below
+   are DEPRECATED aliases kept so every existing component restyles itself
+   without edits — new code must use --color-* tokens only. */
 :root {
-  --bg:          #050608;
-  --bg-2:        #0a0c10;
-  --panel:       #101319;
-  --panel-2:     #141922;
-  --panel-3:     #181d27;
-  --line:        rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.14);
-  --text:        #f5f7fa;
-  --text-soft:   rgba(245, 247, 250, 0.68);
-  --text-dim:    rgba(245, 247, 250, 0.34);
-  --signal:      #00ff64;
-  --signal-soft: #6bff9f;
-  --signal-dim:  rgba(0, 255, 100, 0.09);
-  --signal-mid:  rgba(0, 255, 100, 0.18);
-  --amber:       #f5a623;
-  --amber-dim:   rgba(245, 166, 35, 0.12);
-  --red:         #e8453c;
-  --red-dim:     rgba(232, 69, 60, 0.12);
-  --blue:        #7ea7ff;
+  /* Surfaces */
+  --color-bg-base: #0A0E1A;
+  --color-bg-surface: #0F1628;
+  --color-bg-elevated: #162040;
+  --color-bg-overlay: #080B14;
+
+  /* Accent — electric blue */
+  --color-accent: #2D7BFF;
+  --color-accent-hover: #4A8FFF;
+  --color-accent-dim: #1A5FCC;
+  --color-accent-glow: rgba(45, 123, 255, 0.25);
+  --color-accent-glow-strong: rgba(45, 123, 255, 0.4);
+
+  /* Borders */
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-border-accent: rgba(45, 123, 255, 0.35);
+  --color-border-glow: 0 0 0 1px rgba(45, 123, 255, 0.15),
+                       0 0 12px rgba(45, 123, 255, 0.2),
+                       0 0 24px rgba(45, 123, 255, 0.08);
+
+  /* Text */
+  --color-text-primary: #E8EEFF;
+  --color-text-secondary: #7B8DB8;
+  --color-text-dim: #3D4E7A;
+  --color-text-inverse: #0A0E1A;
+  --color-text-accent: #2D7BFF;
+
+  /* Status — construction-standard */
+  --color-warning: #F59E0B;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-danger: #EF4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-success: #22C55E;
+  --color-success-bg: rgba(34, 197, 94, 0.12);
+  --color-info: #2D7BFF;
+  --color-info-bg: rgba(45, 123, 255, 0.12);
+}
+
+[data-theme="light"] {
+  --color-bg-base: #F4F6FF;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-elevated: #EBF0FF;
+  --color-bg-overlay: rgba(0, 0, 0, 0.4);
+  --color-accent: #1A5FCC;
+  --color-accent-hover: #1A4FBB;
+  --color-accent-glow: rgba(26, 95, 204, 0.15);
+  --color-accent-glow-strong: rgba(26, 95, 204, 0.3);
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-subtle: rgba(0, 0, 0, 0.05);
+  --color-border-accent: rgba(26, 95, 204, 0.3);
+  --color-border-glow: 0 0 0 1px rgba(26, 95, 204, 0.12),
+                       0 0 12px rgba(26, 95, 204, 0.14),
+                       0 0 24px rgba(26, 95, 204, 0.06);
+  --color-text-primary: #0A0E1A;
+  --color-text-secondary: #4A5980;
+  --color-text-dim: #8A9AB8;
+  --color-text-inverse: #F4F6FF;
+  --color-text-accent: #1A5FCC;
+  /* Status hues identical; tints slightly darker for light surfaces */
+  --color-warning-bg: rgba(245, 158, 11, 0.16);
+  --color-danger-bg: rgba(239, 68, 68, 0.14);
+  --color-success-bg: rgba(34, 197, 94, 0.14);
+  --color-info-bg: rgba(26, 95, 204, 0.12);
+}
+
+/* ── DEPRECATED V1 tokens — aliases onto V2; do not use in new code ──────── */
+:root {
+  --bg:          var(--color-bg-base);          /* @deprecated → --color-bg-base */
+  --bg-2:        var(--color-bg-overlay);       /* @deprecated → --color-bg-overlay */
+  --panel:       var(--color-bg-surface);       /* @deprecated → --color-bg-surface */
+  --panel-2:     var(--color-bg-elevated);      /* @deprecated → --color-bg-elevated */
+  --panel-3:     var(--color-bg-elevated);      /* @deprecated → --color-bg-elevated */
+  --line:        var(--color-border);           /* @deprecated → --color-border */
+  --line-strong: rgba(255, 255, 255, 0.14);     /* @deprecated → --color-border */
+  --text:        var(--color-text-primary);     /* @deprecated → --color-text-primary */
+  --text-soft:   var(--color-text-secondary);   /* @deprecated → --color-text-secondary */
+  --text-dim:    var(--color-text-dim);         /* @deprecated → --color-text-dim */
+  --signal:      var(--color-accent);           /* @deprecated (was neon green) → --color-accent */
+  --signal-soft: var(--color-accent-hover);     /* @deprecated → --color-accent-hover */
+  --signal-dim:  rgba(45, 123, 255, 0.09);      /* @deprecated → --color-info-bg */
+  --signal-mid:  rgba(45, 123, 255, 0.18);      /* @deprecated → --color-accent-glow */
+  --amber:       var(--color-warning);          /* @deprecated → --color-warning */
+  --amber-dim:   var(--color-warning-bg);       /* @deprecated → --color-warning-bg */
+  --red:         var(--color-danger);           /* @deprecated → --color-danger */
+  --red-dim:     var(--color-danger-bg);        /* @deprecated → --color-danger-bg */
+  --blue:        var(--color-accent);           /* @deprecated → --color-accent */
   --radius:      8px;
   --shadow:      0 18px 40px rgba(0, 0, 0, 0.35);
 }
-
-html {
-  color-scheme: dark;
+[data-theme="light"] {
+  --line-strong: rgba(0, 0, 0, 0.14);
+  --shadow: 0 18px 40px rgba(10, 14, 26, 0.12);
 }
 
-/* ── Base body — gradient + grid overlay ────────────────────────────────── */
+/* Theme toggle support */
+:root { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
+
+/* ── Base body — deep navy gradient + grid overlay ──────────────────────── */
 body {
-  color: var(--text);
+  color: var(--color-text-primary);
   background:
-    radial-gradient(circle at top left, rgba(0, 255, 100, 0.06), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(126, 167, 255, 0.05), transparent 24%),
-    linear-gradient(180deg, #06070a 0%, #090b0f 100%);
+    radial-gradient(circle at top left, rgba(45, 123, 255, 0.07), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(45, 123, 255, 0.04), transparent 24%),
+    linear-gradient(180deg, var(--color-bg-base) 0%, var(--color-bg-overlay) 100%);
 }
 
 /* ── Table row hover ───────────────────────────────────────────────────── */
@@ -93,4 +171,104 @@ body::before {
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
   background-size: 44px 44px;
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.95), rgba(0, 0, 0, 0.55));
+}
+
+/* ══ DESIGN SYSTEM V2 — component classes ═══════════════════════════════════ */
+
+.card-base {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.card-interactive {
+  transition: all 150ms ease;
+}
+.card-interactive:hover {
+  border-color: var(--color-border-accent);
+  box-shadow: var(--color-border-glow);
+}
+
+.card-urgent {
+  border-left: 3px solid var(--color-warning);
+}
+
+.card-overdue {
+  border-left: 3px solid var(--color-danger);
+}
+
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  box-shadow: 0 0 16px var(--color-accent-glow);
+  transition: all 120ms ease;
+  cursor: pointer;
+}
+.btn-primary:hover {
+  background: var(--color-accent-hover);
+  box-shadow: 0 0 24px var(--color-accent-glow-strong);
+  transform: translateY(-1px);
+}
+.btn-primary:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--color-border-accent);
+  color: var(--color-accent);
+  font-weight: 500;
+  padding: 10px 20px;
+  border-radius: 8px;
+  transition: all 120ms ease;
+  cursor: pointer;
+}
+.btn-secondary:hover {
+  background: var(--color-accent-glow);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: all 120ms ease;
+  cursor: pointer;
+}
+.btn-ghost:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+}
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+  padding: 10px 20px;
+  border-radius: 8px;
+  transition: all 120ms ease;
+  cursor: pointer;
+}
+.btn-danger:hover {
+  background: var(--color-danger-bg);
+}
+
+.glow-border {
+  border: 1px solid var(--color-border-accent);
+  box-shadow: var(--color-border-glow);
+}
+
+/* Blueprint grid texture (landing page hero) — CSS-only, no images */
+.blueprint-grid {
+  background-image:
+    linear-gradient(rgba(45, 123, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 123, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(45, 123, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 123, 255, 0.03) 1px, transparent 1px);
+  background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
 }

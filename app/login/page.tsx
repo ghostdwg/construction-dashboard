@@ -4,110 +4,17 @@ import { Suspense, useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-// ── Design tokens (matching neuroglitch.ai landing) ──────────────────────────
-const BG        = "#0A0E1A";
-const ACCENT    = "#2D7BFF";
-const SURFACE   = "rgba(255,255,255,0.03)";
-const BORDER    = "rgba(45,123,255,0.22)";
-const GLOW      = "rgba(45,123,255,0.18)";
-const MUTED     = "rgba(255,255,255,0.42)";
-const DIM       = "rgba(255,255,255,0.18)";
-const MONO      = "'JetBrains Mono', 'Fira Mono', 'Courier New', monospace";
-
-// ── Blueprint grid + glow injected once ─────────────────────────────────────
-const GLOBAL_STYLES = `
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
-
-  body { background: ${BG}; margin: 0; }
-
-  .gwx-login-grid {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background-image:
-      linear-gradient(rgba(45,123,255,0.06) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(45,123,255,0.06) 1px, transparent 1px),
-      linear-gradient(rgba(45,123,255,0.02) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(45,123,255,0.02) 1px, transparent 1px);
-    background-size: 60px 60px, 60px 60px, 12px 12px, 12px 12px;
-    mask-image: radial-gradient(ellipse 90% 90% at 50% 40%, black 30%, transparent 100%);
-    -webkit-mask-image: radial-gradient(ellipse 90% 90% at 50% 40%, black 30%, transparent 100%);
-  }
-
-  .gwx-login-glow {
-    position: fixed;
-    top: -10%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 600px;
-    height: 400px;
-    background: radial-gradient(ellipse at center, rgba(45,123,255,0.10) 0%, transparent 70%);
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .gwx-login-input {
-    width: 100%;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 6px;
-    padding: 10px 12px;
-    font-size: 14px;
-    color: #fff;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    box-sizing: border-box;
-    font-family: inherit;
-  }
-  .gwx-login-input::placeholder { color: rgba(255,255,255,0.25); }
-  .gwx-login-input:focus {
-    border-color: ${ACCENT};
-    box-shadow: 0 0 0 3px rgba(45,123,255,0.15);
-  }
-
-  .gwx-login-btn {
-    width: 100%;
-    background: ${ACCENT};
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 11px 16px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    letter-spacing: 0.02em;
-    transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
-    font-family: inherit;
-  }
-  .gwx-login-btn:hover:not(:disabled) {
-    background: #3d88ff;
-    box-shadow: 0 0 18px rgba(45,123,255,0.45);
-  }
-  .gwx-login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  .gwx-login-label {
-    display: block;
-    font-family: ${MONO};
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: ${MUTED};
-    margin-bottom: 5px;
-  }
-`;
-
 function LoginInner() {
-  const router       = useRouter();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl  = searchParams.get("callbackUrl") ?? "/bids";
+  const callbackUrl = searchParams.get("callbackUrl") ?? "/bids";
 
-  const [email,    setEmail]    = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name,     setName]     = useState("");
-  const [error,    setError]    = useState<string | null>(null);
-  const [loading,  setLoading]  = useState(false);
-  const [mode,     setMode]     = useState<"loading" | "setup" | "login">("loading");
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"loading" | "setup" | "login">("loading");
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +44,7 @@ function LoginInner() {
           body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password }),
         });
         if (!res.ok) {
-          const err = await res.json().catch(() => ({})) as { error?: string };
+          const err = await res.json().catch(() => ({}));
           throw new Error(err.error ?? `HTTP ${res.status}`);
         }
       }
@@ -154,188 +61,280 @@ function LoginInner() {
     }
   }
 
+  if (mode === "loading") {
+    return (
+      <div style={styles.fullscreen}>
+        <p style={{ fontSize: 13, color: "var(--color-text-dim)", fontFamily: "var(--font-mono)" }}>
+          Loading…
+        </p>
+      </div>
+    );
+  }
+
   const isSetup = mode === "setup";
 
   return (
-    <>
-      <style dangerouslySetInnerHTML={{ __html: GLOBAL_STYLES }} />
-      <div className="gwx-login-grid" />
-      <div className="gwx-login-glow" />
+    <div style={styles.fullscreen}>
+      {/* Blueprint grid background */}
+      <div style={styles.blueprintGrid} aria-hidden />
+      {/* Blue radial glow behind card */}
+      <div style={styles.glow} aria-hidden />
 
-      <div style={{
-        position: "relative",
-        zIndex: 1,
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px 16px",
-        fontFamily: "'Inter', sans-serif",
-        background: BG,
-      }}>
-        {mode === "loading" ? (
-          <p style={{ fontFamily: MONO, fontSize: 12, color: DIM, letterSpacing: "0.06em" }}>
-            INITIALIZING…
+      <div style={styles.card}>
+        {/* Brand header */}
+        <div style={styles.brandRow}>
+          <span style={styles.brandNeuro}>NEURO | GLITCH</span>
+          <span style={styles.brandSep}>·</span>
+          <span style={styles.brandGw}>GroundWorX</span>
+        </div>
+
+        {/* Heading */}
+        <div style={styles.headingBlock}>
+          <h1 style={styles.heading}>
+            {isSetup ? "Create Admin Account" : "Login to GroundWorX"}
+          </h1>
+          <p style={styles.subheading}>
+            {isSetup
+              ? "No accounts exist yet. Create the first admin account."
+              : "Construction intelligence from bid to closeout."}
           </p>
-        ) : (
-          <div style={{
-            width: "100%",
-            maxWidth: 420,
-            background: SURFACE,
-            border: `1px solid ${BORDER}`,
-            borderRadius: 12,
-            padding: "40px 36px 36px",
-            boxShadow: `0 0 0 1px rgba(45,123,255,0.08), 0 8px 48px rgba(0,0,0,0.5), 0 0 60px ${GLOW}`,
-            backdropFilter: "blur(8px)",
-          }}>
+        </div>
 
-            {/* Brand label */}
-            <div style={{ textAlign: "center", marginBottom: 28 }}>
-              <p style={{
-                fontFamily: MONO,
-                fontSize: 10,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: DIM,
-                marginBottom: 10,
-              }}>
-                NEURO{" "}
-                <span style={{ color: "rgba(255,255,255,0.08)", margin: "0 2px" }}>|</span>
-                {" "}GLITCH
-              </p>
-              <h1 style={{
-                fontSize: 28,
-                fontWeight: 800,
-                color: "#fff",
-                letterSpacing: "-0.03em",
-                lineHeight: 1.1,
-                margin: "0 0 8px",
-              }}>
-                GroundWorX
-              </h1>
-              <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>
-                {isSetup
-                  ? "Create the first admin account to continue"
-                  : "Sign in to continue"}
-              </p>
+        {/* Form */}
+        <form onSubmit={handleSubmit} style={styles.form}>
+          {isSetup && (
+            <div style={styles.field}>
+              <label style={styles.label}>Your Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Jane Smith"
+                required
+                autoFocus
+                style={styles.input}
+                onFocus={(e) => (e.currentTarget.style.borderColor = "var(--color-accent)")}
+                onBlur={(e) => (e.currentTarget.style.borderColor = "var(--color-border-accent)")}
+              />
             </div>
-
-            {/* Divider */}
-            <div style={{
-              height: 1,
-              background: "linear-gradient(90deg, transparent, rgba(45,123,255,0.25), transparent)",
-              marginBottom: 28,
-            }} />
-
-            {/* Form */}
-            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {isSetup && (
-                <div>
-                  <label className="gwx-login-label">Your Name</label>
-                  <input
-                    type="text"
-                    className="gwx-login-input"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Jane Smith"
-                    required
-                    autoFocus
-                  />
-                </div>
-              )}
-              <div>
-                <label className="gwx-login-label">Email</label>
-                <input
-                  type="email"
-                  className="gwx-login-input"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@yourcompany.com"
-                  required
-                  autoFocus={!isSetup}
-                />
-              </div>
-              <div>
-                <label className="gwx-login-label">Password</label>
-                <input
-                  type="password"
-                  className="gwx-login-input"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={isSetup ? "Choose a strong password" : "••••••••"}
-                  required
-                  minLength={8}
-                />
-                {isSetup && (
-                  <p style={{ fontSize: 11, color: DIM, marginTop: 4, fontFamily: MONO }}>
-                    Minimum 8 characters.
-                  </p>
-                )}
-              </div>
-
-              {error && (
-                <div style={{
-                  borderRadius: 6,
-                  border: "1px solid rgba(255,100,80,0.3)",
-                  background: "rgba(255,60,60,0.08)",
-                  padding: "8px 12px",
-                  fontSize: 12,
-                  color: "#ff968f",
-                  fontFamily: MONO,
-                  letterSpacing: "0.02em",
-                }}>
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="gwx-login-btn"
-                disabled={loading}
-                style={{ marginTop: 4 }}
-              >
-                {loading
-                  ? "Please wait…"
-                  : isSetup
-                  ? "Create Account & Sign In"
-                  : "Sign In →"}
-              </button>
-            </form>
-
-            {/* Footer */}
-            <p style={{
-              textAlign: "center",
-              fontSize: 11,
-              color: DIM,
-              marginTop: 24,
-              marginBottom: 0,
-              fontFamily: MONO,
-              letterSpacing: "0.04em",
-            }}>
-              CONSTRUCTION INTELLIGENCE PLATFORM
-            </p>
+          )}
+          <div style={styles.field}>
+            <label style={styles.label}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@yourcompany.com"
+              required
+              autoFocus={!isSetup}
+              style={styles.input}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "var(--color-accent)")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "var(--color-border-accent)")}
+            />
           </div>
-        )}
+          <div style={styles.field}>
+            <label style={styles.label}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={isSetup ? "Choose a strong password" : "••••••••"}
+              required
+              minLength={8}
+              style={styles.input}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "var(--color-accent)")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "var(--color-border-accent)")}
+            />
+            {isSetup && (
+              <p style={{ fontSize: 11, color: "var(--color-text-dim)", marginTop: 6 }}>
+                Minimum 8 characters.
+              </p>
+            )}
+          </div>
+
+          {error && (
+            <div style={styles.errorBox}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              ...styles.submitBtn,
+              opacity: loading ? 0.6 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.background = "var(--color-accent-hover)";
+                e.currentTarget.style.boxShadow = "0 0 24px var(--color-accent-glow-strong)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--color-accent)";
+              e.currentTarget.style.boxShadow = "0 0 16px var(--color-accent-glow)";
+            }}
+          >
+            {loading ? "Please wait…" : isSetup ? "Create Account & Sign In" : "Sign In →"}
+          </button>
+        </form>
+
+        {/* Attribution */}
+        <p style={styles.attribution}>by NEURO | GLITCH</p>
       </div>
-    </>
+    </div>
   );
 }
+
+const styles = {
+  fullscreen: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "var(--color-bg-base)",
+    position: "relative" as const,
+    overflow: "hidden",
+    padding: "24px",
+  },
+  blueprintGrid: {
+    position: "absolute" as const,
+    inset: 0,
+    pointerEvents: "none" as const,
+    backgroundImage: [
+      "linear-gradient(rgba(45,123,255,0.06) 1px, transparent 1px)",
+      "linear-gradient(90deg, rgba(45,123,255,0.06) 1px, transparent 1px)",
+      "linear-gradient(rgba(45,123,255,0.025) 1px, transparent 1px)",
+      "linear-gradient(90deg, rgba(45,123,255,0.025) 1px, transparent 1px)",
+    ].join(", "),
+    backgroundSize: "80px 80px, 80px 80px, 16px 16px, 16px 16px",
+    maskImage: "radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 100%)",
+    WebkitMaskImage: "radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 100%)",
+  },
+  glow: {
+    position: "absolute" as const,
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -60%)",
+    width: 600,
+    height: 400,
+    background: "radial-gradient(ellipse at center, rgba(45,123,255,0.1) 0%, transparent 70%)",
+    pointerEvents: "none" as const,
+  },
+  card: {
+    position: "relative" as const,
+    zIndex: 1,
+    width: "100%",
+    maxWidth: 380,
+    background: "var(--color-bg-surface)",
+    border: "1px solid var(--color-border-accent)",
+    borderRadius: 12,
+    padding: "36px 32px",
+    boxShadow: "0 0 0 1px rgba(45,123,255,0.1), 0 0 40px rgba(45,123,255,0.08), 0 24px 48px rgba(0,0,0,0.4)",
+  },
+  brandRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 28,
+    fontFamily: "var(--font-mono)",
+    fontSize: 11,
+    letterSpacing: "0.08em",
+  },
+  brandNeuro: {
+    color: "var(--color-text-dim)",
+    fontWeight: 300,
+  },
+  brandSep: {
+    color: "var(--color-border-accent)",
+  },
+  brandGw: {
+    color: "var(--color-text-primary)",
+    fontWeight: 500,
+  },
+  headingBlock: {
+    marginBottom: 28,
+  },
+  heading: {
+    fontSize: 22,
+    fontWeight: 700,
+    letterSpacing: "-0.02em",
+    color: "var(--color-text-primary)",
+    marginBottom: 6,
+  },
+  subheading: {
+    fontSize: 13,
+    color: "var(--color-text-secondary)",
+    lineHeight: 1.5,
+  },
+  form: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 16,
+  },
+  field: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 6,
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+    color: "var(--color-text-secondary)",
+    fontFamily: "var(--font-mono)",
+  },
+  input: {
+    width: "100%",
+    background: "var(--color-bg-elevated)",
+    border: "1px solid var(--color-border-accent)",
+    borderRadius: 6,
+    padding: "10px 14px",
+    fontSize: 14,
+    color: "var(--color-text-primary)",
+    outline: "none",
+    transition: "border-color 0.15s",
+  },
+  errorBox: {
+    background: "var(--color-danger-bg)",
+    border: "1px solid var(--color-danger)",
+    borderRadius: 6,
+    padding: "10px 14px",
+    fontSize: 13,
+    color: "var(--color-danger)",
+  },
+  submitBtn: {
+    width: "100%",
+    background: "var(--color-accent)",
+    color: "#fff",
+    fontWeight: 600,
+    fontSize: 14,
+    padding: "12px 20px",
+    borderRadius: 8,
+    border: "none",
+    boxShadow: "0 0 16px var(--color-accent-glow)",
+    transition: "background 0.15s, box-shadow 0.15s, transform 0.1s",
+    marginTop: 4,
+  },
+  attribution: {
+    marginTop: 24,
+    textAlign: "center" as const,
+    fontSize: 10,
+    letterSpacing: "0.12em",
+    color: "var(--color-text-dim)",
+    fontFamily: "var(--font-mono)",
+    textTransform: "uppercase" as const,
+  },
+} as const;
 
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: BG,
-        fontFamily: MONO,
-        fontSize: 12,
-        color: DIM,
-        letterSpacing: "0.06em",
-      }}>
-        INITIALIZING…
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-bg-base)" }}>
+        <p style={{ fontSize: 13, color: "var(--color-text-dim)", fontFamily: "var(--font-mono)" }}>Loading…</p>
       </div>
     }>
       <LoginInner />

@@ -24,8 +24,8 @@ export default function AppSidebar({
 
   return (
     <aside
-      className="flex flex-col w-[240px] shrink-0 border-r border-[var(--line)] py-[18px] overflow-y-auto"
-      style={{ background: "linear-gradient(180deg,rgba(12,14,19,0.92),rgba(9,11,15,0.96))" }}
+      className="flex flex-col w-[240px] shrink-0 border-r border-[var(--color-border)] py-[18px] overflow-y-auto"
+      style={{ background: "linear-gradient(180deg, var(--color-bg-surface), var(--color-bg-overlay))" }}
     >
       {/* ── command ───────────────────────────────────────────────────── */}
       <SectionLabel label="command" />
@@ -110,10 +110,10 @@ function SidebarItem({
       style={
         active
           ? {
-              background: "rgba(255,255,255,0.03)",
+              background: "var(--color-bg-elevated)",
               borderColor: "transparent",
-              color: "var(--text)",
-              boxShadow: "inset 2px 0 0 var(--signal)",
+              color: "var(--color-text-primary)",
+              boxShadow: "inset 2px 0 0 var(--color-accent)",
             }
           : {
               borderColor: "transparent",
