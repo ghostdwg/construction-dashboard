@@ -14,7 +14,7 @@ const JOB_META: Record<string, { label: string; owner: string }> = {
 type JobStatus = "complete" | "running" | "queued" | "failed" | "cancelled";
 const JOB_CHIP: Record<JobStatus, { label: string; color: string; bg: string; border: string; dot?: true }> = {
   complete:  { label: "COMPLETE",  color: "#b8ceff",            bg: "rgba(126,167,255,0.1)",  border: "rgba(126,167,255,0.2)"   },
-  running:   { label: "RUNNING",   color: "var(--signal-soft)", bg: "var(--signal-dim)",      border: "rgba(0,255,100,0.22)",   dot: true },
+  running:   { label: "RUNNING",   color: "var(--signal-soft)", bg: "var(--signal-dim)",      border: "rgba(45,123,255,0.22)",   dot: true },
   queued:    { label: "QUEUED",    color: "#ffcc72",            bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.2)"    },
   failed:    { label: "BLOCKED",   color: "#ff968f",            bg: "var(--red-dim)",         border: "rgba(232,69,60,0.22)"    },
   cancelled: { label: "CANCELLED", color: "var(--text-dim)",    bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.1)"   },
@@ -25,7 +25,7 @@ type QueueLevel = "blocked" | "review" | "live";
 const QUEUE_CHIP: Record<QueueLevel, { label: string; color: string; bg: string; border: string }> = {
   blocked: { label: "BLOCKED", color: "#ff968f",            bg: "var(--red-dim)",    border: "rgba(232,69,60,0.22)"  },
   review:  { label: "REVIEW",  color: "#ffcc72",            bg: "var(--amber-dim)",  border: "rgba(245,166,35,0.2)"  },
-  live:    { label: "LIVE",    color: "var(--signal-soft)", bg: "var(--signal-dim)", border: "rgba(0,255,100,0.22)"  },
+  live:    { label: "LIVE",    color: "var(--signal-soft)", bg: "var(--signal-dim)", border: "rgba(45,123,255,0.22)"  },
 };
 
 type QueueItem = {
@@ -112,9 +112,9 @@ function RailCard({ children, featured = false }: { children: React.ReactNode; f
     <div
       className="border rounded-[var(--radius)] overflow-hidden"
       style={{
-        borderColor: featured ? "rgba(0,255,100,0.18)" : "var(--line)",
+        borderColor: featured ? "rgba(45,123,255,0.18)" : "var(--line)",
         background: featured
-          ? "linear-gradient(180deg,rgba(0,255,100,0.045),rgba(18,22,29,0.98) 28%),linear-gradient(180deg,rgba(18,22,29,0.98),rgba(13,16,22,1))"
+          ? "linear-gradient(180deg,rgba(45,123,255,0.045),rgba(18,22,29,0.98) 28%),linear-gradient(180deg,rgba(18,22,29,0.98),rgba(13,16,22,1))"
           : "linear-gradient(180deg,rgba(18,22,29,0.98),rgba(13,16,22,1))",
       }}
     >
@@ -579,7 +579,7 @@ export default async function HomePage() {
               href="/bids"
               className="font-mono text-[10px] uppercase tracking-[0.06em] px-3 py-1.5 rounded transition-colors"
               style={{
-                border: "1px solid rgba(0,255,100,0.32)",
+                border: "1px solid rgba(45,123,255,0.32)",
                 background: "var(--signal)",
                 color: "#061009",
                 fontWeight: 700,
@@ -661,7 +661,7 @@ export default async function HomePage() {
               <div
                 key={i}
                 className="px-3 py-3 border-r border-[var(--line)] last:border-r-0"
-                style={{ background: day.isToday ? "rgba(0,255,100,0.03)" : "transparent" }}
+                style={{ background: day.isToday ? "rgba(45,123,255,0.03)" : "transparent" }}
               >
                 <div className="flex items-baseline gap-1.5 mb-2">
                   <p className="font-mono text-[9px] uppercase tracking-[0.08em]" style={{ color: day.isToday ? "var(--signal-soft)" : "var(--text-dim)" }}>
@@ -778,7 +778,7 @@ export default async function HomePage() {
                       <td className="px-4 py-3">
                         <Link
                           href={item.href}
-                          className="block text-[13px] font-[600] transition-colors hover:text-emerald-400"
+                          className="block text-[13px] font-[600] transition-colors hover:text-[#4A8FFF]"
                           style={{ color: "var(--text)" }}
                         >
                           {item.label}
@@ -1046,7 +1046,7 @@ export default async function HomePage() {
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <Link
                           href={`/market-intelligence/${lead.id}`}
-                          className="text-[12px] font-[600] leading-snug transition-colors hover:text-emerald-400 flex-1 min-w-0"
+                          className="text-[12px] font-[600] leading-snug transition-colors hover:text-[#4A8FFF] flex-1 min-w-0"
                           style={{ color: "var(--text)" }}
                         >
                           {truncTitle}

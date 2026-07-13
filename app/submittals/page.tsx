@@ -10,8 +10,8 @@ const STATUS_CHIP: Record<string, { label: string; color: string; bg: string; bo
   REQUESTED:          { label: "REQUESTED",     color: "#ffcc72",            bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)"   },
   RECEIVED:           { label: "RECEIVED",      color: "#b8ceff",            bg: "rgba(126,167,255,0.1)",   border: "rgba(126,167,255,0.2)"  },
   UNDER_REVIEW:       { label: "UNDER REVIEW",  color: "#b8ceff",            bg: "rgba(126,167,255,0.1)",   border: "rgba(126,167,255,0.2)"  },
-  APPROVED:           { label: "APPROVED",      color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
-  APPROVED_AS_NOTED:  { label: "NOTED",         color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
+  APPROVED:           { label: "APPROVED",      color: "#60A5FA",            bg: "var(--signal-dim)",       border: "rgba(45,123,255,0.15)"  },
+  APPROVED_AS_NOTED:  { label: "NOTED",         color: "#60A5FA",            bg: "var(--signal-dim)",       border: "rgba(45,123,255,0.15)"  },
   REJECTED:           { label: "REJECTED",      color: "#ff968f",            bg: "var(--red-dim)",          border: "rgba(232,69,60,0.22)"   },
   RESUBMIT:           { label: "RESUBMIT",      color: "#ff968f",            bg: "var(--red-dim)",          border: "rgba(232,69,60,0.22)"   },
 };
@@ -300,7 +300,7 @@ export default async function SubmittalsPage({
                       <td className="px-5 py-3.5" style={{ width: "18%" }}>
                         <Link
                           href={`/bids/${item.bid.id}?tab=submittals`}
-                          className="text-[12px] font-[600] transition-colors hover:text-emerald-400 block"
+                          className="text-[12px] font-[600] transition-colors hover:text-[#4A8FFF] block"
                           style={{ color: "var(--text)" }}
                         >
                           {item.bid.projectName}

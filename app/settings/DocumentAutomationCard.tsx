@@ -99,7 +99,7 @@ export default function DocumentAutomationCard() {
             <span
               className={
                 state.effectiveEnabled
-                  ? "text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300"
+                  ? "text-xs font-semibold px-2 py-0.5 rounded bg-[rgba(45,123,255,0.12)] text-[#E8EEFF]"
                   : "text-xs font-semibold px-2 py-0.5 rounded bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300"
               }
             >
@@ -130,7 +130,7 @@ export default function DocumentAutomationCard() {
                 <button
                   onClick={() => apply(true)}
                   disabled={saving}
-                  className="text-xs px-3 py-1.5 rounded bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-40"
+                  className="text-xs px-3 py-1.5 rounded bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-40"
                 >
                   {saving ? "Saving…" : "Confirm enable"}
                 </button>

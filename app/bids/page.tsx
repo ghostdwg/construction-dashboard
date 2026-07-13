@@ -4,13 +4,13 @@ import NewBidButton from "./NewBidButton";
 import DeleteBidButton from "./DeleteBidButton";
 
 const STATUS_STATE: Record<string, { color: string; bg: string; border: string }> = {
-  draft:     { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.04)",  border: "rgba(255,255,255,0.1)"  },
-  active:    { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
-  leveling:  { color: "#ffcc72",            bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)"   },
-  submitted: { color: "#b8ceff",            bg: "rgba(126,167,255,0.1)",   border: "rgba(126,167,255,0.2)"  },
-  awarded:   { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
-  lost:      { color: "#ff968f",            bg: "var(--red-dim)",          border: "rgba(232,69,60,0.22)"   },
-  cancelled: { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.03)",  border: "rgba(255,255,255,0.08)" },
+  draft:     { color: "#94A3B8",  bg: "rgba(255,255,255,0.04)",  border: "rgba(148,163,184,0.15)" },
+  active:    { color: "#2D7BFF",  bg: "var(--signal-dim)",       border: "rgba(45,123,255,0.15)"  },
+  leveling:  { color: "#ffcc72",  bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)"   },
+  submitted: { color: "#b8ceff",  bg: "rgba(126,167,255,0.1)",   border: "rgba(126,167,255,0.2)"  },
+  awarded:   { color: "#E8EEFF",  bg: "rgba(45,123,255,0.25)",   border: "rgba(45,123,255,0.4)"   },
+  lost:      { color: "#ff968f",  bg: "var(--red-dim)",          border: "rgba(232,69,60,0.22)"   },
+  cancelled: { color: "#94A3B8",  bg: "rgba(255,255,255,0.03)",  border: "rgba(148,163,184,0.12)" },
 };
 
 function fmtDollar(n: number | null): string {
@@ -112,7 +112,8 @@ export default async function BidsPage() {
               No projects yet.
             </div>
           ) : (
-            <table className="w-full border-collapse">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px] border-collapse">
               <thead>
                 <tr>
                   {[
@@ -146,7 +147,7 @@ export default async function BidsPage() {
                         <div className="flex items-center gap-2">
                           <Link
                             href={`/bids/${bid.id}`}
-                            className="text-[13px] font-[600] transition-colors hover:text-emerald-400"
+                            className="text-[13px] font-[600] transition-colors hover:text-[#4A8FFF]"
                             style={{ color: "var(--text)" }}
                           >
                             {bid.projectName}
@@ -154,7 +155,7 @@ export default async function BidsPage() {
                           {bid.workflowType === "PROJECT" && (
                             <span
                               className="font-mono text-[9px] uppercase tracking-[0.07em] px-2 py-0.5 rounded-full"
-                              style={{ background: "var(--signal-dim)", color: "var(--signal-soft)", border: "1px solid rgba(0,255,100,0.22)" }}
+                              style={{ background: "var(--signal-dim)", color: "var(--signal-soft)", border: "1px solid rgba(45,123,255,0.22)" }}
                             >
                               Project
                             </span>
@@ -191,7 +192,7 @@ export default async function BidsPage() {
                             <Link
                               href={`/bids/${bid.id}?tab=${jump.tab}`}
                               className="gwx-nav-link font-mono text-[10px] uppercase tracking-[0.06em] px-3 py-1.5 rounded transition-colors whitespace-nowrap"
-                              style={{ border: "1px solid rgba(0,255,100,0.28)", color: "var(--signal-soft)", background: "var(--signal-dim)" }}
+                              style={{ border: "1px solid rgba(45,123,255,0.28)", color: "var(--signal-soft)", background: "var(--signal-dim)" }}
                             >
                               {jump.label} →
                             </Link>
@@ -211,6 +212,7 @@ export default async function BidsPage() {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

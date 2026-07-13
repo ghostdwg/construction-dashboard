@@ -136,7 +136,7 @@ export default async function EntitiesListPage({ searchParams }: PageProps) {
         <button
           type="submit"
           className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.07em] rounded-md"
-          style={{ background: "var(--signal-dim)", color: "var(--signal-soft)", border: "1px solid rgba(0,255,100,0.22)" }}
+          style={{ background: "var(--signal-dim)", color: "var(--signal-soft)", border: "1px solid rgba(45,123,255,0.22)" }}
         >
           Filter
         </button>

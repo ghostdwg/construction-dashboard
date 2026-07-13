@@ -17,7 +17,7 @@ type Job = {
 };
 
 const inputCls =
-  "rounded px-2 py-1 text-xs border border-[var(--line)] outline-none focus:border-[rgba(0,255,100,0.4)] bg-transparent text-[var(--text)]";
+  "rounded px-2 py-1 text-xs border border-[var(--line)] outline-none focus:border-[rgba(45,123,255,0.4)] bg-transparent text-[var(--text)]";
 
 function parseParams(inputSummary: string | null): Record<string, unknown> {
   if (!inputSummary) return {};

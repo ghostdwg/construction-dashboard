@@ -716,7 +716,7 @@ function SpecSectionsByDivision({
                   ({secs.length})
                 </span>
                 {hasPdfs && (
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 ml-auto">
+                  <span className="text-[10px] text-[#60A5FA] ml-auto">
                     {secs.filter((s) => s.hasPdf).length} PDFs
                   </span>
                 )}
@@ -962,7 +962,7 @@ function DrawingAnalysisResults({ result }: { result: Record<string, unknown> })
 
 function StatusIcon({ status }: { status: string }) {
   if (status === "ready")
-    return <span className="text-emerald-500 font-bold text-xs">✓</span>;
+    return <span className="text-[#60A5FA] font-bold text-xs">✓</span>;
   if (status === "processing")
     return <span className="text-amber-500 text-xs animate-pulse">●</span>;
   return <span className="text-red-400 text-xs">✗</span>;
@@ -1803,7 +1803,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
             <button
               onClick={runSpecSplit}
               disabled={specSplitting}
-              className="rounded-md bg-emerald-600 px-4 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              className="rounded-md bg-[var(--color-accent)] px-4 py-2 text-xs font-medium text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
             >
               {specSplitting ? "Splitting…" : "Split into Sections"}
             </button>
@@ -1822,7 +1822,7 @@ export default function DocumentsTab({ bidId }: { bidId: number }) {
           )}
 
           {specSplitResult && (
-            <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300">
+            <div className="mt-3 rounded-md border border-[rgba(45,123,255,0.25)] bg-[rgba(45,123,255,0.06)] px-3 py-2 text-xs text-[#E8EEFF]">
               Split into <strong>{specSplitResult.sectionCount}</strong> section PDFs.
             </div>
           )}

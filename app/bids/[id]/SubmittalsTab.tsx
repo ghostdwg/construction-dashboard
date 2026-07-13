@@ -867,7 +867,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
           </p>
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2 text-xs">
-              <span className={specMeta.hasSpecBook ? "text-emerald-500" : "text-red-400"}>
+              <span className={specMeta.hasSpecBook ? "text-[#60A5FA]" : "text-red-400"}>
                 {specMeta.hasSpecBook ? "✓" : "✗"}
               </span>
               <span className={specMeta.hasSpecBook ? "text-zinc-600 dark:text-zinc-300" : "text-red-600 dark:text-red-400"}>
@@ -880,7 +880,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
             <div className="flex items-center gap-2 text-xs">
               <span className={
                 specMeta.analyzedSectionCount > 0
-                  ? "text-emerald-500"
+                  ? "text-[#60A5FA]"
                   : specMeta.hasSpecBook
                   ? "text-amber-500"
                   : "text-zinc-300 dark:text-zinc-600"
@@ -903,7 +903,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
               </span>
             </div>
             <div className="flex items-center gap-2 text-xs">
-              <span className={specMeta.hasDrawings ? "text-emerald-500" : "text-zinc-300 dark:text-zinc-600"}>
+              <span className={specMeta.hasDrawings ? "text-[#60A5FA]" : "text-zinc-300 dark:text-zinc-600"}>
                 {specMeta.hasDrawings ? "✓" : "–"}
               </span>
               <span className="text-zinc-400 dark:text-zinc-500">
@@ -1001,7 +1001,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
                     {blocked > 0 && <span className="text-red-600 dark:text-red-400">{blocked} blocked</span>}
                     {atRisk > 0 && <span className="text-amber-600 dark:text-amber-400">{atRisk} at risk</span>}
                     {unlinked > 0 && <span className="text-zinc-500 dark:text-zinc-400">{unlinked} unlinked</span>}
-                    <span className="text-emerald-600 dark:text-emerald-400">{ready} ready</span>
+                    <span className="text-[#60A5FA]">{ready} ready</span>
                   </div>
                 );
               })()}
@@ -1023,7 +1023,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
                 ? <span className="text-[10px] font-mono font-semibold text-red-600 dark:text-red-400">BLOCKED</span>
                 : pkg.riskStatus === "AT_RISK"
                 ? <span className="text-[10px] font-mono font-semibold text-amber-600 dark:text-amber-400">AT RISK</span>
-                : <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">ON TRACK</span>;
+                : <span className="text-[10px] font-mono text-[#60A5FA]">ON TRACK</span>;
               return (
                 <div key={pkg.id} className={`rounded-md border p-3 flex flex-col gap-2 ${riskColor}`}>
                   <div className="flex items-start justify-between gap-2">
@@ -1048,7 +1048,7 @@ export default function SubmittalsTab({ bidId }: { bidId: number }) {
                     )}
                   </div>
                   {pkg.readyForExport && (
-                    <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">✓ ready for export</span>
+                    <span className="text-[10px] font-mono text-[#60A5FA]">✓ ready for export</span>
                   )}
                 </div>
               );
@@ -1427,7 +1427,7 @@ function ExportReviewPackageCard({
       <div className="mt-3 flex items-center justify-between border-t border-zinc-100 pt-3 dark:border-zinc-800">
         {pkg.readyForExport ? (
           <>
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-mono font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+            <span className="rounded-full bg-[rgba(45,123,255,0.12)] px-2 py-0.5 text-[10px] font-mono font-semibold text-[#60A5FA]">
               Ready ✓
             </span>
             <button

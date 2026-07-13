@@ -49,7 +49,7 @@ const PRIORITY_CHIP: Record<string, { label: string; color: string; bg: string; 
 const STATUS_CHIP: Record<string, { label: string; color: string; bg: string; border: string }> = {
   OPEN:        { label: "OPEN",        color: "var(--text-soft)",   bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.1)"  },
   IN_PROGRESS: { label: "IN PROGRESS", color: "#ffcc72",            bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.2)"   },
-  CLOSED:      { label: "CLOSED",      color: "var(--signal-soft)", bg: "var(--signal-dim)",      border: "rgba(0,255,100,0.22)"   },
+  CLOSED:      { label: "CLOSED",      color: "#60A5FA",            bg: "var(--signal-dim)",      border: "rgba(45,123,255,0.15)"  },
   DEFERRED:    { label: "DEFERRED",    color: "var(--text-dim)",    bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.08)" },
 };
 
@@ -539,7 +539,7 @@ function CalendarView({ tasks }: { tasks: Task[] }) {
                 <div
                   key={i}
                   className="min-h-[80px] p-2 border-r border-[var(--line)] last:border-r-0 flex flex-col gap-1"
-                  style={{ background: isToday ? "rgba(0,255,100,0.03)" : "transparent" }}
+                  style={{ background: isToday ? "rgba(45,123,255,0.03)" : "transparent" }}
                 >
                   <p
                     className="font-mono text-[10px] font-[700] text-right"
@@ -827,7 +827,7 @@ export default function TasksPage() {
                 style={{
                   borderColor: filterStatus === f.key ? "var(--signal)" : "var(--line)",
                   color: filterStatus === f.key ? "var(--signal-soft)" : "var(--text-dim)",
-                  background: filterStatus === f.key ? "rgba(0,255,100,0.06)" : "transparent",
+                  background: filterStatus === f.key ? "rgba(45,123,255,0.06)" : "transparent",
                 }}
               >
                 {f.label}
@@ -932,7 +932,7 @@ export default function TasksPage() {
                           <Link
                             href={`/bids/${task.project.id}?tab=meetings`}
                             onClick={(event) => event.stopPropagation()}
-                            className="text-[12px] font-[600] transition-colors hover:text-emerald-400 block truncate max-w-[130px]"
+                            className="text-[12px] font-[600] transition-colors hover:text-[#4A8FFF] block truncate max-w-[130px]"
                             style={{ color: "var(--text)" }}
                           >
                             {task.project.name}

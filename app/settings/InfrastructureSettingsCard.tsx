@@ -156,7 +156,7 @@ function FieldRow({
             </button>
           )}
           {saved && (
-            <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved</span>
+            <span className="text-xs text-[#60A5FA]">Saved</span>
           )}
         </div>
       ) : (
@@ -194,8 +194,8 @@ function HealthBadge({ result, label }: { result: HealthResult; label: string })
   if (result.connected) {
     const detail = [result.device, result.model].filter(Boolean).join(" · ");
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-400">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-[rgba(45,123,255,0.06)] border border-[rgba(45,123,255,0.25)] px-2.5 py-1 text-xs text-[#60A5FA]">
+        <span className="w-1.5 h-1.5 rounded-full bg-[rgba(45,123,255,0.06)]0 shrink-0" />
         {label} connected{detail ? ` — ${detail}` : ""}
       </span>
     );

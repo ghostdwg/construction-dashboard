@@ -81,7 +81,7 @@ const TYPE_SHORT_LABELS: Record<CloseoutType, string> = {
 const TYPE_STYLES: Record<CloseoutType, string> = {
   RECORD_DRAWINGS: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   ATTIC_STOCK: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  MANUALS: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  MANUALS: "bg-[rgba(45,123,255,0.12)] text-[#60A5FA]",
   KEYS: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
   CERTIFICATIONS: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
   BALANCING: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
@@ -250,7 +250,7 @@ export default function CloseoutTab({ bidId }: { bidId: number }) {
               onClick={() => setTypeFilter(chip)}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 typeFilter === chip
-                  ? "bg-emerald-600 text-white"
+                  ? "bg-[var(--color-accent)] text-white"
                   : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
               }`}
             >
@@ -400,7 +400,7 @@ function StatCard({
         : color === "blue"
           ? "text-blue-600 dark:text-blue-400"
           : color === "emerald"
-            ? "text-emerald-600 dark:text-emerald-400"
+            ? "text-[#60A5FA]"
             : "text-zinc-900 dark:text-zinc-100";
   return (
     <div>

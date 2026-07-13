@@ -152,7 +152,7 @@ function Button({
   busy?: boolean;
 }) {
   const styles: Record<typeof tone, { color: string; bg: string; border: string }> = {
-    signal: { color: "var(--signal-soft)", bg: "var(--signal-dim)", border: "rgba(0,255,100,0.22)" },
+    signal: { color: "var(--signal-soft)", bg: "var(--signal-dim)", border: "rgba(45,123,255,0.22)" },
     warn:   { color: "#ff8b66",            bg: "rgba(255,139,102,0.06)", border: "rgba(255,139,102,0.22)" },
     amber:  { color: "#ffcc72",            bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.2)" },
     neutral:{ color: "var(--text-soft)",   bg: "rgba(255,255,255,0.04)", border: "var(--line)" },

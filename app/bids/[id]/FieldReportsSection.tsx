@@ -261,7 +261,7 @@ function ReportDetail({
         <button
           onClick={createItem}
           disabled={!itemTitle.trim()}
-          className="rounded bg-emerald-700 px-2 py-1 text-xs text-white disabled:opacity-40"
+          className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs text-white disabled:opacity-40"
         >
           Create Register Item from this report
         </button>

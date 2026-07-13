@@ -117,7 +117,7 @@ const chipBase: React.CSSProperties = {
 };
 
 const inputCls =
-  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(0,255,100,0.4)]";
+  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(45,123,255,0.4)]";
 const inputStyle: React.CSSProperties = { background: "rgba(255,255,255,0.04)", color: "var(--text)" };
 const labelCls = "font-mono text-[9px] uppercase tracking-[0.08em]";
 const labelStyle: React.CSSProperties = { color: "var(--text-dim)" };
@@ -280,8 +280,8 @@ export default function SourcesPanel() {
           className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded transition-colors"
           style={{
             color:      showAdd ? "var(--signal)" : "var(--text-dim)",
-            border:     `1px solid ${showAdd ? "rgba(0,255,100,0.3)" : "var(--line)"}`,
-            background: showAdd ? "rgba(0,255,100,0.06)" : "transparent",
+            border:     `1px solid ${showAdd ? "rgba(45,123,255,0.3)" : "var(--line)"}`,
+            background: showAdd ? "rgba(45,123,255,0.06)" : "transparent",
           }}
         >
           + Add Source
@@ -378,7 +378,7 @@ function AddSourceForm({ onAdded }: { onAdded: () => void }) {
   }
 
   return (
-    <div className="px-4 py-3 border-b border-[var(--line)] flex flex-col gap-2.5" style={{ background: "rgba(0,255,100,0.03)" }}>
+    <div className="px-4 py-3 border-b border-[var(--line)] flex flex-col gap-2.5" style={{ background: "rgba(45,123,255,0.03)" }}>
       <div className="flex gap-2">
         <input
           type="text" value={name} onChange={(e) => setName(e.target.value)}
@@ -419,7 +419,7 @@ function AddSourceForm({ onAdded }: { onAdded: () => void }) {
       </button>
 
       {advanced && (
-        <div className="grid grid-cols-2 gap-3 pl-2 border-l-2 border-[rgba(0,255,100,0.15)]">
+        <div className="grid grid-cols-2 gap-3 pl-2 border-l-2 border-[rgba(45,123,255,0.15)]">
           <div className="flex flex-col gap-1.5">
             <label className={labelCls} style={labelStyle}>Scrape from (inclusive)</label>
             <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={inputCls} style={inputStyle} />
@@ -451,8 +451,8 @@ function AddSourceForm({ onAdded }: { onAdded: () => void }) {
                     className="font-mono text-[10px] uppercase tracking-[0.07em] px-2.5 py-1 rounded-full"
                     style={{
                       color: active ? "var(--signal)" : "var(--text-dim)",
-                      background: active ? "rgba(0,255,100,0.08)" : "transparent",
-                      border: `1px solid ${active ? "rgba(0,255,100,0.3)" : "var(--line)"}`,
+                      background: active ? "rgba(45,123,255,0.08)" : "transparent",
+                      border: `1px solid ${active ? "rgba(45,123,255,0.3)" : "var(--line)"}`,
                     }}
                   >
                     {t.replace(/_/g, " ")}
@@ -477,8 +477,8 @@ function AddSourceForm({ onAdded }: { onAdded: () => void }) {
                     className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded-full"
                     style={{
                       color: active ? "var(--signal)" : "var(--text-dim)",
-                      background: active ? "rgba(0,255,100,0.08)" : "transparent",
-                      border: `1px solid ${active ? "rgba(0,255,100,0.3)" : "var(--line)"}`,
+                      background: active ? "rgba(45,123,255,0.08)" : "transparent",
+                      border: `1px solid ${active ? "rgba(45,123,255,0.3)" : "var(--line)"}`,
                     }}
                   >
                     {label}
@@ -712,8 +712,8 @@ function SourceRow({
               className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded transition-colors disabled:opacity-40"
               style={{
                 color:      isScraping ? "var(--signal)" : "var(--text-dim)",
-                border:     `1px solid ${isScraping ? "rgba(0,255,100,0.3)" : "var(--line)"}`,
-                background: isScraping ? "rgba(0,255,100,0.06)" : "transparent",
+                border:     `1px solid ${isScraping ? "rgba(45,123,255,0.3)" : "var(--line)"}`,
+                background: isScraping ? "rgba(45,123,255,0.06)" : "transparent",
               }}>
               {isScraping ? "Scanning…" : "Scrape Now"}
             </button>

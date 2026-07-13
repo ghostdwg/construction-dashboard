@@ -148,7 +148,7 @@ export default function BriefingTab({ bidId }: { bidId: number }) {
             onClick={handleDownload}
             disabled={generating}
             className="flex items-center gap-2 rounded px-4 py-2 text-sm font-[600] transition-opacity disabled:opacity-40"
-            style={{ background: "var(--signal-dim)", color: "var(--signal-soft)", border: "1px solid rgba(0,255,100,0.22)" }}
+            style={{ background: "var(--signal-dim)", color: "var(--signal-soft)", border: "1px solid rgba(45,123,255,0.22)" }}
           >
             {generating ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>

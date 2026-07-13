@@ -3,13 +3,13 @@ import { prisma } from "@/lib/prisma";
 import MorningStrip from "./MorningStrip";
 
 const STATUS_STATE: Record<string, { color: string; bg: string; border: string }> = {
-  draft:     { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.04)",  border: "rgba(255,255,255,0.1)"  },
-  active:    { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
-  leveling:  { color: "#ffcc72",            bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)"   },
-  submitted: { color: "#b8ceff",            bg: "rgba(126,167,255,0.1)",   border: "rgba(126,167,255,0.2)"  },
-  awarded:   { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
-  lost:      { color: "#ff968f",            bg: "var(--red-dim)",          border: "rgba(232,69,60,0.22)"   },
-  cancelled: { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.03)",  border: "rgba(255,255,255,0.08)" },
+  draft:     { color: "#94A3B8",  bg: "rgba(255,255,255,0.04)",  border: "rgba(148,163,184,0.15)" },
+  active:    { color: "#2D7BFF",  bg: "var(--signal-dim)",       border: "rgba(45,123,255,0.15)"  },
+  leveling:  { color: "#ffcc72",  bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)"   },
+  submitted: { color: "#b8ceff",  bg: "rgba(126,167,255,0.1)",   border: "rgba(126,167,255,0.2)"  },
+  awarded:   { color: "#E8EEFF",  bg: "rgba(45,123,255,0.25)",   border: "rgba(45,123,255,0.4)"   },
+  lost:      { color: "#ff968f",  bg: "var(--red-dim)",          border: "rgba(232,69,60,0.22)"   },
+  cancelled: { color: "#94A3B8",  bg: "rgba(255,255,255,0.03)",  border: "rgba(148,163,184,0.12)" },
 };
 
 // Mirrors the pipeline order encoded in app/bids/page.tsx's quickJump().
@@ -47,7 +47,7 @@ function BidRowLine({ bid }: { bid: BidRow }) {
       <td className="px-4 py-3">
         <Link
           href={`/bids/${bid.id}`}
-          className="text-[13px] font-[600] transition-colors hover:text-emerald-400"
+          className="text-[13px] font-[600] transition-colors hover:text-[#4A8FFF]"
           style={{ color: "var(--text)" }}
         >
           {bid.projectName}

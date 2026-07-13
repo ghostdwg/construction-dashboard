@@ -48,9 +48,9 @@ const ROLE_BADGE_STYLES: Record<ContactRole, string> = {
   OWNER_REP: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   ARCHITECT: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
   ENGINEER: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
-  INTERNAL_PM: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-  INTERNAL_ESTIMATOR: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-  INTERNAL_SUPER: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  INTERNAL_PM: "bg-[rgba(45,123,255,0.12)] text-[#60A5FA]",
+  INTERNAL_ESTIMATOR: "bg-[rgba(45,123,255,0.12)] text-[#60A5FA]",
+  INTERNAL_SUPER: "bg-[rgba(45,123,255,0.12)] text-[#60A5FA]",
   OTHER: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
 };
 

@@ -45,7 +45,7 @@ export default function TabBar({
           <span style={{ fontWeight: 900, fontSize: "14px", letterSpacing: "-0.05em", color: "var(--text)" }}>
             NEURO
           </span>
-          <div style={{ width: "1.5px", height: "14px", background: "var(--signal)", boxShadow: "0 0 8px rgba(0,255,100,0.4)" }} />
+          <div style={{ width: "1.5px", height: "14px", background: "var(--signal)", boxShadow: "0 0 8px rgba(45,123,255,0.4)" }} />
           <span style={{ fontWeight: 900, fontSize: "14px", letterSpacing: "-0.05em", color: "rgba(255,255,255,0.18)" }}>
             GLITCH
           </span>
@@ -159,8 +159,8 @@ function NavItem({
       style={
         active
           ? {
-              background: "linear-gradient(180deg,rgba(0,255,100,0.08),rgba(0,255,100,0.04))",
-              borderColor: "rgba(0,255,100,0.18)",
+              background: "linear-gradient(180deg,rgba(45,123,255,0.08),rgba(45,123,255,0.04))",
+              borderColor: "rgba(45,123,255,0.18)",
               color: "var(--text)",
               boxShadow: "inset 2px 0 0 var(--signal)",
             }
@@ -171,7 +171,7 @@ function NavItem({
     >
       <div className="flex flex-col gap-0.5 min-w-0">
         <span className="text-[13px] font-[600] tracking-[-0.01em] truncate">{label}</span>
-        <span className="text-[10px] truncate" style={{ color: active ? "rgba(0,255,100,0.5)" : "var(--text-dim)" }}>
+        <span className="text-[10px] truncate" style={{ color: active ? "rgba(45,123,255,0.5)" : "var(--text-dim)" }}>
           {sub}
         </span>
       </div>

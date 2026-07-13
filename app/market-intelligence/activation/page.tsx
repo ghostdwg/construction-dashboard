@@ -24,7 +24,7 @@ function fmtAge(d: Date | null): string {
 function StatusBadge({ status }: { status: string | null }) {
   if (!status) return <span style={{ color: "var(--text-dim)" }}>—</span>;
   const map: Record<string, { color: string; bg: string }> = {
-    succeeded: { color: "var(--signal)", bg: "rgba(0,255,100,0.06)" },
+    succeeded: { color: "var(--signal)", bg: "rgba(45,123,255,0.06)" },
     failed:    { color: "var(--red)",    bg: "rgba(255,80,80,0.08)" },
     stale:     { color: "#ffcc72",       bg: "rgba(245,166,35,0.08)" },
     running:   { color: "#b8ceff",       bg: "rgba(126,167,255,0.08)" },
@@ -41,7 +41,7 @@ function StatusBadge({ status }: { status: string | null }) {
 
 function PublishStatusBadge({ status }: { status: string }) {
   const map: Record<string, { color: string; bg: string }> = {
-    HEALTHY:         { color: "var(--signal)", bg: "rgba(0,255,100,0.06)" },
+    HEALTHY:         { color: "var(--signal)", bg: "rgba(45,123,255,0.06)" },
     STALE_PUBLISH:   { color: "#ffcc72",       bg: "rgba(245,166,35,0.1)" },
     OPERATOR_REVIEW: { color: "var(--red)",    bg: "rgba(255,80,80,0.08)" },
   };

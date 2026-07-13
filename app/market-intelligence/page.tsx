@@ -13,7 +13,7 @@ const LEAD_STATUS: Record<string, { label: string; color: string; bg: string; bo
   NEW:       { label: "NEW",       color: "var(--text-soft)",  bg: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.12)"  },
   REVIEWING: { label: "REVIEWING", color: "#ffcc72",           bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.2)"   },
   QUALIFIED: { label: "QUALIFIED", color: "#b8ceff",           bg: "rgba(126,167,255,0.1)",  border: "rgba(126,167,255,0.2)"  },
-  PURSUING:  { label: "PURSUING",  color: "var(--signal-soft)",bg: "var(--signal-dim)",      border: "rgba(0,255,100,0.22)"   },
+  PURSUING:  { label: "PURSUING",  color: "#2D7BFF",           bg: "var(--signal-dim)",      border: "rgba(45,123,255,0.15)"  },
   ARCHIVED:  { label: "ARCHIVED",  color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.07)" },
   DISMISSED: { label: "DISMISSED", color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.07)" },
 };

@@ -160,7 +160,7 @@ export default function AwardNotificationModal({
           )}
 
           {result && (
-            <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-200">
+            <div className="rounded border border-[rgba(45,123,255,0.25)] bg-[rgba(45,123,255,0.06)] px-3 py-2 text-xs text-[#E8EEFF]">
               <p className="font-semibold">
                 Sent {result.sent.length} notification(s).
               </p>

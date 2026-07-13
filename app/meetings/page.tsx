@@ -13,7 +13,7 @@ const PRIORITY_CHIP: Record<string, { label: string; color: string; bg: string; 
 const _STATUS_CHIP: Record<string, { label: string; color: string; bg: string; border: string }> = {
   OPEN:        { label: "OPEN",        color: "var(--text-soft)",  bg: "rgba(255,255,255,0.04)",  border: "rgba(255,255,255,0.1)"  },
   IN_PROGRESS: { label: "IN PROGRESS", color: "#ffcc72",           bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)"   },
-  CLOSED:      { label: "CLOSED",      color: "var(--signal-soft)",bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
+  CLOSED:      { label: "CLOSED",      color: "#60A5FA",           bg: "var(--signal-dim)",       border: "rgba(45,123,255,0.15)"  },
   DEFERRED:    { label: "DEFERRED",    color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)",  border: "rgba(255,255,255,0.08)" },
 };
 
@@ -179,7 +179,7 @@ export default async function MeetingsPage() {
                         <td className="px-4 py-3">
                           <Link
                             href={`/bids/${item.bid.id}?tab=meetings`}
-                            className="text-[12px] font-[600] transition-colors hover:text-emerald-400 block truncate max-w-[140px]"
+                            className="text-[12px] font-[600] transition-colors hover:text-[#4A8FFF] block truncate max-w-[140px]"
                             style={{ color: "var(--text)" }}
                           >
                             {item.bid.projectName}

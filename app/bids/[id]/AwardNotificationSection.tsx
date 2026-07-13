@@ -29,7 +29,7 @@ const STATUS_BADGE: Record<string, string> = {
   QUEUED: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
   SENT: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
   DELIVERED: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  OPENED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  OPENED: "bg-[rgba(45,123,255,0.12)] text-[#60A5FA]",
   BOUNCED: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   FAILED: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
 };
@@ -118,7 +118,7 @@ export default function AwardNotificationSection({
                         className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                           log.type === "sub"
                             ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                            : "bg-[rgba(45,123,255,0.12)] text-[#60A5FA]"
                         }`}
                       >
                         {log.type === "sub" ? "Sub" : "Team"}

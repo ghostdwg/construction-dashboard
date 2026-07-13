@@ -55,7 +55,7 @@ const AUDIENCE_LABELS: Record<AudienceType, string> = {
 const AUDIENCE_STYLES: Record<AudienceType, string> = {
   OWNER: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   MAINTENANCE: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  OPERATIONS: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  OPERATIONS: "bg-[rgba(45,123,255,0.12)] text-[#60A5FA]",
   EMERGENCY: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   OTHER: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
 };
@@ -359,7 +359,7 @@ function StatCard({
       : color === "amber"
         ? "text-amber-600 dark:text-amber-400"
         : color === "emerald"
-          ? "text-emerald-600 dark:text-emerald-400"
+          ? "text-[#60A5FA]"
           : "text-zinc-900 dark:text-zinc-100";
   return (
     <div>

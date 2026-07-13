@@ -24,7 +24,7 @@ type IntegrationStatus = {
 };
 
 const inputCls =
-  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(0,255,100,0.4)]";
+  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(45,123,255,0.4)]";
 const inputStyle: React.CSSProperties = { background: "rgba(255,255,255,0.04)", color: "var(--text)" };
 
 function fmtDateTime(iso: string | null): string {
@@ -173,8 +173,8 @@ function ServiceCard({
             className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded transition-colors"
             style={{
               color: editing ? "var(--signal)" : "var(--text-dim)",
-              border: `1px solid ${editing ? "rgba(0,255,100,0.3)" : "var(--line)"}`,
-              background: editing ? "rgba(0,255,100,0.06)" : "transparent",
+              border: `1px solid ${editing ? "rgba(45,123,255,0.3)" : "var(--line)"}`,
+              background: editing ? "rgba(45,123,255,0.06)" : "transparent",
             }}>
             {editing ? "Cancel" : "Edit"}
           </button>

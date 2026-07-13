@@ -37,7 +37,7 @@ type ModelsResponse = {
 };
 
 const inputCls =
-  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(0,255,100,0.4)]";
+  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(45,123,255,0.4)]";
 const inputStyle: React.CSSProperties = { background: "rgba(255,255,255,0.04)", color: "var(--text)" };
 
 function fmtAge(iso: string | null): string {
@@ -227,7 +227,7 @@ export default function OllamaModelsModal({
                         <code className="text-[13px] font-[600]" style={{ color: "var(--text)" }}>{m.name}</code>
                         {m.loaded && (
                           <span className="font-mono text-[9px] uppercase tracking-[0.07em] px-1.5 py-0.5 rounded-full"
-                            style={{ color: "var(--signal)", background: "rgba(0,255,100,0.08)", border: "1px solid rgba(0,255,100,0.25)" }}>
+                            style={{ color: "var(--signal)", background: "rgba(45,123,255,0.08)", border: "1px solid rgba(45,123,255,0.25)" }}>
                             loaded
                           </span>
                         )}
@@ -253,7 +253,7 @@ export default function OllamaModelsModal({
                       {onPick && (
                         <button onClick={() => { onPick(m.name); onClose(); }}
                           className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded transition-colors"
-                          style={{ color: "var(--signal)", border: "1px solid rgba(0,255,100,0.3)", background: "rgba(0,255,100,0.06)" }}>
+                          style={{ color: "var(--signal)", border: "1px solid rgba(45,123,255,0.3)", background: "rgba(45,123,255,0.06)" }}>
                           Use here
                         </button>
                       )}
@@ -287,7 +287,7 @@ export default function OllamaModelsModal({
             </div>
 
             {pulling && (
-              <div className="rounded p-2.5 border" style={{ background: "rgba(0,255,100,0.04)", borderColor: "rgba(0,255,100,0.2)" }}>
+              <div className="rounded p-2.5 border" style={{ background: "rgba(45,123,255,0.04)", borderColor: "rgba(45,123,255,0.2)" }}>
                 <div className="flex items-center justify-between mb-1.5">
                   <code className="text-[11px]" style={{ color: "var(--text-soft)" }}>{pulling.model}</code>
                   <span className="font-mono text-[10px]" style={{ color: "var(--signal)" }}>{pulling.pct}%</span>
@@ -319,7 +319,7 @@ export default function OllamaModelsModal({
                       <span className="font-mono text-[10px]" style={{ color: "var(--text-dim)" }}>{(s.context / 1024).toFixed(0)}k ctx</span>
                       {s.recommended && (
                         <span className="font-mono text-[9px] uppercase tracking-[0.07em] px-1.5 py-0.5 rounded-full"
-                          style={{ color: "var(--signal)", background: "rgba(0,255,100,0.08)", border: "1px solid rgba(0,255,100,0.25)" }}>
+                          style={{ color: "var(--signal)", background: "rgba(45,123,255,0.08)", border: "1px solid rgba(45,123,255,0.25)" }}>
                           recommended
                         </span>
                       )}
@@ -338,7 +338,7 @@ export default function OllamaModelsModal({
                       onPick && (
                         <button onClick={() => { onPick(s.name); onClose(); }}
                           className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded transition-colors"
-                          style={{ color: "var(--signal)", border: "1px solid rgba(0,255,100,0.3)", background: "rgba(0,255,100,0.06)" }}>
+                          style={{ color: "var(--signal)", border: "1px solid rgba(45,123,255,0.3)", background: "rgba(45,123,255,0.06)" }}>
                           Use here
                         </button>
                       )

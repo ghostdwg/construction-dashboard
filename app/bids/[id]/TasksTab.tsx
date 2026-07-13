@@ -27,7 +27,7 @@ const PRIORITY: Record<string, { color: string; bg: string; border: string }> = 
 const STATUS: Record<string, { color: string; bg: string; border: string; label: string }> = {
   OPEN:        { color: "var(--text-soft)",  bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.1)",  label: "OPEN" },
   IN_PROGRESS: { color: "#b8ceff",           bg: "rgba(126,167,255,0.1)",  border: "rgba(126,167,255,0.2)", label: "IN PROG" },
-  COMPLETED:   { color: "var(--signal-soft)", bg: "var(--signal-dim)",     border: "rgba(0,255,100,0.22)",  label: "DONE" },
+  COMPLETED:   { color: "var(--signal-soft)", bg: "var(--signal-dim)",     border: "rgba(45,123,255,0.22)",  label: "DONE" },
   DEFERRED:    { color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.08)", label: "DEFER" },
 };
 
@@ -48,7 +48,7 @@ function fmtDue(s: string | null): { label: string; tone: "ok" | "soon" | "overd
 }
 
 const inputCls =
-  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(0,255,100,0.4)]";
+  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(45,123,255,0.4)]";
 const inputStyle: React.CSSProperties = { background: "rgba(255,255,255,0.04)", color: "var(--text)" };
 
 export default function TasksTab({ bidId }: { bidId: number }) {
@@ -131,7 +131,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
                 className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5"
                 style={{
                   color: filter === f ? "var(--signal)" : "var(--text-dim)",
-                  background: filter === f ? "rgba(0,255,100,0.08)" : "transparent",
+                  background: filter === f ? "rgba(45,123,255,0.08)" : "transparent",
                 }}>
                 {f}
               </button>
@@ -141,8 +141,8 @@ export default function TasksTab({ bidId }: { bidId: number }) {
             className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded transition-colors"
             style={{
               color: showNew ? "var(--signal)" : "var(--text-dim)",
-              border: `1px solid ${showNew ? "rgba(0,255,100,0.3)" : "var(--line)"}`,
-              background: showNew ? "rgba(0,255,100,0.06)" : "transparent",
+              border: `1px solid ${showNew ? "rgba(45,123,255,0.3)" : "var(--line)"}`,
+              background: showNew ? "rgba(45,123,255,0.06)" : "transparent",
             }}>
             + Add Action Item
           </button>
@@ -151,7 +151,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
 
       {showNew && (
         <div className="border border-[var(--line)] rounded-[var(--radius)] p-4 flex flex-col gap-2.5"
-          style={{ background: "rgba(0,255,100,0.03)" }}>
+          style={{ background: "rgba(45,123,255,0.03)" }}>
           <input value={desc} onChange={(e) => setDesc(e.target.value)}
             placeholder="What needs to be done?"
             className={inputCls} style={inputStyle} autoFocus />

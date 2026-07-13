@@ -43,7 +43,7 @@ const TRIGGER_LABELS: Record<string, string> = {
 const STATUS_META: Record<JobStatus, { border: string; chip: string; label: string }> = {
   complete: {
     border: "border-l-emerald-500",
-    chip:   "text-emerald-700 dark:text-emerald-400",
+    chip:   "text-[#60A5FA]",
     label:  "COMPLETE",
   },
   failed: {

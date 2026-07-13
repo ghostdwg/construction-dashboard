@@ -13,8 +13,8 @@ const LIFECYCLE_STYLES: Record<string, ChipStyle> = {
   PRE_ENTITLEMENT:     { color: "#b8ceff",          bg: "rgba(126,167,255,0.12)", border: "rgba(126,167,255,0.28)" },
   ENTITLEMENT:         { color: "#ffcc72",          bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.2)" },
   SITE_PREP:           { color: "#ffcc72",          bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.28)" },
-  PRE_CONSTRUCTION:    { color: "var(--signal-soft)", bg: "var(--signal-dim)",    border: "rgba(0,255,100,0.18)" },
-  ACTIVE_CONSTRUCTION: { color: "var(--signal-soft)", bg: "var(--signal-dim)",    border: "rgba(0,255,100,0.32)" },
+  PRE_CONSTRUCTION:    { color: "var(--signal-soft)", bg: "var(--signal-dim)",    border: "rgba(45,123,255,0.18)" },
+  ACTIVE_CONSTRUCTION: { color: "var(--signal-soft)", bg: "var(--signal-dim)",    border: "rgba(45,123,255,0.32)" },
   COMPLETED:           { color: "var(--text-soft)", bg: "rgba(255,255,255,0.02)", border: "var(--line)" },
   STALLED:             { color: "#ff8b66",          bg: "rgba(255,139,102,0.06)", border: "rgba(255,139,102,0.22)" },
   ABANDONED:           { color: "var(--text-dim)",  bg: "rgba(255,255,255,0.02)", border: "rgba(255,255,255,0.08)" },
@@ -23,14 +23,14 @@ const LIFECYCLE_STYLES: Record<string, ChipStyle> = {
 const REVIEW_STYLES: Record<string, ChipStyle> = {
   AUTO_AGGREGATED: { color: "var(--text-soft)", bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.12)" },
   PENDING_REVIEW:  { color: "#ffcc72",          bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.2)" },
-  VERIFIED:        { color: "var(--signal-soft)", bg: "var(--signal-dim)",    border: "rgba(0,255,100,0.22)" },
+  VERIFIED:        { color: "var(--signal-soft)", bg: "var(--signal-dim)",    border: "rgba(45,123,255,0.22)" },
   REJECTED:        { color: "var(--text-dim)",  bg: "rgba(255,255,255,0.02)", border: "rgba(255,255,255,0.08)" },
   MERGED:          { color: "var(--text-dim)",  bg: "rgba(255,255,255,0.02)", border: "rgba(126,167,255,0.2)" },
 };
 
 const CONFIDENCE_STYLES: Record<string, ChipStyle> = {
-  VERIFIED: { color: "var(--signal-soft)", bg: "var(--signal-dim)",      border: "rgba(0,255,100,0.22)" },
-  HIGH:     { color: "var(--signal-soft)", bg: "var(--signal-dim)",      border: "rgba(0,255,100,0.18)" },
+  VERIFIED: { color: "var(--signal-soft)", bg: "var(--signal-dim)",      border: "rgba(45,123,255,0.22)" },
+  HIGH:     { color: "var(--signal-soft)", bg: "var(--signal-dim)",      border: "rgba(45,123,255,0.18)" },
   MEDIUM:   { color: "#b8ceff",            bg: "rgba(126,167,255,0.08)", border: "rgba(126,167,255,0.2)" },
   LOW:      { color: "#ffcc72",            bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.2)" },
   NONE:     { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.02)", border: "rgba(255,255,255,0.07)" },
@@ -70,7 +70,7 @@ export function ProbabilityChip({ probability }: { probability: number | null })
   const pct = (probability * 100).toFixed(0);
   let tone: ChipStyle;
   if (probability >= 0.7) {
-    tone = { color: "var(--signal-soft)", bg: "var(--signal-dim)", border: "rgba(0,255,100,0.22)" };
+    tone = { color: "var(--signal-soft)", bg: "var(--signal-dim)", border: "rgba(45,123,255,0.22)" };
   } else if (probability >= 0.4) {
     tone = { color: "#b8ceff", bg: "rgba(126,167,255,0.08)", border: "rgba(126,167,255,0.2)" };
   } else if (probability >= 0.2) {

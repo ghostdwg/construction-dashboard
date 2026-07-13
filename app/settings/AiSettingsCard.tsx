@@ -309,7 +309,7 @@ export default function AiSettingsCard() {
 
 function Pill({ tone, children }: { tone: "ok" | "warn" | "neutral"; children: React.ReactNode }) {
   const toneClasses = {
-    ok: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+    ok: "bg-[rgba(45,123,255,0.12)] text-[#E8EEFF]",
     warn: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
     neutral: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
   } as const;
@@ -631,7 +631,7 @@ function CallConfigCard({
               } disabled:cursor-not-allowed`}
             >
               {isRecommended && !isActive && (
-                <span className="absolute top-1 right-1 text-[9px] font-semibold text-emerald-700 bg-emerald-100 rounded px-1 py-0.5 uppercase tracking-wide dark:text-emerald-300 dark:bg-emerald-900/40">
+                <span className="absolute top-1 right-1 text-[9px] font-semibold text-[#60A5FA] bg-[rgba(45,123,255,0.12)] rounded px-1 py-0.5 uppercase tracking-wide">
                   Rec
                 </span>
               )}

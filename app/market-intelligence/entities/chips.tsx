@@ -12,7 +12,7 @@
 type ChipStyle = { color: string; bg: string; border: string };
 
 const REVIEW_STATUS_STYLES: Record<string, ChipStyle> = {
-  VERIFIED:       { color: "var(--signal-soft)", bg: "var(--signal-dim)",   border: "rgba(0,255,100,0.22)" },
+  VERIFIED:       { color: "var(--signal-soft)", bg: "var(--signal-dim)",   border: "rgba(45,123,255,0.22)" },
   AUTO_MATCHED:   { color: "#b8ceff",            bg: "rgba(126,167,255,0.08)", border: "rgba(126,167,255,0.2)" },
   AUTO:           { color: "var(--text-soft)",   bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.12)" },
   PENDING_REVIEW: { color: "#ffcc72",            bg: "var(--amber-dim)",    border: "rgba(245,166,35,0.2)" },
@@ -21,8 +21,8 @@ const REVIEW_STATUS_STYLES: Record<string, ChipStyle> = {
 };
 
 const CONFIDENCE_STYLES: Record<string, ChipStyle> = {
-  VERIFIED: { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)" },
-  HIGH:     { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.18)" },
+  VERIFIED: { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(45,123,255,0.22)" },
+  HIGH:     { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(45,123,255,0.18)" },
   MEDIUM:   { color: "#b8ceff",            bg: "rgba(126,167,255,0.08)",  border: "rgba(126,167,255,0.2)" },
   LOW:      { color: "#ffcc72",            bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)" },
   NONE:     { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.02)",  border: "rgba(255,255,255,0.07)" },

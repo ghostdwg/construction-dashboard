@@ -173,7 +173,7 @@ const STATUS_CONFIG: Record<MeetingStatus, { label: string; color: string }> = {
   AWAITING_SOURCE_MAP: { label: "Map Sources", color: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" },
   AWAITING_NAMES: { label: "Name Speakers",   color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
   ANALYZING:      { label: "Analyzing",       color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },
-  READY:          { label: "Ready",           color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  READY:          { label: "Ready",           color: "bg-[rgba(45,123,255,0.12)] text-[#60A5FA]" },
   FAILED:         { label: "Failed",          color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" },
 };
 
@@ -266,7 +266,7 @@ const RED_FLAG_CONFIG: Record<string, { bg: string; text: string }> = {
 function confidenceDotClass(conf: number | null): string {
   if (conf === null || conf < 0.5) return "bg-red-400";
   if (conf < 0.75) return "bg-amber-400";
-  return "bg-emerald-400";
+  return "bg-[var(--color-accent)]";
 }
 
 function fmtShortDate(iso: string): string {
@@ -877,11 +877,11 @@ function SpeakerNamingPanel({
             {remoteClusters.map((c) => (
               <span
                 key={c.id}
-                className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs bg-[rgba(45,123,255,0.12)] text-[#60A5FA]"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
+                <span className="h-1.5 w-1.5 rounded-full bg-[rgba(45,123,255,0.06)]0 inline-block" />
                 {c.resolvedName ?? c.id}
-                <span className="text-[10px] text-emerald-500">· {fmtSecs(c.totalSeconds)}</span>
+                <span className="text-[10px] text-[#60A5FA]">· {fmtSecs(c.totalSeconds)}</span>
               </span>
             ))}
           </div>
@@ -1655,7 +1655,7 @@ function MeetingDetailPanel({
                       <span className="text-zinc-800 dark:text-zinc-200">{p.name}</span>
                       {p.role && <span className="text-zinc-400 dark:text-zinc-500">{p.role}</span>}
                       {p.isGcTeam && (
-                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">GC</span>
+                        <span className="text-[9px] font-bold text-[#60A5FA] uppercase">GC</span>
                       )}
                     </span>
                   ))}
@@ -1681,7 +1681,7 @@ function MeetingDetailPanel({
                   <ul className="space-y-1.5">
                     {detail.keyDecisions.map((d, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300">
-                        <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                        <Check className="h-3.5 w-3.5 text-[#60A5FA] shrink-0 mt-0.5" />
                         {d}
                       </li>
                     ))}
@@ -1740,12 +1740,12 @@ function MeetingDetailPanel({
 
               {/* §8 GC-only action items */}
               {detail.actionItems.some((a) => a.isGcTask && a.status !== "CLOSED") && (
-                <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10 p-3">
+                <div className="rounded-lg border border-[rgba(45,123,255,0.25)] bg-[rgba(45,123,255,0.05)] p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">
+                    <p className="text-xs font-semibold text-[#60A5FA] uppercase tracking-wide">
                       GC Action Items
                     </p>
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-500">
+                    <span className="text-[10px] text-[#60A5FA]">
                       {detail.actionItems.filter((a) => a.isGcTask && a.status !== "CLOSED").length} open
                     </span>
                   </div>
@@ -1754,7 +1754,7 @@ function MeetingDetailPanel({
                       .filter((a) => a.isGcTask && a.status !== "CLOSED")
                       .map((item) => (
                         <li key={item.id} className="flex items-start gap-2">
-                          <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 mt-2 shrink-0" />
+                          <div className="h-1.5 w-1.5 rounded-full bg-[rgba(45,123,255,0.06)]0 mt-2 shrink-0" />
                           <div className="flex-1 min-w-0">
                             <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                               {item.description}
@@ -1798,7 +1798,7 @@ function MeetingDetailPanel({
                       <button
                         onClick={() => patchReviewStatus("PUBLISHED")}
                         disabled={patchingReview}
-                        className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 disabled:opacity-40 inline-flex items-center gap-1"
+                        className="text-xs px-2 py-0.5 rounded bg-[rgba(45,123,255,0.12)] text-[#60A5FA] hover:bg-[rgba(45,123,255,0.12)] disabled:opacity-40 inline-flex items-center gap-1"
                       >
                         {patchingReview ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>Publish</span>}
                       </button>
@@ -1812,7 +1812,7 @@ function MeetingDetailPanel({
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[rgba(45,123,255,0.12)] text-[#60A5FA]">
                         Published
                       </span>
                       <button

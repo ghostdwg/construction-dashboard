@@ -33,7 +33,7 @@ type DiscoverResponse = {
 type SelectedKey = string; // `${muniIdx}:${candIdx}`
 
 const inputCls =
-  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(0,255,100,0.4)]";
+  "rounded px-3 py-1.5 text-sm border border-[var(--line)] outline-none focus:border-[rgba(45,123,255,0.4)]";
 const inputStyle: React.CSSProperties = { background: "rgba(255,255,255,0.04)", color: "var(--text)" };
 
 const chipBase: React.CSSProperties = {
@@ -147,8 +147,8 @@ export default function DiscoverPanel({ onSourcesAdded }: { onSourcesAdded?: () 
           className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded transition-colors"
           style={{
             color: open ? "var(--signal)" : "var(--text-dim)",
-            border: `1px solid ${open ? "rgba(0,255,100,0.3)" : "var(--line)"}`,
-            background: open ? "rgba(0,255,100,0.06)" : "transparent",
+            border: `1px solid ${open ? "rgba(45,123,255,0.3)" : "var(--line)"}`,
+            background: open ? "rgba(45,123,255,0.06)" : "transparent",
           }}
         >
           {open ? "Hide" : "Open"}
@@ -203,7 +203,7 @@ export default function DiscoverPanel({ onSourcesAdded }: { onSourcesAdded?: () 
               </div>
 
               {addResult && (
-                <p className="text-[11px] rounded px-3 py-2" style={{ color: "var(--signal)", background: "rgba(0,255,100,0.06)", border: "1px solid rgba(0,255,100,0.2)" }}>
+                <p className="text-[11px] rounded px-3 py-2" style={{ color: "var(--signal)", background: "rgba(45,123,255,0.06)", border: "1px solid rgba(45,123,255,0.2)" }}>
                   Created {addResult.created} new sources{addResult.skipped > 0 ? `, skipped ${addResult.skipped} (already exist or invalid)` : ""}.
                 </p>
               )}
@@ -263,7 +263,7 @@ function MuniBlock({
                       {c.inferred_type.replace("_", " ")}
                     </span>
                     {c.viable && (
-                      <span style={{ ...chipBase, color: "var(--signal)", background: "rgba(0,255,100,0.08)", borderColor: "rgba(0,255,100,0.25)" }}>viable</span>
+                      <span style={{ ...chipBase, color: "var(--signal)", background: "rgba(45,123,255,0.08)", borderColor: "rgba(45,123,255,0.25)" }}>viable</span>
                     )}
                     <span className="font-mono text-[10px]" style={{ color: "var(--text-soft)" }}>
                       {c.recent_doc_count} recent · last {c.last_doc_date ?? "—"}

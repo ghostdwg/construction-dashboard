@@ -57,8 +57,8 @@ export default function ScanPanel() {
         className="font-mono text-[10px] uppercase tracking-[0.07em] px-3 py-1.5 rounded transition-colors"
         style={{
           color:      open ? "var(--signal)" : "var(--text-dim)",
-          border:     `1px solid ${open ? "rgba(0,255,100,0.3)" : "var(--line)"}`,
-          background: open ? "rgba(0,255,100,0.06)" : "transparent",
+          border:     `1px solid ${open ? "rgba(45,123,255,0.3)" : "var(--line)"}`,
+          background: open ? "rgba(45,123,255,0.06)" : "transparent",
         }}
       >
         Scan Document
@@ -86,7 +86,7 @@ export default function ScanPanel() {
                   className="flex-1 py-1.5 font-mono text-[10px] uppercase tracking-[0.07em] transition-colors"
                   style={{
                     color:      mode === m ? "var(--signal)" : "var(--text-dim)",
-                    background: mode === m ? "rgba(0,255,100,0.08)" : "transparent",
+                    background: mode === m ? "rgba(45,123,255,0.08)" : "transparent",
                   }}
                 >
                   {m === "url" ? "URL / Link" : "Paste Text"}
@@ -143,7 +143,7 @@ export default function ScanPanel() {
 
             {/* Result */}
             {result && (
-              <div className="rounded px-3 py-2.5 border border-[rgba(0,255,100,0.2)] bg-[rgba(0,255,100,0.06)] text-xs space-y-0.5">
+              <div className="rounded px-3 py-2.5 border border-[rgba(45,123,255,0.2)] bg-[rgba(45,123,255,0.06)] text-xs space-y-0.5">
                 <p style={{ color: "var(--signal)" }} className="font-[600]">
                   Scan complete{result.jurisdiction ? ` · ${result.jurisdiction}` : ""}
                 </p>

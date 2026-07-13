@@ -83,7 +83,7 @@ export default async function RootLayout({
                     style={{
                       width: "2px", height: "22px",
                       background: "var(--signal)",
-                      boxShadow: "0 0 14px rgba(0,255,100,0.35)",
+                      boxShadow: "0 0 14px rgba(45,123,255,0.35)",
                     }}
                   />
                   <span

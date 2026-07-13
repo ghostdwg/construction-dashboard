@@ -383,7 +383,7 @@ function StatCard({
         : color === "amber"
           ? "text-amber-600 dark:text-amber-400"
           : color === "emerald"
-            ? "text-emerald-600 dark:text-emerald-400"
+            ? "text-[#60A5FA]"
             : "text-zinc-900 dark:text-zinc-100";
   return (
     <div>

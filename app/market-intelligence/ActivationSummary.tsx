@@ -104,8 +104,8 @@ export default async function ActivationSummary() {
         <span className="font-mono text-[9px] uppercase tracking-[0.07em] px-2 py-0.5 rounded-full"
               style={{
                 color: activeCount > 0 ? "var(--signal)" : "var(--text-dim)",
-                background: activeCount > 0 ? "rgba(0,255,100,0.06)" : "rgba(255,255,255,0.04)",
-                border: `1px solid ${activeCount > 0 ? "rgba(0,255,100,0.25)" : "var(--line)"}`,
+                background: activeCount > 0 ? "rgba(45,123,255,0.06)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${activeCount > 0 ? "rgba(45,123,255,0.25)" : "var(--line)"}`,
               }}>
           {activeCount > 0 ? "ACTIVE" : "INACTIVE"}
         </span>

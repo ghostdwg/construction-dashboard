@@ -21,7 +21,7 @@ export default function UserNav() {
         className="font-mono text-[9px] uppercase tracking-[0.06em] px-2 py-1 rounded border"
         style={{
           background: "var(--signal-dim)",
-          borderColor: "rgba(0,255,100,0.22)",
+          borderColor: "rgba(45,123,255,0.22)",
           color: "var(--signal-soft)",
         }}
       >

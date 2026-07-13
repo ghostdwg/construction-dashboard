@@ -201,7 +201,7 @@ function ConnectionPanel({
       <div className="flex items-center justify-between gap-4 px-5 py-3">
         <div className="flex items-center gap-2.5">
           {linkedProjectId ? (
-            <Link2 className="h-4 w-4 text-emerald-500 shrink-0" />
+            <Link2 className="h-4 w-4 text-[#60A5FA] shrink-0" />
           ) : (
             <Link2Off className="h-4 w-4 text-zinc-400 shrink-0" />
           )}
@@ -432,9 +432,9 @@ function PushCard({
       </div>
 
       {pushState === "done" && pushResult && (
-        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-900/20">
+        <div className="mt-3 rounded-md border border-[rgba(45,123,255,0.25)] bg-[rgba(45,123,255,0.06)] px-3 py-2">
           <div className="flex items-center justify-between">
-            <div className="flex gap-4 text-xs text-emerald-700 dark:text-emerald-300">
+            <div className="flex gap-4 text-xs text-[#60A5FA]">
               <span>{pushResult.created} created</span>
               {pushResult.updated > 0 && <span>{pushResult.updated} updated</span>}
               {pushResult.skipped > 0 && (
@@ -612,8 +612,8 @@ function SchedulePushCard({
       </div>
 
       {pushState === "done" && pushResult && (
-        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-900/20">
-          <p className="text-xs text-emerald-700 dark:text-emerald-300">
+        <div className="mt-3 rounded-md border border-[rgba(45,123,255,0.25)] bg-[rgba(45,123,255,0.06)] px-3 py-2">
+          <p className="text-xs text-[#60A5FA]">
             Import submitted to Procore
             {pushResult.importId ? ` (ID ${pushResult.importId})` : ""}.
             {" "}Check{" "}
@@ -704,7 +704,7 @@ function SyncCard({
           onClick={handleSync}
           disabled={!hasProject || syncState === "syncing"}
           title={!hasProject ? "Link a Procore project first" : "Pull from Procore"}
-          className="flex shrink-0 items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {syncState === "syncing" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {syncState === "done" && <CheckCircle2 className="h-3.5 w-3.5" />}
@@ -715,9 +715,9 @@ function SyncCard({
       </div>
 
       {syncState === "done" && syncResult && (
-        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-900/20">
+        <div className="mt-3 rounded-md border border-[rgba(45,123,255,0.25)] bg-[rgba(45,123,255,0.06)] px-3 py-2">
           <div className="flex items-center justify-between">
-            <div className="flex gap-4 text-xs text-emerald-700 dark:text-emerald-300">
+            <div className="flex gap-4 text-xs text-[#60A5FA]">
               {syncResult.created > 0 && <span>{syncResult.created} new</span>}
               {syncResult.updated > 0 && <span>{syncResult.updated} updated</span>}
               <span className="text-zinc-500">{syncResult.skipped} unchanged</span>
@@ -929,7 +929,7 @@ function WebhookPanel({ credsMissing }: { credsMissing: boolean }) {
             <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
           ) : status.registered ? (
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <span className="flex items-center gap-1 text-xs font-medium text-[#60A5FA]">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Registered
               </span>

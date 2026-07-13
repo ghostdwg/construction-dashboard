@@ -62,7 +62,7 @@ const STATUS_STYLES: Record<string, string> = {
   OPEN: "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
   IN_PROGRESS: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
   READY_TO_CLOSE: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300",
-  CLOSED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300",
+  CLOSED: "bg-[rgba(45,123,255,0.12)] text-[#E8EEFF]",
   WAIVED: "bg-zinc-100 text-zinc-500 line-through dark:bg-zinc-800 dark:text-zinc-400",
 };
 
@@ -432,7 +432,7 @@ function ItemDetail({
           <button
             disabled={busy}
             onClick={() => transition("CLOSED")}
-            className="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600 disabled:opacity-40"
+            className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-40"
           >
             Close
           </button>
@@ -610,7 +610,7 @@ function CreateItemForm({ bidId, onCreated }: { bidId: number; onCreated: () => 
       <button
         onClick={submit}
         disabled={!title.trim()}
-        className="rounded bg-emerald-700 px-2 py-1 text-xs text-white disabled:opacity-40"
+        className="rounded bg-[var(--color-accent)] px-2 py-1 text-xs text-white disabled:opacity-40"
       >
         Create
       </button>

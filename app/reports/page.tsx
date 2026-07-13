@@ -57,9 +57,9 @@ const STATUS_COLORS: Record<string, string> = {
   draft: "#a1a1aa",
   in_progress: "#3b82f6",
   ready_for_invite: "#eab308",
-  invited: "#22c55e",
+  invited: "#60A5FA",
   under_review: "#a855f7",
-  awarded: "#15803d",
+  awarded: "#E8EEFF",
   cancelled: "#ef4444",
 };
 

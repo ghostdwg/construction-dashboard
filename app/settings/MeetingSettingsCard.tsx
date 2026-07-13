@@ -102,7 +102,7 @@ export default function MeetingSettingsCard() {
               </button>
             )}
             {saved && (
-              <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved</span>
+              <span className="text-xs text-[#60A5FA]">Saved</span>
             )}
           </div>
         ) : (

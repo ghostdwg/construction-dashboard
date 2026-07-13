@@ -204,11 +204,11 @@ export default function ScheduleIntelligencePanel({
           {/* ── Option 1: Structural Skeleton ───────────────────────────── */}
           <div className="rounded-lg border border-slate-700 bg-slate-800/60 p-3 flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <Blocks className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <Blocks className="w-3.5 h-3.5 text-[#60A5FA] shrink-0" />
               <span className="text-xs font-semibold text-slate-200">
                 Structural Skeleton
               </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/50 text-emerald-300 font-medium">
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[rgba(45,123,255,0.15)] text-[#60A5FA] font-medium">
                 free
               </span>
             </div>
@@ -216,7 +216,7 @@ export default function ScheduleIntelligencePanel({
               Builds the 9-phase CPM template. Procurement activities and trade
               names are sourced from your{" "}
               {meta?.hasSpecBook ? (
-                <span className="text-emerald-400">spec book</span>
+                <span className="text-[#60A5FA]">spec book</span>
               ) : (
                 <span className="text-slate-500">spec book (not uploaded) →</span>
               )}{" "}
@@ -228,7 +228,7 @@ export default function ScheduleIntelligencePanel({
               <button
                 onClick={() => runSeed(false)}
                 disabled={seeding}
-                className="flex-1 rounded-md bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white text-[11px] font-medium py-1.5 transition-colors"
+                className="flex-1 rounded-md bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] disabled:opacity-50 text-white text-[11px] font-medium py-1.5 transition-colors"
               >
                 {seeding ? "Building…" : "Build Skeleton"}
               </button>
@@ -242,7 +242,7 @@ export default function ScheduleIntelligencePanel({
               </button>
             </div>
             {seedDone && (
-              <p className="text-[11px] text-emerald-400">
+              <p className="text-[11px] text-[#60A5FA]">
                 Skeleton built — schedule updated.
               </p>
             )}

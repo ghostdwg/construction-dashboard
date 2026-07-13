@@ -17,13 +17,13 @@ import {
 } from "./tabConfig";
 
 const STATUS_COLOR: Record<string, { color: string; bg: string; border: string }> = {
-  draft:     { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.04)",  border: "rgba(255,255,255,0.1)"  },
-  active:    { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
-  leveling:  { color: "#ffcc72",            bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)"   },
-  submitted: { color: "#b8ceff",            bg: "rgba(126,167,255,0.1)",   border: "rgba(126,167,255,0.2)"  },
-  awarded:   { color: "var(--signal-soft)", bg: "var(--signal-dim)",       border: "rgba(0,255,100,0.22)"   },
-  lost:      { color: "#ff968f",            bg: "var(--red-dim)",          border: "rgba(232,69,60,0.22)"   },
-  cancelled: { color: "var(--text-dim)",    bg: "rgba(255,255,255,0.03)",  border: "rgba(255,255,255,0.08)" },
+  draft:     { color: "#94A3B8",  bg: "rgba(255,255,255,0.04)",  border: "rgba(148,163,184,0.15)" },
+  active:    { color: "#2D7BFF",  bg: "var(--signal-dim)",       border: "rgba(45,123,255,0.15)"  },
+  leveling:  { color: "#ffcc72",  bg: "var(--amber-dim)",        border: "rgba(245,166,35,0.2)"   },
+  submitted: { color: "#b8ceff",  bg: "rgba(126,167,255,0.1)",   border: "rgba(126,167,255,0.2)"  },
+  awarded:   { color: "#E8EEFF",  bg: "rgba(45,123,255,0.25)",   border: "rgba(45,123,255,0.4)"   },
+  lost:      { color: "#ff968f",  bg: "var(--red-dim)",          border: "rgba(232,69,60,0.22)"   },
+  cancelled: { color: "#94A3B8",  bg: "rgba(255,255,255,0.03)",  border: "rgba(148,163,184,0.12)" },
 };
 
 type PhaseKey = "overview" | "pursue" | "coordination" | "field" | "closeout" | "reference";
@@ -109,7 +109,7 @@ export default function ProjectContextBar({
           {isProject && (
             <span
               className="font-mono text-[9px] uppercase tracking-[0.07em] px-2 py-0.5 rounded"
-              style={{ background: "var(--signal-dim)", color: "var(--signal-soft)", border: "1px solid rgba(0,255,100,0.22)" }}
+              style={{ background: "var(--signal-dim)", color: "var(--signal-soft)", border: "1px solid rgba(45,123,255,0.22)" }}
             >
               project
             </span>
@@ -190,7 +190,7 @@ function PhaseBtn({ href, label, active }: { href: string; label: string; active
       style={{
         borderColor: active ? "var(--signal)"   : "transparent",
         color:       active ? "var(--text)"     : "var(--text-dim)",
-        background:  active ? "rgba(0,255,100,0.03)" : "transparent",
+        background:  active ? "rgba(45,123,255,0.03)" : "transparent",
       }}
     >
       {active && (
@@ -212,9 +212,9 @@ function SubBtn({ href, label, active }: { href: string; label: string; active: 
       href={href}
       className="shrink-0 flex items-center px-3 font-mono text-[9.5px] uppercase tracking-[0.08em] border-b transition-colors whitespace-nowrap"
       style={{
-        borderColor: active ? "rgba(0,255,100,0.55)" : "transparent",
+        borderColor: active ? "rgba(45,123,255,0.55)" : "transparent",
         color:       active ? "var(--text-soft)"     : "var(--text-dim)",
-        background:  active ? "rgba(0,255,100,0.02)" : "transparent",
+        background:  active ? "rgba(45,123,255,0.02)" : "transparent",
         marginBottom: "-1px",
       }}
     >

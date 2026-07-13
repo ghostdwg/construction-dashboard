@@ -44,7 +44,7 @@ export default function SubTabBar({
           href={`/bids/${bidId}?tab=${t.key}`}
           className={`shrink-0 px-3.5 py-2 text-[11px] font-mono tracking-wide border-b-2 -mb-px transition-colors ${
             active === t.key
-              ? "border-emerald-500 text-zinc-900 dark:text-zinc-100"
+              ? "border-[var(--color-accent)] text-zinc-900 dark:text-zinc-100"
               : "border-transparent text-zinc-400 hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200"
           }`}
         >

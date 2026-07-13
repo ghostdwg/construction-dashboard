@@ -78,7 +78,7 @@ function JobRows({ items, total }: { items: JobSummary[]; total: number }) {
         <Link
           key={job.id}
           href={`/bids/${job.bidId}`}
-          className="block text-[11px] leading-tight hover:text-emerald-400 transition-colors"
+          className="block text-[11px] leading-tight hover:text-[#4A8FFF] transition-colors"
           style={{ color: "var(--text-soft)" }}
         >
           {job.bidProjectName}
@@ -101,7 +101,7 @@ function BidRows({ items, total }: { items: BidDueSoonSummary[]; total: number }
         <Link
           key={bid.id}
           href={`/bids/${bid.id}`}
-          className="block text-[11px] leading-tight hover:text-emerald-400 transition-colors"
+          className="block text-[11px] leading-tight hover:text-[#4A8FFF] transition-colors"
           style={{ color: "var(--text-soft)" }}
         >
           {bid.projectName}
@@ -124,7 +124,7 @@ function SubmittalRows({ items, total }: { items: SubmittalDueSoonSummary[]; tot
         <Link
           key={item.id}
           href={`/bids/${item.bidId}?tab=submittals`}
-          className="block text-[11px] leading-tight hover:text-emerald-400 transition-colors"
+          className="block text-[11px] leading-tight hover:text-[#4A8FFF] transition-colors"
           style={{ color: "var(--text-soft)" }}
         >
           {item.bidProjectName}

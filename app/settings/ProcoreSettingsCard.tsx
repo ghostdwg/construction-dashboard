@@ -137,14 +137,14 @@ export default function ProcoreSettingsCard() {
             className="flex items-center gap-1.5 rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
             {testState === "testing" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {testState === "ok" && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
+            {testState === "ok" && <CheckCircle2 className="h-3.5 w-3.5 text-[#60A5FA]" />}
             {testState === "error" && <AlertCircle className="h-3.5 w-3.5 text-red-400" />}
             {testState === "testing" ? "Testing…" : "Test Connection"}
           </button>
         </div>
 
         {testState === "ok" && (
-          <div className="mt-3 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-300">
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-[rgba(45,123,255,0.25)] bg-[rgba(45,123,255,0.06)] px-3 py-2 text-xs text-[#60A5FA]">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
             {testMessage}
           </div>

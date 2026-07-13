@@ -98,7 +98,7 @@ export default function NewBidButton() {
             style={{
               background: isBid ? "rgba(126,167,255,0.1)" : "var(--signal-dim)",
               color:      isBid ? "#b8ceff"               : "var(--signal-soft)",
-              border:     isBid ? "1px solid rgba(126,167,255,0.2)" : "1px solid rgba(0,255,100,0.22)",
+              border:     isBid ? "1px solid rgba(126,167,255,0.2)" : "1px solid rgba(45,123,255,0.22)",
             }}
           >
             {isBid ? "Pursuit flow" : "Construction ready"}

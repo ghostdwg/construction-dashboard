@@ -64,7 +64,7 @@ const TIERS: TierDef[] = [
     defaultModel: "haiku",
     modelLocked: true,
     icon: Zap,
-    accentClass: "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20",
+    accentClass: "border-[rgba(45,123,255,0.35)] bg-[rgba(45,123,255,0.06)]",
   },
   {
     id: 2,
