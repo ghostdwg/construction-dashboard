@@ -167,6 +167,7 @@ model Bid {
   consultantReportRevisions ConsultantReportRevision[]
   consultantObservations    ConsultantObservation[]
   consultantDispositions    ConsultantDispositionRecord[]
+  consultantStreamExports   ConsultantStreamExport[]
 }
 
 model BidSubmission {
@@ -4205,6 +4206,29 @@ model ConsultantDispositionRecord {
 
   @@index([observationId, disposedAt])
   @@index([bidId])
+}
+
+// ── Module OPS6 (Phase 2) — consultant-stream PDF export record ─────────────
+// One row per generated export: the immutable artifact trail behind the
+// authenticated download URL. NO update path exists by design — a stale
+// export is superseded by generating a new one, never edited. Bytes live
+// in the BlobStore under the content-addressed storedKey; serving happens
+// only through the bid-scoped download route (never a public/signed URL).
+model ConsultantStreamExport {
+  id               String   @id @default(cuid())
+  bidId            Int
+  storedKey        String // plan-room/jobs/{bidId}/consultant-stream-exports/{sha256}.pdf — server-derived, never client-supplied
+  sha256           String
+  byteSize         Int
+  pageCount        Int      @default(0)
+  observationCount Int
+  filtersJson      String // the exact filters this export was generated with (dateFrom/dateTo/observationIds/includeDisposed)
+  generatedBy      String?
+  generatedAt      DateTime @default(now())
+
+  bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([bidId, generatedAt])
 }
 
 model TrackedItemAttachment {

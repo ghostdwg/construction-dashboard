@@ -84,8 +84,10 @@ from routers.institutional import router as institutional_router  # noqa: E402
 from routers.portal import router as portal_router  # noqa: E402
 from routers.beeline import router as beeline_router  # noqa: E402
 from routers.tier1 import router as tier1_router  # noqa: E402
+from routers.reports import router as reports_router  # noqa: E402
 
 app.include_router(parse_router, prefix="/parse", tags=["Spec Parsing"])
+app.include_router(reports_router, prefix="/reports", tags=["Report Rendering"])
 app.include_router(drawings_router, prefix="/parse", tags=["Drawing Analysis"])
 app.include_router(meetings_router, tags=["Meeting Intelligence"])
 app.include_router(briefing_router, tags=["Briefing"])

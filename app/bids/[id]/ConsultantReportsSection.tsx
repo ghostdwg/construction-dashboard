@@ -11,6 +11,7 @@
 // Activity tab) is a deferred follow-up card.
 
 import { useCallback, useEffect, useState } from "react";
+import ConsultantStreamExportButton from "./ConsultantStreamExportButton";
 
 const REPORT_TYPE_LABELS: Record<string, string> = {
   ARCHITECT_FIELD_REPORT: "Architect Field Report",
@@ -252,6 +253,10 @@ export default function ConsultantReportsSection({
           consultant, cited into the Register, and answered. You read the PDF and enter
           observations yourself; nothing is extracted automatically.
         </p>
+        {/* OPS6 — cumulative consultant-stream PDF export */}
+        <div className="mt-2">
+          <ConsultantStreamExportButton bidId={bidId} />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-1">
