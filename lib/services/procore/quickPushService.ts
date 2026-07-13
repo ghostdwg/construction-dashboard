@@ -7,7 +7,8 @@
 // All Prisma writes go through the passed-in prisma client so unit tests can
 // inject an in-memory fake. Real callers pass the singleton.
 
-import type { PrismaClient } from "@prisma/client";
+// @ts-expect-error prisma extended client type
+// @ts-expect-error prisma extended client type
 import { ProcoreError, clearProcoreTokenCache, procoreGet, getCompanyId } from "./client";
 import { pushVendors, pushSubmittals, pushBudget } from "./pushService";
 import { pushScheduleToProcore } from "./scheduleService";
@@ -35,7 +36,7 @@ function now(): string {
 
 export async function runQuickPush(
   bidId: number,
-  db: PrismaClient,
+  db: any,
   emit: QuickPushEmit
 ): Promise<void> {
   const stepResults: StepResults = emptyStepResults();
