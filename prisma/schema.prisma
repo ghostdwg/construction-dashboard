@@ -167,6 +167,7 @@ model Bid {
   consultantReportRevisions ConsultantReportRevision[]
   consultantObservations    ConsultantObservation[]
   consultantDispositions    ConsultantDispositionRecord[]
+  designIntentChanges       DesignIntentChange[]
 }
 
 model BidSubmission {
@@ -1165,13 +1166,50 @@ model Meeting {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  bid          Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  actionItems  MeetingActionItem[]
-  participants MeetingParticipant[]
-  trackedItems TrackedItem[]
+  bid                 Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  actionItems         MeetingActionItem[]
+  participants        MeetingParticipant[]
+  trackedItems        TrackedItem[]
+  designIntentChanges DesignIntentChange[]
 
   @@index([bidId])
   @@index([bidId, meetingDate])
+}
+
+// ── Module OPS5 — Design Log ─────────────────────────────────────────────────
+// Meeting-extracted design intent changes: an architect/engineer/owner
+// DIRECTING something different from the documented or previously approved
+// design (spec override, reversed decision, "in lieu of", verbal ASI-style
+// instruction). PROPOSAL-ONLY: the extractor's ceiling is a PROPOSED row —
+// every confirmation, dismissal, and Register Item creation is a human
+// action. Re-analysis replaces PROPOSED rows only; CONFIRMED/DISMISSED
+// rows are never touched. speakerLabel is DRAFT attribution from the
+// transcript, never verified identity.
+model DesignIntentChange {
+  id                  Int      @id @default(autoincrement())
+  meetingId           Int
+  bidId               Int
+  changeText          String // what is changing (≤2000, service-enforced)
+  priorIntent         String? // the previously approved intent being changed, from the transcript only
+  affectedSpec        String? // spec section / drawing ref, verbatim words if stated (≤200)
+  severity            String // CRITICAL | MAJOR | MINOR — app-validated string, never a Prisma enum
+  sourceQuote         String? // verbatim transcript excerpt ≤300 — the evidence a human confirms against
+  speakerLabel        String? // transcript speaker label — draft attribution only
+  state               String   @default("PROPOSED") // PROPOSED | CONFIRMED | DISMISSED
+  extractedAt         DateTime @default(now())
+  confirmedBy         String? // session actor at confirm; null otherwise
+  dismissedReason     String?
+  linkedTrackedItemId Int? // set by confirm-and-create (SetNull)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  meeting    Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid        Bid          @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  linkedItem TrackedItem? @relation(fields: [linkedTrackedItemId], references: [id], onDelete: SetNull)
+
+  @@index([bidId, state])
+  @@index([meetingId])
+  @@index([linkedTrackedItemId])
 }
 
 // Persistent speaker roster per meeting. Speaker labels from diarization
@@ -4016,6 +4054,7 @@ model TrackedItem {
   sourceConsultantObservation ConsultantObservation?  @relation("TrackedItemOriginatingObservation", fields: [sourceConsultantObservationId], references: [id], onDelete: SetNull)
   supportingObservations      ConsultantObservation[] @relation("ObservationRegisterItem")
   spawnedFromObservations     ConsultantObservation[] @relation("ObservationSpawnedItem")
+  designIntentChanges         DesignIntentChange[]
   comments                    TrackedItemComment[]
   attachments                 TrackedItemAttachment[]
 
