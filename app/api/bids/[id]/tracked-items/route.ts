@@ -14,7 +14,12 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { createTrackedItem, listTrackedItems } from "@/lib/services/trackedItems";
+import {
+  createTrackedItem,
+  itemIdsWithDispositions,
+  listTrackedItems,
+} from "@/lib/services/trackedItems";
+import { deriveConsultantBadge } from "@/lib/services/trackedItems/consultantBadge";
 
 async function sessionActor() {
   const session = await auth().catch(() => null);
@@ -36,6 +41,12 @@ export async function GET(
     status: searchParams.get("status") ?? undefined,
     assigneeName: searchParams.get("assignee") ?? undefined,
   });
+
+  // Phase 1B — badge is derived at read time from live facts (never stored).
+  const disposedItemIds = await itemIdsWithDispositions(
+    bidId,
+    items.map((i) => i.id)
+  );
 
   return Response.json({
     items: items.map((i) => ({
@@ -64,6 +75,12 @@ export async function GET(
       formalResponse: i.formalResponse,
       formalResponseBy: i.formalResponseBy,
       formalResponseAt: i.formalResponseAt?.toISOString() ?? null,
+      pmReviewRequired: i.pmReviewRequired,
+      consultantBadge: deriveConsultantBadge({
+        hasLinkedObservation: i._count.supportingObservations > 0,
+        hasFormalResponse: i.formalResponse != null,
+        hasDispositionRecord: disposedItemIds.has(i.id),
+      }),
       commentCount: i._count.comments,
       attachmentCount: i._count.attachments,
       createdAt: i.createdAt.toISOString(),

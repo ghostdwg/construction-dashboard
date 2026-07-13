@@ -156,12 +156,20 @@ export interface AcceptNewItemInput {
   assigneeName?: string | null;
 }
 
-export async function acceptObservationAsNewItem(
+/** ONE creation path for both route names (Phase 1B): spawning an item from
+ *  an observation sets the item-side originating FK, the observation-side
+ *  spawnedItemId ("this observation CAUSED this item"), AND registerItemId
+ *  ("…and trivially supports it") + state ACCEPTED_NEW_ITEM — so every 1A
+ *  projection, badge query, and workbench chip keeps working. Linking an
+ *  EXISTING item (below) sets registerItemId only; spawnedItemId stays null
+ *  there — that null is what distinguishes linked from spawned. */
+async function createItemFromObservation(
   bidId: number,
   reportId: number,
   observationId: number,
   input: AcceptNewItemInput,
-  actor: Actor
+  actor: Actor,
+  auditAction: "observation_accepted_new" | "observation_spawned_item"
 ): Promise<ServiceResult<{ observationId: number; trackedItemId: number }>> {
   const obs = await findObservation(bidId, reportId, observationId);
   if (!obs) return { ok: false, error: "Not found" };
@@ -200,20 +208,48 @@ export async function acceptObservationAsNewItem(
     });
     await tx.consultantObservation.update({
       where: { id: observationId },
-      data: { state: "ACCEPTED_NEW_ITEM", registerItemId: item.id },
+      data: {
+        state: "ACCEPTED_NEW_ITEM",
+        registerItemId: item.id,
+        spawnedItemId: item.id,
+      },
     });
     return item;
   });
 
   await audit(
-    "observation_accepted_new",
+    auditAction,
     bidId,
     { kind: "ConsultantObservation", id: String(observationId) },
     actor,
     "accepted_new_item",
-    { reportId, trackedItemId: result.id, kind }
+    { reportId, trackedItemId: result.id, spawnedItemId: result.id, kind }
   );
   return { ok: true, value: { observationId, trackedItemId: result.id } };
+}
+
+export async function acceptObservationAsNewItem(
+  bidId: number,
+  reportId: number,
+  observationId: number,
+  input: AcceptNewItemInput,
+  actor: Actor
+): Promise<ServiceResult<{ observationId: number; trackedItemId: number }>> {
+  return createItemFromObservation(
+    bidId, reportId, observationId, input, actor, "observation_accepted_new"
+  );
+}
+
+export async function spawnItemFromObservation(
+  bidId: number,
+  reportId: number,
+  observationId: number,
+  input: AcceptNewItemInput,
+  actor: Actor
+): Promise<ServiceResult<{ observationId: number; trackedItemId: number }>> {
+  return createItemFromObservation(
+    bidId, reportId, observationId, input, actor, "observation_spawned_item"
+  );
 }
 
 // ── Link / relink to an EXISTING TrackedItem ─────────────────────────────────

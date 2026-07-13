@@ -89,9 +89,30 @@ export async function listTrackedItems(bidId: number, filters: TrackedItemFilter
     },
     orderBy: [{ status: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
     include: {
-      _count: { select: { comments: true, attachments: true } },
+      _count: {
+        select: { comments: true, attachments: true, supportingObservations: true },
+      },
     },
   });
+}
+
+/** Phase 1B — which of these items carry ≥1 disposition record on a citing
+ *  observation. One indexed query per list page; feeds
+ *  deriveConsultantBadge() (badge is computed at read time, never stored). */
+export async function itemIdsWithDispositions(
+  bidId: number,
+  itemIds: number[]
+): Promise<Set<number>> {
+  if (itemIds.length === 0) return new Set();
+  const rows = await prisma.consultantDispositionRecord.findMany({
+    where: { bidId, observation: { registerItemId: { in: itemIds } } },
+    select: { observation: { select: { registerItemId: true } } },
+  });
+  return new Set(
+    rows
+      .map((r) => r.observation.registerItemId)
+      .filter((v): v is number => v != null)
+  );
 }
 
 export async function getTrackedItem(bidId: number, itemId: number) {

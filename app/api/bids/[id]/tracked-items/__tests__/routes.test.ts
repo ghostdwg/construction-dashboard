@@ -33,6 +33,8 @@ vi.mock("@/lib/storage/blobStore", () => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     bid: { findUnique: vi.fn(async () => (h.bidExists ? { id: 1 } : null)) },
+    // Phase 1B — badge derivation queries this model on every list read.
+    consultantDispositionRecord: { findMany: vi.fn(async () => []) },
     trackedItem: {
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
         h.items
@@ -42,7 +44,10 @@ vi.mock("@/lib/prisma", () => ({
               (where.kind === undefined || i.kind === where.kind) &&
               (where.status === undefined || i.status === where.status)
           )
-          .map((i) => ({ ...i, _count: { comments: 0, attachments: 0 } }))
+          .map((i) => ({
+            ...i,
+            _count: { comments: 0, attachments: 0, supportingObservations: 0 },
+          }))
       ),
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         const found = h.items.find(

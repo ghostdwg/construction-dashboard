@@ -340,6 +340,10 @@ export async function getConsultantReport(bidId: number, reportId: number) {
               formalResponseAt: true,
             },
           },
+          // Phase 1B — the append-only disposition log, chronological.
+          dispositions: {
+            orderBy: [{ disposedAt: "asc" }, { id: "asc" }],
+          },
         },
       },
     },

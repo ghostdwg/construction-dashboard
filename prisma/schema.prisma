@@ -166,6 +166,7 @@ model Bid {
   consultantReports         ConsultantReport[]
   consultantReportRevisions ConsultantReportRevision[]
   consultantObservations    ConsultantObservation[]
+  consultantDispositions    ConsultantDispositionRecord[]
 }
 
 model BidSubmission {
@@ -3998,6 +3999,10 @@ model TrackedItem {
   formalResponseAt    DateTime?
   formalResponsePrior String?
 
+  // Phase 1B — PM review flag: set/cleared MANUALLY by pm|admin only,
+  // never automatically (no trigger on link/dispose/status). Audited.
+  pmReviewRequired Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -4010,6 +4015,7 @@ model TrackedItem {
   sourceFieldReport           FieldReport?            @relation(fields: [sourceFieldReportId], references: [id], onDelete: SetNull)
   sourceConsultantObservation ConsultantObservation?  @relation("TrackedItemOriginatingObservation", fields: [sourceConsultantObservationId], references: [id], onDelete: SetNull)
   supportingObservations      ConsultantObservation[] @relation("ObservationRegisterItem")
+  spawnedFromObservations     ConsultantObservation[] @relation("ObservationSpawnedItem")
   comments                    TrackedItemComment[]
   attachments                 TrackedItemAttachment[]
 
@@ -4160,19 +4166,45 @@ model ConsultantObservation {
   consultantTargetDate DateTime? // consultant-reported target — NEVER synced with TrackedItem.dueDate in either direction
   state                String    @default("ENTERED") // ENTERED | ACCEPTED_NEW_ITEM | ACCEPTED_LINKED_ITEM | DISMISSED
   registerItemId       Int? // many observations may support ONE TrackedItem (set at acceptance/link; SetNull)
+  spawnedItemId        Int? // Phase 1B — the TrackedItem this observation CAUSED via /spawn (linking sets registerItemId only; spawning sets BOTH; SetNull)
   dismissedReason      String?
   createdBy            String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  report         ConsultantReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  bid            Bid              @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  registerItem   TrackedItem?     @relation("ObservationRegisterItem", fields: [registerItemId], references: [id], onDelete: SetNull)
-  originatedItem TrackedItem?     @relation("TrackedItemOriginatingObservation")
+  report         ConsultantReport              @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  bid            Bid                           @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  registerItem   TrackedItem?                  @relation("ObservationRegisterItem", fields: [registerItemId], references: [id], onDelete: SetNull)
+  spawnedItem    TrackedItem?                  @relation("ObservationSpawnedItem", fields: [spawnedItemId], references: [id], onDelete: SetNull)
+  originatedItem TrackedItem?                  @relation("TrackedItemOriginatingObservation")
+  dispositions   ConsultantDispositionRecord[]
 
   @@index([reportId, state])
   @@index([bidId])
   @@index([registerItemId])
+}
+
+// Phase 1B — append-only consultant disposition log. NO update or delete
+// path exists at ANY layer: the service module exports create/read only,
+// the route answers PATCH/PUT/DELETE with 405, and the Prisma client
+// extension in lib/prisma.ts rejects update/upsert/delete on this model
+// outright. A wrong disposition is corrected by APPENDING a new record;
+// the current disposition is the latest by (disposedAt, id).
+model ConsultantDispositionRecord {
+  id              Int      @id @default(autoincrement())
+  observationId   Int
+  bidId           Int // scoping for cross-project 404s
+  dispositionType String // APPROVE | REJECT | DEFER | VOID — app-validated string, never a Prisma enum (repo convention)
+  dispositionText String? // optional rationale, ≤2000 (service-enforced)
+  disposedBy      String // session actor — REQUIRED; a record with no human author must be impossible
+  disposedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  observation ConsultantObservation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  bid         Bid                   @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([observationId, disposedAt])
+  @@index([bidId])
 }
 
 model TrackedItemAttachment {

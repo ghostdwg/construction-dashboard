@@ -2,13 +2,34 @@ import '@/lib/env'
 import { PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 
+// Phase 1B — ConsultantDispositionRecord is APPEND-ONLY at the client
+// level. Prisma 7 removed $use middleware; the query extension below is
+// its successor and rejects every mutation-of-history path on that model
+// for EVERY caller of this shared client. The service layer additionally
+// exports no update/delete function and the route answers 405 — this is
+// the deepest of the three fences, not the only one.
+const APPEND_ONLY_MESSAGE =
+  "ConsultantDispositionRecord is append-only: corrections are made by appending a new record";
+
 function createPrisma() {
   const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL! });
-  return new PrismaClient({ adapter });
+  return new PrismaClient({ adapter }).$extends({
+    query: {
+      consultantDispositionRecord: {
+        update: () => { throw new Error(APPEND_ONLY_MESSAGE); },
+        updateMany: () => { throw new Error(APPEND_ONLY_MESSAGE); },
+        upsert: () => { throw new Error(APPEND_ONLY_MESSAGE); },
+        delete: () => { throw new Error(APPEND_ONLY_MESSAGE); },
+        deleteMany: () => { throw new Error(APPEND_ONLY_MESSAGE); },
+      },
+    },
+  });
 }
 
+type ExtendedPrismaClient = ReturnType<typeof createPrisma>;
+
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
+  prisma: ExtendedPrismaClient | undefined;
 };
 
 export const prisma = globalForPrisma.prisma ?? createPrisma();
