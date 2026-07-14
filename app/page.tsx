@@ -177,6 +177,8 @@ export default async function HomePage() {
     procurementBlocked,
     procurementAtRisk,
     openLeads,
+    pendingProcorePushes,
+    unreviewedObsByBid,
   ] = await Promise.all([
     // Background jobs: active + last 48h completed
     prisma.backgroundJob.findMany({
@@ -319,7 +321,39 @@ export default async function HomePage() {
         signals: { select: { aiRelevanceScore: true, heuristicsClassification: true } },
       },
     }),
+
+    // Pending Procore pushes: awarded bids with no procoreProjectId
+    prisma.bid.findMany({
+      where: { status: "awarded", procoreProjectId: null },
+      select: { id: true, projectName: true },
+      orderBy: { updatedAt: "desc" },
+      take: 8,
+    }),
+
+    // Unreviewed consultant observations — top bids by count
+    prisma.consultantObservation.groupBy({
+      by: ["bidId"],
+      where: { state: "ENTERED" },
+      _count: { id: true },
+      orderBy: { _count: { id: "desc" } },
+      take: 5,
+    }),
   ]);
+
+  // ── Unreviewed obs — resolve bid names ────────────────────────────────────
+  const unreviewedBidIds = unreviewedObsByBid.map((g) => g.bidId);
+  const unreviewedBidNames = unreviewedBidIds.length > 0
+    ? await prisma.bid.findMany({
+        where: { id: { in: unreviewedBidIds } },
+        select: { id: true, projectName: true },
+      })
+    : [];
+  const unreviewedBidNameMap = Object.fromEntries(unreviewedBidNames.map((b) => [b.id, b.projectName]));
+  const unreviewedGroupsWithNames = unreviewedObsByBid.map((g) => ({
+    bidId: g.bidId,
+    count: g._count.id,
+    projectName: unreviewedBidNameMap[g.bidId] ?? "Unknown project",
+  }));
 
   // ── Top leads ─────────────────────────────────────────────────────────────
   const topLeads = openLeads
@@ -1075,6 +1109,67 @@ export default async function HomePage() {
                 >
                   All leads →
                 </Link>
+              </div>
+            </RailCard>
+          )}
+
+          {/* Pending Procore Pushes */}
+          {pendingProcorePushes.length > 0 && (
+            <RailCard>
+              <PanelHead
+                title="Pending Procore Pushes"
+                sub="Awarded bids not yet pushed to Procore"
+                right={String(pendingProcorePushes.length)}
+              />
+              <div className="divide-y divide-[var(--line)]">
+                {pendingProcorePushes.map((bid) => (
+                  <div key={bid.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                    <Link
+                      href={`/bids/${bid.id}?tab=overview`}
+                      className="text-[12px] font-[500] truncate transition-colors hover:text-[#4A8FFF]"
+                      style={{ color: "var(--text)" }}
+                    >
+                      {bid.projectName}
+                    </Link>
+                    <Link
+                      href={`/bids/${bid.id}?tab=overview`}
+                      className="shrink-0 font-mono text-[9px] uppercase tracking-[0.07em] transition-colors hover:opacity-80 whitespace-nowrap"
+                      style={{ color: "var(--signal-soft)" }}
+                    >
+                      Push Now →
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </RailCard>
+          )}
+
+          {/* Unreviewed Consultant Reports */}
+          {unreviewedGroupsWithNames.length > 0 && (
+            <RailCard>
+              <PanelHead
+                title="Unreviewed Observations"
+                sub="Consultant report items awaiting disposition"
+                right={String(unreviewedGroupsWithNames.reduce((s, g) => s + g.count, 0))}
+              />
+              <div className="divide-y divide-[var(--line)]">
+                {unreviewedGroupsWithNames.map(({ bidId, count, projectName }) => (
+                  <div key={bidId} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                    <Link
+                      href={`/bids/${bidId}?tab=operations`}
+                      className="text-[12px] font-[500] truncate transition-colors hover:text-[#4A8FFF]"
+                      style={{ color: "var(--text)" }}
+                    >
+                      {projectName}
+                    </Link>
+                    <span
+                      className="shrink-0 font-mono text-[10px] px-1.5 py-0.5 rounded"
+                      style={{ background: "rgba(245,166,35,0.1)", color: "#ffcc72", border: "1px solid rgba(245,166,35,0.2)" }}
+                    >
+                      {count} pending
+                    </span>
+                  </div>
+                ))}
               </div>
             </RailCard>
           )}

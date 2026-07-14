@@ -254,7 +254,26 @@ export default function QuickPushButton({ bidId }: { bidId: number }) {
     }
   }, [bidId]);
 
-  if (!status || !status.credsOk) return null;
+  if (!status) return null; // still fetching — avoid flash
+
+  if (!status.credsOk) {
+    return (
+      <div
+        className="rounded-lg border px-4 py-3 flex items-center gap-3"
+        style={{ background: "var(--color-bg-elevated)", borderColor: "rgba(255,255,255,0.08)" }}
+      >
+        <span className="text-[11px] font-mono uppercase tracking-[0.07em] text-[var(--color-text-dim)]">
+          Procore not connected
+        </span>
+        <a
+          href="/settings"
+          className="text-[11px] text-[var(--color-accent)] hover:underline"
+        >
+          Connect in Settings →
+        </a>
+      </div>
+    );
+  }
 
   const { counts, bidStatus, procoreProjectId } = status;
   const isLocked = bidStatus === "lost" || bidStatus === "cancelled";
@@ -283,12 +302,22 @@ export default function QuickPushButton({ bidId }: { bidId: number }) {
           <span className="text-sm font-semibold text-[var(--color-text-primary)]">
             Quick Push — Award → Procore
           </span>
-          {procoreProjectId && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded border border-[rgba(45,123,255,0.2)] text-[var(--color-text-dim)] font-mono">
-              Project {procoreProjectId}
-            </span>
-          )}
         </div>
+        {/* Pre-flight status badge */}
+        {runState === "idle" && (
+          <span
+            className="text-[10px] px-2 py-0.5 rounded-full font-medium font-mono"
+            style={{
+              background: procoreProjectId
+                ? "rgba(6,182,212,0.1)"
+                : "rgba(45,123,255,0.1)",
+              color: procoreProjectId ? "var(--color-success)" : "var(--color-accent)",
+              border: `1px solid ${procoreProjectId ? "rgba(6,182,212,0.2)" : "rgba(45,123,255,0.2)"}`,
+            }}
+          >
+            {procoreProjectId ? "Pushed ✓" : "Ready to push"}
+          </span>
+        )}
 
         {runState === "idle" && (
           <button
@@ -374,59 +403,102 @@ export default function QuickPushButton({ bidId }: { bidId: number }) {
         </div>
       )}
 
-      {/* Step checklist */}
+      {/* Progress modal overlay */}
       {showChecklist && (
-        <div className="space-y-2 pt-1">
-          {STEP_NAMES.map((name) => (
-            <StepRow key={name} name={name} result={stepResults[name]} />
-          ))}
-        </div>
-      )}
-
-      {/* Running hint */}
-      {isRunning && (
-        <p className="text-[11px] text-[var(--color-text-dim)]">
-          Running… do not close this page.
-        </p>
-      )}
-
-      {/* Completion banner */}
-      {runState === "complete" && (
         <div
-          className="flex items-center gap-2 rounded px-3 py-2 text-xs font-medium"
-          style={{
-            background: "rgba(6,182,212,0.08)",
-            border: "1px solid rgba(6,182,212,0.2)",
-            color: "var(--color-success)",
-          }}
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}
         >
-          <CheckCircle2 className="w-4 h-4" />
-          Quick Push complete
-          {finalProjectId && (
-            <span className="text-[var(--color-text-dim)] font-normal">
-              — Procore project {finalProjectId}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Failure banner */}
-      {runState === "failed" && errorMsg && (
-        <div className="space-y-1.5">
           <div
-            className="flex items-start gap-2 rounded px-3 py-2 text-xs"
+            className="w-full max-w-md mx-4 rounded-xl border p-5 space-y-4"
             style={{
-              background: "rgba(239,68,68,0.08)",
-              border: "1px solid rgba(239,68,68,0.2)",
-              color: "var(--color-danger)",
+              background: "var(--color-bg-elevated)",
+              borderColor: runState === "complete"
+                ? "rgba(6,182,212,0.3)"
+                : runState === "failed"
+                ? "rgba(239,68,68,0.25)"
+                : "var(--color-border-accent)",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
             }}
           >
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{errorMsg}</span>
+            {/* Modal header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {isRunning && <Loader2 className="w-4 h-4 animate-spin text-[var(--color-accent)]" />}
+                {runState === "complete" && <CheckCircle2 className="w-4 h-4 text-[var(--color-success)]" />}
+                {runState === "failed" && <AlertCircle className="w-4 h-4 text-[var(--color-danger)]" />}
+                <span className="text-sm font-semibold text-[var(--color-text-primary)]">
+                  {isRunning ? "Pushing to Procore…" : runState === "complete" ? "Push Complete" : "Push Failed"}
+                </span>
+              </div>
+              {!isRunning && (
+                <button
+                  onClick={() => { setRunState("idle"); setErrorMsg(null); loadStatus(); }}
+                  className="text-lg leading-none text-[var(--color-text-dim)] hover:text-[var(--color-text-primary)] transition-colors"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+            {/* Step list */}
+            <div className="space-y-2">
+              {STEP_NAMES.map((name) => (
+                <StepRow key={name} name={name} result={stepResults[name]} />
+              ))}
+            </div>
+
+            {/* Running footer */}
+            {isRunning && (
+              <p className="text-[11px] text-[var(--color-text-dim)]">
+                Running… do not close this page.
+              </p>
+            )}
+
+            {/* Success footer */}
+            {runState === "complete" && (
+              <div
+                className="flex items-center gap-2 rounded px-3 py-2 text-xs font-medium"
+                style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)", color: "var(--color-success)" }}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Push complete
+                {finalProjectId && (
+                  <span className="text-[var(--color-text-dim)] font-normal font-mono ml-1">
+                    — Project {finalProjectId}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Failure footer */}
+            {runState === "failed" && (
+              <div className="space-y-2.5">
+                {errorMsg && (
+                  <div
+                    className="flex items-start gap-2 rounded px-3 py-2 text-xs"
+                    style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--color-danger)" }}
+                  >
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{errorMsg}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { setStepResults(emptyStepResults()); setErrorMsg(null); runPush(); }}
+                    className="btn-primary-sm flex items-center gap-1.5"
+                  >
+                    <Zap className="w-3 h-3" />
+                    Retry Push
+                  </button>
+                  <p className="text-[10px] text-[var(--color-text-dim)]">
+                    Completed steps are skipped on retry.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
-          <p className="text-[10px] text-[var(--color-text-dim)]">
-            Nothing retries automatically. Re-run when ready — every completed step is skipped.
-          </p>
         </div>
       )}
     </div>

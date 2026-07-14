@@ -39,6 +39,49 @@ import DailyBriefCard from "./DailyBriefCard";
 
 export const dynamic = "force-dynamic";
 
+// ── Status Timeline ───────────────────────────────────────────────────────────
+const TIMELINE_STAGES = ["draft", "bidding", "awarded", "active", "closeout"] as const;
+function BidStatusTimeline({ status }: { status: string }) {
+  const activeIdx = TIMELINE_STAGES.indexOf(status as typeof TIMELINE_STAGES[number]);
+  return (
+    <div className="flex items-center gap-0 w-full overflow-x-auto pb-1">
+      {TIMELINE_STAGES.map((stage, i) => {
+        const isPast = activeIdx > i;
+        const isActive = activeIdx === i;
+        const dotColor = isActive
+          ? "var(--color-accent)"
+          : isPast
+          ? "var(--color-success)"
+          : "rgba(255,255,255,0.12)";
+        const textColor = isActive
+          ? "var(--color-accent)"
+          : isPast
+          ? "var(--color-success)"
+          : "rgba(255,255,255,0.25)";
+        return (
+          <div key={stage} className="flex items-center flex-1 min-w-0">
+            <div className="flex flex-col items-center gap-1 shrink-0">
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ background: dotColor, boxShadow: isActive ? `0 0 6px ${dotColor}` : "none" }}
+              />
+              <span className="text-[8px] font-mono uppercase tracking-[0.1em] whitespace-nowrap" style={{ color: textColor }}>
+                {stage}
+              </span>
+            </div>
+            {i < TIMELINE_STAGES.length - 1 && (
+              <div
+                className="flex-1 h-px mx-1.5"
+                style={{ background: isPast ? "var(--color-success)" : "rgba(255,255,255,0.08)" }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 type PageParams = Promise<{ id: string }>;
 type SearchParams = Promise<{ tab?: string }>;
 
@@ -111,7 +154,7 @@ export default async function BidDetailPage({
         })
       : [];
 
-  const [overviewLevelingUploadCount, overviewHasBrief] =
+  const [overviewLevelingUploadCount, overviewHasBrief, overviewUnreviewedObs, overviewUncoveredSpecs] =
     tab === "overview"
       ? await Promise.all([
           prisma.estimateUpload.count({
@@ -121,8 +164,16 @@ export default async function BidDetailPage({
             where: { bidId },
             select: { id: true },
           }).then(Boolean),
+          prisma.consultantObservation.count({
+            where: { bidId, state: "ENTERED" },
+          }),
+          prisma.specBook.findFirst({
+            where: { bidId },
+            orderBy: { uploadedAt: "desc" },
+            select: { sections: { where: { covered: false }, select: { id: true } } },
+          }).then((sb) => sb?.sections.length ?? 0),
         ])
-      : [0, false];
+      : [0, false, 0, 0];
 
   const overviewRespondedCount = bid.selections.filter((s) =>
     ["received", "reviewing", "accepted"].includes(s.rfqStatus)
@@ -184,24 +235,75 @@ export default async function BidDetailPage({
 
           {tab === "overview" && (
             <TabErrorBoundary tabName="Overview">
-              <div className="flex flex-col gap-6">
-              <div className="flex items-center gap-2 flex-wrap -mb-2">
-                <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-zinc-400 dark:text-zinc-500 select-none">
-                  Status
-                </span>
-                <span className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-600 dark:text-zinc-300">
-                  {bid.status}
-                </span>
-                {bid.projectType && (
-                  <span className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-400 dark:text-zinc-500">
-                    {bid.projectType}
+              <div className="flex flex-col gap-5">
+
+              {/* Status chips + Quick Push — most visible header position */}
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[9px] font-mono uppercase tracking-[0.14em] text-zinc-400 dark:text-zinc-500 select-none">
+                    Status
                   </span>
-                )}
-                {bid.workflowType && bid.workflowType !== "BID" && (
-                  <span className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-400 dark:text-zinc-500">
-                    {bid.workflowType}
+                  <span className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-600 dark:text-zinc-300">
+                    {bid.status}
                   </span>
-                )}
+                  {bid.projectType && (
+                    <span className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-400 dark:text-zinc-500">
+                      {bid.projectType}
+                    </span>
+                  )}
+                  {bid.workflowType && bid.workflowType !== "BID" && (
+                    <span className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 rounded text-zinc-400 dark:text-zinc-500">
+                      {bid.workflowType}
+                    </span>
+                  )}
+                </div>
+                <QuickPushButton bidId={bid.id} />
+              </div>
+
+              {/* Status timeline */}
+              <BidStatusTimeline status={bid.status} />
+
+              {/* Quick stats bar */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  {
+                    label: "Open Action Items",
+                    value: dailyBriefActionCount,
+                    accent: dailyBriefActionCount > 0 ? "var(--color-warning)" : "var(--color-text-dim)",
+                  },
+                  {
+                    label: "Unreviewed Reports",
+                    value: overviewUnreviewedObs,
+                    accent: overviewUnreviewedObs > 0 ? "var(--color-accent)" : "var(--color-text-dim)",
+                  },
+                  {
+                    label: "Spec Gaps",
+                    value: overviewUncoveredSpecs,
+                    accent: overviewUncoveredSpecs > 0 ? "var(--color-warning)" : "var(--color-text-dim)",
+                  },
+                  {
+                    label: "Days Until Due",
+                    value: bid.dueDate
+                      ? Math.max(0, Math.ceil((bid.dueDate.getTime() - Date.now()) / 86_400_000))
+                      : "—",
+                    accent: bid.dueDate && (bid.dueDate.getTime() - Date.now()) < 7 * 86_400_000
+                      ? "var(--color-danger)"
+                      : "var(--color-text-dim)",
+                  },
+                ].map(({ label, value, accent }) => (
+                  <div
+                    key={label}
+                    className="rounded-lg border px-3 py-2.5"
+                    style={{ background: "rgba(15,22,40,0.6)", borderColor: "var(--line)" }}
+                  >
+                    <p className="text-[9px] font-mono uppercase tracking-[0.08em] mb-1" style={{ color: "var(--color-text-dim)" }}>
+                      {label}
+                    </p>
+                    <p className="text-[22px] font-[700] leading-none tabular-nums" style={{ color: accent }}>
+                      {value}
+                    </p>
+                  </div>
+                ))}
               </div>
 
               <ProjectStatusStrip
@@ -211,8 +313,6 @@ export default async function BidDetailPage({
                 levelingUploadCount={overviewLevelingUploadCount}
                 hasBrief={overviewHasBrief}
               />
-
-              <QuickPushButton bidId={bid.id} />
 
               <section className="grid grid-cols-2 gap-4">
                 <div>
