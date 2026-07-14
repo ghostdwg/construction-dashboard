@@ -424,7 +424,7 @@ function BuyoutRow({
             <button
               onClick={save}
               disabled={saving}
-              className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="btn-primary-sm"
             >
               {saving ? "Saving…" : "Save"}
             </button>

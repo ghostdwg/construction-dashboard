@@ -327,8 +327,19 @@ export default async function MarketIntelligencePage() {
           >
             <PanelHead title="Lead Pipeline" count={activeLeads.length} />
             {activeLeads.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm" style={{ color: "var(--text-dim)" }}>
-                No active leads yet. Add one manually or run a market scraper.
+              <div className="empty-state">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ color: "var(--color-text-dim)" }} aria-hidden>
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  <line x1="11" y1="8" x2="11" y2="14" />
+                  <line x1="8" y1="11" x2="14" y2="11" />
+                </svg>
+                <p className="empty-state-title">No leads found</p>
+                <p className="empty-state-body">
+                  Add a lead manually or run a market scraper to populate the pipeline.
+                </p>
               </div>
             ) : (
               <table className="w-full border-collapse">

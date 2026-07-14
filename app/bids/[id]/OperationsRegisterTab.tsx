@@ -178,13 +178,41 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
       )}
 
       {loadError && <p className="text-sm text-red-500">{loadError}</p>}
-      {loading && <p className="text-sm text-zinc-500">Loading…</p>}
 
-      {!loading && items.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          No Register Items yet. Create one manually, or promote a meeting action item
-          with “Promote from meeting…” (pick it from the list — or enter its # directly).
-        </p>
+      {loading && (
+        <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 border-b border-zinc-100 dark:border-zinc-800 px-3 py-2.5 last:border-b-0"
+            >
+              <div className="skeleton h-3.5 w-3.5 shrink-0" />
+              <div className="skeleton h-5 w-20 rounded" />
+              <div className="skeleton h-4 flex-1" />
+              <div className="skeleton h-5 w-20 rounded-full" />
+              <div className="skeleton h-4 w-14" />
+              <div className="skeleton h-4 w-20" />
+              <div className="skeleton h-4 w-16" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && items.length === 0 && !loadError && (
+        <div className="empty-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+            style={{ color: "var(--color-text-dim)" }} aria-hidden>
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+            <rect x="9" y="3" width="6" height="4" rx="1" />
+            <path d="M9 12h6M9 16h4" />
+          </svg>
+          <p className="empty-state-title">No Register Items yet</p>
+          <p className="empty-state-body">
+            No Register Items yet. Create one manually with "New Register Item…" or promote a meeting action item
+            using "Promote from meeting…" above.
+          </p>
+        </div>
       )}
 
       {items.length > 0 && (
@@ -268,6 +296,11 @@ function ItemRow({
     <>
       <tr
         onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={expanded ? `Collapse ${item.title}` : `Expand ${item.title} to add comments and attachments`}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onToggle()}
         title={expanded ? "Collapse" : "Expand to add comments and attachments"}
         className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50"
       >
@@ -420,7 +453,7 @@ function ItemDetail({
             {item.citationVerified ? ", verified" : ", unverified"}
             {item.sourceLocator ? ` · ${item.sourceLocator}` : ""}):
           </p>
-          <p className="mt-1 italic text-zinc-700 dark:text-zinc-300">“{item.evidenceExcerpt}”</p>
+          <p className="mt-1 italic text-zinc-700 dark:text-zinc-300">"{item.evidenceExcerpt}"</p>
           {item.sourceKind === "meeting" && (
             <p className="mt-1 text-zinc-400 dark:text-zinc-500">
               Speaker attributions in meeting evidence are draft labels, not verified identity.
@@ -618,6 +651,7 @@ function CreateItemForm({ bidId, onCreated }: { bidId: number; onCreated: () => 
     return (
       <button
         onClick={() => setOpen(true)}
+        aria-label="Create new register item"
         className="rounded bg-zinc-900 px-2 py-1 text-xs text-white dark:bg-zinc-100 dark:text-zinc-900"
       >
         New Register Item…

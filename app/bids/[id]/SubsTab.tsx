@@ -687,7 +687,7 @@ export default function SubsTab({
                   ? "Select one or more subs to send"
                   : ""
               }
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary-sm"
             >
               Send RFQ {selectedCount > 0 && `(${selectedCount})`}
             </button>

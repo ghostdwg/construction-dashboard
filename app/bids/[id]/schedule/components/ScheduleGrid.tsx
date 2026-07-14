@@ -497,7 +497,7 @@ export default function ScheduleGrid({ bidId }: { bidId: number }) {
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700 bg-slate-900 flex-shrink-0">
         <button
-          className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1.5 rounded transition-colors"
+          className="btn-primary-sm flex items-center gap-1.5"
           onClick={() => addActivity()}
         >
           <Plus className="w-3.5 h-3.5" />

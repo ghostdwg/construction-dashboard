@@ -333,7 +333,7 @@ export default function BudgetSection({ bidId }: { bidId: number }) {
                 <button
                   onClick={downloadBudget}
                   disabled={downloading}
-                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="btn-primary-sm"
                 >
                   {downloading ? "Generating…" : "Download Budget"}
                 </button>

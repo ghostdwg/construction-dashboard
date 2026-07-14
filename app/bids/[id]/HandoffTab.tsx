@@ -291,7 +291,7 @@ export default function HandoffTab({ bidId }: { bidId: number }) {
         <button
           onClick={downloadPacket}
           disabled={downloading}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="btn-primary"
         >
           {downloading ? "Generating…" : isAwarded ? "Download Startup Packet" : "Download Preview"}
         </button>

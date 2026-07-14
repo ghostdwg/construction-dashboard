@@ -213,7 +213,7 @@ export default function ScheduleTab({ bidId }: { bidId: number }) {
         </div>
         <Link
           href={`/bids/${bidId}/schedule`}
-          className="rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium px-3 py-1.5 transition-colors whitespace-nowrap"
+          className="btn-primary-sm whitespace-nowrap"
         >
           Open Schedule Builder →
         </Link>
@@ -254,7 +254,7 @@ export default function ScheduleTab({ bidId }: { bidId: number }) {
           <button
             onClick={runExport}
             disabled={exporting || !activities || activities.length === 0}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="btn-primary-sm"
           >
             {exporting ? "Exporting…" : "Export MSP CSV"}
           </button>
@@ -487,7 +487,7 @@ function ScheduleRow({
             <button
               onClick={save}
               disabled={saving}
-              className="rounded-md bg-blue-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="btn-primary-sm"
             >
               {saving ? "…" : "Save"}
             </button>
@@ -597,7 +597,7 @@ function AddActivityForm({
         <button
           onClick={submit}
           disabled={saving}
-          className="rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="btn-primary-sm"
         >
           {saving ? "Adding…" : "Add Activity"}
         </button>

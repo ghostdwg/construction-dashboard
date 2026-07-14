@@ -415,7 +415,7 @@ function PushCard({
                   ? "Link a Procore project first"
                   : "Push to Procore"
               }
-              className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="btn-primary-sm flex items-center gap-1.5"
             >
               {pushState === "pushing" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {pushState === "done" && <CheckCircle2 className="h-3.5 w-3.5" />}
@@ -599,7 +599,7 @@ function SchedulePushCard({
                     ? "No schedule activities"
                     : "Push to Procore"
               }
-              className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="btn-primary-sm flex items-center gap-1.5"
             >
               {pushState === "pushing" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {pushState === "done" && <CheckCircle2 className="h-3.5 w-3.5" />}

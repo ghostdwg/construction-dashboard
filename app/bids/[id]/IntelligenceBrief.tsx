@@ -180,7 +180,15 @@ export default function IntelligenceBrief({ bidId }: { bidId: number }) {
   // ----- STATE 1 — Loading -----
 
   if (brief === undefined) {
-    return <p className="text-sm text-zinc-400 dark:text-zinc-500">Loading…</p>;
+    return (
+      <div className="space-y-2.5 py-2" aria-busy="true" aria-label="Loading intelligence brief">
+        <div className="skeleton h-4 w-3/4" />
+        <div className="skeleton h-4 w-1/2" />
+        <div className="skeleton h-4 w-2/3" />
+        <div className="skeleton h-4 w-5/6" />
+        <div className="skeleton h-4 w-1/3" />
+      </div>
+    );
   }
 
   // ----- STATE 1 — No brief yet -----

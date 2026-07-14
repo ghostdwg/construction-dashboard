@@ -213,7 +213,7 @@ export default function OwnerEstimateSection({ bidId }: { bidId: number }) {
           <button
             onClick={generate}
             disabled={generating}
-            className="self-start rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="btn-primary self-start"
           >
             {generating ? "Generating…" : "Generate Owner Estimate"}
           </button>
