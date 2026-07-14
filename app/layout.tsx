@@ -117,7 +117,7 @@ export default async function RootLayout({
               <AppSidebar
                 counts={{ projects: bidCount, activeJobs: activeJob, newSignals, openActionItems: globalOpenActionItems }}
               />
-              <main className="flex-1 min-w-0 overflow-y-auto" style={{ transition: "flex-basis 200ms ease" }}>
+              <main className="flex-1 min-w-0 overflow-y-auto" style={{ marginLeft: "var(--sidebar-width, 64px)", transition: "margin-left 200ms ease, flex-basis 200ms ease" }}>
                 {children}
               </main>
             </div>
