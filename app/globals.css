@@ -16,39 +16,38 @@
   --color-emerald-700: #0E7490;
 }
 
-/* ══ DESIGN SYSTEM V2 — steel & amber / construction command center ══════════
+/* ══ DESIGN SYSTEM V2 — cold steel / construction command center ═════════════
    Canonical tokens. Dark is the default (:root); light applies under
    [data-theme="light"] (set by ThemeToggle on <html>). Legacy V1 vars below
    are DEPRECATED aliases kept so every existing component restyles itself
    without edits — new code must use --color-* tokens only. */
 :root {
   /* Surfaces */
-  --color-bg-base: #0A0A0A;
+  --color-bg-base: #0D0D0D;
   --color-bg-surface: #141414;
   --color-bg-elevated: #1C1C1C;
   --color-bg-overlay: #080808;
 
-  /* Accent — construction amber */
-  --color-accent: #F59E0B;
-  --color-accent-hover: #FBBF24;
-  --color-accent-dim: #B45309;
-  --color-accent-glow: rgba(245, 158, 11, 0.2);
-  --color-accent-glow-strong: rgba(245, 158, 11, 0.35);
+  /* Accent — cold steel */
+  --color-accent: #CBD5E1;
+  --color-accent-hover: #E2E8F0;
+  --color-accent-dim: #94A3B8;
+  --color-accent-glow: rgba(203, 213, 225, 0.12);
+  --color-accent-glow-strong: rgba(203, 213, 225, 0.2);
 
   /* Borders */
   --color-border: rgba(255, 255, 255, 0.07);
   --color-border-subtle: rgba(255, 255, 255, 0.04);
-  --color-border-accent: rgba(245, 158, 11, 0.4);
-  --color-border-glow: 0 0 0 1px rgba(245, 158, 11, 0.15),
-                       0 0 12px rgba(245, 158, 11, 0.15),
-                       0 0 24px rgba(245, 158, 11, 0.06);
+  --color-border-accent: rgba(203, 213, 225, 0.25);
+  --color-border-glow: 0 0 0 1px rgba(203, 213, 225, 0.1),
+                       0 0 12px rgba(203, 213, 225, 0.08);
 
   /* Text */
   --color-text-primary: #F0F0F0;
   --color-text-secondary: #9CA3AF;
   --color-text-dim: #4B5563;
-  --color-text-inverse: #0A0A0A;
-  --color-text-accent: #F59E0B;
+  --color-text-inverse: #0D0D0D;
+  --color-text-accent: #CBD5E1;
 
   /* Status — industry-standard */
   --color-warning: #F59E0B;
@@ -62,25 +61,24 @@
 }
 
 [data-theme="light"] {
-  --color-bg-base: #F5F5F4;
+  --color-bg-base: #F8F8F8;
   --color-bg-surface: #FFFFFF;
-  --color-bg-elevated: #E7E5E4;
+  --color-bg-elevated: #F0F0F0;
   --color-bg-overlay: rgba(0, 0, 0, 0.4);
-  --color-accent: #B45309;
-  --color-accent-hover: #92400E;
-  --color-accent-glow: rgba(180, 83, 9, 0.15);
-  --color-accent-glow-strong: rgba(180, 83, 9, 0.3);
+  --color-accent: #334155;
+  --color-accent-hover: #1E293B;
+  --color-accent-glow: rgba(51, 65, 85, 0.12);
+  --color-accent-glow-strong: rgba(51, 65, 85, 0.2);
   --color-border: rgba(0, 0, 0, 0.08);
   --color-border-subtle: rgba(0, 0, 0, 0.05);
-  --color-border-accent: rgba(180, 83, 9, 0.4);
-  --color-border-glow: 0 0 0 1px rgba(180, 83, 9, 0.12),
-                       0 0 12px rgba(180, 83, 9, 0.14),
-                       0 0 24px rgba(180, 83, 9, 0.06);
-  --color-text-primary: #0A0A0A;
+  --color-border-accent: rgba(51, 65, 85, 0.3);
+  --color-border-glow: 0 0 0 1px rgba(51, 65, 85, 0.1),
+                       0 0 12px rgba(51, 65, 85, 0.08);
+  --color-text-primary: #0D0D0D;
   --color-text-secondary: #57534E;
   --color-text-dim: #A8A29E;
-  --color-text-inverse: #F5F5F4;
-  --color-text-accent: #B45309;
+  --color-text-inverse: #F8F8F8;
+  --color-text-accent: #334155;
   /* Status hues identical; tints slightly darker for light surfaces */
   --color-warning-bg: rgba(245, 158, 11, 0.16);
   --color-danger-bg: rgba(239, 68, 68, 0.14);
@@ -102,8 +100,8 @@
   --text-dim:    var(--color-text-dim);         /* @deprecated → --color-text-dim */
   --signal:      var(--color-accent);           /* @deprecated (was neon green) → --color-accent */
   --signal-soft: var(--color-accent-hover);     /* @deprecated → --color-accent-hover */
-  --signal-dim:  rgba(245, 158, 11, 0.09);      /* @deprecated → --color-info-bg */
-  --signal-mid:  rgba(245, 158, 11, 0.18);      /* @deprecated → --color-accent-glow */
+  --signal-dim:  rgba(203, 213, 225, 0.09);      /* @deprecated → --color-info-bg */
+  --signal-mid:  rgba(203, 213, 225, 0.18);      /* @deprecated → --color-accent-glow */
   --amber:       var(--color-warning);          /* @deprecated → --color-warning */
   --amber-dim:   var(--color-warning-bg);       /* @deprecated → --color-warning-bg */
   --red:         var(--color-danger);           /* @deprecated → --color-danger */
@@ -121,13 +119,10 @@
 :root { color-scheme: dark; }
 [data-theme="light"] { color-scheme: light; }
 
-/* ── Base body — steel black + amber gradient + grid overlay ────────────── */
+/* ── Base body — steel black / flat ─────────────────────────────────────── */
 body {
   color: var(--color-text-primary);
-  background:
-    radial-gradient(ellipse at top,
-      rgba(245, 158, 11, 0.04) 0%, transparent 60%),
-    var(--color-bg-base);
+  background: var(--color-bg-base);
 }
 
 /* ── Table row hover ───────────────────────────────────────────────────── */
@@ -265,17 +260,17 @@ body::before {
 /* Blueprint grid texture (landing page hero) — CSS-only, no images */
 .blueprint-grid {
   background-image:
-    linear-gradient(rgba(245, 158, 11, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(245, 158, 11, 0.06) 1px, transparent 1px),
-    linear-gradient(rgba(245, 158, 11, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(245, 158, 11, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(203, 213, 225, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(203, 213, 225, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(203, 213, 225, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(203, 213, 225, 0.03) 1px, transparent 1px);
   background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
 }
 
-/* ── Table overflow — thin amber scrollbar ──────────────────────────────── */
+/* ── Table overflow — thin dark scrollbar ───────────────────────────────── */
 .overflow-x-auto {
   scrollbar-width: thin;
-  scrollbar-color: rgba(245, 158, 11, 0.45) rgba(255, 255, 255, 0.04);
+  scrollbar-color: rgba(255, 255, 255, 0.12) rgba(255, 255, 255, 0.04);
 }
 .overflow-x-auto::-webkit-scrollbar {
   height: 4px;
@@ -284,11 +279,11 @@ body::before {
   background: rgba(255, 255, 255, 0.04);
 }
 .overflow-x-auto::-webkit-scrollbar-thumb {
-  background: rgba(245, 158, 11, 0.45);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 2px;
 }
 .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-  background: rgba(245, 158, 11, 0.65);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* ══ ACCESSIBILITY — focus ring ═════════════════════════════════════════════ */

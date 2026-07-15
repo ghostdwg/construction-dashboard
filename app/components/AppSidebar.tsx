@@ -147,7 +147,7 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
                     ? "3px solid var(--color-accent)"
                     : "3px solid transparent",
                   background: active ? "var(--color-bg-elevated)" : "transparent",
-                  color: active ? "var(--color-accent)" : "var(--color-text-dim)",
+                  color: active ? "var(--color-text-primary)" : "var(--color-text-dim)",
                   transition: "background 0.15s, color 0.15s",
                   textDecoration: "none",
                   overflow: "hidden",
