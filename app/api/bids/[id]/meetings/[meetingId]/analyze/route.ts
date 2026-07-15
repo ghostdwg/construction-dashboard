@@ -18,6 +18,7 @@ import { getSetting } from "@/lib/services/settings/appSettingsService";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
 import { logAiUsage, classifyAiFailure } from "@/lib/services/ai/aiUsageLog";
 import {
+  getOutstandingCommitments,
   getProjectContext,
   getPriorOpenItems,
   parseMeetingAnalysis,
@@ -86,11 +87,19 @@ export async function POST(
     .map(p => p.name);
 
   // Gather prior open items + live project context + token budget in parallel
-  const [priorOpenItems, projectContext, maxTokens] = await Promise.all([
-    getPriorOpenItems(mId, bidId),
-    getProjectContext(bidId),
-    getMaxTokens("meeting-analysis"),
-  ]);
+  const [priorOpenItemsRaw, outstandingCommitments, projectContext, maxTokens] =
+    await Promise.all([
+      getPriorOpenItems(mId, bidId),
+      getOutstandingCommitments(mId, bidId),
+      getProjectContext(bidId),
+      getMaxTokens("meeting-analysis"),
+    ]);
+  // OPS7 cross-meeting carry — outstanding commitments ride the existing
+  // prior-items context block (context only; rows are never auto-modified).
+  const priorOpenItems =
+    outstandingCommitments === "none"
+      ? priorOpenItemsRaw
+      : `${priorOpenItemsRaw}\nOutstanding commitments from prior meetings:\n${outstandingCommitments}`;
 
   await prisma.meeting.update({ where: { id: mId }, data: { status: "ANALYZING" } });
 
@@ -185,6 +194,7 @@ export async function POST(
       openIssuesFound: analysis.section6.length,
       redFlagsFound: analysis.section7.length,
       designChangesFound: analysis.section9.length,
+      commitmentsFound: analysis.section10.length,
     });
   } catch (err) {
     await prisma.meeting.update({ where: { id: mId }, data: { status: "READY" } });

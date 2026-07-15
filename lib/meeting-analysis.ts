@@ -62,6 +62,16 @@ export type AnalysisDesignChange = {
   speakerLabel: string | null;     // draft attribution, never verified identity
 };
 
+// OPS7 — a proposed verbal commitment extracted from the transcript.
+export type AnalysisCommitment = {
+  committedBy: string;         // resolved name — draft attribution
+  speakerLabel: string | null;
+  commitmentText: string;      // ≤2000
+  duePhrase: string | null;    // verbatim date words
+  dueDate: string | null;      // ISO date, only when unambiguous
+  sourceQuote: string | null;  // verbatim ≤300 — paraphrase-rule exception
+};
+
 export type MeetingAnalysis = {
   section1: AnalysisSection1;
   section2: AnalysisParticipant[];          // Who was in the meeting
@@ -72,6 +82,7 @@ export type MeetingAnalysis = {
   section7: MeetingRedFlag[];               // Red flags
   section8: AnalysisActionItem[];           // GC-only subset of §5
   section9: AnalysisDesignChange[];         // OPS5 — design intent changes
+  section10: AnalysisCommitment[];          // OPS7 — verbal commitments
 };
 
 // ── Project context assembly ──────────────────────────────────────────────────
@@ -192,6 +203,35 @@ export async function getPriorOpenItems(
     .join("\n");
 }
 
+// ── Outstanding commitments (OPS7 cross-meeting carry) ───────────────────────
+//
+// Confirmed-OPEN commitments from OTHER meetings on this bid, formatted for
+// prompt-context injection so follow-through gets discussed. Context only —
+// nothing here mutates commitment rows.
+
+export async function getOutstandingCommitments(
+  meetingId: number,
+  bidId: number,
+): Promise<string> {
+  const rows = await prisma.meetingCommitment.findMany({
+    where: { bidId, status: "OPEN", meetingId: { not: meetingId } },
+    orderBy: [{ dueDate: "asc" }, { id: "asc" }],
+    take: 20,
+    select: { committedBy: true, commitmentText: true, dueDate: true, duePhrase: true },
+  });
+  if (rows.length === 0) return "none";
+  return rows
+    .map((c, n) => {
+      const due = c.dueDate
+        ? ` [due ${c.dueDate.toISOString().split("T")[0]}]`
+        : c.duePhrase
+          ? ` [due "${c.duePhrase}"]`
+          : "";
+      return `${n + 1}. ${c.committedBy}: ${c.commitmentText}${due}`;
+    })
+    .join("\n");
+}
+
 // ── Prompt builder ────────────────────────────────────────────────────────────
 
 export type AnalysisPromptContext = {
@@ -231,7 +271,8 @@ The JSON must match this exact schema:
   "section6": [{ "text": "string", "reason": "string", "carriedFrom": "YYYY-MM-DD|null" }],
   "section7": [{ "tag": "DELAY|COST|RISK|DISPUTE|SAFETY|COMPLIANCE", "description": "string" }],
   "section8": [same shape as section5, GC tasks only],
-  "section9": [{ "change_text": "string", "prior_intent": "string|null", "affected_spec": "string|null", "severity": "CRITICAL|MAJOR|MINOR", "source_quote": "string|null", "speaker_label": "string|null" }]
+  "section9": [{ "change_text": "string", "prior_intent": "string|null", "affected_spec": "string|null", "severity": "CRITICAL|MAJOR|MINOR", "source_quote": "string|null", "speaker_label": "string|null" }],
+  "section10": [{ "committed_by": "string", "speaker_label": "string|null", "commitment_text": "string", "due_phrase": "string|null", "normalized_due": "YYYY-MM-DD|null", "source_quote": "string|null" }]
 }
 
 Rules:
@@ -252,6 +293,14 @@ Rules:
   conflict; MAJOR = changes scope, cost, or an approved submittal; MINOR =
   finish/detail-level direction. source_quote: verbatim excerpt, max 300
   chars. Never invent spec or drawing references. Empty array when none.
+- Section 10 (commitments): extract explicit verbal commitments only — a
+  person committing themselves/their company ("we will have X done by
+  Friday") or clearly acknowledging an assignment. due_phrase = verbatim
+  date words; normalized_due = ISO date ONLY when unambiguous relative to
+  the meeting date — never invent. source_quote verbatim, max 300 chars.
+  Exclude hopes/estimates, unanswered requests, options, and third-party
+  hearsay; skip anything already emitted as a section5 action item for
+  the same person and task. Empty array when none.
 
 ${gcTeamLine}
 
@@ -367,7 +416,30 @@ export function parseMeetingAnalysis(raw: string): MeetingAnalysis {
     })
     .filter((c): c is AnalysisDesignChange => c !== null);
 
-  return { section1, section2, section3, section4, section5, section6, section7, section8, section9 };
+  // OPS7 §10 — commitments. Invalid rows DROPPED; fields clamped; dates
+  // must be strict ISO or null (never repaired into guesses).
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const section10: AnalysisCommitment[] = (Array.isArray(obj.section10) ? obj.section10 : [])
+    .map((c: unknown): AnalysisCommitment | null => {
+      const r = c as Record<string, unknown>;
+      const committedBy = clamp(r.committed_by, 200);
+      const commitmentText = clamp(r.commitment_text, 2000);
+      if (!committedBy || !commitmentText) return null;
+      const due = typeof r.normalized_due === "string" && ISO_DATE.test(r.normalized_due)
+        ? r.normalized_due
+        : null;
+      return {
+        committedBy,
+        speakerLabel: clamp(r.speaker_label, 100),
+        commitmentText,
+        duePhrase: clamp(r.due_phrase, 120),
+        dueDate: due,
+        sourceQuote: clamp(r.source_quote, 300),
+      };
+    })
+    .filter((c): c is AnalysisCommitment => c !== null);
+
+  return { section1, section2, section3, section4, section5, section6, section7, section8, section9, section10 };
 }
 
 // ── DB writer ─────────────────────────────────────────────────────────────────
@@ -445,6 +517,27 @@ export async function writeMeetingAnalysis(
           sourceQuote: change.sourceQuote,
           speakerLabel: change.speakerLabel,
           // state stays the PROPOSED default — confirmation is human-only.
+        },
+      });
+    }
+
+    // §10 commitments — replace PROPOSED rows only. OPEN/FULFILLED/
+    // DISMISSED are human decisions and are NEVER touched by re-analysis.
+    await tx.meetingCommitment.deleteMany({
+      where: { meetingId, status: "PROPOSED" },
+    });
+    for (const commitment of analysis.section10) {
+      await tx.meetingCommitment.create({
+        data: {
+          meetingId,
+          bidId,
+          committedBy: commitment.committedBy,
+          speakerLabel: commitment.speakerLabel,
+          commitmentText: commitment.commitmentText,
+          duePhrase: commitment.duePhrase,
+          dueDate: commitment.dueDate ? new Date(`${commitment.dueDate}T00:00:00.000Z`) : null,
+          sourceQuote: commitment.sourceQuote,
+          // status stays the PROPOSED default — confirmation is human-only.
         },
       });
     }

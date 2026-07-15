@@ -168,6 +168,7 @@ model Bid {
   consultantObservations    ConsultantObservation[]
   consultantDispositions    ConsultantDispositionRecord[]
   designIntentChanges       DesignIntentChange[]
+  meetingCommitments        MeetingCommitment[]
 }
 
 model BidSubmission {
@@ -1171,6 +1172,7 @@ model Meeting {
   participants        MeetingParticipant[]
   trackedItems        TrackedItem[]
   designIntentChanges DesignIntentChange[]
+  commitments         MeetingCommitment[]
 
   @@index([bidId])
   @@index([bidId, meetingDate])
@@ -1210,6 +1212,41 @@ model DesignIntentChange {
   @@index([bidId, state])
   @@index([meetingId])
   @@index([linkedTrackedItemId])
+}
+
+// ── Module OPS7 — Commitment Register ────────────────────────────────────────
+// Verbal commitments extracted from meeting transcripts ("we will have the
+// rebar done by Friday"). PROPOSAL-ONLY extraction (Design Log discipline):
+// rows land PROPOSED; confirm (→ OPEN) / dismiss / fulfill are human
+// actions. OVERDUE is DERIVED at read (status OPEN && dueDate < now) —
+// never stored, a stored flag goes stale. committedBy/speakerLabel are
+// DRAFT transcript attribution, never verified identity. Re-analysis
+// replaces PROPOSED rows only.
+model MeetingCommitment {
+  id                 Int       @id @default(autoincrement())
+  meetingId          Int
+  bidId              Int
+  committedBy        String // resolved name from the roster — draft attribution
+  speakerLabel       String? // raw transcript label behind the attribution
+  commitmentText     String // what was committed (≤2000, service-enforced)
+  duePhrase          String? // verbatim date words ("by Friday") — kept even when normalized
+  dueDate            DateTime? // normalized ONLY when unambiguous; never invented
+  sourceQuote        String? // verbatim excerpt ≤300 — the evidence a human confirms against
+  status             String    @default("PROPOSED") // PROPOSED | OPEN | FULFILLED | DISMISSED
+  confirmedBy        String? // session actor at confirm
+  fulfilledBy        String? // session actor at fulfill
+  dismissedReason    String?
+  linkedActionItemId Int? // set by confirm-and-spawn or link (SetNull)
+  extractedAt        DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  meeting          Meeting            @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid              Bid                @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  linkedActionItem MeetingActionItem? @relation(fields: [linkedActionItemId], references: [id], onDelete: SetNull)
+
+  @@index([bidId, status, dueDate])
+  @@index([meetingId])
 }
 
 // Persistent speaker roster per meeting. Speaker labels from diarization
@@ -1264,6 +1301,8 @@ model MeetingActionItem {
   // TrackedItem.sourceMeetingActionItemId is unique). Promotion never edits
   // or deletes this row; it remains the source evidence.
   trackedItem TrackedItem?
+
+  commitments MeetingCommitment[]
 
   @@index([bidId])
   @@index([meetingId])

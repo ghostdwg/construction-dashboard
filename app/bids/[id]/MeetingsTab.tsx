@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import MeetingDesignLog from "./MeetingDesignLog";
+import MeetingCommitments from "./MeetingCommitments";
 import {
   Mic,
   Plus,
@@ -333,6 +334,7 @@ export default function MeetingsTab({ bidId }: { bidId: number }) {
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
             {meetings.length} meeting{meetings.length !== 1 ? "s" : ""}
             {totalOpen > 0 && ` · ${totalOpen} open action item${totalOpen !== 1 ? "s" : ""}`}
+            <BidCommitmentsRollup bidId={bidId} />
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1859,6 +1861,14 @@ function MeetingDetailPanel({
             meetingId={detail.id}
             analyzedAt={detail.analyzedAt}
           />
+
+          {/* ── OPS7: Commitments — verbal commitments from this analysis;
+              renders nothing when none were proposed. */}
+          <MeetingCommitments
+            bidId={bidId}
+            meetingId={detail.id}
+            analyzedAt={detail.analyzedAt}
+          />
         </div>
       )}
 
@@ -2354,5 +2364,36 @@ function AllActionItemsView({
         )}
       </div>
     </div>
+  );
+}
+
+
+// ── OPS7: per-bid cross-meeting commitment rollup ────────────────────────────
+// One count fetch; renders nothing until commitments exist on this bid.
+function BidCommitmentsRollup({ bidId }: { bidId: number }) {
+  const [counts, setCounts] = useState<{
+    proposed: number; open: number; overdue: number; fulfilled: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/bids/${bidId}/commitments`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json: { counts?: { proposed: number; open: number; overdue: number; fulfilled: number } } | null) => {
+        if (!cancelled && json?.counts) setCounts(json.counts);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [bidId]);
+
+  if (!counts || counts.proposed + counts.open + counts.fulfilled === 0) return null;
+  return (
+    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+      {" · "}commitments: {counts.open} open
+      {counts.overdue > 0 && (
+        <span className="font-semibold text-red-600 dark:text-red-400"> ({counts.overdue} overdue)</span>
+      )}
+      {counts.proposed > 0 && ` · ${counts.proposed} awaiting review`}
+    </span>
   );
 }

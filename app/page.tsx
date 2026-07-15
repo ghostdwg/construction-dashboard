@@ -177,6 +177,7 @@ export default async function HomePage() {
     procurementBlocked,
     procurementAtRisk,
     openLeads,
+    overdueCommitments,
   ] = await Promise.all([
     // Background jobs: active + last 48h completed
     prisma.backgroundJob.findMany({
@@ -318,6 +319,11 @@ export default async function HomePage() {
         detectedAt: true, status: true,
         signals: { select: { aiRelevanceScore: true, heuristicsClassification: true } },
       },
+    }),
+    // OPS7 — overdue verbal commitments across all projects (derived:
+    // OPEN && dueDate < now; nothing stores an overdue flag).
+    prisma.meetingCommitment.count({
+      where: { status: "OPEN", dueDate: { not: null, lt: now } },
     }),
   ]);
 
@@ -644,13 +650,19 @@ export default async function HomePage() {
                     <span className="font-mono text-[10px]" style={{ color: "#ffcc72" }}>{calOverdue.actionItems} task</span>
                   </Link>
                 )}
+                {overdueCommitments > 0 && (
+                  <div className="flex items-center gap-1.5" title="Overdue verbal commitments from meetings — review in each meeting's Commitments band">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#ff968f" }} />
+                    <span className="font-mono text-[10px]" style={{ color: "#ff968f" }}>{overdueCommitments} commit</span>
+                  </div>
+                )}
                 {procurementBlocked > 0 && (
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: "#ff968f" }} />
                     <span className="font-mono text-[10px]" style={{ color: "#ff968f" }}>{procurementBlocked} pkg</span>
                   </div>
                 )}
-                {calOverdue.submittals === 0 && calOverdue.actionItems === 0 && procurementBlocked === 0 && (
+                {calOverdue.submittals === 0 && calOverdue.actionItems === 0 && procurementBlocked === 0 && overdueCommitments === 0 && (
                   <span className="font-mono text-[10px]" style={{ color: "rgba(255,255,255,0.18)" }}>—</span>
                 )}
               </div>
