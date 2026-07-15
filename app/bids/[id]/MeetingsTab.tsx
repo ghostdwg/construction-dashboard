@@ -12,6 +12,7 @@
 //   6. Manage action items register (inline status, close, reassign)
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import MeetingDesignLog from "./MeetingDesignLog";
 import {
   Mic,
   Plus,
@@ -1850,6 +1851,14 @@ function MeetingDetailPanel({
               </div>
             </div>
           )}
+
+          {/* ── OPS5: Design Log — proposed design intent changes from this
+              analysis; the panel renders nothing when none were proposed. */}
+          <MeetingDesignLog
+            bidId={bidId}
+            meetingId={detail.id}
+            analyzedAt={detail.analyzedAt}
+          />
         </div>
       )}
 

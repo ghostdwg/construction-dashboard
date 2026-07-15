@@ -49,6 +49,19 @@ export type MeetingRedFlag = {
   description: string;
 };
 
+export type DesignChangeSeverity = "CRITICAL" | "MAJOR" | "MINOR";
+
+// OPS5 — a proposed design intent change extracted from the transcript.
+// PROPOSAL-ONLY: rows land as PROPOSED; confirmation/dismissal is human.
+export type AnalysisDesignChange = {
+  changeText: string;              // what is changing (≤2000)
+  priorIntent: string | null;      // prior approved intent, from the transcript only
+  affectedSpec: string | null;     // spec/drawing ref, verbatim words if stated (≤200)
+  severity: DesignChangeSeverity;
+  sourceQuote: string | null;      // verbatim excerpt ≤300 — the deliberate exception to the paraphrase rule
+  speakerLabel: string | null;     // draft attribution, never verified identity
+};
+
 export type MeetingAnalysis = {
   section1: AnalysisSection1;
   section2: AnalysisParticipant[];          // Who was in the meeting
@@ -58,6 +71,7 @@ export type MeetingAnalysis = {
   section6: MeetingOpenIssue[];             // Open / unresolved issues
   section7: MeetingRedFlag[];               // Red flags
   section8: AnalysisActionItem[];           // GC-only subset of §5
+  section9: AnalysisDesignChange[];         // OPS5 — design intent changes
 };
 
 // ── Project context assembly ──────────────────────────────────────────────────
@@ -216,17 +230,28 @@ The JSON must match this exact schema:
   "section5": [{ "person": "string", "task": "string", "dueDate": "YYYY-MM-DD|null", "isGcTask": boolean, "carriedFromDate": "YYYY-MM-DD|null", "evidenceText": "string|null" }],
   "section6": [{ "text": "string", "reason": "string", "carriedFrom": "YYYY-MM-DD|null" }],
   "section7": [{ "tag": "DELAY|COST|RISK|DISPUTE|SAFETY|COMPLIANCE", "description": "string" }],
-  "section8": [same shape as section5, GC tasks only]
+  "section8": [same shape as section5, GC tasks only],
+  "section9": [{ "change_text": "string", "prior_intent": "string|null", "affected_spec": "string|null", "severity": "CRITICAL|MAJOR|MINOR", "source_quote": "string|null", "speaker_label": "string|null" }]
 }
 
 Rules:
 - Ignore all [UNKNOWN] speaker lines
 - Ignore filler lines (Yeah. / Okay. / Right. / Sure. / Uh-huh.)
 - Do not quote transcript text verbatim — paraphrase everything in evidenceText
+  (EXCEPTION: section9's source_quote is a bounded verbatim excerpt by design)
 - Do not invent content — use "[unclear]" for ambiguous items
 - section8 is a filtered subset of section5 where isGcTask is true
 - Items in section4 must NOT appear in section6
 - Flag items carried from prior meetings with the originating date in carriedFromDate / carriedFrom
+- Section 9 (design intent changes): extract ONLY explicit direction from a
+  design professional or owner that changes the documented or previously
+  approved design (spec override, reversed decision, "in lieu of", "revise
+  to", verbal ASI-style instruction). Discussion, options, and questions
+  are NOT design changes; site condition reports are NOT design changes.
+  severity: CRITICAL = life-safety/structural or contract-document
+  conflict; MAJOR = changes scope, cost, or an approved submittal; MINOR =
+  finish/detail-level direction. source_quote: verbatim excerpt, max 300
+  chars. Never invent spec or drawing references. Empty array when none.
 
 ${gcTeamLine}
 
@@ -316,7 +341,33 @@ export function parseMeetingAnalysis(raw: string): MeetingAnalysis {
 
   const section8: AnalysisActionItem[] = (Array.isArray(obj.section8) ? obj.section8 : []).map(mapActionItem);
 
-  return { section1, section2, section3, section4, section5, section6, section7, section8 };
+  // OPS5 §9 — design intent changes. Invalid rows are DROPPED (never
+  // repaired into fabrications); fields are clamped, severity is
+  // vocabulary-enforced with MAJOR as the conservative fallback.
+  const VALID_SEVERITIES = new Set<DesignChangeSeverity>(["CRITICAL", "MAJOR", "MINOR"]);
+  const clamp = (v: unknown, max: number): string | null => {
+    if (typeof v !== "string") return null;
+    const t = v.trim();
+    return t ? t.slice(0, max) : null;
+  };
+  const section9: AnalysisDesignChange[] = (Array.isArray(obj.section9) ? obj.section9 : [])
+    .map((c: unknown): AnalysisDesignChange | null => {
+      const r = c as Record<string, unknown>;
+      const changeText = clamp(r.change_text, 2000);
+      if (!changeText) return null;
+      const severityRaw = String(r.severity ?? "").toUpperCase() as DesignChangeSeverity;
+      return {
+        changeText,
+        priorIntent: clamp(r.prior_intent, 2000),
+        affectedSpec: clamp(r.affected_spec, 200),
+        severity: VALID_SEVERITIES.has(severityRaw) ? severityRaw : "MAJOR",
+        sourceQuote: clamp(r.source_quote, 300),
+        speakerLabel: clamp(r.speaker_label, 100),
+      };
+    })
+    .filter((c): c is AnalysisDesignChange => c !== null);
+
+  return { section1, section2, section3, section4, section5, section6, section7, section8, section9 };
 }
 
 // ── DB writer ─────────────────────────────────────────────────────────────────
@@ -374,6 +425,28 @@ export async function writeMeetingAnalysis(
           },
         });
       }
+    }
+
+    // §9 design intent changes — replace PROPOSED rows only. CONFIRMED and
+    // DISMISSED rows are human decisions and are NEVER touched by
+    // re-analysis (OPS5 freeze discipline).
+    await tx.designIntentChange.deleteMany({
+      where: { meetingId, state: "PROPOSED" },
+    });
+    for (const change of analysis.section9) {
+      await tx.designIntentChange.create({
+        data: {
+          meetingId,
+          bidId,
+          changeText: change.changeText,
+          priorIntent: change.priorIntent,
+          affectedSpec: change.affectedSpec,
+          severity: change.severity,
+          sourceQuote: change.sourceQuote,
+          speakerLabel: change.speakerLabel,
+          // state stays the PROPOSED default — confirmation is human-only.
+        },
+      });
     }
 
     // §5 action items — delete prior AI-generated items, insert fresh

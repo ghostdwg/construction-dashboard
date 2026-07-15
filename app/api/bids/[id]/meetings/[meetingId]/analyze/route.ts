@@ -184,6 +184,7 @@ export async function POST(
       decisionsFound: analysis.section4.length,
       openIssuesFound: analysis.section6.length,
       redFlagsFound: analysis.section7.length,
+      designChangesFound: analysis.section9.length,
     });
   } catch (err) {
     await prisma.meeting.update({ where: { id: mId }, data: { status: "READY" } });
