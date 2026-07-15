@@ -16,76 +16,76 @@
   --color-emerald-700: #0E7490;
 }
 
-/* ══ DESIGN SYSTEM V2 — electric blue / deep navy ═══════════════════════════
+/* ══ DESIGN SYSTEM V2 — steel & amber / construction command center ══════════
    Canonical tokens. Dark is the default (:root); light applies under
    [data-theme="light"] (set by ThemeToggle on <html>). Legacy V1 vars below
    are DEPRECATED aliases kept so every existing component restyles itself
    without edits — new code must use --color-* tokens only. */
 :root {
   /* Surfaces */
-  --color-bg-base: #0A0E1A;
-  --color-bg-surface: #0F1628;
-  --color-bg-elevated: #162040;
-  --color-bg-overlay: #080B14;
+  --color-bg-base: #0A0A0A;
+  --color-bg-surface: #141414;
+  --color-bg-elevated: #1C1C1C;
+  --color-bg-overlay: #080808;
 
-  /* Accent — electric blue */
-  --color-accent: #2D7BFF;
-  --color-accent-hover: #4A8FFF;
-  --color-accent-dim: #1A5FCC;
-  --color-accent-glow: rgba(45, 123, 255, 0.25);
-  --color-accent-glow-strong: rgba(45, 123, 255, 0.4);
+  /* Accent — construction amber */
+  --color-accent: #F59E0B;
+  --color-accent-hover: #FBBF24;
+  --color-accent-dim: #B45309;
+  --color-accent-glow: rgba(245, 158, 11, 0.2);
+  --color-accent-glow-strong: rgba(245, 158, 11, 0.35);
 
   /* Borders */
   --color-border: rgba(255, 255, 255, 0.07);
   --color-border-subtle: rgba(255, 255, 255, 0.04);
-  --color-border-accent: rgba(45, 123, 255, 0.35);
-  --color-border-glow: 0 0 0 1px rgba(45, 123, 255, 0.15),
-                       0 0 12px rgba(45, 123, 255, 0.2),
-                       0 0 24px rgba(45, 123, 255, 0.08);
+  --color-border-accent: rgba(245, 158, 11, 0.4);
+  --color-border-glow: 0 0 0 1px rgba(245, 158, 11, 0.15),
+                       0 0 12px rgba(245, 158, 11, 0.15),
+                       0 0 24px rgba(245, 158, 11, 0.06);
 
   /* Text */
-  --color-text-primary: #E8EEFF;
-  --color-text-secondary: #7B8DB8;
-  --color-text-dim: #3D4E7A;
-  --color-text-inverse: #0A0E1A;
-  --color-text-accent: #2D7BFF;
+  --color-text-primary: #F0F0F0;
+  --color-text-secondary: #9CA3AF;
+  --color-text-dim: #4B5563;
+  --color-text-inverse: #0A0A0A;
+  --color-text-accent: #F59E0B;
 
-  /* Status — construction-standard */
+  /* Status — industry-standard */
   --color-warning: #F59E0B;
   --color-warning-bg: rgba(245, 158, 11, 0.12);
   --color-danger: #EF4444;
   --color-danger-bg: rgba(239, 68, 68, 0.12);
-  --color-success: #06B6D4;
-  --color-success-bg: rgba(6, 182, 212, 0.12);
-  --color-info: #2D7BFF;
-  --color-info-bg: rgba(45, 123, 255, 0.12);
+  --color-success: #22C55E;
+  --color-success-bg: rgba(34, 197, 94, 0.12);
+  --color-info: #64748B;
+  --color-info-bg: rgba(100, 116, 139, 0.12);
 }
 
 [data-theme="light"] {
-  --color-bg-base: #F4F6FF;
+  --color-bg-base: #F5F5F4;
   --color-bg-surface: #FFFFFF;
-  --color-bg-elevated: #EBF0FF;
+  --color-bg-elevated: #E7E5E4;
   --color-bg-overlay: rgba(0, 0, 0, 0.4);
-  --color-accent: #1A5FCC;
-  --color-accent-hover: #1A4FBB;
-  --color-accent-glow: rgba(26, 95, 204, 0.15);
-  --color-accent-glow-strong: rgba(26, 95, 204, 0.3);
+  --color-accent: #B45309;
+  --color-accent-hover: #92400E;
+  --color-accent-glow: rgba(180, 83, 9, 0.15);
+  --color-accent-glow-strong: rgba(180, 83, 9, 0.3);
   --color-border: rgba(0, 0, 0, 0.08);
   --color-border-subtle: rgba(0, 0, 0, 0.05);
-  --color-border-accent: rgba(26, 95, 204, 0.3);
-  --color-border-glow: 0 0 0 1px rgba(26, 95, 204, 0.12),
-                       0 0 12px rgba(26, 95, 204, 0.14),
-                       0 0 24px rgba(26, 95, 204, 0.06);
-  --color-text-primary: #0A0E1A;
-  --color-text-secondary: #4A5980;
-  --color-text-dim: #8A9AB8;
-  --color-text-inverse: #F4F6FF;
-  --color-text-accent: #1A5FCC;
+  --color-border-accent: rgba(180, 83, 9, 0.4);
+  --color-border-glow: 0 0 0 1px rgba(180, 83, 9, 0.12),
+                       0 0 12px rgba(180, 83, 9, 0.14),
+                       0 0 24px rgba(180, 83, 9, 0.06);
+  --color-text-primary: #0A0A0A;
+  --color-text-secondary: #57534E;
+  --color-text-dim: #A8A29E;
+  --color-text-inverse: #F5F5F4;
+  --color-text-accent: #B45309;
   /* Status hues identical; tints slightly darker for light surfaces */
   --color-warning-bg: rgba(245, 158, 11, 0.16);
   --color-danger-bg: rgba(239, 68, 68, 0.14);
-  --color-success-bg: rgba(6, 182, 212, 0.14);
-  --color-info-bg: rgba(26, 95, 204, 0.12);
+  --color-success-bg: rgba(34, 197, 94, 0.14);
+  --color-info-bg: rgba(100, 116, 139, 0.12);
 }
 
 /* ── DEPRECATED V1 tokens — aliases onto V2; do not use in new code ──────── */
@@ -102,8 +102,8 @@
   --text-dim:    var(--color-text-dim);         /* @deprecated → --color-text-dim */
   --signal:      var(--color-accent);           /* @deprecated (was neon green) → --color-accent */
   --signal-soft: var(--color-accent-hover);     /* @deprecated → --color-accent-hover */
-  --signal-dim:  rgba(45, 123, 255, 0.09);      /* @deprecated → --color-info-bg */
-  --signal-mid:  rgba(45, 123, 255, 0.18);      /* @deprecated → --color-accent-glow */
+  --signal-dim:  rgba(245, 158, 11, 0.09);      /* @deprecated → --color-info-bg */
+  --signal-mid:  rgba(245, 158, 11, 0.18);      /* @deprecated → --color-accent-glow */
   --amber:       var(--color-warning);          /* @deprecated → --color-warning */
   --amber-dim:   var(--color-warning-bg);       /* @deprecated → --color-warning-bg */
   --red:         var(--color-danger);           /* @deprecated → --color-danger */
@@ -121,13 +121,13 @@
 :root { color-scheme: dark; }
 [data-theme="light"] { color-scheme: light; }
 
-/* ── Base body — deep navy gradient + grid overlay ──────────────────────── */
+/* ── Base body — steel black + amber gradient + grid overlay ────────────── */
 body {
   color: var(--color-text-primary);
   background:
-    radial-gradient(circle at top left, rgba(45, 123, 255, 0.07), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(45, 123, 255, 0.04), transparent 24%),
-    linear-gradient(180deg, var(--color-bg-base) 0%, var(--color-bg-overlay) 100%);
+    radial-gradient(ellipse at top,
+      rgba(245, 158, 11, 0.04) 0%, transparent 60%),
+    var(--color-bg-base);
 }
 
 /* ── Table row hover ───────────────────────────────────────────────────── */
@@ -265,17 +265,17 @@ body::before {
 /* Blueprint grid texture (landing page hero) — CSS-only, no images */
 .blueprint-grid {
   background-image:
-    linear-gradient(rgba(45, 123, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(45, 123, 255, 0.06) 1px, transparent 1px),
-    linear-gradient(rgba(45, 123, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(45, 123, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(245, 158, 11, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 158, 11, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(245, 158, 11, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 158, 11, 0.03) 1px, transparent 1px);
   background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
 }
 
-/* ── Table overflow — thin blue scrollbar ───────────────────────────────── */
+/* ── Table overflow — thin amber scrollbar ──────────────────────────────── */
 .overflow-x-auto {
   scrollbar-width: thin;
-  scrollbar-color: rgba(45, 123, 255, 0.45) rgba(255, 255, 255, 0.04);
+  scrollbar-color: rgba(245, 158, 11, 0.45) rgba(255, 255, 255, 0.04);
 }
 .overflow-x-auto::-webkit-scrollbar {
   height: 4px;
@@ -284,11 +284,11 @@ body::before {
   background: rgba(255, 255, 255, 0.04);
 }
 .overflow-x-auto::-webkit-scrollbar-thumb {
-  background: rgba(45, 123, 255, 0.45);
+  background: rgba(245, 158, 11, 0.45);
   border-radius: 2px;
 }
 .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-  background: rgba(45, 123, 255, 0.65);
+  background: rgba(245, 158, 11, 0.65);
 }
 
 /* ══ ACCESSIBILITY — focus ring ═════════════════════════════════════════════ */
