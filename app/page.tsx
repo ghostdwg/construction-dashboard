@@ -77,12 +77,12 @@ function MetricCard({
   }[accent];
   return (
     <div
-      className="relative overflow-hidden rounded-[var(--radius)] border border-[var(--line)] px-4 py-4"
+      className="relative overflow-hidden rounded-[var(--radius)] border border-[var(--line)] p-6"
       style={{ background: "linear-gradient(180deg,rgba(19,23,30,0.94),rgba(14,17,23,0.96))", boxShadow: "var(--shadow)" }}
     >
-      <div className="absolute left-0 top-0 bottom-0 w-0.5" style={{ background: accentColor }} />
-      <p className="font-mono text-[10px] uppercase tracking-[0.09em] mb-2" style={{ color: "var(--text-dim)" }}>{label}</p>
-      <p className="text-[34px] font-[800] tracking-[-0.05em] leading-none" style={{ color: "var(--text)" }}>{value}</p>
+      <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: accentColor }} />
+      <p className="font-mono text-[10px] uppercase tracking-[0.08em] mb-2" style={{ color: "var(--text-dim)" }}>{label}</p>
+      <p className="text-[48px] font-[800] tracking-[-0.05em] leading-none" style={{ color: "var(--text)" }}>{value}</p>
       <p className="text-xs mt-2" style={{ color: "var(--text-soft)" }}>{sub}</p>
     </div>
   );

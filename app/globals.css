@@ -7,16 +7,16 @@
   --font-sans: var(--font-barlow);
   --font-mono: var(--font-ibm-plex-mono);
 
-  /* Design System V2: emerald utilities remapped to success-cyan so any
-     residual emerald-* class renders on-brand rather than green. */
-  --color-emerald-300: #67E8F9;
-  --color-emerald-400: #22D3EE;
-  --color-emerald-500: #06B6D4;
-  --color-emerald-600: #0891B2;
-  --color-emerald-700: #0E7490;
+  /* Remap emerald → signal green so any residual emerald-* class renders
+     on-brand with the original signal-green accent family. */
+  --color-emerald-300: #6BFF9F;
+  --color-emerald-400: #3DFF82;
+  --color-emerald-500: #00FF64;
+  --color-emerald-600: #00CC50;
+  --color-emerald-700: #009940;
 }
 
-/* ══ DESIGN SYSTEM V2 — cold steel / construction command center ═════════════
+/* ══ DESIGN SYSTEM V2 — signal green / command center ════════════════════════
    Canonical tokens. Dark is the default (:root); light applies under
    [data-theme="light"] (set by ThemeToggle on <html>). Legacy V1 vars below
    are DEPRECATED aliases kept so every existing component restyles itself
@@ -28,26 +28,27 @@
   --color-bg-elevated: #1C1C1C;
   --color-bg-overlay: #080808;
 
-  /* Accent — cold steel */
-  --color-accent: #CBD5E1;
-  --color-accent-hover: #E2E8F0;
-  --color-accent-dim: #94A3B8;
-  --color-accent-glow: rgba(203, 213, 225, 0.12);
-  --color-accent-glow-strong: rgba(203, 213, 225, 0.2);
+  /* Accent — signal green */
+  --color-accent: #00FF64;
+  --color-accent-hover: #6BFF9F;
+  --color-accent-dim: #00CC50;
+  --color-accent-glow: rgba(0, 255, 100, 0.2);
+  --color-accent-glow-strong: rgba(0, 255, 100, 0.35);
 
   /* Borders */
   --color-border: rgba(255, 255, 255, 0.07);
   --color-border-subtle: rgba(255, 255, 255, 0.04);
-  --color-border-accent: rgba(203, 213, 225, 0.25);
-  --color-border-glow: 0 0 0 1px rgba(203, 213, 225, 0.1),
-                       0 0 12px rgba(203, 213, 225, 0.08);
+  --color-border-accent: rgba(0, 255, 100, 0.35);
+  --color-border-glow: 0 0 0 1px rgba(0, 255, 100, 0.15),
+                       0 0 12px rgba(0, 255, 100, 0.15),
+                       0 0 24px rgba(0, 255, 100, 0.06);
 
   /* Text */
   --color-text-primary: #F0F0F0;
   --color-text-secondary: #9CA3AF;
   --color-text-dim: #4B5563;
-  --color-text-inverse: #0D0D0D;
-  --color-text-accent: #CBD5E1;
+  --color-text-inverse: #050608;
+  --color-text-accent: #00FF64;
 
   /* Status — industry-standard */
   --color-warning: #F59E0B;
@@ -65,20 +66,20 @@
   --color-bg-surface: #FFFFFF;
   --color-bg-elevated: #F0F0F0;
   --color-bg-overlay: rgba(0, 0, 0, 0.4);
-  --color-accent: #334155;
-  --color-accent-hover: #1E293B;
-  --color-accent-glow: rgba(51, 65, 85, 0.12);
-  --color-accent-glow-strong: rgba(51, 65, 85, 0.2);
+  --color-accent: #007A33;
+  --color-accent-hover: #005C26;
+  --color-accent-glow: rgba(0, 122, 51, 0.12);
+  --color-accent-glow-strong: rgba(0, 122, 51, 0.2);
   --color-border: rgba(0, 0, 0, 0.08);
   --color-border-subtle: rgba(0, 0, 0, 0.05);
-  --color-border-accent: rgba(51, 65, 85, 0.3);
-  --color-border-glow: 0 0 0 1px rgba(51, 65, 85, 0.1),
-                       0 0 12px rgba(51, 65, 85, 0.08);
+  --color-border-accent: rgba(0, 122, 51, 0.35);
+  --color-border-glow: 0 0 0 1px rgba(0, 122, 51, 0.12),
+                       0 0 12px rgba(0, 122, 51, 0.1);
   --color-text-primary: #0D0D0D;
   --color-text-secondary: #57534E;
   --color-text-dim: #A8A29E;
   --color-text-inverse: #F8F8F8;
-  --color-text-accent: #334155;
+  --color-text-accent: #007A33;
   /* Status hues identical; tints slightly darker for light surfaces */
   --color-warning-bg: rgba(245, 158, 11, 0.16);
   --color-danger-bg: rgba(239, 68, 68, 0.14);
@@ -100,8 +101,8 @@
   --text-dim:    var(--color-text-dim);         /* @deprecated → --color-text-dim */
   --signal:      var(--color-accent);           /* @deprecated (was neon green) → --color-accent */
   --signal-soft: var(--color-accent-hover);     /* @deprecated → --color-accent-hover */
-  --signal-dim:  rgba(203, 213, 225, 0.09);      /* @deprecated → --color-info-bg */
-  --signal-mid:  rgba(203, 213, 225, 0.18);      /* @deprecated → --color-accent-glow */
+  --signal-dim:  rgba(0, 255, 100, 0.09);        /* @deprecated → --color-info-bg */
+  --signal-mid:  rgba(0, 255, 100, 0.18);        /* @deprecated → --color-accent-glow */
   --amber:       var(--color-warning);          /* @deprecated → --color-warning */
   --amber-dim:   var(--color-warning-bg);       /* @deprecated → --color-warning-bg */
   --red:         var(--color-danger);           /* @deprecated → --color-danger */
@@ -119,15 +120,20 @@
 :root { color-scheme: dark; }
 [data-theme="light"] { color-scheme: light; }
 
-/* ── Base body — steel black / flat ─────────────────────────────────────── */
+/* ── Base body — near-black + signal green gradient ─────────────────────── */
 body {
   color: var(--color-text-primary);
-  background: var(--color-bg-base);
+  background:
+    radial-gradient(ellipse at top left, rgba(0, 255, 100, 0.05) 0%, transparent 40%),
+    var(--color-bg-base);
 }
 
 /* ── Table row hover ───────────────────────────────────────────────────── */
 .gwx-tr:hover td {
-  background: rgba(255, 255, 255, 0.015);
+  background: rgba(255, 255, 255, 0.03);
+}
+.gwx-tr td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 /* ── Live indicator dot (pulsing, color-inheriting) ─────────────────────── */
@@ -260,17 +266,17 @@ body::before {
 /* Blueprint grid texture (landing page hero) — CSS-only, no images */
 .blueprint-grid {
   background-image:
-    linear-gradient(rgba(203, 213, 225, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(203, 213, 225, 0.06) 1px, transparent 1px),
-    linear-gradient(rgba(203, 213, 225, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(203, 213, 225, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(0, 255, 100, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 100, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(0, 255, 100, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 100, 0.03) 1px, transparent 1px);
   background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
 }
 
-/* ── Table overflow — thin dark scrollbar ───────────────────────────────── */
+/* ── Table overflow — thin signal-green scrollbar ───────────────────────── */
 .overflow-x-auto {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.12) rgba(255, 255, 255, 0.04);
+  scrollbar-color: rgba(0, 255, 100, 0.35) rgba(255, 255, 255, 0.04);
 }
 .overflow-x-auto::-webkit-scrollbar {
   height: 4px;
@@ -279,11 +285,11 @@ body::before {
   background: rgba(255, 255, 255, 0.04);
 }
 .overflow-x-auto::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 255, 100, 0.35);
   border-radius: 2px;
 }
 .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 255, 100, 0.55);
 }
 
 /* ══ ACCESSIBILITY — focus ring ═════════════════════════════════════════════ */
@@ -390,6 +396,57 @@ body::before {
     padding-left: 16px;
     padding-right: 16px;
   }
+}
+
+/* ══ GRAPHICS POLISH — utility classes ══════════════════════════════════════ */
+
+/* Table column header */
+.gwx-table-th {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-dim);
+}
+
+/* Compact badge — MEETING, MEDIUM, OPEN, CLOSED etc */
+.gwx-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Sidebar section label — COMMAND, EXECUTION, SYSTEM */
+.gwx-section-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+}
+
+/* Page breadcrumb */
+.gwx-breadcrumb {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--color-text-dim);
+}
+
+/* Page title */
+.gwx-page-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
 }
 
 /* ── Collapsible rail nav ─────────────────────────────────────────────────── */
