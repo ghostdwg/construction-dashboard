@@ -64,3 +64,7 @@ next-env.d.ts
 # is committed; local-only state stays ignored.
 .claude/settings.local.json
 .claude/worktrees/
+
+# Playwright e2e artifacts (e2e/ suite — see playwright.config.ts)
+/test-results/
+/playwright-report/

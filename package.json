@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "migrate:turso": "node scripts/apply-turso-migrations.mjs",
     "migrate:turso:status": "node scripts/apply-turso-migrations.mjs --dry-run",
     "validate:replay": "node scripts/replay-validation.mjs",
@@ -72,6 +73,7 @@
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
