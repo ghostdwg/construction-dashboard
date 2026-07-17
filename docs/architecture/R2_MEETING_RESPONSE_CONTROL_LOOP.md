@@ -2,6 +2,9 @@
 
 Status: **FROZEN** (Build 1 implemented on this branch; Builds 2/3 contracts frozen below)
 Authored: 2026-07-17 at `ffd5bd1` base · Branch: `gwx/r2-meeting-response-control-loop`
+Amended: 2026-07-17 — Codex release-gate remediation (rerun supersession
+lifecycle, transaction/audit policy, segment provenance, sourceKind
+vocabulary). Amendments are marked **[R2-REM]** inline.
 Companion: `docs/architecture/CAPABILITY_LEDGER.md` (what actually exists, with evidence)
 
 This document is the binding domain contract for the R2 line. Subsequent
@@ -34,6 +37,28 @@ records**, corrections append rather than mutate; `bidId` is denormalized
 onto child rows for tenancy scoping; unknown/foreign ids return 404
 (indistinguishable from out-of-tenancy); every mutation route runs
 `requireBidAccess(bidId)` before body parsing or service work.
+
+**[R2-REM] Audit policy (binding for this release):** domain
+revision/history rows are the detailed operational record; the AuditEvent
+row is ALSO mandatory for every accountability-relevant mutation
+(transcript/speaker corrections and merges, register dispositions —
+including merge/duplicate/dismissal, edits, manual creation, Operations
+Register promotion/linking, extraction-run preview/apply/discard, minutes
+publication and amendment). The AuditEvent is written INSIDE the same
+database transaction as the mutation; an audit failure rolls the mutation
+back — never fail-open. Stdout/Loki telemetry is emitted only after commit.
+Audit payloads carry ids/counts/labels (bidId, meetingId, registerEntryId,
+revision id, source extraction run, actor) — never transcript or entry
+text; detailed text lives in the domain revision records.
+Implementation: `lib/services/meetingRegister/txAudit.ts` over
+`lib/observability/audit.ts` (`buildAuditEnvelope` / `persistAuditEnvelope`
+/ `emitAuditEnvelopeStdout`).
+
+**[R2-REM] Provenance validation:** any manually supplied `segmentId`
+(register manual create; correction ops) is validated segment → meeting →
+bid AFTER `requireBidAccess` and BEFORE any mutation. Nonexistent,
+cross-meeting and cross-bid ids all fail with the same response — a probe
+learns nothing about foreign segments.
 
 ## Part B — Entity relationship contract (Build 1 domain)
 
@@ -78,6 +103,14 @@ MeetingTranscriptSegment *──1 MeetingParticipant?   (resolved current speake
   objects (register entries, action items, commitments, design changes)
   whose attribution/citation overlaps the corrected span. No update or
   delete path exists for correction rows.
+- **[R2-REM] Atomicity:** the overlay mutation, the correction-history row,
+  the derived display-transcript rebuild and the mandatory AuditEvent row
+  run in ONE database transaction for every op (segment text edit, speaker
+  reassignment one/all, speaker merge, unknown-speaker marking, split). If
+  any write fails, the whole correction rolls back: no correction exists
+  without its history record and no history record claims a correction that
+  did not occur. The original transcript value remains recoverable from the
+  frozen original* columns and raw JSON.
 
 ### B.3 Participant / diarization identity
 
@@ -136,6 +169,18 @@ MeetingRegisterEntry *──1 MeetingRegisterEntry?  (relatedPriorEntryId — pr
   and DUPLICATE require the surviving entry id; CORRECTED records the
   edited normalized wording. Dispositions append revision rows; a
   disposition may be superseded by appending (never by rewriting history).
+- **[R2-REM] SUPERSEDED (machine lifecycle, never a human disposition):**
+  when an applied rerun no longer produces a PENDING machine-origin entry,
+  that entry is marked `reviewState = SUPERSEDED` and RETAINED FOREVER with
+  `supersededByRunId` (the replacing run), `supersededByEntryId` (the
+  replacement entry where a deterministic match exists), `supersededAt`,
+  and an append-only `RERUN_SUPERSEDE` revision row. Superseded entries
+  keep their previous wording, classification, speaker, citation and
+  originating extraction run; they are excluded from active lists, coverage
+  totals and the fully-reviewed gate (query them with
+  `includeSuperseded=true` or `reviewState=SUPERSEDED`), and they cannot be
+  edited, dispositioned, promoted or linked. Dispositioned, linked or
+  promoted entries are NEVER superseded.
 - **Fully-reviewed gate:** a meeting cannot publish minutes (and reports
   "unreviewed" coverage) while any extracted (non-manual-origin) entry is
   PENDING.
@@ -148,14 +193,28 @@ Meeting 1──* MeetingExtractionRun (PREVIEWED → APPLIED | DISCARDED)
 
 - The first analysis writes directly (initial population, no preview
   needed) and records an APPLIED run. Every subsequent analysis lands as a
-  PREVIEWED run holding the parsed analysis JSON; the preview reports:
-  entries to add, PENDING entries to be replaced, dispositioned entries
-  preserved (never touched), and lifecycle rows affected via the existing
-  PROPOSED-replacement discipline in `writeMeetingAnalysis`.
-- APPLY (human) executes atomically: replace PENDING `ai_extraction`/bridge
-  entries, write lifecycle rows via the existing writer, re-project
-  bridges, preserve every dispositioned entry byte-for-byte. DISCARD keeps
-  the run row for the audit trail.
+  PREVIEWED run holding the parsed analysis JSON.
+- **[R2-REM] Reconciliation is deterministic, idempotent and
+  NON-DESTRUCTIVE — apply never deletes a register entry.** The preview
+  (and the apply, which recomputes the identical reconcile) reports five
+  outcomes per entry/draft:
+  - **create** — a draft with no existing counterpart becomes a new entry;
+  - **unchanged** — an identical re-extraction (same type + same raw source
+    wording) keeps the existing PENDING entry, its id, its originating run
+    and its state (bridge links are refreshed to the rewritten lifecycle
+    rows);
+  - **supersede** — a PENDING machine-origin entry the new analysis no
+    longer produces is marked SUPERSEDED and retained (see B.4), with the
+    replacement entry recorded when the same type + anchor segment matches;
+  - **merge** — two or more PENDING entries collapsing onto one draft are
+    all superseded by that one created entry;
+  - **preserve** — dispositioned/linked/promoted entries are never touched.
+  Applying the same analysis twice yields only `unchanged` outcomes;
+  re-applying an APPLIED run is rejected.
+- APPLY (human) executes in ONE transaction: lifecycle rows via the
+  existing writer (PROPOSED-replacement discipline), the non-destructive
+  register reconcile above, the run flip to APPLIED, and the mandatory
+  AuditEvent row. DISCARD keeps the run row for the audit trail.
 
 ### B.6 Minutes (rule 9)
 
@@ -191,6 +250,14 @@ TrackedItem.sourceMeetingRegisterEntryId  (unique — the ONE originating entry 
   known, explicit `extractionMethod`. Promotion sets the entry's state to
   PROMOTED_TO_OPERATIONS and `linkedTrackedItemId` — the entry itself is
   never deleted or moved (rule 2 / "promotion must not remove").
+- **[R2-REM] `TrackedItem.sourceKind` canonical vocabulary** (single source
+  of truth: `lib/services/trackedItems/sourceKinds.ts`): `manual`,
+  `meeting_action_item`, `meeting_design_change`, `meeting_register`,
+  `consultant_observation`, `field_report`. Every writer imports the
+  constants — no string literals. Legacy values on existing rows
+  (`meeting`, `consultant_report`, `spec_section`) remain readable forever
+  and are NEVER rewritten (no destructive backfill) and never re-emitted by
+  new code. UI labels/grouping resolve through the same module.
 - LINK (without creating) attaches an entry to an existing TrackedItem —
   this is how one Operations item collects continuity from multiple
   meetings; chronology is preserved by the entries' meeting dates and
@@ -219,7 +286,7 @@ All routes: `requireBidAccess(bidId)` first, before body parsing. Cross-bid
 ids → 404. Session actor required for every disposition/correction/publish.
 
 ```
-GET/POST  /api/bids/[id]/meetings/[meetingId]/register              list (filter: entryType, reviewState) / manual create
+GET/POST  /api/bids/[id]/meetings/[meetingId]/register              list (filter: entryType, reviewState, includeSuperseded) / manual create (segmentId provenance-validated)
 PATCH     /api/bids/[id]/meetings/[meetingId]/register/[entryId]    edit normalized fields (audited)
 POST      /api/bids/[id]/meetings/[meetingId]/register/[entryId]/disposition   {disposition, reason?, targetEntryId?}
 POST      /api/bids/[id]/meetings/[meetingId]/register/[entryId]/promote       create TrackedItem (provenance)

@@ -1,6 +1,7 @@
 # Capability Ledger — Meeting-to-Response Control Loop (R2)
 
-Last updated: 2026-07-17 · Audited at: `ffd5bd1` (branch `gwx/r2-meeting-response-control-loop`)
+Last updated: 2026-07-17 (release-gate remediation) · Audited at: `ffd5bd1`
+base + Build 1 + remediation (branch `gwx/r2-meeting-response-control-loop`)
 Scope: every capability in the R2 meeting/field-report/response domain.
 This ledger records what is **actually implemented**, with evidence. Route
 existence is never treated as proof of capability.
@@ -134,6 +135,15 @@ at best local-only. Production is frozen; nothing is PRODUCTION_PROVEN.
 ### 2.5 Extraction rerun after correction (preview + apply)
 - **Status at ffd5bd1:** ABSENT (re-analysis existed but wrote immediately, no preview).
 - **R2 Build 1:** `MeetingExtractionRun` preview/apply with freeze discipline. See §6.4.
+- **R2 remediation [V]:** apply is now NON-DESTRUCTIVE — no `deleteMany`
+  path exists. Deterministic reconcile with five outcomes
+  (create/unchanged/supersede/merge/preserve); removed extractions are
+  marked `reviewState=SUPERSEDED` and retained forever with
+  `supersededByRunId`/`supersededByEntryId`/`supersededAt` + a
+  `RERUN_SUPERSEDE` revision row; identical re-extractions keep the
+  existing entry and its originating run; repeated application is
+  idempotent. Migration `20260717120000_r2b1_register_rerun_supersession`
+  (additive, forward-only, **applied to no real database**).
 
 ## 3. Meeting Register (R2 Build 1 — new)
 
@@ -195,7 +205,18 @@ at best local-only. Production is frozen; nothing is PRODUCTION_PROVEN.
 
 ## 6. R2 Build 1 additions (this branch)
 
-All statuses here are **BUILT + TESTED, local-only, never exercised live**. Migration is forward-only, additive, unapplied to any real DB.
+All statuses here are **BUILT + TESTED, local-only, never exercised live**. Migrations are forward-only, additive, unapplied to any real DB.
+
+**Release-gate remediation (2026-07-17), all [V] with unit-test evidence:**
+
+| # | Correction | Key source |
+|---|---|---|
+| R1 | Non-destructive extraction reruns: SUPERSEDED lifecycle (retain forever, replacement provenance, idempotent apply, five-outcome preview) | `extractionRuns.ts` (`computeReconcile`), migration `20260717120000` |
+| R2 | Atomic corrections: overlay mutation + history row + display rebuild + AuditEvent in ONE transaction, rollback on any failure (all seven ops) | `corrections.ts` (`commitCorrection`), `segments.ts` |
+| R3 | Manual `segmentId` provenance: segment → meeting → bid validated after `requireBidAccess`, uniform error for nonexistent/cross-meeting/cross-bid | `register.ts` (`validateSegmentProvenance`) |
+| R5 | Fail-closed in-tx AuditEvent for every accountability mutation (create/edit/disposition/promote/link/rerun/minutes); telemetry post-commit only | `txAudit.ts`, `lib/observability/audit.ts` |
+| R6 | `TrackedItem.sourceKind` canonical vocabulary centralized; writers use constants; legacy values readable, never rewritten | `lib/services/trackedItems/sourceKinds.ts` |
+
 
 | # | Capability | Key source |
 |---|---|---|
