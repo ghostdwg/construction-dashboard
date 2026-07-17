@@ -170,6 +170,12 @@ model Bid {
   consultantStreamExports   ConsultantStreamExport[]
   designIntentChanges       DesignIntentChange[]
   meetingCommitments        MeetingCommitment[]
+  transcriptSegments        MeetingTranscriptSegment[]
+  transcriptCorrections     MeetingTranscriptCorrection[]
+  registerEntries           MeetingRegisterEntry[]
+  registerEntryRevisions    MeetingRegisterEntryRevision[]
+  extractionRuns            MeetingExtractionRun[]
+  minutesRevisions          MeetingMinutesRevision[]
 }
 
 model BidSubmission {
@@ -1174,6 +1180,11 @@ model Meeting {
   trackedItems TrackedItem[]
   designIntentChanges DesignIntentChange[]
   commitments         MeetingCommitment[]
+  transcriptSegments    MeetingTranscriptSegment[]
+  transcriptCorrections MeetingTranscriptCorrection[]
+  registerEntries       MeetingRegisterEntry[]
+  extractionRuns        MeetingExtractionRun[]
+  minutesRevisions      MeetingMinutesRevision[]
 
   @@index([bidId])
   @@index([bidId, meetingDate])
@@ -1197,6 +1208,7 @@ model MeetingParticipant {
   meeting        Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   projectContact ProjectContact?     @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
   actionItems    MeetingActionItem[]
+  transcriptSegments MeetingTranscriptSegment[]
 
   @@index([meetingId])
 }
@@ -1232,6 +1244,7 @@ model MeetingActionItem {
   // or deletes this row; it remains the source evidence.
   trackedItem TrackedItem?
   commitments MeetingCommitment[]
+  registerEntries MeetingRegisterEntry[]
 
   @@index([bidId])
   @@index([meetingId])
@@ -3985,6 +3998,7 @@ model TrackedItem {
   sourceSpecSectionId           Int?
   sourceFieldReportId           Int? // Slice 2 — items created from a FieldReport cite it here (SetNull: report deletion never destroys the item)
   sourceConsultantObservationId Int?    @unique // Phase 1A — the ONE originating consultant observation (accept-new duplicate guard; supporting citations live on ConsultantObservation.registerItemId)
+  sourceMeetingRegisterEntryId  Int?    @unique // R2-B1 — the ONE originating Meeting Register entry when promoted (duplicate guard; supporting/continuity links live on MeetingRegisterEntry.linkedTrackedItemId)
   evidenceExcerpt               String? // verbatim/paraphrased source text carried forward at promotion time
   sourceLocator                 String? // page / timestamp / transcript-anchor hint; rough or null in V1
   extractionMethod              String  @default("manual") // manual | meeting_analysis | regex | heuristic | ai_claude — every producer writes this EXPLICITLY (never rely on the default; see the WP1a seeder-provenance lesson)
@@ -4020,8 +4034,10 @@ model TrackedItem {
   sourceSpecSection           SpecSection?            @relation(fields: [sourceSpecSectionId], references: [id], onDelete: SetNull)
   sourceFieldReport           FieldReport?            @relation(fields: [sourceFieldReportId], references: [id], onDelete: SetNull)
   sourceConsultantObservation ConsultantObservation?  @relation("TrackedItemOriginatingObservation", fields: [sourceConsultantObservationId], references: [id], onDelete: SetNull)
+  sourceMeetingRegisterEntry  MeetingRegisterEntry?   @relation("TrackedItemOriginatingRegisterEntry", fields: [sourceMeetingRegisterEntryId], references: [id], onDelete: SetNull)
   supportingObservations      ConsultantObservation[] @relation("ObservationRegisterItem")
   spawnedFromObservations     ConsultantObservation[] @relation("ObservationSpawnedItem")
+  linkedRegisterEntries       MeetingRegisterEntry[]  @relation("RegisterEntryOpsLink")
   comments                    TrackedItemComment[]
   attachments                 TrackedItemAttachment[]
   linkedDesignChanges         DesignIntentChange[]
@@ -4274,6 +4290,7 @@ model DesignIntentChange {
   meeting    Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   bid        Bid          @relation(fields: [bidId], references: [id], onDelete: Cascade)
   linkedItem TrackedItem? @relation(fields: [linkedTrackedItemId], references: [id], onDelete: SetNull)
+  registerEntries MeetingRegisterEntry[]
 }
 
 model MeetingCommitment {
@@ -4297,4 +4314,241 @@ model MeetingCommitment {
   meeting          Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   bid              Bid          @relation(fields: [bidId], references: [id], onDelete: Cascade)
   linkedActionItem MeetingActionItem? @relation(fields: [linkedActionItemId], references: [id], onDelete: SetNull)
+  registerEntries  MeetingRegisterEntry[]
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Module R2-B1 — Meeting Register Foundation.
+//
+//  Domain contract: docs/architecture/R2_MEETING_RESPONSE_CONTROL_LOOP.md.
+//  Discipline mirrors OPS3/OPS4: status vocabularies are app-validated
+//  strings (never Prisma enums); history is append-only; original source
+//  material (raw transcript JSON, original segment text/attribution, raw
+//  register wording) is FROZEN — corrections are overlays or appended
+//  records, never rewrites. Meeting.rawTranscript remains the immutable
+//  transcription record; segments below are a deterministic projection.
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Materialized projection of Meeting.rawTranscript's segments (or, for
+// manual transcripts, of "[HH:MM:SS] Speaker: text" lines). original*
+// columns are written once at materialization and never updated; the
+// current* columns are the correction overlay the UI renders. A split
+// deactivates the original row (retained forever, still citable) and
+// inserts replacements carrying splitFromSegmentId + fractional sortKey.
+model MeetingTranscriptSegment {
+  id                   Int     @id @default(autoincrement())
+  meetingId            Int
+  bidId                Int
+  segmentIndex         Int // position in the original materialization order
+  sortKey              Float // display order; fractional values only ever come from splits
+  startSec             Float?
+  endSec               Float?
+  originalSpeakerLabel String? // frozen at materialization — never updated
+  originalText         String // frozen at materialization — never updated
+  currentSpeakerLabel  String? // correction overlay; starts equal to original
+  currentText          String // correction overlay; starts equal to original
+  isUnknownSpeaker     Boolean @default(false)
+  isActive             Boolean @default(true) // false only when superseded by a split
+  splitFromSegmentId   Int?
+  participantId        Int? // resolved current speaker identity
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  meeting     Meeting                    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid         Bid                        @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  participant MeetingParticipant?        @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  splitFrom   MeetingTranscriptSegment?  @relation("SegmentSplit", fields: [splitFromSegmentId], references: [id], onDelete: SetNull)
+  splitInto   MeetingTranscriptSegment[] @relation("SegmentSplit")
+  registerEntries MeetingRegisterEntry[]
+
+  @@index([meetingId, sortKey])
+  @@index([meetingId, currentSpeakerLabel])
+  @@index([bidId])
+}
+
+// APPEND-ONLY correction audit log. No update or delete path exists at any
+// layer (service exports create/read only; routes answer PATCH/PUT/DELETE
+// with 405; lib/prisma.ts client extension rejects mutation-of-history).
+// A wrong correction is corrected by appending another correction.
+model MeetingTranscriptCorrection {
+  id                   Int      @id @default(autoincrement())
+  meetingId            Int
+  bidId                Int
+  // RENAME_SPEAKER | REASSIGN_SEGMENT | REASSIGN_ALL_MATCHING |
+  // MERGE_SPEAKERS | SPLIT_SEGMENT | MARK_UNKNOWN | EDIT_TEXT
+  correctionType       String
+  segmentId            Int? // segment-scoped ops; null for label-scoped ops
+  fromValue            String? // bounded before-value (label or ≤500-char text excerpt)
+  toValue              String? // bounded after-value
+  affectedSegmentCount Int      @default(0)
+  // JSON: { registerEntryIds: number[], actionItemIds: number[],
+  //         commitmentIds: number[], designChangeIds: number[] } — ids only,
+  // computed at correction time: derived objects whose attribution/citation
+  // overlapped the corrected span. Never contains text.
+  affectedDerivedJson  String   @default("{}")
+  reason               String?
+  correctedBy          String // session actor — REQUIRED; an authorless correction must be impossible
+  createdAt            DateTime @default(now())
+
+  meeting Meeting                   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid     Bid                       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, createdAt])
+  @@index([bidId])
+}
+
+// The durable Meeting Register — one row per meaningful item of meeting
+// content (R2 rule 1). Rows persist regardless of disposition or promotion
+// (rules 2, 12). rawSourceText is FROZEN at creation; normalizedText is the
+// human-editable wording (edits audited via MeetingRegisterEntryRevision).
+// TrackedItem remains the Operations Register (rule 3) — linkedTrackedItemId
+// lets many entries across meetings collect onto one item (rule 10).
+model MeetingRegisterEntry {
+  id                   Int       @id @default(autoincrement())
+  meetingId            Int
+  bidId                Int
+  // DISCUSSION | DECISION | QUESTION | ACTION_ITEM | COMMITMENT |
+  // DESIGN_CHANGE | RISK | CONSTRAINT | SCHEDULE_ITEM | PROCUREMENT_ITEM |
+  // INFORMATIONAL
+  entryType            String
+  agendaTopic          String?
+  rawSourceText        String // source wording as extracted/entered — FROZEN
+  normalizedText       String // human-normalized wording
+  speakerLabel         String?
+  speakerName          String?
+  startSec             Float?
+  endSec               Float?
+  sourceCitation       String? // human-readable locator, e.g. "[12:34] SPEAKER_2"
+  segmentId            Int? // anchor transcript segment where known
+  participantsJson     String    @default("[]") // JSON string[] of participant names
+  responsibleParty     String?
+  dueDate              DateTime?
+  confidence           String? // HIGH | MEDIUM | LOW — extraction confidence; null for manual
+  // ai_extraction | manual | action_item_bridge | commitment_bridge |
+  // design_change_bridge — every producer writes this EXPLICITLY
+  origin               String
+  extractionRunId      Int?
+  // PENDING | CONFIRMED | CORRECTED | MERGED | DUPLICATE |
+  // DISMISSED_WITH_REASON | DISCUSSION_ONLY | INFORMATIONAL |
+  // PROMOTED_TO_OPERATIONS — service-enforced; manual entries land CONFIRMED
+  reviewState          String    @default("PENDING")
+  dispositionReason    String?
+  dispositionBy        String?
+  dispositionAt        DateTime?
+  mergedIntoEntryId    Int?
+  relatedPriorEntryId  Int? // cross-meeting continuity: the prior meeting's entry this continues
+  linkedActionItemId   Int? // bridge to the operational lifecycle rows — link, never mirror
+  linkedCommitmentId   Int?
+  linkedDesignChangeId Int?
+  linkedTrackedItemId  Int? // Operations Register link (many entries → one item)
+  createdBy            String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  meeting           Meeting                   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid               Bid                       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  segment           MeetingTranscriptSegment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  extractionRun     MeetingExtractionRun?     @relation(fields: [extractionRunId], references: [id], onDelete: SetNull)
+  mergedIntoEntry   MeetingRegisterEntry?     @relation("RegisterEntryMerge", fields: [mergedIntoEntryId], references: [id], onDelete: SetNull)
+  mergedEntries     MeetingRegisterEntry[]    @relation("RegisterEntryMerge")
+  relatedPriorEntry MeetingRegisterEntry?     @relation("RegisterEntryContinuity", fields: [relatedPriorEntryId], references: [id], onDelete: SetNull)
+  relatedLaterEntries MeetingRegisterEntry[]  @relation("RegisterEntryContinuity")
+  linkedActionItem  MeetingActionItem?        @relation(fields: [linkedActionItemId], references: [id], onDelete: SetNull)
+  linkedCommitment  MeetingCommitment?        @relation(fields: [linkedCommitmentId], references: [id], onDelete: SetNull)
+  linkedDesignChange DesignIntentChange?      @relation(fields: [linkedDesignChangeId], references: [id], onDelete: SetNull)
+  linkedTrackedItem TrackedItem?              @relation("RegisterEntryOpsLink", fields: [linkedTrackedItemId], references: [id], onDelete: SetNull)
+  originatedItem    TrackedItem?              @relation("TrackedItemOriginatingRegisterEntry")
+  revisions         MeetingRegisterEntryRevision[]
+
+  @@index([meetingId, entryType])
+  @@index([meetingId, reviewState])
+  @@index([bidId, reviewState])
+  @@index([linkedTrackedItemId])
+}
+
+// APPEND-ONLY revision history for register entries (dispositions, edits,
+// links, promotions). Same no-mutation discipline as
+// MeetingTranscriptCorrection / ConsultantDispositionRecord.
+model MeetingRegisterEntryRevision {
+  id              Int      @id @default(autoincrement())
+  entryId         Int
+  bidId           Int
+  // CREATED | DISPOSITION | EDIT | LINK | PROMOTION | RERUN_SUPERSEDE
+  changeType      String
+  fromReviewState String?
+  toReviewState   String?
+  // bounded JSON: field names + ids only (e.g. {"normalizedText": true,
+  // "trackedItemId": 12}) — never long text bodies
+  detailJson      String   @default("{}")
+  actor           String // REQUIRED session actor
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  entry MeetingRegisterEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  bid   Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([entryId, createdAt])
+  @@index([bidId])
+}
+
+// One row per extraction (analysis→register projection) run. The FIRST run
+// for a meeting applies immediately (initial population). Every later run
+// lands PREVIEWED holding the parsed analysis JSON; a human applies or
+// discards it (R2 rules 7–8). Apply replaces PENDING machine-origin entries
+// only — dispositioned entries are NEVER touched (freeze discipline).
+model MeetingExtractionRun {
+  id              Int       @id @default(autoincrement())
+  meetingId       Int
+  bidId           Int
+  analysisVersion Int // Meeting.analysisVersion this run's analysis produced
+  // INITIAL | RERUN — recorded for the audit trail
+  trigger         String
+  // PREVIEWED | APPLIED | DISCARDED
+  status          String    @default("PREVIEWED")
+  // full parsed MeetingAnalysis JSON for PREVIEWED runs (needed to apply);
+  // cleared to "{}" after apply/discard to avoid unbounded growth
+  analysisJson    String    @default("{}")
+  // bounded diff summary: {"toAdd": n, "toReplacePending": n,
+  // "preservedDispositioned": n} + per-type counts — ids/counts only
+  previewJson     String    @default("{}")
+  createdBy       String?
+  createdAt       DateTime  @default(now())
+  appliedBy       String?
+  appliedAt       DateTime?
+
+  meeting Meeting                @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid     Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  entries MeetingRegisterEntry[]
+
+  @@index([meetingId, createdAt])
+  @@index([bidId])
+}
+
+// Immutable published-minutes snapshot (R2 rule 9). Revision 0 is the first
+// publication; an amendment appends revision n+1 with supersedesRevisionId
+// set-once. NO update or delete path exists at any layer. Publication is
+// gated: every extracted register entry must be dispositioned first.
+model MeetingMinutesRevision {
+  id                   Int      @id @default(autoincrement())
+  meetingId            Int
+  bidId                Int
+  revisionIndex        Int      @default(0)
+  // frozen snapshot: {summary, keyDecisions, openIssues, redFlags,
+  // participants, registerEntries: [{id, entryType, reviewState,
+  // normalizedText, sourceCitation, linkedTrackedItemId}],
+  // correctionCount, analysisVersion}
+  contentJson          String
+  publishedBy          String // REQUIRED session actor
+  publishedAt          DateTime @default(now())
+  amendmentReason      String? // REQUIRED for revisionIndex > 0 (service-enforced)
+  supersedesRevisionId Int?     @unique // self-FK, set-once, SetNull
+  createdAt            DateTime @default(now())
+
+  meeting            Meeting                 @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid                Bid                     @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  supersedesRevision MeetingMinutesRevision? @relation("MinutesSupersedes", fields: [supersedesRevisionId], references: [id], onDelete: SetNull)
+  supersededBy       MeetingMinutesRevision? @relation("MinutesSupersedes")
+
+  @@unique([meetingId, revisionIndex])
+  @@index([bidId])
 }

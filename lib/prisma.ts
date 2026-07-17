@@ -11,17 +11,32 @@ import { PrismaLibSql } from "@prisma/adapter-libsql";
 const APPEND_ONLY_MESSAGE =
   "ConsultantDispositionRecord is append-only: corrections are made by appending a new record";
 
+// R2-B1 — the meeting history models share the same discipline: transcript
+// corrections and register-entry revisions are append-only; published
+// minutes revisions are immutable once created (an amendment is a NEW
+// revision row, never an edit).
+const appendOnly = (message: string) => ({
+  update: () => { throw new Error(message); },
+  updateMany: () => { throw new Error(message); },
+  upsert: () => { throw new Error(message); },
+  delete: () => { throw new Error(message); },
+  deleteMany: () => { throw new Error(message); },
+});
+
 function createPrisma() {
   const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL! });
   return new PrismaClient({ adapter }).$extends({
     query: {
-      consultantDispositionRecord: {
-        update: () => { throw new Error(APPEND_ONLY_MESSAGE); },
-        updateMany: () => { throw new Error(APPEND_ONLY_MESSAGE); },
-        upsert: () => { throw new Error(APPEND_ONLY_MESSAGE); },
-        delete: () => { throw new Error(APPEND_ONLY_MESSAGE); },
-        deleteMany: () => { throw new Error(APPEND_ONLY_MESSAGE); },
-      },
+      consultantDispositionRecord: appendOnly(APPEND_ONLY_MESSAGE),
+      meetingTranscriptCorrection: appendOnly(
+        "MeetingTranscriptCorrection is append-only: a wrong correction is corrected by appending another correction"
+      ),
+      meetingRegisterEntryRevision: appendOnly(
+        "MeetingRegisterEntryRevision is append-only: history is never rewritten"
+      ),
+      meetingMinutesRevision: appendOnly(
+        "MeetingMinutesRevision is immutable: an amendment is a new revision, never an edit"
+      ),
     },
   });
 }
