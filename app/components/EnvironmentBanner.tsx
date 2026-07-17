@@ -36,6 +36,13 @@ const TIER_STYLES = {
   production: null,      // no banner in production
 } as const satisfies Record<typeof env.APP_ENV, TierStyle | null>
 
+// Shared with app/layout.tsx so the fixed-position mobile nav rail (which
+// anchors itself below the sticky topbar) can account for the banner's
+// extra height instead of assuming the topbar is always exactly 62px tall.
+export function getBannerHeight(tier: typeof env.APP_ENV): number {
+  return TIER_STYLES[tier]?.height ?? 0
+}
+
 export function EnvironmentBanner() {
   const style = TIER_STYLES[env.APP_ENV]
   if (!style) return null

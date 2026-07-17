@@ -455,7 +455,7 @@ body::before {
 .gwx-rail {
   /* Mobile: fixed overlay panel, translated off-screen by default */
   position: fixed;
-  top: 62px;   /* matches sticky topbar h-[62px] */
+  top: var(--topbar-h, 62px);   /* topbar h-[62px] + env banner, if any */
   bottom: 0;
   left: 0;
   z-index: 40;

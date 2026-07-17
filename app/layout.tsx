@@ -5,9 +5,17 @@ import { ThemeProvider } from "./components/ThemeProvider";
 import AuthProvider from "./components/AuthProvider";
 import UserNav from "./components/UserNav";
 import AppSidebar from "./components/AppSidebar";
-import { EnvironmentBanner } from "./components/EnvironmentBanner";
+import { EnvironmentBanner, getBannerHeight } from "./components/EnvironmentBanner";
 import SessionTimeoutMonitor from "./components/SessionTimeoutMonitor";
 import { prisma } from "@/lib/prisma";
+import { env } from "@/lib/env";
+
+// Header is a fixed h-[62px]; the environment banner (local/staging only,
+// see EnvironmentBanner.tsx) adds variable height above it. The mobile nav
+// rail and its hamburger toggle are position:fixed and need the real total
+// so they anchor below the topbar instead of a hardcoded 62px that only
+// happens to be correct in production (where the banner renders nothing).
+const TOPBAR_HEIGHT = 62 + getBannerHeight(env.APP_ENV);
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +58,10 @@ export default async function RootLayout({
       className={`${barlow.variable} ${ibmPlexMono.variable} dark h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body
+        className="min-h-full flex flex-col"
+        style={{ "--topbar-h": `${TOPBAR_HEIGHT}px` } as React.CSSProperties}
+      >
         <AuthProvider>
           <ThemeProvider>
 
@@ -117,7 +128,16 @@ export default async function RootLayout({
               <AppSidebar
                 counts={{ projects: bidCount, activeJobs: activeJob, newSignals, openActionItems: globalOpenActionItems }}
               />
-              <main className="flex-1 min-w-0 overflow-y-auto" style={{ marginLeft: "var(--sidebar-width, 64px)", transition: "margin-left 200ms ease, flex-basis 200ms ease" }}>
+              {/*
+                No marginLeft: AppSidebar's <aside> is position:static at
+                >=768px (.gwx-rail in globals.css) and already reserves its
+                own flex width; on mobile it's fixed/off-canvas and isn't
+                meant to push content either way. A marginLeft added here
+                previously double-counted the sidebar width on desktop and
+                shifted every page's content on mobile even with the
+                drawer closed.
+              */}
+              <main className="flex-1 min-w-0 overflow-y-auto" style={{ transition: "flex-basis 200ms ease" }}>
                 {children}
               </main>
             </div>

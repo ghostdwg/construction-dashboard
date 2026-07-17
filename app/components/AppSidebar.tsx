@@ -56,14 +56,6 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
   // Close mobile panel on route change
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
-  // Expose --sidebar-width for any CSS consumers
-  useEffect(() => {
-    document.documentElement.style.setProperty(
-      "--sidebar-width",
-      `${expanded ? 240 : 64}px`
-    );
-  }, [expanded]);
-
   function togglePin() {
     const next = !pinned;
     setPinned(next);
@@ -79,8 +71,9 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
     <>
       {/* ── Mobile hamburger ─────────────────────────────────────────────── */}
       <button
-        className="md:hidden fixed top-[72px] left-3 z-50 flex items-center justify-center w-9 h-9 rounded-[6px] border"
+        className="md:hidden fixed left-3 z-50 flex items-center justify-center w-9 h-9 rounded-[6px] border"
         style={{
+          top: "calc(var(--topbar-h, 62px) + 10px)",
           background: "var(--color-bg-surface)",
           borderColor: "var(--color-border)",
           color: "var(--color-text-primary)",
