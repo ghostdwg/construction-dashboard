@@ -11,7 +11,7 @@ import { test, expect, type Page } from "@playwright/test";
 // Runs only against the local fixture server defined in playwright.config.ts.
 
 const NAV_ITEMS = [
-  { label: "Operations", href: "/" },
+  { label: "Operations", href: "/operations" },
   { label: "Market Intelligence", href: "/market-intelligence" },
   { label: "Projects", href: "/bids" },
   { label: "Portfolio", href: "/portfolio" },
@@ -32,13 +32,11 @@ test.describe("global rail — hrefs and desktop navigation", () => {
 
   for (const item of NAV_ITEMS) {
     test(`collapsed rail navigates to ${item.href}`, async ({ page }) => {
-      await page.goto(item.href === "/" ? "/bids" : "/");
+      await page.goto(item.href === "/bids" ? "/operations" : "/bids");
       // Approach the icon directly without settling on the rail first.
       await page.mouse.move(720, 450);
       await railLink(page, item.href).click();
-      await expect(page).toHaveURL(
-        item.href === "/" ? /\/$/ : new RegExp(`${item.href.replace(/\//g, "\\/")}`)
-      );
+      await expect(page).toHaveURL(new RegExp(`${item.href.replace(/\//g, "\\/")}`));
     });
   }
 
@@ -55,7 +53,7 @@ test.describe("global rail — hrefs and desktop navigation", () => {
   });
 
   test("active-route styling follows navigation", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/operations");
     await railLink(page, "/tasks").click();
     await expect(page).toHaveURL(/\/tasks/);
     // Active link: 3px accent left border (inactive links use transparent).
@@ -65,7 +63,7 @@ test.describe("global rail — hrefs and desktop navigation", () => {
       )
       .not.toMatch(/rgba\(0,\s*0,\s*0,\s*0\)|transparent/);
     // The link we navigated away from must not be styled active.
-    const opsBorder = await railLink(page, "/").evaluate(
+    const opsBorder = await railLink(page, "/operations").evaluate(
       (el) => getComputedStyle(el).borderLeftColor
     );
     expect(opsBorder).toMatch(/rgba\(0,\s*0,\s*0,\s*0\)|transparent/);

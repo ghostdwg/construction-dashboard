@@ -21,7 +21,7 @@ type SidebarCounts = {
 type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/",                     label: "Operations",          icon: Activity,    exact: true },
+  { href: "/operations",           label: "Operations",          icon: Activity,    exact: true },
   { href: "/market-intelligence",  label: "Market Intelligence", icon: TrendingUp },
   { href: "/bids",                 label: "Projects",            icon: Building2 },
   { href: "/portfolio",            label: "Portfolio",           icon: Layers },
@@ -30,7 +30,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 function getMeta(href: string, counts: SidebarCounts): string | null {
-  if (href === "/")                    return counts.activeJobs > 0 ? String(counts.activeJobs) : null;
+  if (href === "/operations")          return counts.activeJobs > 0 ? String(counts.activeJobs) : null;
   if (href === "/market-intelligence") return counts.newSignals > 0 ? String(counts.newSignals) : null;
   if (href === "/bids")                return counts.projects > 0 ? String(counts.projects) : null;
   if (href === "/portfolio")           return counts.projects > 0 ? String(counts.projects) : null;

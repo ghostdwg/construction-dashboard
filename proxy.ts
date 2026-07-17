@@ -31,9 +31,12 @@
 //      enforcement is the secondary boundary).
 //
 //   2. Landing-page routing. Authenticated visitors hitting / are redirected
-//      to /bids — app/page.tsx (the "Operations" dashboard) stops being
-//      reachable at the bare / URL once this ships; it is not deleted, just
-//      no longer routed to. Flagged for the operator, not silently resolved.
+//      to /bids — app/page.tsx (the "Operations" dashboard) is not reachable
+//      at the bare / URL for an authenticated visitor. It is still reachable
+//      at /operations (app/operations/page.tsx re-exports it) — that's the
+//      sidebar's Operations destination as of GWX-R1's route fix, so it no
+//      longer silently converges on /bids the way it did when the sidebar
+//      itself linked to /.
 //
 //   3. X-App-Env response header. Injected at request time so the value
 //      reflects the *runtime* APP_ENV (from the tier env_file), not whatever
