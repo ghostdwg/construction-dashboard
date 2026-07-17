@@ -3992,7 +3992,13 @@ model TrackedItem {
   carriedFromDate  String? // ISO date — mirrors MeetingActionItem.carriedFromDate
 
   // ── Embedded source citation ────────────────────────────────────────────
-  sourceKind                    String  @default("manual") // manual | meeting | spec_section | field_report | consultant_report (jso_report reserved for a later slice)
+  // Canonical vocabulary (single source of truth: lib/services/trackedItems/sourceKinds.ts):
+  //   manual | meeting_action_item | meeting_design_change | meeting_register |
+  //   consultant_observation | field_report
+  // Legacy values still present on old rows (readable forever, never rewritten,
+  // never written by new code): meeting | consultant_report | spec_section
+  // (jso_report reserved for a later slice)
+  sourceKind                    String  @default("manual")
   sourceMeetingId               Int?
   sourceMeetingActionItemId     Int?    @unique // at most one TrackedItem per promoted MeetingActionItem (bridge duplicate guard)
   sourceSpecSectionId           Int?
@@ -4430,11 +4436,20 @@ model MeetingRegisterEntry {
   extractionRunId      Int?
   // PENDING | CONFIRMED | CORRECTED | MERGED | DUPLICATE |
   // DISMISSED_WITH_REASON | DISCUSSION_ONLY | INFORMATIONAL |
-  // PROMOTED_TO_OPERATIONS — service-enforced; manual entries land CONFIRMED
+  // PROMOTED_TO_OPERATIONS | SUPERSEDED — service-enforced; manual entries
+  // land CONFIRMED. SUPERSEDED is the machine lifecycle outcome of an
+  // extraction rerun (never a human disposition): the row is retained
+  // forever as history, with the replacing run/entry recorded below.
   reviewState          String    @default("PENDING")
   dispositionReason    String?
   dispositionBy        String?
   dispositionAt        DateTime?
+  // ── rerun supersession (R2 remediation — reruns never delete) ──
+  // Only PENDING machine-origin entries are ever superseded; dispositioned,
+  // linked, or promoted entries are preserved untouched by every rerun.
+  supersededByRunId    Int? // the extraction run whose apply superseded this entry
+  supersededByEntryId  Int? // the replacement entry, where a deterministic match exists
+  supersededAt         DateTime?
   mergedIntoEntryId    Int?
   relatedPriorEntryId  Int? // cross-meeting continuity: the prior meeting's entry this continues
   linkedActionItemId   Int? // bridge to the operational lifecycle rows — link, never mirror
@@ -4449,6 +4464,9 @@ model MeetingRegisterEntry {
   bid               Bid                       @relation(fields: [bidId], references: [id], onDelete: Cascade)
   segment           MeetingTranscriptSegment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
   extractionRun     MeetingExtractionRun?     @relation(fields: [extractionRunId], references: [id], onDelete: SetNull)
+  supersededByRun   MeetingExtractionRun?     @relation("RegisterEntrySupersededByRun", fields: [supersededByRunId], references: [id], onDelete: SetNull)
+  supersededByEntry MeetingRegisterEntry?     @relation("RegisterEntrySupersession", fields: [supersededByEntryId], references: [id], onDelete: SetNull)
+  supersededEntries MeetingRegisterEntry[]    @relation("RegisterEntrySupersession")
   mergedIntoEntry   MeetingRegisterEntry?     @relation("RegisterEntryMerge", fields: [mergedIntoEntryId], references: [id], onDelete: SetNull)
   mergedEntries     MeetingRegisterEntry[]    @relation("RegisterEntryMerge")
   relatedPriorEntry MeetingRegisterEntry?     @relation("RegisterEntryContinuity", fields: [relatedPriorEntryId], references: [id], onDelete: SetNull)
@@ -4494,8 +4512,11 @@ model MeetingRegisterEntryRevision {
 // One row per extraction (analysis→register projection) run. The FIRST run
 // for a meeting applies immediately (initial population). Every later run
 // lands PREVIEWED holding the parsed analysis JSON; a human applies or
-// discards it (R2 rules 7–8). Apply replaces PENDING machine-origin entries
-// only — dispositioned entries are NEVER touched (freeze discipline).
+// discards it (R2 rules 7–8). Apply NEVER deletes register entries: PENDING
+// machine-origin entries that the new analysis no longer produces are marked
+// SUPERSEDED (retained forever, supersededByRunId/-EntryId recorded);
+// identical re-extractions leave the existing entry unchanged; dispositioned
+// entries are NEVER touched (freeze discipline).
 model MeetingExtractionRun {
   id              Int       @id @default(autoincrement())
   meetingId       Int
@@ -4508,17 +4529,20 @@ model MeetingExtractionRun {
   // full parsed MeetingAnalysis JSON for PREVIEWED runs (needed to apply);
   // cleared to "{}" after apply/discard to avoid unbounded growth
   analysisJson    String    @default("{}")
-  // bounded diff summary: {"toAdd": n, "toReplacePending": n,
-  // "preservedDispositioned": n} + per-type counts — ids/counts only
+  // bounded diff summary: {"toAdd": n, "unchanged": n, "toSupersede": n,
+  // "merged": n, "preservedDispositioned": n} + per-type counts + a bounded
+  // outcomes list ({outcome, entryId?, draftIndex?, entryType}) — ids/counts
+  // only, never entry text
   previewJson     String    @default("{}")
   createdBy       String?
   createdAt       DateTime  @default(now())
   appliedBy       String?
   appliedAt       DateTime?
 
-  meeting Meeting                @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  bid     Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  entries MeetingRegisterEntry[]
+  meeting           Meeting                @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid               Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  entries           MeetingRegisterEntry[]
+  supersededEntries MeetingRegisterEntry[] @relation("RegisterEntrySupersededByRun")
 
   @@index([meetingId, createdAt])
   @@index([bidId])

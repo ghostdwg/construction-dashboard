@@ -43,7 +43,19 @@ export const REGISTER_DISPOSITIONS = [
 ] as const;
 export type RegisterDisposition = (typeof REGISTER_DISPOSITIONS)[number];
 
-export type RegisterReviewState = "PENDING" | RegisterDisposition;
+/**
+ * Machine lifecycle outcome of an extraction rerun — NEVER a human
+ * disposition (it is deliberately absent from REGISTER_DISPOSITIONS so no
+ * disposition route can set it). A superseded entry is permanent history:
+ * retained forever, excluded from active views and the fully-reviewed gate,
+ * with supersededByRunId/supersededByEntryId recording the replacement.
+ */
+export const SUPERSEDED_STATE = "SUPERSEDED" as const;
+
+export type RegisterReviewState =
+  | "PENDING"
+  | RegisterDisposition
+  | typeof SUPERSEDED_STATE;
 
 export const ENTRY_ORIGINS = [
   "ai_extraction",
