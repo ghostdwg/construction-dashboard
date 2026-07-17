@@ -168,6 +168,8 @@ model Bid {
   consultantObservations    ConsultantObservation[]
   consultantDispositions    ConsultantDispositionRecord[]
   consultantStreamExports   ConsultantStreamExport[]
+  designIntentChanges       DesignIntentChange[]
+  meetingCommitments        MeetingCommitment[]
 }
 
 model BidSubmission {
@@ -1170,6 +1172,8 @@ model Meeting {
   actionItems  MeetingActionItem[]
   participants MeetingParticipant[]
   trackedItems TrackedItem[]
+  designIntentChanges DesignIntentChange[]
+  commitments         MeetingCommitment[]
 
   @@index([bidId])
   @@index([bidId, meetingDate])
@@ -1227,6 +1231,7 @@ model MeetingActionItem {
   // TrackedItem.sourceMeetingActionItemId is unique). Promotion never edits
   // or deletes this row; it remains the source evidence.
   trackedItem TrackedItem?
+  commitments MeetingCommitment[]
 
   @@index([bidId])
   @@index([meetingId])
@@ -4019,6 +4024,7 @@ model TrackedItem {
   spawnedFromObservations     ConsultantObservation[] @relation("ObservationSpawnedItem")
   comments                    TrackedItemComment[]
   attachments                 TrackedItemAttachment[]
+  linkedDesignChanges         DesignIntentChange[]
 
   @@index([bidId])
   @@index([bidId, kind])
@@ -4246,4 +4252,49 @@ model TrackedItemAttachment {
   trackedItem TrackedItem @relation(fields: [trackedItemId], references: [id], onDelete: Cascade)
 
   @@index([trackedItemId])
+}
+
+model DesignIntentChange {
+  id                  Int      @id @default(autoincrement())
+  meetingId           Int
+  bidId               Int
+  changeText          String
+  priorIntent         String?
+  affectedSpec        String?
+  severity            String
+  sourceQuote         String?
+  speakerLabel        String?
+  state               String   @default("PROPOSED")
+  extractedAt         DateTime @default(now())
+  confirmedBy         String?
+  dismissedReason     String?
+  linkedTrackedItemId Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  meeting    Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid        Bid          @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  linkedItem TrackedItem? @relation(fields: [linkedTrackedItemId], references: [id], onDelete: SetNull)
+}
+
+model MeetingCommitment {
+  id                 Int       @id @default(autoincrement())
+  meetingId          Int
+  bidId              Int
+  committedBy        String
+  speakerLabel       String?
+  commitmentText     String
+  duePhrase          String?
+  dueDate            DateTime?
+  sourceQuote        String?
+  status             String    @default("PROPOSED")
+  confirmedBy        String?
+  fulfilledBy        String?
+  dismissedReason    String?
+  linkedActionItemId Int?
+  extractedAt        DateTime  @default(now())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  meeting          Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid              Bid          @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  linkedActionItem MeetingActionItem? @relation(fields: [linkedActionItemId], references: [id], onDelete: SetNull)
 }
