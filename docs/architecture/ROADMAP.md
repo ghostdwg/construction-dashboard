@@ -1,7 +1,21 @@
 # Roadmap — Construction Intelligence Platform
-# Version 2.9 — Last Updated: 2026-05-02
+# Version 2.10 — Last Updated: 2026-07-17
 # Repo: construction-dashboard (forked from bid-dashboard)
 # Parallel repo: bid-dashboard (active, still receiving updates)
+
+# ── R2 line (2026-07-17): Meeting-to-Response Control Loop ──────────────
+# The active product line is R2. In-repo contract:
+# docs/architecture/R2_MEETING_RESPONSE_CONTROL_LOOP.md. Status truth:
+# docs/architecture/CAPABILITY_LEDGER.md.
+#   Build 1 — Meeting Register Foundation: IMPLEMENTED on branch
+#     gwx/r2-meeting-response-control-loop (local-only; unmerged;
+#     migration authored, not applied to any real DB).
+#   Build 2 — Field Report & Trade Response: contract FROZEN (Part D of
+#     the R2 doc). Blocking precondition: requireBidAccess on all
+#     field-report routes.
+#   Build 3 — Originator Return & Closure: contract FROZEN (Part E).
+# This section supplements — never supersedes — the GroundWorX Execution
+# Ledger's queue and gates.
 
 # For the current, source-verified picture of runtime topology, deploy
 # platform, database backend, and credential-resolution status, see

@@ -1,5 +1,21 @@
 # Current State — Construction Intelligence Platform
-# Last Updated: 2026-05-15 (Market Intelligence scraper Phase 1-4 live in prod)
+# Last Updated: 2026-07-17 (R2 Meeting Register Foundation — Build 1, local-only)
+
+> **R2 update (2026-07-17, branch `gwx/r2-meeting-response-control-loop`):**
+> the meeting/field-report/response domain is now governed by two dedicated
+> documents — [`CAPABILITY_LEDGER.md`](./CAPABILITY_LEDGER.md) (audited,
+> evidence-tagged status of every capability in that domain) and
+> [`R2_MEETING_RESPONSE_CONTROL_LOOP.md`](./R2_MEETING_RESPONSE_CONTROL_LOOP.md)
+> (frozen domain contract + Build 2/3 contracts). R2 Build 1 adds, local-only
+> and never exercised live: durable Meeting Register (11 entry types, human
+> disposition), transcript segment materialization with audited
+> diarization/transcript corrections over immutable originals, extraction
+> rerun preview/apply, immutable minutes revisions, Operations Register
+> promotion with full provenance, cross-meeting continuity, and
+> `requireBidAccess` hardening of every meeting-core route. TrackedItem
+> remains the sole Operations Register. Nothing R2 is staging-proven.
+> For execution governance (frozen branches, human gates, queue), the
+> GroundWorX Execution Ledger remains authoritative.
 
 > **For the current, source-verified picture of runtime topology, deploy platform,
 > database backend, credential-resolution status, and what is/isn't proven on
