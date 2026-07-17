@@ -45,22 +45,19 @@ app = FastAPI(
 
 # ── Auth middleware ──────────────────────────────────────────────────────────
 
-SIDECAR_API_KEY = os.getenv("SIDECAR_API_KEY", "")
-
-
 @app.middleware("http")
 async def verify_api_key(request: Request, call_next):
-    if request.url.path in ("/health", "/docs", "/openapi.json"):
+    if request.url.path == "/health":
         return await call_next(request)
 
-    if not SIDECAR_API_KEY:
-        return await call_next(request)
+    from sidecar_auth import service_auth_error
 
-    key = request.headers.get("X-API-Key", "")
-    if key != SIDECAR_API_KEY:
+    error = service_auth_error(request.headers.get("X-API-Key"))
+    if error:
+        status_code, message = error
         return JSONResponse(
-            status_code=401,
-            content={"error": "Invalid or missing API key"},
+            status_code=status_code,
+            content={"error": message},
         )
 
     return await call_next(request)

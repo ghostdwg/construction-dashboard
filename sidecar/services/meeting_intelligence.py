@@ -37,6 +37,14 @@ ASSEMBLYAI_BASE = "https://api.assemblyai.com"
 WHISPERX_URL = os.getenv("WHISPERX_URL", "")
 WHISPERX_API_KEY = os.getenv("WHISPERX_API_KEY", "")
 
+
+def _whisperx_headers() -> dict[str, str]:
+    if WHISPERX_API_KEY:
+        return {"X-API-Key": WHISPERX_API_KEY}
+    if os.getenv("APP_ENV", "").lower() in {"local", "development", "test"}:
+        return {}
+    raise RuntimeError("WHISPERX_API_KEY is required outside local/test mode")
+
 _analysis_rules: Optional[str] = None
 
 
@@ -220,9 +228,7 @@ async def submit_whisperx_job(
     if not WHISPERX_URL:
         raise ValueError("WHISPERX_URL not configured")
 
-    headers = {}
-    if WHISPERX_API_KEY:
-        headers["X-API-Key"] = WHISPERX_API_KEY
+    headers = _whisperx_headers()
 
     async with httpx.AsyncClient(timeout=600.0) as client:
         kwargs = {
@@ -248,9 +254,7 @@ async def poll_whisperx_status(job_id: str) -> dict:
     if not WHISPERX_URL:
         return {"status": "error", "error": "WHISPERX_URL not configured"}
 
-    headers = {}
-    if WHISPERX_API_KEY:
-        headers["X-API-Key"] = WHISPERX_API_KEY
+    headers = _whisperx_headers()
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(f"{WHISPERX_URL}/job/{job_id}", headers=headers)

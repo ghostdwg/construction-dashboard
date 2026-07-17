@@ -7,7 +7,7 @@ Runs on the GPU PC. Exposes:
 Start: python whisperx_server.py
 Requires: pip install fastapi uvicorn whisperx pyannote.audio python-multipart torch
 Set env:  HF_TOKEN=<huggingface_token>   (for pyannote speaker diarization)
-          WHISPERX_API_KEY=<secret>       (optional — must match sidecar WHISPERX_API_KEY)
+          WHISPERX_API_KEY=<secret>       (required outside explicit local/test mode)
 """
 
 import os
@@ -25,7 +25,6 @@ import uvicorn
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-API_KEY     = os.getenv("WHISPERX_API_KEY", "")   # optional shared secret
 HF_TOKEN    = os.getenv("HF_TOKEN", "")           # HuggingFace token for pyannote
 DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
 COMPUTE     = "float16" if DEVICE == "cuda" else "int8"
@@ -48,8 +47,12 @@ app = FastAPI(title="WhisperX GPU Worker")
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 def _check_key(x_api_key: Optional[str]):
-    if API_KEY and x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    from whisperx_auth import check_key, ServiceAuthError
+
+    try:
+        check_key(x_api_key)
+    except ServiceAuthError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
 
 
 # ── Background transcription ──────────────────────────────────────────────────

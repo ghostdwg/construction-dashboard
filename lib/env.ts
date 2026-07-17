@@ -43,10 +43,19 @@ const schema = z.object({
   AUTH_DISABLED:       z.string().default('false'),
   AUTH_SECRET:         z.string().min(32),
   ANTHROPIC_API_KEY:   z.string().startsWith('sk-ant-'),
+  SIDECAR_API_KEY:     z.string().default(''),
   NEXTAUTH_URL:        z.string().url().default('http://localhost:3000'),
   ALLOW_PROD_DB:       z.string().default(''),
 }).superRefine((env, ctx) => {
   const isProd = env.APP_ENV === 'production'
+
+  if (env.APP_ENV !== 'local' && !env.SIDECAR_API_KEY) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SIDECAR_API_KEY'],
+      message: 'SIDECAR_API_KEY is required outside local development',
+    })
+  }
 
   // AUTH_DISABLED is a solo-dev escape hatch only (see proxy.ts's solo-dev
   // bypass). Refuse to start in production — if it ever ends up set there it

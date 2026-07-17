@@ -45,7 +45,7 @@ Copy `.env.example` to `.env` and configure:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `SIDECAR_API_KEY` | No | Shared secret with Next.js (dev mode allows all) |
+| `SIDECAR_API_KEY` | Staging/production | Shared secret with Next.js. Keyless access is allowed only with explicit `APP_ENV=local`, `development`, or `test`; otherwise processing routes fail closed. |
 | `ANTHROPIC_API_KEY` | For AI | Required for `/parse/specs/ai` endpoint |
 
 ## Architecture
