@@ -68,16 +68,14 @@ export interface EmitAuditEventInput {
   skipDbPersist?: boolean;
 }
 
-export async function emitAuditEvent(input: EmitAuditEventInput): Promise<void> {
-  const severity = input.severity ?? "INFO";
-
-  // ── Build the envelope ──────────────────────────────────────────────────
+/** Build the canonical envelope from emitter input (correlation-context aware). */
+export function buildAuditEnvelope(input: EmitAuditEventInput): AuditEnvelope {
   const ctx = currentCorrelationContext();
-  const envelope: AuditEnvelope = {
+  return {
     schemaVersion: AUDIT_SCHEMA_VERSION,
     category: input.category,
     action: input.action,
-    severity,
+    severity: input.severity ?? "INFO",
     timestamp: new Date().toISOString(),
     correlationId: input.correlationId ?? ctx.correlationId ?? null,
     replayId: input.replayId ?? ctx.replayId ?? null,
@@ -94,15 +92,68 @@ export async function emitAuditEvent(input: EmitAuditEventInput): Promise<void> 
     reasonLog: input.reasonLog ?? [],
     payload: input.payload ?? null,
   };
+}
 
-  // ── Stdout fan-out ──────────────────────────────────────────────────────
+/** Minimal client shape needed to persist an AuditEvent row — satisfied by
+ *  both the shared prisma client and an interactive-transaction client. */
+export type AuditEventWriter = {
+  auditEvent: { create(args: { data: Record<string, unknown> }): Promise<unknown> };
+};
+
+/**
+ * Persist one envelope as an AuditEvent row via the given client. THROWS on
+ * failure — callers choose the failure policy. Inside a transaction this is
+ * the FAIL-CLOSED path: a failed audit write rolls the whole mutation back
+ * (GroundWorX audit policy — audit may never fail open for accountability-
+ * relevant mutations).
+ */
+export async function persistAuditEnvelope(
+  db: AuditEventWriter,
+  envelope: AuditEnvelope
+): Promise<void> {
+  await db.auditEvent.create({
+    data: {
+      category: envelope.category,
+      action: envelope.action,
+      severity: envelope.severity,
+      subjectKind: envelope.subject?.kind ?? null,
+      subjectId: envelope.subject?.id ?? null,
+      actorUserId: envelope.actor.userId,
+      actorEmail: envelope.actor.email,
+      actorKind: envelope.actor.kind,
+      correlationId: envelope.correlationId,
+      replayId: envelope.replayId,
+      ingestionId: envelope.ingestionId,
+      runnerId: envelope.runnerId,
+      schemaVersion: envelope.schemaVersion,
+      versionTagsJson:
+        Object.keys(envelope.versions).length > 0
+          ? JSON.stringify(envelope.versions)
+          : null,
+      decision: envelope.decision,
+      reasonLog:
+        envelope.reasonLog.length > 0 ? JSON.stringify(envelope.reasonLog) : null,
+      payloadJson: envelope.payload ? JSON.stringify(envelope.payload) : null,
+    },
+  });
+}
+
+/** Stdout/metrics fan-out for an envelope. Call AFTER the owning transaction
+ *  commits so the Loki stream never reports a rolled-back mutation. */
+export function emitAuditEnvelopeStdout(envelope: AuditEnvelope): void {
   const minLevel = configuredMinSeverity();
-  if (!audiosSuppressed() && severityAtLeast(severity, minLevel)) {
+  if (!audiosSuppressed() && severityAtLeast(envelope.severity, minLevel)) {
     // Single-line JSON; Promtail extracts labels via pipeline_stages.
     console.info(`${AUDIT_PREFIX} ${JSON.stringify(envelope)}`);
   }
-
   recordAuditEmission(envelope.category, envelope.severity);
+}
+
+export async function emitAuditEvent(input: EmitAuditEventInput): Promise<void> {
+  const envelope = buildAuditEnvelope(input);
+
+  // ── Stdout fan-out ──────────────────────────────────────────────────────
+  emitAuditEnvelopeStdout(envelope);
 
   // ── DB persistence fan-out ──────────────────────────────────────────────
   const shouldPersist = input.skipDbPersist
@@ -111,35 +162,12 @@ export async function emitAuditEvent(input: EmitAuditEventInput): Promise<void> 
 
   if (shouldPersist) {
     try {
-      await prisma.auditEvent.create({
-        data: {
-          category: envelope.category,
-          action: envelope.action,
-          severity: envelope.severity,
-          subjectKind: envelope.subject?.kind ?? null,
-          subjectId: envelope.subject?.id ?? null,
-          actorUserId: envelope.actor.userId,
-          actorEmail: envelope.actor.email,
-          actorKind: envelope.actor.kind,
-          correlationId: envelope.correlationId,
-          replayId: envelope.replayId,
-          ingestionId: envelope.ingestionId,
-          runnerId: envelope.runnerId,
-          schemaVersion: envelope.schemaVersion,
-          versionTagsJson:
-            Object.keys(envelope.versions).length > 0
-              ? JSON.stringify(envelope.versions)
-              : null,
-          decision: envelope.decision,
-          reasonLog:
-            envelope.reasonLog.length > 0 ? JSON.stringify(envelope.reasonLog) : null,
-          payloadJson: envelope.payload ? JSON.stringify(envelope.payload) : null,
-        },
-      });
+      await persistAuditEnvelope(prisma, envelope);
     } catch (err) {
-      // Audit persistence must never break the calling service. Emit a
-      // critical stderr line + bump the persistence-failure counter so
-      // operators see it.
+      // Legacy fail-open path (telemetry-grade events): persistence must
+      // never break the calling service. Accountability-relevant mutations
+      // do NOT use this path — they persist via persistAuditEnvelope inside
+      // their own transaction, where a failure rolls the mutation back.
       recordAuditPersistenceFailure(envelope.category);
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(
