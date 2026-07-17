@@ -21,6 +21,9 @@ const h = vi.hoisted(() => ({
 }));
 
 const getMock = vi.hoisted(() => vi.fn(async () => Buffer.from([1, 2, 3, 4])));
+const accessMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>());
+
+vi.mock("@/lib/auth-helpers", () => ({ requireBidAccess: accessMock }));
 
 vi.mock("@/lib/storage/blobStore", () => ({
   getBlobStore: () => ({ get: getMock }),
@@ -77,10 +80,21 @@ beforeEach(() => {
     byteSize: 4,
   };
   getMock.mockClear();
+  accessMock.mockReset();
+  accessMock.mockResolvedValue({ ok: true, user: { id: "user-1" } });
   getMock.mockResolvedValue(Buffer.from([1, 2, 3, 4]));
 });
 
 describe("private download routes", () => {
+  test("bid authorization denial occurs before metadata and blob reads", async () => {
+    accessMock.mockResolvedValueOnce({
+      ok: false,
+      response: Response.json({ error: "Not found" }, { status: 404 }),
+    });
+    const res = await attachmentDownload(new Request("http://t"), pa("6", "1", "9"));
+    expect(res.status).toBe(404);
+    expect(getMock).not.toHaveBeenCalled();
+  });
   test("attachment download: same-bid succeeds with safe headers; server-stored key used", async () => {
     // A hostile query param naming another key must be ignored — the route
     // takes ids only and reads the SERVER-stored storageKey.

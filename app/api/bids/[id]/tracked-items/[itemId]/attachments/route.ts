@@ -13,6 +13,7 @@
 // thumbnails.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore } from "@/lib/storage/blobStore";
 import {
   listAttachments,
@@ -33,6 +34,9 @@ export async function GET(
   const tid = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(tid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const attachments = await listAttachments(bidId, tid);
   if (attachments === null) return Response.json({ error: "Not found" }, { status: 404 });
@@ -60,6 +64,9 @@ export async function POST(
   const tid = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(tid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let form: FormData;
   try {

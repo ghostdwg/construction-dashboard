@@ -12,6 +12,7 @@
 // evidence are draft diarization labels, not verified identity.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { promoteMeetingActionItem } from "@/lib/services/trackedItems";
 
 export async function POST(
@@ -21,6 +22,9 @@ export async function POST(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let body: { meetingActionItemId?: unknown };
   try {

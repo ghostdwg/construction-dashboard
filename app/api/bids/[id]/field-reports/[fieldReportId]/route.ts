@@ -4,6 +4,7 @@
 // PATCH …/field-reports/[fieldReportId]  — update title/reportDate/authorName
 
 import { getFieldReport, updateFieldReport } from "@/lib/services/fieldReports";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 export async function GET(
   _request: Request,
@@ -14,6 +15,9 @@ export async function GET(
   const rid = parseInt(fieldReportId, 10);
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const report = await getFieldReport(bidId, rid);
   if (!report) return Response.json({ error: "Not found" }, { status: 404 });
@@ -44,6 +48,9 @@ export async function PATCH(
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -67,7 +74,7 @@ export async function PATCH(
     ...("authorName" in body
       ? { authorName: typeof body.authorName === "string" ? body.authorName : null }
       : {}),
-  });
+  }, access.user);
   if (!result.ok) {
     const status = result.error === "Not found" ? 404 : 400;
     return Response.json({ error: result.error }, { status });

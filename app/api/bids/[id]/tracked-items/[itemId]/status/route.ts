@@ -8,6 +8,7 @@
 //   - note, when present, is appended to the item's comment thread
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { transitionTrackedItem } from "@/lib/services/trackedItems";
 
 export async function POST(
@@ -19,6 +20,9 @@ export async function POST(
   const tid = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(tid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let body: { to?: unknown; waivedReason?: unknown; note?: unknown };
   try {

@@ -15,6 +15,7 @@
 // missing returns an honest 404 — never a fabricated body.
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore } from "@/lib/storage/blobStore";
 import { privateDownloadHeaders } from "@/lib/services/storage/downloadHeaders";
 
@@ -30,6 +31,9 @@ export async function GET(
   const aid = parseInt(attachmentId, 10);
   if (isNaN(bidId) || isNaN(tid) || isNaN(aid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const item = await prisma.trackedItem.findFirst({
     where: { id: tid, bidId },

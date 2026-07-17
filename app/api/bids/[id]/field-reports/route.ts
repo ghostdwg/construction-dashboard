@@ -9,6 +9,7 @@
 // uploads never auto-create items.
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { createFieldReport, listFieldReports } from "@/lib/services/fieldReports";
 
 export async function GET(
@@ -18,6 +19,9 @@ export async function GET(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const reports = await listFieldReports(bidId);
   return Response.json({
@@ -45,6 +49,9 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   const bid = await prisma.bid.findUnique({ where: { id: bidId }, select: { id: true } });
   if (!bid) return Response.json({ error: "Not found" }, { status: 404 });
 
@@ -66,7 +73,7 @@ export async function POST(
     title: String(body.title ?? ""),
     reportDate,
     authorName: typeof body.authorName === "string" ? body.authorName : null,
-  });
+  }, access.user);
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
   return Response.json({ id: result.value.id }, { status: 201 });
 }

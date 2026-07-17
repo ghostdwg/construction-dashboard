@@ -8,6 +8,27 @@
 // anything. parseStatus stays "UNPARSED" in V0 — no code path changes it.
 
 import { prisma } from "@/lib/prisma";
+import { emitAuditEvent } from "@/lib/observability/audit";
+
+type Actor = { id?: string | null; email?: string | null } | null;
+
+async function auditFieldReport(
+  action: string,
+  bidId: number,
+  reportId: number,
+  actor: Actor,
+  payload: Record<string, unknown>
+) {
+  await emitAuditEvent({
+    category: "register_action",
+    action,
+    severity: "NOTICE",
+    decision: "committed",
+    subject: { kind: "FieldReport", id: String(reportId) },
+    actor: { kind: "operator", userId: actor?.id ?? null, email: actor?.email ?? null },
+    payload: { bidId, ...payload },
+  });
+}
 
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -39,7 +60,8 @@ export interface CreateFieldReportInput {
 
 export async function createFieldReport(
   bidId: number,
-  input: CreateFieldReportInput
+  input: CreateFieldReportInput,
+  actor: Actor = null
 ): Promise<ServiceResult<{ id: number }>> {
   const title = input.title?.trim();
   if (!title) return { ok: false, error: "title is required" };
@@ -54,6 +76,9 @@ export async function createFieldReport(
     },
     select: { id: true },
   });
+  await auditFieldReport("field_report_create", bidId, created.id, actor, {
+    hasReportDate: Boolean(input.reportDate),
+  });
   return { ok: true, value: created };
 }
 
@@ -66,11 +91,15 @@ export interface UpdateFieldReportInput {
 export async function updateFieldReport(
   bidId: number,
   fieldReportId: number,
-  patch: UpdateFieldReportInput
+  patch: UpdateFieldReportInput,
+  actor: Actor = null
 ): Promise<ServiceResult<{ id: number }>> {
   const report = await prisma.fieldReport.findFirst({
     where: { id: fieldReportId, bidId },
     select: { id: true },
+  });
+  await auditFieldReport("field_report_update", bidId, fieldReportId, actor, {
+    changedFields: Object.keys(patch),
   });
   if (!report) return { ok: false, error: "Not found" };
   if (patch.title !== undefined && !patch.title.trim()) {
@@ -115,11 +144,16 @@ export interface ReportFileMetaInput {
 export async function recordReportFile(
   bidId: number,
   fieldReportId: number,
-  meta: ReportFileMetaInput
+  meta: ReportFileMetaInput,
+  actor: Actor = null
 ): Promise<ServiceResult<{ id: number; previousStorageKey: string | null }>> {
   const report = await prisma.fieldReport.findFirst({
     where: { id: fieldReportId, bidId },
     select: { id: true, sourceFileStorageKey: true },
+  });
+  await auditFieldReport("field_report_file_recorded", bidId, fieldReportId, actor, {
+    mimeType: meta.mimeType,
+    byteSize: meta.byteSize,
   });
   if (!report) return { ok: false, error: "Not found" };
 

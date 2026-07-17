@@ -17,11 +17,13 @@ const h = vi.hoisted(() => ({
 const putMock = vi.hoisted(() => vi.fn(async () => ({ key: "x" })));
 const deleteMock = vi.hoisted(() => vi.fn(async () => undefined));
 const auditMock = vi.hoisted(() => vi.fn(async () => undefined));
+const accessMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>());
 
 vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
+vi.mock("@/lib/auth-helpers", () => ({ requireBidAccess: accessMock }));
 vi.mock("@/lib/storage/blobStore", () => ({
   getBlobStore: () => ({ put: putMock, delete: deleteMock }),
   safeBlobFileName: (name: string) => {
@@ -133,9 +135,23 @@ beforeEach(() => {
   putMock.mockClear();
   deleteMock.mockClear();
   auditMock.mockClear();
+  accessMock.mockReset();
+  accessMock.mockResolvedValue({ ok: true, user: { id: "user-1" } });
 });
 
 describe("tracked-items routes", () => {
+  test("authorization denial occurs before body parsing, mutation, and blob writes", async () => {
+    accessMock.mockResolvedValueOnce({
+      ok: false,
+      response: Response.json({ error: "Not found" }, { status: 404 }),
+    });
+    const request = { formData: vi.fn() } as unknown as Request;
+    const response = await attachmentsPOST(request, pi("6", "1"));
+    expect(response.status).toBe(404);
+    expect(request.formData).not.toHaveBeenCalled();
+    expect(putMock).not.toHaveBeenCalled();
+    expect(h.attachments).toHaveLength(0);
+  });
   test("POST create: 201 with actor from session; 400 on bad kind; 404 on missing bid", async () => {
     const ok = await createPOST(jsonReq({ kind: "WARRANTY", title: "roof warranty letter" }), p("5"));
     expect(ok.status).toBe(201);

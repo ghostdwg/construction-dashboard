@@ -5,6 +5,7 @@
 // POST /api/bids/[id]/tracked-items/[itemId]/comments   body: { body }
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { addComment, listComments } from "@/lib/services/trackedItems";
 
 export async function GET(
@@ -16,6 +17,9 @@ export async function GET(
   const tid = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(tid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const comments = await listComments(bidId, tid);
   if (comments === null) return Response.json({ error: "Not found" }, { status: 404 });
@@ -40,6 +44,9 @@ export async function POST(
   const tid = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(tid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let body: { body?: unknown };
   try {

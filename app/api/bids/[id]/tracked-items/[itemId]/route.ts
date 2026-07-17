@@ -7,6 +7,7 @@
 //                the /status route and the FSM — never through PATCH)
 
 import { getTrackedItem, updateTrackedItem } from "@/lib/services/trackedItems";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 export async function GET(
   _request: Request,
@@ -17,6 +18,9 @@ export async function GET(
   const tid = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(tid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const item = await getTrackedItem(bidId, tid);
   if (!item) return Response.json({ error: "Not found" }, { status: 404 });
@@ -77,6 +81,9 @@ export async function PATCH(
   if (isNaN(bidId) || isNaN(tid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -116,7 +123,7 @@ export async function PATCH(
       ? { assigneeEmail: typeof body.assigneeEmail === "string" ? body.assigneeEmail : null }
       : {}),
     ...(dueDate !== undefined ? { dueDate } : {}),
-  });
+  }, access.user);
 
   if (!result.ok) {
     const status = result.error === "Not found" ? 404 : 400;

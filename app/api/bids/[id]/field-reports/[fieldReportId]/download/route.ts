@@ -15,6 +15,7 @@
 // disposition, allowlisted Content-Type, nosniff, private/no-store).
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore } from "@/lib/storage/blobStore";
 import { privateDownloadHeaders } from "@/lib/services/storage/downloadHeaders";
 
@@ -27,6 +28,9 @@ export async function GET(
   const rid = parseInt(fieldReportId, 10);
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const report = await prisma.fieldReport.findFirst({
     where: { id: rid, bidId },

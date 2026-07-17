@@ -14,6 +14,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import {
   createTrackedItem,
   itemIdsWithDispositions,
@@ -54,6 +55,9 @@ export async function GET(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const { searchParams } = new URL(request.url);
   const items = await listTrackedItems(bidId, {
@@ -124,6 +128,9 @@ export async function POST(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const bid = await prisma.bid.findUnique({ where: { id: bidId }, select: { id: true } });
   if (!bid) return Response.json({ error: "Not found" }, { status: 404 });

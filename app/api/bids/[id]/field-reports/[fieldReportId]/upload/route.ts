@@ -11,6 +11,7 @@
 // extraction, NO auto-created items — parseStatus stays UNPARSED.
 
 import { getBlobStore } from "@/lib/storage/blobStore";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import {
   fieldReportExists,
   recordReportFile,
@@ -29,6 +30,9 @@ export async function POST(
   const rid = parseInt(fieldReportId, 10);
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let form: FormData;
   try {
@@ -76,7 +80,7 @@ export async function POST(
       fileName: validation.safeFileName,
       mimeType: file.type,
       byteSize: buffer.byteLength,
-    });
+    }, access.user);
   } catch (err) {
     await store.delete(storageKey).catch((cleanupErr) => {
       console.error(

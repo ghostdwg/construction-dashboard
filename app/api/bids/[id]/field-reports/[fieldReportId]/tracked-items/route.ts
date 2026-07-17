@@ -11,6 +11,7 @@
 // tenancy check. No auto-assign, no auto-close, no notifications.
 
 import { auth } from "@/lib/auth";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { createItemFromFieldReport } from "@/lib/services/trackedItems";
 
 export async function POST(
@@ -22,6 +23,9 @@ export async function POST(
   const rid = parseInt(fieldReportId, 10);
   if (isNaN(bidId) || isNaN(rid))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let body: Record<string, unknown>;
   try {

@@ -22,7 +22,6 @@ import {
   isTrackedItemStatus,
   validateTransition,
   TRACKED_ITEM_PRIORITIES,
-  type TrackedItemKind,
   type TrackedItemStatus,
 } from "./fsm";
 import { TRACKED_ITEM_SOURCE_KIND } from "./sourceKinds";
@@ -32,6 +31,7 @@ export type { TrackedItemKind, TrackedItemStatus } from "./fsm";
 const MAX_TITLE_LENGTH = 300;
 
 export interface Actor {
+  id?: string | null;
   name?: string | null;
   email?: string | null;
 }
@@ -58,7 +58,7 @@ async function audit(
       subject: { kind: "TrackedItem", id: subjectId },
       actor: {
         kind: "operator",
-        userId: null,
+        userId: actor?.id ?? null,
         email: actor?.email ?? null,
       },
       payload: { scope: "bid", bidId, ...payload },
@@ -360,11 +360,16 @@ export interface UpdateTrackedItemInput {
 export async function updateTrackedItem(
   bidId: number,
   itemId: number,
-  patch: UpdateTrackedItemInput
+  patch: UpdateTrackedItemInput,
+  actor: Actor = {}
 ): Promise<ServiceResult<{ id: number }>> {
   const item = await prisma.trackedItem.findFirst({
     where: { id: itemId, bidId },
     select: { id: true },
+  });
+
+  await audit("tracked_item_update", bidId, String(itemId), actor, "updated", {
+    changedFields: Object.keys(patch),
   });
   if (!item) return { ok: false, error: "Not found" };
 
@@ -487,6 +492,9 @@ export async function addComment(
       body: trimmed,
     },
     select: { id: true },
+  });
+  await audit("tracked_item_comment", bidId, String(itemId), actor, "comment_added", {
+    commentId: created.id,
   });
   return { ok: true, value: created };
 }
