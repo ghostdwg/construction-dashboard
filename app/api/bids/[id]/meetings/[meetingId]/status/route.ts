@@ -9,6 +9,11 @@
 //     if all speakers are VTT-named → READY.
 
 import { prisma } from "@/lib/prisma";
+import {
+  findJobByExternalId,
+  completeJob,
+  failJob,
+} from "@/lib/services/jobs/backgroundJobService";
 
 const SIDECAR_URL     = process.env.SIDECAR_URL     ?? "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
@@ -116,6 +121,9 @@ export async function GET(
 
     if (data.status === "error") {
       await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
+      // Close out the durable BackgroundJob record if one was created for this job.
+      const bgJob = await findJobByExternalId(realJobId, bidId).catch(() => null);
+      if (bgJob) await failJob(bgJob.id, data.error ?? "Transcription error").catch(() => {});
       return Response.json({ status: "FAILED", error: data.error });
     }
 
@@ -135,6 +143,9 @@ export async function GET(
         });
         await upsertParticipants(tx, mId, data.participants ?? []);
       });
+      // Close the durable BackgroundJob record — best-effort, never fails the response.
+      const bgJob = await findJobByExternalId(realJobId, bidId).catch(() => null);
+      if (bgJob) await completeJob(bgJob.id, { resultSummary: "transcript ready" }).catch(() => {});
       return Response.json({ status: "READY" });
     }
 
@@ -230,6 +241,10 @@ export async function GET(
       });
       await upsertParticipants(tx, mId, merged.participants);
     });
+
+    // Close the durable BackgroundJob for this hybrid job — best-effort.
+    const bgJobH = await findJobByExternalId(realJobId, bidId).catch(() => null);
+    if (bgJobH) await completeJob(bgJobH.id, { resultSummary: `hybrid transcript ${nextStatus}` }).catch(() => {});
 
     return Response.json({ status: nextStatus });
 

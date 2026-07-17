@@ -1,14 +1,21 @@
 // POST /api/bids/[id]/meetings/[meetingId]/upload
 //
-// Accepts a multipart audio file, proxies it to the sidecar for
-// AssemblyAI upload + job submission. On success, stores the
-// transcriptionJobId on the meeting and advances status to TRANSCRIBING.
+// Accepts a multipart audio file, persists it to BlobStore for durability,
+// then proxies it to the sidecar for WhisperX/AssemblyAI job submission.
+// On success, stores transcriptionJobId + audioStorageKey and advances to
+// TRANSCRIBING. Guards against duplicate submission of a live job.
 //
-// If AssemblyAI is not configured (sidecar returns 400), the route stores
-// the audio filename and sets status to PENDING so the user can paste the
-// transcript manually.
+// If no transcription service is available (sidecar 400), stores the audio
+// and sets status to PENDING for manual transcript entry.
 
 import { prisma } from "@/lib/prisma";
+import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
+import { meetingAudioStorageKey } from "@/lib/services/meetings/storagePath";
+import {
+  createJob,
+  startJob,
+  failJob,
+} from "@/lib/services/jobs/backgroundJobService";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -29,6 +36,14 @@ export async function POST(
   });
   if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
 
+  // Guard: reject re-submission while a live job is already in flight.
+  if (meeting.status === "TRANSCRIBING" || meeting.status === "UPLOADING") {
+    return Response.json(
+      { error: "Transcription already in progress" },
+      { status: 409 }
+    );
+  }
+
   const formData = await request.formData();
   const audioFile = formData.get("audio") as File | null;
   if (!audioFile)
@@ -44,9 +59,39 @@ export async function POST(
     },
   });
 
+  // Persist audio to BlobStore before proxying — ensures retry is possible
+  // after worker restart or sidecar failure without the user re-uploading.
+  const safeFileName = safeBlobFileName(audioFile.name);
+  const storageKey = meetingAudioStorageKey(mId, safeFileName);
+  const audioBytes = Buffer.from(await audioFile.arrayBuffer());
+
+  try {
+    await getBlobStore().put(storageKey, audioBytes);
+    await prisma.meeting.update({
+      where: { id: mId },
+      data: { audioStorageKey: storageKey, audioFileName: safeFileName },
+    });
+  } catch (err) {
+    await prisma.meeting.update({
+      where: { id: mId },
+      data: { status: "FAILED" },
+    });
+    return Response.json({ error: `Storage failed: ${String(err)}` }, { status: 500 });
+  }
+
+  // Create a durable BackgroundJob record — survives worker and sidecar restarts.
+  const bgJob = await createJob({
+    jobType: "meeting_transcription",
+    bidId,
+    relatedId: String(mId),
+    inputSummary: audioFile.name,
+    triggerSource: "upload",
+  });
+
   // Proxy to sidecar
   const sidecarForm = new FormData();
-  sidecarForm.append("audio", audioFile);
+  // Re-create the File from the already-read bytes so the FormData includes it.
+  sidecarForm.append("audio", new File([audioBytes], safeFileName, { type: audioFile.type }));
   const inRoomCount = await prisma.meetingParticipant.count({
     where: { meetingId: mId, speakerLabel: null, speakerType: "IN_ROOM" },
   });
@@ -65,16 +110,23 @@ export async function POST(
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: "Sidecar error" }));
 
-      if (res.status === 400 && String(err.detail).includes("not configured")) {
-        // AssemblyAI not set up — remain PENDING for manual transcript entry
+      // The sidecar returns 400 with "No transcription service available" (WhisperX +
+      // AssemblyAI both unconfigured) or legacy "not configured" phrasing.
+      const detailStr = String(err.detail ?? "");
+      const isNoService =
+        res.status === 400 &&
+        (detailStr.includes("transcription service") || detailStr.includes("not configured"));
+      if (isNoService) {
+        // Remain PENDING for manual transcript entry. Audio is durably stored above.
         await prisma.meeting.update({
           where: { id: mId },
           data: { status: "PENDING" },
         });
+        await failJob(bgJob.id, "No transcription service configured");
         return Response.json({
           ok: false,
           manual: true,
-          message: "AssemblyAI not configured. Enter transcript manually.",
+          message: "No transcription service available. Enter transcript manually.",
         });
       }
 
@@ -82,6 +134,7 @@ export async function POST(
         where: { id: mId },
         data: { status: "FAILED" },
       });
+      await failJob(bgJob.id, String(err.detail ?? "Sidecar error"));
       return Response.json(
         { error: err.detail ?? "Sidecar error" },
         { status: 502 }
@@ -99,6 +152,8 @@ export async function POST(
       },
     });
 
+    await startJob(bgJob.id, data.transcriptionJobId);
+
     return Response.json({
       ok: true,
       transcriptionJobId: data.transcriptionJobId,
@@ -109,6 +164,7 @@ export async function POST(
       where: { id: mId },
       data: { status: "FAILED" },
     });
+    await failJob(bgJob.id, String(err)).catch(() => {});
     return Response.json({ error: String(err) }, { status: 502 });
   }
 }
