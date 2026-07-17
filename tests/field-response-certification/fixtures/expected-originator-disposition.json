@@ -1,0 +1,86 @@
+{
+  "_comment": "Expected originator disposition records. Documents the expected return-to-originator outcome for each item after GC compilation. All data is synthetic.",
+  "_status": "SCHEMA_PENDING — originator disposition and return-to-originator records require Fable's frozen transmittal/originator-disposition contract.",
+
+  "dispositionRecords": [
+    {
+      "_scenario": "Revise-and-resubmit — anchor bolt",
+      "trackedItemId": 2001,
+      "observationId": 2001,
+      "originatorReportId": 102,
+      "originatorVendorName": "Apex Structural Group",
+      "originatorEmail": "bob@example.test",
+
+      "disposition": {
+        "type": "REVISE_AND_RESUBMIT",
+        "reviewedBy": "alice@example.test",
+        "reviewedAt": "2024-11-01T10:00:00.000Z",
+        "reviewerComment": "Shimmed base plate accepted in principle; awaiting EOR written confirmation on RFI-041-R2 closure. Resubmit once EOR issues formal acceptance letter.",
+        "dueDate": "2024-11-08T00:00:00.000Z"
+      },
+
+      "returnRecord": {
+        "returnedToEmail": "bob@example.test",
+        "returnedAt": "2024-11-01T10:30:00.000Z",
+        "transmittalNumber": "TR-2024-031",
+        "attachedResponse": true
+      }
+    },
+
+    {
+      "_scenario": "Accepted — weld inspection passes",
+      "trackedItemId": 2002,
+      "observationId": 2002,
+      "originatorReportId": 102,
+      "originatorVendorName": "Apex Structural Group",
+      "originatorEmail": "bob@example.test",
+
+      "disposition": {
+        "type": "ACCEPTED",
+        "reviewedBy": "bob@example.test",
+        "reviewedAt": "2024-10-25T09:00:00.000Z",
+        "reviewerComment": "UT inspection confirms compliance. Accepted. Item closed.",
+        "dueDate": null
+      },
+
+      "returnRecord": {
+        "returnedToEmail": "bob@example.test",
+        "returnedAt": "2024-10-25T09:30:00.000Z",
+        "transmittalNumber": "TR-2024-030",
+        "attachedResponse": true
+      }
+    },
+
+    {
+      "_scenario": "Revise-and-resubmit — drywall STC",
+      "trackedItemId": 1003,
+      "observationId": 1003,
+      "originatorReportId": 101,
+      "originatorVendorName": "Meridian Architecture Partners",
+      "originatorEmail": "alice@example.test",
+
+      "disposition": {
+        "type": "REVISE_AND_RESUBMIT",
+        "reviewedBy": "alice@example.test",
+        "reviewedAt": "2024-10-24T08:00:00.000Z",
+        "reviewerComment": "GC checklist received. Architect requires field verification of corrected screw spacing before formal acceptance. Resubmit with photo documentation of re-screwed area.",
+        "dueDate": "2024-10-28T00:00:00.000Z"
+      },
+
+      "returnRecord": {
+        "returnedToEmail": "alice@example.test",
+        "returnedAt": "2024-10-24T08:15:00.000Z",
+        "transmittalNumber": "TR-2024-029",
+        "attachedResponse": true
+      }
+    }
+  ],
+
+  "_dispositionNotes": [
+    "Return-to-originator records must preserve: trackedItemId, observationId, originatorReportId, originatorEmail, transmittalNumber, returnedAt.",
+    "Disposition type vocabulary: ACCEPTED | REVISE_AND_RESUBMIT | REJECTED | DEFERRED — maps to ConsultantDispositionRecord.dispositionType where applicable.",
+    "Originator email must come from the ConsultantReport.uploadedBy field, not from the session actor.",
+    "Transmittal numbers are sequential per bid — not per report or per originator.",
+    "GC commentary must be preserved in the return package even when it is separate from the formal response text."
+  ]
+}

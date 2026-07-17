@@ -1,0 +1,114 @@
+{
+  "_comment": "Expected GC-reviewed compiled response output. Documents the expected structure Fable's response-package schema should produce. All data is synthetic.",
+  "_status": "SCHEMA_PENDING — GC review compilation requires Fable's frozen response-package contract. This fixture is a certification target only.",
+
+  "compiledResponse": {
+    "bidId": 9,
+    "compiledBy": "gc.pm@example.test",
+    "compiledAt": "2024-10-31T09:00:00.000Z",
+    "sourceReports": [
+      {
+        "reportId": 101,
+        "reportNumber": "AFR-2024-017",
+        "reportType": "ARCHITECT_FIELD_REPORT",
+        "vendorName": "Meridian Architecture Partners"
+      },
+      {
+        "reportId": 102,
+        "reportNumber": "EFR-2024-009",
+        "reportType": "ENGINEER_FIELD_REPORT",
+        "vendorName": "Apex Structural Group"
+      }
+    ],
+
+    "tradeGroups": [
+      {
+        "tradeId": 7,
+        "tradeName": "Steel",
+        "assigneeName": "Ironworks Fabricators LLC",
+        "items": [
+          {
+            "trackedItemId": 2001,
+            "title": "Anchor bolt out of tolerance — column base plate BP-3",
+            "formalResponse": "Revised per EOR review: RFI-041-R2 accepted shimmed base plate per revised detail SK-S-014. Base plate shimmed and regrouted per detail. Third-party inspection complete — report attached as INSP-2024-BP3. Item is ready for EOR acceptance.",
+            "formalResponseBy": "ironworks.pm@ironworksfab.example.test",
+            "dispositionType": null,
+            "status": "READY_TO_CLOSE"
+          },
+          {
+            "trackedItemId": 2002,
+            "title": "Undersized weld — HSS connection grid 3/B Level 3",
+            "formalResponse": "UT inspection by Certified Welding Inspection Services completed 2024-10-23. Report CWIS-4421 confirms weld meets 3/8\" minimum leg dimension per AISC D1.1.",
+            "formalResponseBy": "ironworks.pm@ironworksfab.example.test",
+            "dispositionType": "APPROVE",
+            "status": "CLOSED"
+          }
+        ]
+      },
+      {
+        "tradeId": 3,
+        "tradeName": "Drywall",
+        "assigneeName": "Precision Drywall Co",
+        "items": [
+          {
+            "trackedItemId": 1003,
+            "title": "STC screw spacing noncompliant — corridor 2B",
+            "formalResponse": "STC assembly re-screwed per Section 09 21 16 at 8\" O.C. GC QC checklist re-signed 2024-10-22 by superintendent. Attachments: corrected inspection form INSP-DW-C2B-022.",
+            "formalResponseBy": "gc.pm@example.test",
+            "gcCommentary": "GC directed drywall sub (Precision Drywall Co) to re-screw affected area per spec. Re-screw completed 2024-10-22.",
+            "dispositionType": null,
+            "status": "READY_TO_CLOSE"
+          }
+        ]
+      },
+      {
+        "tradeId": 8,
+        "tradeName": "Mechanical",
+        "assigneeName": "Meridian Mechanical Corp",
+        "items": [
+          {
+            "trackedItemId": 2003,
+            "title": "Missing fire damper at shear wall duct penetration",
+            "formalResponse": null,
+            "formalResponseBy": null,
+            "dispositionType": null,
+            "status": "OPEN",
+            "_note": "No formal response yet — item pending"
+          }
+        ]
+      },
+      {
+        "tradeId": 9,
+        "tradeName": "Electrical",
+        "assigneeName": "Capitol Electrical Group",
+        "items": [
+          {
+            "trackedItemId": 2004,
+            "title": "Undersized conduit sleeve at slab penetration SP-14",
+            "formalResponse": null,
+            "formalResponseBy": null,
+            "dispositionType": null,
+            "status": "OPEN",
+            "_note": "No formal response yet — item pending"
+          }
+        ]
+      }
+    ],
+
+    "summary": {
+      "totalItems": 8,
+      "itemsWithResponse": 3,
+      "itemsWithoutResponse": 5,
+      "closed": 1,
+      "readyToClose": 2,
+      "open": 5
+    }
+  },
+
+  "_gcReviewNotes": [
+    "GC commentary on drywall item should be preserved alongside the formal response (separate field — not merged into formalResponse text).",
+    "Items without responses should be included in the compiled output with a null formalResponse, not omitted.",
+    "Trade ordering: alphabetical by tradeName within the compiled response.",
+    "Disputed-responsibility item (storefront sealant) is excluded from compilation until responsibility is resolved."
+  ]
+}

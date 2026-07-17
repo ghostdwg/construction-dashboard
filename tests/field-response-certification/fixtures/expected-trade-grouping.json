@@ -1,0 +1,175 @@
+{
+  "_comment": "Expected trade-grouping results for TrackedItems promoted from synthetic AFR+EFR observations. All data is synthetic.",
+  "_schema": "TrackedItem.tradeId maps to Trade.id. groupByTrade() is the utility in unit-integration-builders.ts.",
+
+  "tradeDirectory": [
+    { "id": 1, "name": "Masonry",    "costCode": "04000", "csiCode": "04 20 00" },
+    { "id": 2, "name": "Roofing",    "costCode": "07000", "csiCode": "07 50 00" },
+    { "id": 3, "name": "Drywall",    "costCode": "09000", "csiCode": "09 21 16" },
+    { "id": 4, "name": "Glazing",    "costCode": "08000", "csiCode": "08 44 13" },
+    { "id": 5, "name": "Carpentry",  "costCode": "06000", "csiCode": "06 10 00" },
+    { "id": 6, "name": "Hardware",   "costCode": "08700", "csiCode": "08 71 00" },
+    { "id": 7, "name": "Steel",      "costCode": "05000", "csiCode": "05 12 00" },
+    { "id": 8, "name": "Mechanical", "costCode": "15000", "csiCode": "23 00 00" },
+    { "id": 9, "name": "Electrical", "costCode": "16000", "csiCode": "26 00 00" },
+    { "id": 10, "name": "General Conditions", "costCode": "01000", "csiCode": "01 00 00" }
+  ],
+
+  "groups": [
+    {
+      "tradeId": 1,
+      "tradeName": "Masonry",
+      "itemCount": 1,
+      "items": [
+        {
+          "observationId": 1001,
+          "title": "Incomplete mortar joints — south elevation courses 6–9",
+          "sourceReport": "AFR-2024-017",
+          "displayNumber": 1,
+          "status": "OPEN",
+          "assigneeName": null,
+          "responsibleParty": "CONTRACTOR"
+        }
+      ]
+    },
+    {
+      "tradeId": 2,
+      "tradeName": "Roofing",
+      "itemCount": 1,
+      "items": [
+        {
+          "observationId": 1002,
+          "title": "Roof penetration flashing missing at mechanical curb RCP-7",
+          "sourceReport": "AFR-2024-017",
+          "displayNumber": 2,
+          "status": "OPEN",
+          "assigneeName": null,
+          "responsibleParty": "CONTRACTOR",
+          "expectedDisposition": "REVISE_AND_RESUBMIT"
+        }
+      ]
+    },
+    {
+      "tradeId": 3,
+      "tradeName": "Drywall",
+      "itemCount": 1,
+      "items": [
+        {
+          "observationId": 1003,
+          "title": "STC screw spacing noncompliant — corridor 2B",
+          "sourceReport": "AFR-2024-017",
+          "displayNumber": 3,
+          "status": "OPEN",
+          "assigneeName": null,
+          "responsibleParty": "GC",
+          "expectedDisposition": "REVISE_AND_RESUBMIT"
+        }
+      ]
+    },
+    {
+      "tradeId": 4,
+      "tradeName": "Glazing",
+      "itemCount": 1,
+      "items": [
+        {
+          "observationId": 1004,
+          "title": "Disputed sealant responsibility — column line 3 storefront",
+          "sourceReport": "AFR-2024-017",
+          "displayNumber": 4,
+          "status": "OPEN",
+          "assigneeName": null,
+          "responsibleParty": "DISPUTED"
+        }
+      ]
+    },
+    {
+      "tradeId": 5,
+      "tradeName": "Carpentry",
+      "itemCount": 1,
+      "items": [
+        {
+          "observationId": 1005,
+          "title": "Accessible grab bar blocking — confirmation docs outstanding",
+          "sourceReport": "AFR-2024-017",
+          "displayNumber": 5,
+          "status": "OPEN",
+          "assigneeName": null,
+          "responsibleParty": "CONTRACTOR",
+          "isDuplicate": true
+        }
+      ]
+    },
+    {
+      "tradeId": 7,
+      "tradeName": "Steel",
+      "itemCount": 2,
+      "items": [
+        {
+          "observationId": 2001,
+          "title": "Anchor bolt out of tolerance — column base plate BP-3",
+          "sourceReport": "EFR-2024-009",
+          "displayNumber": 1,
+          "status": "OPEN",
+          "assigneeName": "Ironworks Fabricators LLC",
+          "responsibleParty": "CONTRACTOR",
+          "expectedDisposition": "REVISE_AND_RESUBMIT"
+        },
+        {
+          "observationId": 2002,
+          "title": "Undersized weld — HSS connection grid 3/B Level 3",
+          "sourceReport": "EFR-2024-009",
+          "displayNumber": 2,
+          "status": "OPEN",
+          "assigneeName": "Ironworks Fabricators LLC",
+          "responsibleParty": "CONTRACTOR",
+          "expectedDisposition": "ACCEPTED"
+        }
+      ]
+    },
+    {
+      "tradeId": 8,
+      "tradeName": "Mechanical",
+      "itemCount": 1,
+      "items": [
+        {
+          "observationId": 2003,
+          "title": "Missing fire damper at shear wall duct penetration",
+          "sourceReport": "EFR-2024-009",
+          "displayNumber": 3,
+          "status": "OPEN",
+          "assigneeName": "Meridian Mechanical Corp",
+          "responsibleParty": "CONTRACTOR",
+          "expectedDisposition": "REVISE_AND_RESUBMIT"
+        }
+      ]
+    },
+    {
+      "tradeId": 9,
+      "tradeName": "Electrical",
+      "itemCount": 1,
+      "items": [
+        {
+          "observationId": 2004,
+          "title": "Undersized conduit sleeve at slab penetration SP-14",
+          "sourceReport": "EFR-2024-009",
+          "displayNumber": 4,
+          "status": "OPEN",
+          "assigneeName": "Capitol Electrical Group",
+          "responsibleParty": "CONTRACTOR",
+          "expectedDisposition": "REVISE_AND_RESUBMIT"
+        }
+      ]
+    }
+  ],
+
+  "unassignedToTrade": [],
+
+  "summary": {
+    "totalActiveItems": 9,
+    "informationalDismissed": 2,
+    "gcResponsibleItems": 1,
+    "disputedItems": 1,
+    "duplicateItems": 1,
+    "tradeGroupCount": 8
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "_comment": "Expected observation extraction output. Documents what a future parser SHOULD produce from the synthetic AFR and EFR fixtures. All data is synthetic.",
+  "_status": "UNIMPLEMENTED — parseStatus is permanently UNPARSED in V0. This fixture is a certification target for a future gated extraction slice.",
+
+  "fromAFR": {
+    "reportId": 101,
+    "reportType": "ARCHITECT_FIELD_REPORT",
+    "reportNumberNormalized": "afr-2024-017",
+    "extractedAt": null,
+    "parseStatus": "UNPARSED",
+    "observationCount": 7,
+    "extractedObservations": [
+      {
+        "displayNumber": 1,
+        "observationText": "Masonry veneer at south elevation, between grid lines A–C, shows incomplete mortar joints at courses 6–9. Contractor to complete mortar placement per project specifications Section 04 20 00 before weather window closes.",
+        "sourcePage": "p.2",
+        "photoRef": "Photo 01",
+        "location": "South elevation, grid A–C, courses 6–9",
+        "trade": "Masonry",
+        "consultantTargetDate": "2024-10-28",
+        "extractionConfidence": null
+      },
+      {
+        "displayNumber": 2,
+        "observationText": "Roof penetration flashing at mechanical curb RCP-7 not yet installed. Waterproofing contractor to install per detail 8/A-701 prior to roofing contractor completing membrane installation.",
+        "sourcePage": "p.3",
+        "photoRef": "Photo 02",
+        "location": "Roof, mechanical curb RCP-7",
+        "trade": "Roofing",
+        "consultantTargetDate": "2024-10-21",
+        "extractionConfidence": null
+      },
+      {
+        "displayNumber": 3,
+        "observationText": "Gypsum board at corridor 2B, elevation 3/A-401: screw spacing at 12\" O.C. does not match specification requirement of 8\" O.C. for STC-rated assembly. GC to correct and submit corrected inspection checklist.",
+        "sourcePage": "p.4",
+        "photoRef": null,
+        "location": "Corridor 2B, elevation 3/A-401",
+        "trade": "Drywall",
+        "consultantTargetDate": "2024-10-25",
+        "extractionConfidence": null
+      },
+      {
+        "displayNumber": 4,
+        "observationText": "Storefront sealant at column line 3 between frame and masonry substrate appears incomplete on interior face. Responsibility disputed — glazing contractor notes masonry contractor did not provide a caulk-ready surface. Resolution required from GC before proceeding.",
+        "sourcePage": "p.5",
+        "photoRef": "Photo 03",
+        "location": "Column line 3, storefront/masonry interface",
+        "trade": "Glazing",
+        "consultantTargetDate": "2024-10-18",
+        "extractionConfidence": null
+      },
+      {
+        "displayNumber": 5,
+        "observationText": "Wall blocking at accessible restroom grab bar locations — 3/8\" plywood at 48\"x32\" per detail 12/A-350 — was previously noted in AFR-2024-014 observation #6. Contractor confirmed blocking installed but no confirmation documentation received. Repeated observation.",
+        "sourcePage": "p.6",
+        "photoRef": null,
+        "location": "Accessible restroom, all grab bar locations",
+        "trade": "Carpentry",
+        "consultantTargetDate": "2024-10-14",
+        "extractionConfidence": null,
+        "isDuplicateSignal": true
+      },
+      {
+        "displayNumber": 6,
+        "observationText": "Temporary construction hoist removal scheduled for 2024-11-04. The east lobby entrance will remain closed until hoist is removed and sidewalk restored. This item is informational only — no response required.",
+        "sourcePage": "p.7",
+        "photoRef": null,
+        "location": "East lobby entrance",
+        "trade": null,
+        "consultantTargetDate": null,
+        "extractionConfidence": null,
+        "isInformational": true
+      },
+      {
+        "displayNumber": 7,
+        "observationText": "Interior door hardware at Room 201 — Owner has verbally authorized substitution of lever style from catalog cut L-14B to L-14C (brushed nickel, same template). Architect to issue formal SI confirming substitution. Informational pending SI issuance.",
+        "sourcePage": "p.8",
+        "photoRef": null,
+        "location": "Room 201",
+        "trade": "Hardware",
+        "consultantTargetDate": null,
+        "extractionConfidence": null,
+        "isInformational": true
+      }
+    ]
+  },
+
+  "fromEFR": {
+    "reportId": 102,
+    "reportType": "ENGINEER_FIELD_REPORT",
+    "reportNumberNormalized": "efr-2024-009",
+    "extractedAt": null,
+    "parseStatus": "UNPARSED",
+    "observationCount": 5,
+    "extractedObservations": [
+      {
+        "displayNumber": 1,
+        "observationText": "Anchor bolt placement at column base plate BP-3 (grid 4/D): measured position is 1-1/4\" from design centerline. Tolerance per AISC §M4.3 is 1\" for this bolt pattern. Structural engineer to evaluate whether shimming and re-grouting is acceptable or re-drilling is required.",
+        "sourcePage": "p.2, Detail 3/S-401",
+        "photoRef": "Photo S-01",
+        "location": "Grid 4/D, column base plate BP-3",
+        "trade": "Steel",
+        "consultantTargetDate": "2024-10-22",
+        "extractionConfidence": null
+      },
+      {
+        "displayNumber": 2,
+        "observationText": "Welding at HSS beam-to-column connection at grid 3/B, Level 3 — weld appears undersized. Fillet weld leg dimension appears approximately 5/16\" per visual inspection; drawing calls for 3/8\" minimum. Contractor to arrange third-party weld inspection and submit UT or MT report.",
+        "sourcePage": "p.3, Detail 7/S-201",
+        "photoRef": "Photo S-02",
+        "location": "Grid 3/B, Level 3, HSS connection",
+        "trade": "Steel",
+        "consultantTargetDate": "2024-10-22",
+        "extractionConfidence": null
+      },
+      {
+        "displayNumber": 3,
+        "observationText": "Duct penetration through shear wall at grid line 5 between Level 2 and Level 3: no fire damper installed per mechanical drawings M-341. Mechanical contractor responsible. This penetration cannot be concealed until damper is installed and inspected.",
+        "sourcePage": "p.5",
+        "photoRef": "Photo S-03",
+        "location": "Grid 5, shear wall, L2-L3 duct penetration",
+        "trade": "Mechanical",
+        "consultantTargetDate": "2024-10-18",
+        "extractionConfidence": null
+      },
+      {
+        "displayNumber": 4,
+        "observationText": "Electrical conduit sleeve at slab penetration SP-14 (Level 2 mechanical room): sleeve diameter appears to be 2\" where drawing E-102 calls for 3\". Electrical contractor to verify and provide cut sheet for installed sleeve; if undersized, sleeve to be replaced before slab pour at Level 3.",
+        "sourcePage": "p.6",
+        "photoRef": "Photo S-04",
+        "location": "Level 2 mechanical room, slab penetration SP-14",
+        "trade": "Electrical",
+        "consultantTargetDate": "2024-10-19",
+        "extractionConfidence": null
+      },
+      {
+        "displayNumber": 5,
+        "observationText": "Concrete pour at Level 3 slab, grid area 2–5/B–E: curing blankets are in place and appear adequate for current weather conditions (42°F overnight low forecast). No cold-weather action required at this time. Informational — no response required.",
+        "sourcePage": "p.7",
+        "photoRef": null,
+        "location": "Level 3 slab, grid 2–5/B–E",
+        "trade": "Concrete",
+        "consultantTargetDate": null,
+        "extractionConfidence": null,
+        "isInformational": true
+      }
+    ]
+  }
+}

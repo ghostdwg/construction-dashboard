@@ -1,0 +1,126 @@
+{
+  "_comment": "Synthetic Engineer Field Report — all names, addresses, and data are fictional. For certification fixture use only.",
+  "report": {
+    "id": 102,
+    "bidId": 9,
+    "vendorName": "Apex Structural Group",
+    "title": "Field Observation Report — Structural and MEP Systems",
+    "reportNumber": "EFR-2024-009",
+    "reportNumberNormalized": "efr-2024-009",
+    "reportType": "ENGINEER_FIELD_REPORT",
+    "reportDate": "2024-10-15T00:00:00.000Z",
+    "status": "ACTIVE",
+    "uploadedBy": "bob@example.test",
+    "uploadedAt": "2024-10-16T08:30:00.000Z",
+    "revisionCount": 1
+  },
+  "observations": [
+    {
+      "displayNumber": 1,
+      "id": 2001,
+      "reportId": 102,
+      "bidId": 9,
+      "observationText": "Anchor bolt placement at column base plate BP-3 (grid 4/D): measured position is 1-1/4\" from design centerline. Tolerance per AISC §M4.3 is 1\" for this bolt pattern. Structural engineer to evaluate whether shimming and re-grouting is acceptable or re-drilling is required.",
+      "sourcePage": "p.2, Detail 3/S-401",
+      "photoRef": "Photo S-01",
+      "location": "Grid 4/D, column base plate BP-3",
+      "trade": "Steel",
+      "responsibleParty": "CONTRACTOR",
+      "consultantTargetDate": "2024-10-22T00:00:00.000Z",
+      "state": "ACCEPTED_NEW_ITEM",
+      "kind": "STRUCTURAL",
+      "expectedDisposition": "REVISE_AND_RESUBMIT"
+    },
+    {
+      "displayNumber": 2,
+      "id": 2002,
+      "reportId": 102,
+      "bidId": 9,
+      "observationText": "Welding at HSS beam-to-column connection at grid 3/B, Level 3 — weld appears undersized. Fillet weld leg dimension appears approximately 5/16\" per visual inspection; drawing calls for 3/8\" minimum. Contractor to arrange third-party weld inspection and submit UT or MT report.",
+      "sourcePage": "p.3, Detail 7/S-201",
+      "photoRef": "Photo S-02",
+      "location": "Grid 3/B, Level 3, HSS connection",
+      "trade": "Steel",
+      "responsibleParty": "CONTRACTOR",
+      "consultantTargetDate": "2024-10-22T00:00:00.000Z",
+      "state": "ACCEPTED_NEW_ITEM",
+      "kind": "STRUCTURAL",
+      "expectedDisposition": "ACCEPTED"
+    },
+    {
+      "displayNumber": 3,
+      "id": 2003,
+      "reportId": 102,
+      "bidId": 9,
+      "observationText": "Duct penetration through shear wall at grid line 5 between Level 2 and Level 3: no fire damper installed per mechanical drawings M-341. Mechanical contractor responsible. This penetration cannot be concealed until damper is installed and inspected.",
+      "sourcePage": "p.5",
+      "photoRef": "Photo S-03",
+      "location": "Grid 5, shear wall, L2-L3 duct penetration",
+      "trade": "Mechanical",
+      "responsibleParty": "CONTRACTOR",
+      "consultantTargetDate": "2024-10-18T00:00:00.000Z",
+      "state": "ACCEPTED_NEW_ITEM",
+      "kind": "MECHANICAL",
+      "expectedDisposition": "REVISE_AND_RESUBMIT"
+    },
+    {
+      "displayNumber": 4,
+      "id": 2004,
+      "reportId": 102,
+      "bidId": 9,
+      "observationText": "Electrical conduit sleeve at slab penetration SP-14 (Level 2 mechanical room): sleeve diameter appears to be 2\" where drawing E-102 calls for 3\". Electrical contractor to verify and provide cut sheet for installed sleeve; if undersized, sleeve to be replaced before slab pour at Level 3.",
+      "sourcePage": "p.6",
+      "photoRef": "Photo S-04",
+      "location": "Level 2 mechanical room, slab penetration SP-14",
+      "trade": "Electrical",
+      "responsibleParty": "CONTRACTOR",
+      "consultantTargetDate": "2024-10-19T00:00:00.000Z",
+      "state": "ACCEPTED_NEW_ITEM",
+      "kind": "ELECTRICAL",
+      "expectedDisposition": "REVISE_AND_RESUBMIT"
+    },
+    {
+      "displayNumber": 5,
+      "id": 2005,
+      "reportId": 102,
+      "bidId": 9,
+      "observationText": "Concrete pour at Level 3 slab, grid area 2–5/B–E: curing blankets are in place and appear adequate for current weather conditions (42°F overnight low forecast). No cold-weather action required at this time. Informational — no response required.",
+      "sourcePage": "p.7",
+      "photoRef": null,
+      "location": "Level 3 slab, grid 2–5/B–E",
+      "trade": "Concrete",
+      "responsibleParty": null,
+      "consultantTargetDate": null,
+      "state": "DISMISSED",
+      "kind": "INFORMATIONAL",
+      "dismissedReason": "Informational — no action required",
+      "expectedDisposition": null
+    }
+  ],
+  "_contractorAssignments": [
+    {
+      "trade": "Steel",
+      "assigneeName": "Ironworks Fabricators LLC",
+      "assigneeEmail": "pm@ironworksfab.example.test",
+      "observationIds": [2001, 2002]
+    },
+    {
+      "trade": "Mechanical",
+      "assigneeName": "Meridian Mechanical Corp",
+      "assigneeEmail": "super@meridianmech.example.test",
+      "observationIds": [2003]
+    },
+    {
+      "trade": "Electrical",
+      "assigneeName": "Capitol Electrical Group",
+      "assigneeEmail": "pm@capitolelectric.example.test",
+      "observationIds": [2004]
+    }
+  ],
+  "_extractionMeta": {
+    "sourceFileFormat": "PDF",
+    "pageCount": 8,
+    "parseStatus": "UNPARSED",
+    "notes": "parseStatus will remain UNPARSED until a future gated extraction slice is implemented. This fixture documents the expected post-extraction state for certification purposes."
+  }
+}
