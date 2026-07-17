@@ -444,14 +444,43 @@ export function parseMeetingAnalysis(raw: string): MeetingAnalysis {
 
 // ── DB writer ─────────────────────────────────────────────────────────────────
 
+// R2-B1 — the writer reports the ids of the rows it (re)created, in the
+// same order as the analysis arrays, so the Meeting Register projection can
+// bridge entries to their lifecycle rows without re-querying by text.
+export type WriteMeetingAnalysisResult = {
+  actionItemIds: number[];      // §5 order
+  commitmentIds: number[];      // §10 order
+  designChangeIds: number[];    // §9 order
+};
+
+// Prisma interactive-transaction client shape (subset used here).
+type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
 export async function writeMeetingAnalysis(
   meetingId: number,
   bidId: number,
   analysis: MeetingAnalysis,
-): Promise<void> {
-  const now = new Date();
+): Promise<WriteMeetingAnalysisResult> {
+  return prisma.$transaction((tx) =>
+    writeMeetingAnalysisTx(tx, meetingId, bidId, analysis)
+  );
+}
 
-  await prisma.$transaction(async (tx) => {
+// Transaction-scoped variant so callers (extraction-run apply) can compose
+// the analysis write with register-projection writes atomically.
+export async function writeMeetingAnalysisTx(
+  tx: PrismaTx,
+  meetingId: number,
+  bidId: number,
+  analysis: MeetingAnalysis,
+): Promise<WriteMeetingAnalysisResult> {
+  const now = new Date();
+  const result: WriteMeetingAnalysisResult = {
+    actionItemIds: [],
+    commitmentIds: [],
+    designChangeIds: [],
+  };
+  {
     // §3 overview + §4 decisions + §6 open issues + §7 red flags + version bump
     await tx.meeting.update({
       where: { id: meetingId },
@@ -506,7 +535,7 @@ export async function writeMeetingAnalysis(
       where: { meetingId, state: "PROPOSED" },
     });
     for (const change of analysis.section9) {
-      await tx.designIntentChange.create({
+      const createdChange = await tx.designIntentChange.create({
         data: {
           meetingId,
           bidId,
@@ -519,6 +548,7 @@ export async function writeMeetingAnalysis(
           // state stays the PROPOSED default — confirmation is human-only.
         },
       });
+      result.designChangeIds.push(createdChange.id);
     }
 
     // §10 commitments — replace PROPOSED rows only. OPEN/FULFILLED/
@@ -527,7 +557,7 @@ export async function writeMeetingAnalysis(
       where: { meetingId, status: "PROPOSED" },
     });
     for (const commitment of analysis.section10) {
-      await tx.meetingCommitment.create({
+      const createdCommitment = await tx.meetingCommitment.create({
         data: {
           meetingId,
           bidId,
@@ -540,6 +570,7 @@ export async function writeMeetingAnalysis(
           // status stays the PROPOSED default — confirmation is human-only.
         },
       });
+      result.commitmentIds.push(createdCommitment.id);
     }
 
     // §5 action items — delete prior AI-generated items, insert fresh
@@ -553,7 +584,7 @@ export async function writeMeetingAnalysis(
       const participant = await tx.meetingParticipant.findFirst({
         where: { meetingId, name: item.person },
       });
-      await tx.meetingActionItem.create({
+      const createdItem = await tx.meetingActionItem.create({
         data: {
           bidId,
           meetingId,
@@ -568,6 +599,8 @@ export async function writeMeetingAnalysis(
           status: "OPEN",
         },
       });
+      result.actionItemIds.push(createdItem.id);
     }
-  });
+  }
+  return result;
 }
