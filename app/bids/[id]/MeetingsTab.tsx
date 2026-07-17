@@ -14,6 +14,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import MeetingDesignLog from "./MeetingDesignLog";
 import MeetingCommitments from "./MeetingCommitments";
+import MeetingRegisterPanel from "./MeetingRegisterPanel";
+import MeetingMinutesPanel from "./MeetingMinutesPanel";
+import TranscriptReviewPanel from "./TranscriptReviewPanel";
 import {
   Mic,
   Plus,
@@ -1181,9 +1184,11 @@ function MeetingDetailPanel({
   detail: MeetingDetail;
   onReload: () => void;
 }) {
-  const [activeSection, setActiveSection] = useState<"transcript" | "analysis" | "items">(
-    detail.status === "READY" && detail.summary ? "analysis" : "transcript"
-  );
+  const [activeSection, setActiveSection] = useState<
+    "transcript" | "analysis" | "register" | "minutes" | "items"
+  >(detail.status === "READY" && detail.summary ? "analysis" : "transcript");
+  // R2-B1 — register→transcript timestamp navigation target.
+  const [focusSegmentId, setFocusSegmentId] = useState<number | null>(null);
   const [reviewStatus, setReviewStatus] = useState(detail.reviewStatus ?? "DRAFT");
   const [patchingReview, setPatchingReview] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1378,7 +1383,7 @@ function MeetingDetailPanel({
 
       {/* ── Section tabs ── */}
       <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-700">
-        {(["transcript", "analysis", "items"] as const).map((s) => (
+        {(["transcript", "analysis", "register", "minutes", "items"] as const).map((s) => (
           <button
             key={s}
             onClick={() => setActiveSection(s)}
@@ -1390,6 +1395,8 @@ function MeetingDetailPanel({
           >
             {s === "transcript" && "Transcript"}
             {s === "analysis" && "Analysis"}
+            {s === "register" && "Register"}
+            {s === "minutes" && "Minutes"}
             {s === "items" && `Action Items (${detail.actionItems.length})`}
           </button>
         ))}
@@ -1425,6 +1432,15 @@ function MeetingDetailPanel({
       {/* ── Transcript ── */}
       {activeSection === "transcript" && detail.status !== "AWAITING_NAMES" && detail.status !== "AWAITING_SOURCE_MAP" && (
         <div className="space-y-3">
+          {/* R2-B1: segment-level review + audited speaker/wording corrections
+              over the immutable original transcript. */}
+          {detail.transcript && (
+            <TranscriptReviewPanel
+              bidId={bidId}
+              meetingId={detail.id}
+              focusSegmentId={focusSegmentId}
+            />
+          )}
           {(detail.status === "PENDING" || detail.status === "FAILED") && (
             <div className="space-y-2">
               {/* Mode toggle */}
@@ -1870,6 +1886,28 @@ function MeetingDetailPanel({
             analyzedAt={detail.analyzedAt}
           />
         </div>
+      )}
+
+      {/* ── R2-B1: Meeting Register ── */}
+      {activeSection === "register" && (
+        <MeetingRegisterPanel
+          bidId={bidId}
+          meetingId={detail.id}
+          analyzedAt={detail.analyzedAt}
+          onJumpToSegment={(segmentId) => {
+            setFocusSegmentId(segmentId);
+            setActiveSection("transcript");
+          }}
+        />
+      )}
+
+      {/* ── R2-B1: Minutes (immutable revisions, publish gate) ── */}
+      {activeSection === "minutes" && (
+        <MeetingMinutesPanel
+          bidId={bidId}
+          meetingId={detail.id}
+          analyzedAt={detail.analyzedAt}
+        />
       )}
 
       {/* ── Action Items ── */}
