@@ -9,9 +9,17 @@
 // state — the entry remains the meeting-local record forever.
 
 import { prisma } from "@/lib/prisma";
-import { emitAuditEvent } from "@/lib/observability/audit";
+import type { AuditEnvelope } from "@/lib/observability/taxonomy";
+import { TRACKED_ITEM_SOURCE_KIND } from "@/lib/services/trackedItems/sourceKinds";
 import { findEntry } from "./register";
-import { actorLabel, bound, type Actor, type ServiceResult } from "./types";
+import { emitRegisterAuditPostCommit, writeRegisterAuditTx } from "./txAudit";
+import {
+  SUPERSEDED_STATE,
+  actorLabel,
+  bound,
+  type Actor,
+  type ServiceResult,
+} from "./types";
 
 const TRACKED_ITEM_KINDS = new Set([
   "OAC_ACTION",
@@ -24,32 +32,6 @@ const TRACKED_ITEM_KINDS = new Set([
   "TEST_INSPECTION",
   "ATTIC_STOCK",
 ]);
-
-async function audit(
-  action: string,
-  bidId: number,
-  entryId: number,
-  actor: Actor,
-  decision: string,
-  payload: Record<string, unknown>
-): Promise<void> {
-  try {
-    await emitAuditEvent({
-      category: "register_action",
-      action,
-      severity: "NOTICE",
-      decision,
-      subject: { kind: "MeetingRegisterEntry", id: String(entryId) },
-      actor: { kind: "operator", userId: null, email: actor?.email ?? null },
-      payload: { bidId, ...payload },
-    });
-  } catch (err) {
-    console.error(
-      "[meetingRegister/promotion] audit emit failed (action continues):",
-      err instanceof Error ? err.message : err
-    );
-  }
-}
 
 export type PromoteInput = {
   kind?: string;
@@ -74,6 +56,9 @@ export async function promoteEntry(
   if (entry.linkedTrackedItemId) {
     return { ok: false, error: "Entry is already linked to an Operations Register item" };
   }
+  if (entry.reviewState === SUPERSEDED_STATE) {
+    return { ok: false, error: "Superseded entries are historical — promote the replacement entry" };
+  }
 
   const kind = input.kind ?? "OAC_ACTION";
   if (!TRACKED_ITEM_KINDS.has(kind)) return { ok: false, error: `Invalid kind ${kind}` };
@@ -95,6 +80,7 @@ export async function promoteEntry(
   }
 
   try {
+    let envelope: AuditEnvelope | null = null;
     const trackedItem = await prisma.$transaction(async (tx) => {
       const created = await tx.trackedItem.create({
         data: {
@@ -107,7 +93,7 @@ export async function promoteEntry(
           tradeId: input.tradeId ?? null,
           dueDate,
           // ── full source provenance (R2 Part C.6) ──
-          sourceKind: "meeting_register",
+          sourceKind: TRACKED_ITEM_SOURCE_KIND.MEETING_REGISTER,
           sourceMeetingId: meetingId,
           sourceMeetingRegisterEntryId: entry.id,
           evidenceExcerpt: bound(entry.rawSourceText, 2000),
@@ -128,7 +114,7 @@ export async function promoteEntry(
           dispositionAt: new Date(),
         },
       });
-      await tx.meetingRegisterEntryRevision.create({
+      const revision = await tx.meetingRegisterEntryRevision.create({
         data: {
           entryId: entry.id,
           bidId,
@@ -139,13 +125,27 @@ export async function promoteEntry(
           actor: promotedBy,
         },
       });
+      envelope = await writeRegisterAuditTx(tx, {
+        action: "register_entry_promoted",
+        decision: "promoted",
+        subjectKind: "MeetingRegisterEntry",
+        subjectId: entry.id,
+        actor,
+        payload: {
+          bidId,
+          meetingId,
+          registerEntryId: entry.id,
+          revisionId: revision.id,
+          trackedItemId: created.id,
+          kind,
+          from: entry.reviewState,
+          to: "PROMOTED_TO_OPERATIONS",
+          sourceExtractionRunId: entry.extractionRunId,
+        },
+      });
       return created;
     });
-    await audit("register_entry_promoted", bidId, entry.id, actor, "promoted", {
-      meetingId,
-      trackedItemId: trackedItem.id,
-      kind,
-    });
+    emitRegisterAuditPostCommit(envelope);
     return { ok: true, value: { trackedItemId: trackedItem.id } };
   } catch (err) {
     // P2002 on sourceMeetingRegisterEntryId — a concurrent promotion won.
@@ -179,6 +179,9 @@ export async function linkEntryToItem(
   if (entry.linkedTrackedItemId) {
     return { ok: false, error: "Entry is already linked to an Operations Register item" };
   }
+  if (entry.reviewState === SUPERSEDED_STATE) {
+    return { ok: false, error: "Superseded entries are historical — link the replacement entry" };
+  }
   // Same-bid check — cross-bid links are impossible by construction.
   const item = await prisma.trackedItem.findFirst({
     where: { id: trackedItemId, bidId },
@@ -186,6 +189,7 @@ export async function linkEntryToItem(
   });
   if (!item) return { ok: false, error: "Tracked item not found" };
 
+  let envelope: AuditEnvelope | null = null;
   await prisma.$transaction(async (tx) => {
     await tx.meetingRegisterEntry.update({
       where: { id: entry.id },
@@ -196,7 +200,7 @@ export async function linkEntryToItem(
         dispositionAt: new Date(),
       },
     });
-    await tx.meetingRegisterEntryRevision.create({
+    const revision = await tx.meetingRegisterEntryRevision.create({
       data: {
         entryId: entry.id,
         bidId,
@@ -207,11 +211,25 @@ export async function linkEntryToItem(
         actor: linkedBy,
       },
     });
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "register_entry_linked",
+      decision: "linked",
+      subjectKind: "MeetingRegisterEntry",
+      subjectId: entry.id,
+      actor,
+      payload: {
+        bidId,
+        meetingId,
+        registerEntryId: entry.id,
+        revisionId: revision.id,
+        trackedItemId: item.id,
+        from: entry.reviewState,
+        to: "PROMOTED_TO_OPERATIONS",
+        sourceExtractionRunId: entry.extractionRunId,
+      },
+    });
   });
-  await audit("register_entry_linked", bidId, entry.id, actor, "linked", {
-    meetingId,
-    trackedItemId: item.id,
-  });
+  emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: { trackedItemId: item.id } };
 }
 

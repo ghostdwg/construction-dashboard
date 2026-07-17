@@ -10,8 +10,8 @@ vi.mock("@/lib/prisma", () => ({
     return state.prisma;
   },
 }));
-const auditMock = vi.hoisted(() => vi.fn(async () => {}));
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+// Real audit module (fail-closed in-tx persistence) — stdout suppressed.
+process.env.OBSERVABILITY_AUDIT_QUIET = "true";
 
 import { listRevisions, publishMinutes } from "../minutes";
 

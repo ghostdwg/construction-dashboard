@@ -10,34 +10,10 @@
 // never edited or deleted.
 
 import { prisma } from "@/lib/prisma";
-import { emitAuditEvent } from "@/lib/observability/audit";
+import type { AuditEnvelope } from "@/lib/observability/taxonomy";
 import { getCoverage } from "./register";
-import { actorLabel, type Actor, type ServiceResult } from "./types";
-
-async function audit(
-  action: string,
-  bidId: number,
-  revisionId: number,
-  actor: Actor,
-  payload: Record<string, unknown>
-): Promise<void> {
-  try {
-    await emitAuditEvent({
-      category: "register_action",
-      action,
-      severity: "NOTICE",
-      decision: "published",
-      subject: { kind: "MeetingMinutesRevision", id: String(revisionId) },
-      actor: { kind: "operator", userId: null, email: actor?.email ?? null },
-      payload: { bidId, ...payload },
-    });
-  } catch (err) {
-    console.error(
-      "[meetingRegister/minutes] audit emit failed (action continues):",
-      err instanceof Error ? err.message : err
-    );
-  }
-}
+import { emitRegisterAuditPostCommit, writeRegisterAuditTx } from "./txAudit";
+import { SUPERSEDED_STATE, actorLabel, type Actor, type ServiceResult } from "./types";
 
 export async function listRevisions(bidId: number, meetingId: number) {
   return prisma.meetingMinutesRevision.findMany({
@@ -112,9 +88,12 @@ export async function publishMinutes(
     return { ok: false, error: "An amendment reason is required to republish minutes" };
   }
 
-  const [entries, participants, correctionCount] = await Promise.all([
+  const [entries, participants, correctionCount, supersededCount] = await Promise.all([
     prisma.meetingRegisterEntry.findMany({
-      where: { meetingId, bidId },
+      // Superseded entries are rerun history, not meeting content — the
+      // published record reflects the active register (their count is
+      // snapshotted below so provenance stays visible).
+      where: { meetingId, bidId, reviewState: { not: SUPERSEDED_STATE } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: {
         id: true,
@@ -133,6 +112,9 @@ export async function publishMinutes(
       select: { name: true, role: true, company: true, speakerLabel: true },
     }),
     prisma.meetingTranscriptCorrection.count({ where: { meetingId, bidId } }),
+    prisma.meetingRegisterEntry.count({
+      where: { meetingId, bidId, reviewState: SUPERSEDED_STATE },
+    }),
   ]);
 
   const contentJson = JSON.stringify({
@@ -145,9 +127,11 @@ export async function publishMinutes(
     participants,
     registerEntries: entries,
     correctionCount,
+    supersededEntryCount: supersededCount,
     analysisVersion: meeting.analysisVersion,
   });
 
+  let envelope: AuditEnvelope | null = null;
   const revision = await prisma.$transaction(async (tx) => {
     const created = await tx.meetingMinutesRevision.create({
       data: {
@@ -164,21 +148,25 @@ export async function publishMinutes(
       where: { id: meetingId },
       data: { reviewStatus: "PUBLISHED", publishedAt: new Date() },
     });
+    envelope = await writeRegisterAuditTx(tx, {
+      action: revisionIndex === 0 ? "minutes_published" : "minutes_amended",
+      decision: revisionIndex === 0 ? "published" : "amended",
+      subjectKind: "MeetingMinutesRevision",
+      subjectId: created.id,
+      actor,
+      payload: {
+        bidId,
+        meetingId,
+        revisionId: created.id,
+        revisionIndex,
+        supersedesRevisionId: prior?.id ?? null,
+        entryCount: entries.length,
+        correctionCount,
+        hasAmendmentReason: Boolean(amendmentReason),
+      },
+    });
     return created;
   });
-
-  await audit(
-    revisionIndex === 0 ? "minutes_published" : "minutes_amended",
-    bidId,
-    revision.id,
-    actor,
-    {
-      meetingId,
-      revisionIndex,
-      entryCount: entries.length,
-      correctionCount,
-      hasAmendmentReason: Boolean(amendmentReason),
-    }
-  );
+  emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: { revisionId: revision.id, revisionIndex } };
 }

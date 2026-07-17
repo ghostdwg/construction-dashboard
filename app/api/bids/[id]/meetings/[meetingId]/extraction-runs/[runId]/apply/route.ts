@@ -1,6 +1,8 @@
-// Module R2-B1 — human APPLY of a previewed extraction run. Atomic:
-// lifecycle rows (PROPOSED-replacement discipline) + register projection
-// (PENDING-replacement; dispositioned entries never touched).
+// Module R2-B1 — human APPLY of a previewed extraction run. One
+// transaction: lifecycle rows (PROPOSED-replacement discipline) +
+// non-destructive register reconcile (unchanged entries kept; removed
+// extractions marked SUPERSEDED, never deleted; dispositioned entries never
+// touched) + mandatory in-tx AuditEvent.
 //
 // POST …/extraction-runs/[runId]/apply
 

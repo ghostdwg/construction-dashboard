@@ -153,8 +153,29 @@ export type MockPrisma = {
   bid: Table;
   rfiItem: Table;
   submittalItem: Table;
+  auditEvent: Table;
   $transaction: <T>(fn: (tx: MockPrisma) => Promise<T>) => Promise<T>;
 };
+
+const TABLE_NAMES = [
+  "meeting",
+  "meetingParticipant",
+  "meetingTranscriptSegment",
+  "meetingTranscriptCorrection",
+  "meetingRegisterEntry",
+  "meetingRegisterEntryRevision",
+  "meetingExtractionRun",
+  "meetingMinutesRevision",
+  "meetingActionItem",
+  "meetingCommitment",
+  "designIntentChange",
+  "trackedItem",
+  "trade",
+  "bid",
+  "rfiItem",
+  "submittalItem",
+  "auditEvent",
+] as const;
 
 export function buildPrisma(): MockPrisma {
   const prisma = {
@@ -177,6 +198,9 @@ export function buildPrisma(): MockPrisma {
         segmentId: null,
         extractionRunId: null,
         dueDate: null,
+        supersededByRunId: null,
+        supersededByEntryId: null,
+        supersededAt: null,
       },
     }),
     meetingRegisterEntryRevision: makeTable(),
@@ -190,10 +214,28 @@ export function buildPrisma(): MockPrisma {
     bid: makeTable(),
     rfiItem: makeTable(),
     submittalItem: makeTable(),
+    auditEvent: makeTable(),
   } as Omit<MockPrisma, "$transaction">;
   return {
     ...prisma,
-    // Interactive transaction: same tables, no rollback (fixture limitation).
-    $transaction: async (fn) => fn({ ...prisma, $transaction: null as never } as MockPrisma),
+    // Interactive transaction WITH rollback: all table rows are snapshotted
+    // before the callback and restored when it throws — so atomicity tests
+    // (mutation + history + audit commit together or not at all) exercise
+    // real transactional behavior against the fixture.
+    $transaction: async (fn) => {
+      const snapshots = new Map<string, Row[]>();
+      for (const name of TABLE_NAMES) {
+        snapshots.set(name, (prisma as Record<string, Table>)[name].rows.map((r) => ({ ...r })));
+      }
+      try {
+        return await fn({ ...prisma, $transaction: null as never } as MockPrisma);
+      } catch (err) {
+        for (const name of TABLE_NAMES) {
+          const table = (prisma as Record<string, Table>)[name];
+          table.rows.splice(0, table.rows.length, ...(snapshots.get(name) ?? []));
+        }
+        throw err;
+      }
+    },
   };
 }

@@ -5,56 +5,268 @@
 //
 // The FIRST run for a meeting applies immediately (initial population —
 // there is nothing to preview against). Every later run lands PREVIEWED
-// holding the parsed analysis; a human applies or discards it. Apply
-// replaces PENDING machine-origin entries only. Dispositioned entries are
-// NEVER touched — their wording, citation and disposition survive every
-// rerun (freeze discipline, mirroring the OPS5/OPS7 PROPOSED-replacement
-// rule). Nothing here calls a provider; the analysis JSON arrives from the
+// holding the parsed analysis; a human applies or discards it.
+//
+// APPLY NEVER DELETES. Reconciliation is deterministic and idempotent:
+//   • UNCHANGED  — an identical re-extraction (same type + same raw source
+//                  wording) keeps the existing PENDING entry, its id, its
+//                  originating extraction run and its disposition state.
+//   • CREATE     — a draft with no existing counterpart becomes a new entry.
+//   • SUPERSEDE  — a PENDING machine-origin entry the new analysis no longer
+//                  produces is marked reviewState=SUPERSEDED and retained
+//                  forever (supersededByRunId, supersededByEntryId where a
+//                  deterministic replacement match exists, supersededAt, and
+//                  an append-only RERUN_SUPERSEDE revision row).
+//   • MERGE      — two or more PENDING entries that map onto ONE new draft
+//                  (same type + same anchor segment) are all superseded by
+//                  that one created entry.
+//   • PRESERVE   — dispositioned/linked/promoted entries are NEVER touched
+//                  (freeze discipline; R2 rule 2).
+// The mandatory AuditEvent row is written inside the same transaction
+// (fail-closed); stdout telemetry is emitted only after commit.
+// Nothing here calls a provider; the analysis JSON arrives from the
 // analyze route.
 
 import { prisma } from "@/lib/prisma";
-import { emitAuditEvent } from "@/lib/observability/audit";
+import type { AuditEnvelope } from "@/lib/observability/taxonomy";
 import {
   writeMeetingAnalysisTx,
   type MeetingAnalysis,
   type WriteMeetingAnalysisResult,
 } from "@/lib/meeting-analysis";
-import { buildRegisterDrafts, anchorDraftsToSegments } from "./registerBuilder";
-import { EXTRACTED_ORIGINS, actorLabel, type Actor, type ServiceResult } from "./types";
+import {
+  buildRegisterDrafts,
+  anchorDraftsToSegments,
+  type RegisterEntryDraft,
+} from "./registerBuilder";
+import { emitRegisterAuditPostCommit, writeRegisterAuditTx } from "./txAudit";
+import {
+  EXTRACTED_ORIGINS,
+  SUPERSEDED_STATE,
+  actorLabel,
+  type Actor,
+  type ServiceResult,
+} from "./types";
 
 type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
-export type RunPreview = {
-  toAdd: number;
-  toReplacePending: number;
-  preservedDispositioned: number;
-  addByType: Record<string, number>;
+export type RunOutcomeKind =
+  | "create"
+  | "unchanged"
+  | "supersede"
+  | "merge"
+  | "preserve";
+
+/** One reconcile outcome — ids/types only, never entry text. */
+export type RunOutcome = {
+  outcome: RunOutcomeKind;
+  /** existing entry affected (unchanged/supersede/merge/preserve) */
+  entryId?: number;
+  /** draft position in the deterministic draft order (create/unchanged/supersede/merge) */
+  draftIndex?: number;
+  entryType: string;
 };
 
-async function audit(
-  action: string,
-  bidId: number,
-  runId: number,
-  actor: Actor | null,
-  decision: string,
-  payload: Record<string, unknown>
-): Promise<void> {
-  try {
-    await emitAuditEvent({
-      category: "register_action",
-      action,
-      severity: "NOTICE",
-      decision,
-      subject: { kind: "MeetingExtractionRun", id: String(runId) },
-      actor: { kind: "operator", userId: null, email: actor?.email ?? null },
-      payload: { bidId, ...payload },
-    });
-  } catch (err) {
-    console.error(
-      "[meetingRegister/extractionRuns] audit emit failed (action continues):",
-      err instanceof Error ? err.message : err
-    );
+export type RunPreview = {
+  toAdd: number;
+  unchanged: number;
+  toSupersede: number;
+  merged: number;
+  preservedDispositioned: number;
+  addByType: Record<string, number>;
+  outcomes: RunOutcome[];
+};
+
+type AnchoredDraft = RegisterEntryDraft & {
+  segmentId: number | null;
+  startSec: number | null;
+  endSec: number | null;
+  sourceCitation: string | null;
+};
+
+type ExistingEntry = {
+  id: number;
+  entryType: string;
+  rawSourceText: string;
+  segmentId: number | null;
+  reviewState: string;
+  origin: string;
+};
+
+const normText = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/**
+ * Deterministic reconcile of the new drafts against the existing register.
+ * Pure function — same inputs produce the same outcomes in the same order,
+ * which is what makes preview honest and apply idempotent.
+ *
+ * Pass 1: exact identity (entryType + normalized rawSourceText) → UNCHANGED.
+ * Pass 2: same entryType + same anchor segment → SUPERSEDE with replacement;
+ *         additional existing entries collapsing onto the same draft → MERGE.
+ * Pass 3: leftover PENDING machine entries → SUPERSEDE (no replacement);
+ *         leftover drafts → CREATE. Dispositioned entries → PRESERVE.
+ */
+export function computeReconcile(
+  existing: ExistingEntry[],
+  drafts: AnchoredDraft[]
+): RunOutcome[] {
+  const outcomes: RunOutcome[] = [];
+  const machinePending = existing
+    .filter(
+      (e) =>
+        (EXTRACTED_ORIGINS as readonly string[]).includes(e.origin) &&
+        e.reviewState === "PENDING"
+    )
+    .sort((a, b) => a.id - b.id);
+  for (const e of existing) {
+    if (e.reviewState !== "PENDING" && e.reviewState !== SUPERSEDED_STATE) {
+      outcomes.push({ outcome: "preserve", entryId: e.id, entryType: e.entryType });
+    }
   }
+
+  const unmatchedExisting = new Map(machinePending.map((e) => [e.id, e]));
+  const draftMatched = new Set<number>();
+
+  // Pass 1 — identical re-extraction keeps the existing entry.
+  const byIdentity = new Map<string, ExistingEntry[]>();
+  for (const e of machinePending) {
+    const key = `${e.entryType}::${normText(e.rawSourceText)}`;
+    const q = byIdentity.get(key) ?? [];
+    q.push(e);
+    byIdentity.set(key, q);
+  }
+  drafts.forEach((d, i) => {
+    const key = `${d.entryType}::${normText(d.rawSourceText)}`;
+    const q = byIdentity.get(key);
+    const hit = q?.find((e) => unmatchedExisting.has(e.id));
+    if (hit) {
+      unmatchedExisting.delete(hit.id);
+      draftMatched.add(i);
+      outcomes.push({
+        outcome: "unchanged",
+        entryId: hit.id,
+        draftIndex: i,
+        entryType: d.entryType,
+      });
+    }
+  });
+
+  // Pass 2 — same type + same anchor segment = replacement (changed wording).
+  drafts.forEach((d, i) => {
+    if (draftMatched.has(i) || d.segmentId == null) return;
+    const hits = [...unmatchedExisting.values()]
+      .filter((e) => e.entryType === d.entryType && e.segmentId === d.segmentId)
+      .sort((a, b) => a.id - b.id);
+    hits.forEach((e, hitIndex) => {
+      unmatchedExisting.delete(e.id);
+      outcomes.push({
+        outcome: hitIndex === 0 ? "supersede" : "merge",
+        entryId: e.id,
+        draftIndex: i,
+        entryType: e.entryType,
+      });
+    });
+  });
+
+  // Pass 3 — leftovers.
+  for (const e of [...unmatchedExisting.values()].sort((a, b) => a.id - b.id)) {
+    outcomes.push({ outcome: "supersede", entryId: e.id, entryType: e.entryType });
+  }
+  drafts.forEach((d, i) => {
+    if (!draftMatched.has(i)) {
+      outcomes.push({ outcome: "create", draftIndex: i, entryType: d.entryType });
+    }
+  });
+  return outcomes;
+}
+
+function summarizeOutcomes(outcomes: RunOutcome[]): RunPreview {
+  const addByType: Record<string, number> = {};
+  let toAdd = 0;
+  let unchanged = 0;
+  let toSupersede = 0;
+  let merged = 0;
+  let preserved = 0;
+  for (const o of outcomes) {
+    switch (o.outcome) {
+      case "create":
+        toAdd++;
+        addByType[o.entryType] = (addByType[o.entryType] ?? 0) + 1;
+        break;
+      case "unchanged":
+        unchanged++;
+        break;
+      case "supersede":
+        toSupersede++;
+        break;
+      case "merge":
+        merged++;
+        break;
+      case "preserve":
+        preserved++;
+        break;
+    }
+  }
+  // Pass-2 drafts also create their replacement entry.
+  const replacementDrafts = new Set(
+    outcomes
+      .filter((o) => (o.outcome === "supersede" || o.outcome === "merge") && o.draftIndex != null)
+      .map((o) => o.draftIndex as number)
+  );
+  for (const i of replacementDrafts) {
+    const entryType = outcomes.find(
+      (o) => o.draftIndex === i && (o.outcome === "supersede" || o.outcome === "merge")
+    )?.entryType;
+    toAdd++;
+    if (entryType) addByType[entryType] = (addByType[entryType] ?? 0) + 1;
+  }
+  return {
+    toAdd,
+    unchanged,
+    toSupersede: toSupersede + merged,
+    merged,
+    preservedDispositioned: preserved,
+    addByType,
+    outcomes,
+  };
+}
+
+async function loadReconcileInputs(
+  db: PrismaTx | typeof prisma,
+  meetingId: number,
+  bidId: number,
+  analysis: MeetingAnalysis,
+  writeResult: WriteMeetingAnalysisResult
+): Promise<{ existing: ExistingEntry[]; drafts: AnchoredDraft[] }> {
+  const [existing, segments] = await Promise.all([
+    db.meetingRegisterEntry.findMany({
+      where: { meetingId, bidId },
+      select: {
+        id: true,
+        entryType: true,
+        rawSourceText: true,
+        segmentId: true,
+        reviewState: true,
+        origin: true,
+      },
+      orderBy: { id: "asc" },
+    }),
+    db.meetingTranscriptSegment.findMany({
+      where: { meetingId, bidId, isActive: true },
+      select: {
+        id: true,
+        startSec: true,
+        endSec: true,
+        currentSpeakerLabel: true,
+        currentText: true,
+      },
+    }),
+  ]);
+  const drafts = anchorDraftsToSegments(
+    buildRegisterDrafts(analysis, writeResult),
+    segments
+  );
+  return { existing, drafts };
 }
 
 async function computePreview(
@@ -62,30 +274,143 @@ async function computePreview(
   bidId: number,
   analysis: MeetingAnalysis
 ): Promise<RunPreview> {
-  // Ids are unknown until apply; the draft SHAPE is what the preview needs.
-  const drafts = buildRegisterDrafts(analysis, {
+  // Lifecycle-row ids are unknown until apply; identity matching uses only
+  // entryType + wording + anchors, so empty ids preview the same outcomes.
+  const { existing, drafts } = await loadReconcileInputs(prisma, meetingId, bidId, analysis, {
     actionItemIds: [],
     commitmentIds: [],
     designChangeIds: [],
   });
-  const existing = await prisma.meetingRegisterEntry.findMany({
-    where: { meetingId, bidId },
-    select: { reviewState: true, origin: true },
+  return summarizeOutcomes(computeReconcile(existing, drafts));
+}
+
+/**
+ * Apply the reconcile INSIDE the caller's transaction. Never deletes:
+ * unchanged entries are kept (bridge links refreshed to the rewritten
+ * lifecycle rows), superseded entries are retained with full supersession
+ * provenance + an append-only revision row, dispositioned entries are
+ * untouched by construction.
+ */
+async function reconcileRegisterTx(
+  tx: PrismaTx,
+  meetingId: number,
+  bidId: number,
+  analysis: MeetingAnalysis,
+  writeResult: WriteMeetingAnalysisResult,
+  runId: number,
+  appliedBy: string
+): Promise<RunPreview> {
+  const { existing, drafts } = await loadReconcileInputs(
+    tx,
+    meetingId,
+    bidId,
+    analysis,
+    writeResult
+  );
+  const outcomes = computeReconcile(existing, drafts);
+  const now = new Date();
+
+  // 1 — creates (including replacement entries for supersede/merge drafts).
+  const createdByDraft = new Map<number, number>();
+  const creatingDraftIndexes = new Set<number>();
+  for (const o of outcomes) {
+    if (o.outcome === "create" && o.draftIndex != null) creatingDraftIndexes.add(o.draftIndex);
+    if ((o.outcome === "supersede" || o.outcome === "merge") && o.draftIndex != null) {
+      creatingDraftIndexes.add(o.draftIndex);
+    }
+  }
+  for (const i of [...creatingDraftIndexes].sort((a, b) => a - b)) {
+    const draft = drafts[i];
+    const created = await tx.meetingRegisterEntry.create({
+      data: {
+        meetingId,
+        bidId,
+        entryType: draft.entryType,
+        agendaTopic: draft.agendaTopic,
+        rawSourceText: draft.rawSourceText,
+        normalizedText: draft.normalizedText,
+        speakerLabel: draft.speakerLabel,
+        speakerName: draft.speakerName,
+        startSec: draft.startSec,
+        endSec: draft.endSec,
+        sourceCitation: draft.sourceCitation,
+        segmentId: draft.segmentId,
+        responsibleParty: draft.responsibleParty,
+        dueDate: draft.dueDate,
+        confidence: draft.confidence,
+        origin: draft.origin,
+        extractionRunId: runId,
+        linkedActionItemId: draft.linkedActionItemId,
+        linkedCommitmentId: draft.linkedCommitmentId,
+        linkedDesignChangeId: draft.linkedDesignChangeId,
+      },
+      select: { id: true },
+    });
+    createdByDraft.set(i, created.id);
+  }
+
+  // 2 — supersessions (never deletions). Retain everything; record provenance.
+  for (const o of outcomes) {
+    if (o.outcome !== "supersede" && o.outcome !== "merge") continue;
+    if (o.entryId == null) continue;
+    const replacementId = o.draftIndex != null ? createdByDraft.get(o.draftIndex) ?? null : null;
+    await tx.meetingRegisterEntry.update({
+      where: { id: o.entryId },
+      data: {
+        reviewState: SUPERSEDED_STATE,
+        supersededByRunId: runId,
+        supersededByEntryId: replacementId,
+        supersededAt: now,
+      },
+    });
+    await tx.meetingRegisterEntryRevision.create({
+      data: {
+        entryId: o.entryId,
+        bidId,
+        changeType: "RERUN_SUPERSEDE",
+        fromReviewState: "PENDING",
+        toReviewState: SUPERSEDED_STATE,
+        detailJson: JSON.stringify({
+          runId,
+          ...(replacementId ? { replacementEntryId: replacementId } : {}),
+          ...(o.outcome === "merge" ? { merge: true } : {}),
+        }),
+        actor: appliedBy,
+      },
+    });
+  }
+
+  // 3 — unchanged entries survive verbatim; refresh bridge links because the
+  // analysis writer rewrites the lifecycle rows (their old FKs would go
+  // stale via SetNull). Identity, wording, state and the ORIGINATING
+  // extractionRunId are preserved.
+  for (const o of outcomes) {
+    if (o.outcome !== "unchanged" || o.entryId == null || o.draftIndex == null) continue;
+    const draft = drafts[o.draftIndex];
+    if (
+      draft.linkedActionItemId != null ||
+      draft.linkedCommitmentId != null ||
+      draft.linkedDesignChangeId != null
+    ) {
+      await tx.meetingRegisterEntry.update({
+        where: { id: o.entryId },
+        data: {
+          linkedActionItemId: draft.linkedActionItemId,
+          linkedCommitmentId: draft.linkedCommitmentId,
+          linkedDesignChangeId: draft.linkedDesignChangeId,
+        },
+      });
+    }
+  }
+
+  // Resolve final entry ids into the outcome list for the audit trail.
+  const applied = outcomes.map((o) => {
+    if (o.outcome === "create" && o.draftIndex != null) {
+      return { ...o, entryId: createdByDraft.get(o.draftIndex) };
+    }
+    return o;
   });
-  const machinePending = existing.filter(
-    (e) =>
-      (EXTRACTED_ORIGINS as readonly string[]).includes(e.origin) &&
-      e.reviewState === "PENDING"
-  ).length;
-  const dispositioned = existing.filter((e) => e.reviewState !== "PENDING").length;
-  const addByType: Record<string, number> = {};
-  for (const d of drafts) addByType[d.entryType] = (addByType[d.entryType] ?? 0) + 1;
-  return {
-    toAdd: drafts.length,
-    toReplacePending: machinePending,
-    preservedDispositioned: dispositioned,
-    addByType,
-  };
+  return summarizeOutcomes(applied);
 }
 
 /**
@@ -112,7 +437,9 @@ export async function recordAnalysisRun(
 
   if (priorApplied === 0 && writeResult) {
     // Initial population — analysis was already written by the caller;
-    // project the register inside one transaction and record an APPLIED run.
+    // project the register + write the mandatory audit row in ONE
+    // transaction and record an APPLIED run.
+    let envelope: AuditEnvelope | null = null;
     const run = await prisma.$transaction(async (tx) => {
       const created = await tx.meetingExtractionRun.create({
         data: {
@@ -127,106 +454,73 @@ export async function recordAnalysisRun(
           appliedAt: new Date(),
         },
       });
-      await projectRegisterTx(tx, meetingId, bidId, analysis, writeResult, created.id);
+      const applied = await reconcileRegisterTx(
+        tx,
+        meetingId,
+        bidId,
+        analysis,
+        writeResult,
+        created.id,
+        actorLabel(actor) ?? "system"
+      );
+      envelope = await writeRegisterAuditTx(tx, {
+        action: "extraction_run_applied",
+        decision: "applied",
+        subjectKind: "MeetingExtractionRun",
+        subjectId: created.id,
+        actor,
+        payload: {
+          bidId,
+          meetingId,
+          extractionRunId: created.id,
+          trigger: "INITIAL",
+          toAdd: applied.toAdd,
+          unchanged: applied.unchanged,
+          superseded: applied.toSupersede,
+          preservedDispositioned: applied.preservedDispositioned,
+        },
+      });
       return created;
     });
-    await audit("extraction_run_applied", bidId, run.id, actor, "applied", {
-      meetingId,
-      trigger: "INITIAL",
-      toAdd: preview.toAdd,
-    });
+    emitRegisterAuditPostCommit(envelope);
     return { ok: true, value: { runId: run.id, status: "APPLIED", preview } };
   }
 
-  const run = await prisma.meetingExtractionRun.create({
-    data: {
-      meetingId,
-      bidId,
-      analysisVersion: meeting.analysisVersion,
-      trigger: "RERUN",
-      status: "PREVIEWED",
-      analysisJson: JSON.stringify(analysis),
-      previewJson: JSON.stringify(preview),
-      createdBy: actorLabel(actor),
-    },
-  });
-  await audit("extraction_run_previewed", bidId, run.id, actor, "previewed", {
-    meetingId,
-    trigger: "RERUN",
-    toAdd: preview.toAdd,
-    toReplacePending: preview.toReplacePending,
-  });
-  return { ok: true, value: { runId: run.id, status: "PREVIEWED", preview } };
-}
-
-/** Replace PENDING machine-origin entries and insert the new projection. */
-async function projectRegisterTx(
-  tx: PrismaTx,
-  meetingId: number,
-  bidId: number,
-  analysis: MeetingAnalysis,
-  writeResult: WriteMeetingAnalysisResult,
-  runId: number
-): Promise<{ added: number; replaced: number }> {
-  const pending = await tx.meetingRegisterEntry.findMany({
-    where: {
-      meetingId,
-      bidId,
-      reviewState: "PENDING",
-      origin: { in: [...EXTRACTED_ORIGINS] },
-    },
-    select: { id: true },
-  });
-  // PENDING machine entries are the extractor's ceiling — replacing them on
-  // an applied rerun mirrors the OPS5/OPS7 PROPOSED-replacement rule.
-  // Dispositioned entries are untouched by construction of the WHERE above.
-  if (pending.length > 0) {
-    await tx.meetingRegisterEntry.deleteMany({
-      where: { id: { in: pending.map((p) => p.id) } },
-    });
-  }
-
-  const segments = await tx.meetingTranscriptSegment.findMany({
-    where: { meetingId, bidId, isActive: true },
-    select: {
-      id: true,
-      startSec: true,
-      endSec: true,
-      currentSpeakerLabel: true,
-      currentText: true,
-    },
-  });
-  const drafts = anchorDraftsToSegments(
-    buildRegisterDrafts(analysis, writeResult),
-    segments
-  );
-  for (const draft of drafts) {
-    await tx.meetingRegisterEntry.create({
+  let envelope: AuditEnvelope | null = null;
+  const run = await prisma.$transaction(async (tx) => {
+    const created = await tx.meetingExtractionRun.create({
       data: {
         meetingId,
         bidId,
-        entryType: draft.entryType,
-        agendaTopic: draft.agendaTopic,
-        rawSourceText: draft.rawSourceText,
-        normalizedText: draft.normalizedText,
-        speakerLabel: draft.speakerLabel,
-        speakerName: draft.speakerName,
-        startSec: draft.startSec,
-        endSec: draft.endSec,
-        sourceCitation: draft.sourceCitation,
-        segmentId: draft.segmentId,
-        responsibleParty: draft.responsibleParty,
-        dueDate: draft.dueDate,
-        confidence: draft.confidence,
-        origin: draft.origin,
-        extractionRunId: runId,
-        linkedActionItemId: draft.linkedActionItemId,
-        linkedCommitmentId: draft.linkedCommitmentId,
-        linkedDesignChangeId: draft.linkedDesignChangeId,
+        analysisVersion: meeting.analysisVersion,
+        trigger: "RERUN",
+        status: "PREVIEWED",
+        analysisJson: JSON.stringify(analysis),
+        previewJson: JSON.stringify(preview),
+        createdBy: actorLabel(actor),
       },
     });
-  }
-  return { added: drafts.length, replaced: pending.length };
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "extraction_run_previewed",
+      decision: "previewed",
+      subjectKind: "MeetingExtractionRun",
+      subjectId: created.id,
+      actor,
+      payload: {
+        bidId,
+        meetingId,
+        extractionRunId: created.id,
+        trigger: "RERUN",
+        toAdd: preview.toAdd,
+        unchanged: preview.unchanged,
+        toSupersede: preview.toSupersede,
+        preservedDispositioned: preview.preservedDispositioned,
+      },
+    });
+    return created;
+  });
+  emitRegisterAuditPostCommit(envelope);
+  return { ok: true, value: { runId: run.id, status: "PREVIEWED", preview } };
 }
 
 export async function getRun(bidId: number, meetingId: number, runId: number) {
@@ -253,13 +547,18 @@ export async function listRuns(bidId: number, meetingId: number) {
   });
 }
 
-/** Human APPLY of a PREVIEWED run — atomic: lifecycle write + projection. */
+/**
+ * Human APPLY of a PREVIEWED run — one transaction: lifecycle write +
+ * non-destructive register reconcile + run flip + mandatory audit row.
+ * Deterministic and idempotent: an identical analysis applied again yields
+ * only UNCHANGED outcomes; re-applying an APPLIED run is rejected.
+ */
 export async function applyRun(
   bidId: number,
   meetingId: number,
   runId: number,
   actor: Actor
-): Promise<ServiceResult<{ runId: number; added: number; replaced: number }>> {
+): Promise<ServiceResult<{ runId: number; preview: RunPreview }>> {
   const appliedBy = actorLabel(actor);
   if (!appliedBy) return { ok: false, error: "A session actor is required to apply" };
   const run = await getRun(bidId, meetingId, runId);
@@ -275,35 +574,49 @@ export async function applyRun(
     return { ok: false, error: "Stored analysis is unreadable; discard this run" };
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  let envelope: AuditEnvelope | null = null;
+  const applied = await prisma.$transaction(async (tx) => {
     const writeResult = await writeMeetingAnalysisTx(tx, meetingId, bidId, analysis);
-    const projected = await projectRegisterTx(
+    const result = await reconcileRegisterTx(
       tx,
       meetingId,
       bidId,
       analysis,
       writeResult,
-      run.id
+      run.id,
+      appliedBy
     );
     await tx.meetingExtractionRun.update({
       where: { id: run.id },
       data: {
         status: "APPLIED",
         analysisJson: "{}", // clear the bulky payload once applied
+        previewJson: JSON.stringify(result), // final outcomes incl. created ids
         appliedBy,
         appliedAt: new Date(),
       },
     });
-    return projected;
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "extraction_run_applied",
+      decision: "applied",
+      subjectKind: "MeetingExtractionRun",
+      subjectId: run.id,
+      actor,
+      payload: {
+        bidId,
+        meetingId,
+        extractionRunId: run.id,
+        trigger: run.trigger,
+        toAdd: result.toAdd,
+        unchanged: result.unchanged,
+        superseded: result.toSupersede,
+        preservedDispositioned: result.preservedDispositioned,
+      },
+    });
+    return result;
   });
-
-  await audit("extraction_run_applied", bidId, run.id, actor, "applied", {
-    meetingId,
-    trigger: run.trigger,
-    added: result.added,
-    replaced: result.replaced,
-  });
-  return { ok: true, value: { runId: run.id, ...result } };
+  emitRegisterAuditPostCommit(envelope);
+  return { ok: true, value: { runId: run.id, preview: applied } };
 }
 
 export async function discardRun(
@@ -319,12 +632,21 @@ export async function discardRun(
   if (run.status !== "PREVIEWED") {
     return { ok: false, error: `Cannot discard a ${run.status} run` };
   }
-  await prisma.meetingExtractionRun.update({
-    where: { id: run.id },
-    data: { status: "DISCARDED", analysisJson: "{}" },
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.meetingExtractionRun.update({
+      where: { id: run.id },
+      data: { status: "DISCARDED", analysisJson: "{}" },
+    });
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "extraction_run_discarded",
+      decision: "discarded",
+      subjectKind: "MeetingExtractionRun",
+      subjectId: run.id,
+      actor,
+      payload: { bidId, meetingId, extractionRunId: run.id },
+    });
   });
-  await audit("extraction_run_discarded", bidId, run.id, actor, "discarded", {
-    meetingId,
-  });
+  emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: { runId: run.id } };
 }

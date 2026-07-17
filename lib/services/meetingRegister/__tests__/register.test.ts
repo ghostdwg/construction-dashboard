@@ -11,8 +11,8 @@ vi.mock("@/lib/prisma", () => ({
     return state.prisma;
   },
 }));
-const auditMock = vi.hoisted(() => vi.fn(async () => {}));
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+// Real audit module (fail-closed in-tx persistence) — stdout suppressed.
+process.env.OBSERVABILITY_AUDIT_QUIET = "true";
 
 import { createManualEntry, dispositionEntry, editEntry, getCoverage } from "../register";
 
@@ -34,7 +34,6 @@ async function seedEntry(overrides: Record<string, unknown> = {}) {
 
 beforeEach(async () => {
   state.prisma = buildPrisma();
-  auditMock.mockClear();
   await state.prisma.meeting.create({ data: { id: 5, bidId: 1 } });
 });
 
@@ -193,5 +192,115 @@ describe("getCoverage — fully-reviewed gate (rule 11)", () => {
     coverage = await getCoverage(1, 5);
     expect(coverage.fullyReviewed).toBe(true);
     expect(coverage.pendingExtracted).toBe(0);
+  });
+});
+
+describe("segment provenance (release blocker 3)", () => {
+  beforeEach(async () => {
+    // meeting 6 = same bid, different meeting; meeting 7 = DIFFERENT bid.
+    await state.prisma.meeting.create({ data: { id: 6, bidId: 1 } });
+    await state.prisma.meeting.create({ data: { id: 7, bidId: 2 } });
+    await state.prisma.meetingTranscriptSegment.create({
+      data: { id: 11, meetingId: 5, bidId: 1, segmentIndex: 0, sortKey: 0, originalText: "own segment", currentText: "own segment" },
+    });
+    await state.prisma.meetingTranscriptSegment.create({
+      data: { id: 12, meetingId: 6, bidId: 1, segmentIndex: 0, sortKey: 0, originalText: "other meeting", currentText: "other meeting" },
+    });
+    await state.prisma.meetingTranscriptSegment.create({
+      data: { id: 13, meetingId: 7, bidId: 2, segmentIndex: 0, sortKey: 0, originalText: "other bid", currentText: "other bid" },
+    });
+  });
+
+  it("accepts a segment that belongs to this meeting and bid", async () => {
+    const result = await createManualEntry(
+      1, 5,
+      { entryType: "DECISION", normalizedText: "cited decision", segmentId: 11 },
+      ACTOR
+    );
+    expect(result.ok).toBe(true);
+    expect(state.prisma.meetingRegisterEntry.rows[0].segmentId).toBe(11);
+  });
+
+  it("rejects a same-bid segment from a DIFFERENT meeting", async () => {
+    const result = await createManualEntry(
+      1, 5,
+      { entryType: "DECISION", normalizedText: "bad citation", segmentId: 12 },
+      ACTOR
+    );
+    expect(result).toMatchObject({ ok: false, error: "Segment not found" });
+    expect(state.prisma.meetingRegisterEntry.rows).toHaveLength(0);
+  });
+
+  it("rejects a cross-bid segment with the SAME error as a nonexistent one (no probe signal)", async () => {
+    const crossBid = await createManualEntry(
+      1, 5,
+      { entryType: "DECISION", normalizedText: "cross-bid citation", segmentId: 13 },
+      ACTOR
+    );
+    const nonexistent = await createManualEntry(
+      1, 5,
+      { entryType: "DECISION", normalizedText: "ghost citation", segmentId: 9999 },
+      ACTOR
+    );
+    expect(crossBid).toMatchObject({ ok: false, error: "Segment not found" });
+    expect(nonexistent).toMatchObject({ ok: false, error: "Segment not found" });
+    expect(state.prisma.meetingRegisterEntry.rows).toHaveLength(0);
+  });
+});
+
+describe("audit policy — fail-closed, in-transaction (release blocker 5)", () => {
+  it("commits the AuditEvent row atomically with a disposition", async () => {
+    await seedEntry();
+    await dispositionEntry(1, 5, 1, { disposition: "CONFIRMED" }, ACTOR);
+    const audits = state.prisma.auditEvent.rows.filter(
+      (a) => a.action === "register_entry_dispositioned"
+    );
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      category: "register_action",
+      subjectKind: "MeetingRegisterEntry",
+      subjectId: "1",
+      actorEmail: "josh@example.com",
+    });
+    const payload = JSON.parse(audits[0].payloadJson as string);
+    expect(payload).toMatchObject({ bidId: 1, meetingId: 5, registerEntryId: 1, from: "PENDING", to: "CONFIRMED" });
+    expect(payload.revisionId).toBeGreaterThan(0);
+  });
+
+  it("rolls the disposition back entirely when the audit write fails (never fail-open)", async () => {
+    await seedEntry();
+    state.prisma.auditEvent.create = async () => {
+      throw new Error("audit store down");
+    };
+    await expect(
+      dispositionEntry(1, 5, 1, { disposition: "CONFIRMED" }, ACTOR)
+    ).rejects.toThrow("audit store down");
+    // Entry untouched, no revision row, no audit row.
+    expect(state.prisma.meetingRegisterEntry.rows[0].reviewState).toBe("PENDING");
+    expect(state.prisma.meetingRegisterEntryRevision.rows).toHaveLength(0);
+    expect(state.prisma.auditEvent.rows).toHaveLength(0);
+  });
+});
+
+describe("SUPERSEDED entries are immutable history", () => {
+  it("cannot be dispositioned or edited", async () => {
+    await seedEntry({ reviewState: "SUPERSEDED", supersededByRunId: 2 });
+    const dispo = await dispositionEntry(1, 5, 1, { disposition: "CONFIRMED" }, ACTOR);
+    expect(dispo.ok).toBe(false);
+    const edit = await editEntry(1, 5, 1, { normalizedText: "rewrite history" }, ACTOR);
+    expect(edit.ok).toBe(false);
+    expect(state.prisma.meetingRegisterEntry.rows[0].normalizedText).toBe("Submit shop drawings");
+  });
+
+  it("is excluded from coverage totals and the fully-reviewed gate", async () => {
+    await seedEntry({ reviewState: "SUPERSEDED", supersededByRunId: 2 });
+    await seedEntry({ origin: "manual", reviewState: "CONFIRMED" });
+    const coverage = await getCoverage(1, 5);
+    expect(coverage).toMatchObject({
+      total: 1,
+      superseded: 1,
+      pendingExtracted: 0,
+      fullyReviewed: true,
+    });
   });
 });

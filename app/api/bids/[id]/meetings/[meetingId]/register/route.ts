@@ -23,6 +23,7 @@ export async function GET(
   const entries = await listEntries(ctx.bidId, ctx.meetingId, {
     entryType: url.searchParams.get("entryType") ?? undefined,
     reviewState: url.searchParams.get("reviewState") ?? undefined,
+    includeSuperseded: url.searchParams.get("includeSuperseded") === "true",
   });
   return Response.json({ ok: true, entries });
 }

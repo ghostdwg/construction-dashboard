@@ -4,47 +4,24 @@
 // edit, human disposition, coverage. Register entries are DURABLE — no
 // delete path exists at any layer; every state change appends a
 // MeetingRegisterEntryRevision row. rawSourceText is frozen at creation.
+// Every accountability-relevant mutation writes its AuditEvent row inside
+// the same transaction (fail-closed) and emits telemetry only after commit.
 
 import { prisma } from "@/lib/prisma";
-import { emitAuditEvent } from "@/lib/observability/audit";
+import type { AuditEnvelope } from "@/lib/observability/taxonomy";
+import { emitRegisterAuditPostCommit, writeRegisterAuditTx } from "./txAudit";
 import {
   type Actor,
   type RegisterDisposition,
   type RegisterEntryType,
   type ServiceResult,
   EXTRACTED_ORIGINS,
+  SUPERSEDED_STATE,
   actorLabel,
   bound,
   isRegisterDisposition,
   isRegisterEntryType,
 } from "./types";
-
-async function audit(
-  action: string,
-  bidId: number,
-  entryId: number,
-  actor: Actor,
-  decision: string,
-  payload: Record<string, unknown>
-): Promise<void> {
-  try {
-    await emitAuditEvent({
-      category: "register_action",
-      action,
-      severity: "NOTICE",
-      decision,
-      subject: { kind: "MeetingRegisterEntry", id: String(entryId) },
-      actor: { kind: "operator", userId: null, email: actor?.email ?? null },
-      // ids/counts only — never entry text.
-      payload: { bidId, ...payload },
-    });
-  } catch (err) {
-    console.error(
-      "[meetingRegister] audit emit failed (action continues):",
-      err instanceof Error ? err.message : err
-    );
-  }
-}
 
 export async function findEntry(bidId: number, meetingId: number, entryId: number) {
   return prisma.meetingRegisterEntry.findFirst({
@@ -52,9 +29,32 @@ export async function findEntry(bidId: number, meetingId: number, entryId: numbe
   });
 }
 
+/**
+ * Provenance guard for a manually supplied segment reference (release-
+ * blocker 3): the segment must exist, belong to THIS meeting, and that
+ * meeting must belong to THIS bid (the route's requireBidAccess has already
+ * bound bidId to the caller). One uniform error for nonexistent,
+ * cross-meeting and cross-bid ids — a probe learns nothing about foreign
+ * segments.
+ */
+async function validateSegmentProvenance(
+  bidId: number,
+  meetingId: number,
+  segmentId: number
+): Promise<boolean> {
+  if (!Number.isInteger(segmentId) || segmentId <= 0) return false;
+  const segment = await prisma.meetingTranscriptSegment.findFirst({
+    where: { id: segmentId, meetingId, bidId },
+    select: { id: true },
+  });
+  return segment != null;
+}
+
 export type RegisterFilters = {
   entryType?: string;
   reviewState?: string;
+  /** Superseded entries are history — hidden unless explicitly requested. */
+  includeSuperseded?: boolean;
 };
 
 export async function listEntries(
@@ -67,7 +67,11 @@ export async function listEntries(
       meetingId,
       bidId,
       ...(filters.entryType ? { entryType: filters.entryType } : {}),
-      ...(filters.reviewState ? { reviewState: filters.reviewState } : {}),
+      ...(filters.reviewState
+        ? { reviewState: filters.reviewState }
+        : filters.includeSuperseded
+          ? {}
+          : { reviewState: { not: SUPERSEDED_STATE } }),
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: {
@@ -75,6 +79,7 @@ export async function listEntries(
       relatedPriorEntry: {
         select: { id: true, meetingId: true, normalizedText: true, entryType: true },
       },
+      supersededByEntry: { select: { id: true, entryType: true } },
     },
   });
 }
@@ -114,6 +119,13 @@ export async function createManualEntry(
   });
   if (!meeting) return { ok: false, error: "Not found" };
 
+  // Release-blocker 3 — a manually supplied segmentId must belong to this
+  // meeting and this bid; cross-meeting/cross-bid provenance is impossible.
+  if (input.segmentId !== undefined && input.segmentId !== null) {
+    const valid = await validateSegmentProvenance(bidId, meetingId, input.segmentId);
+    if (!valid) return { ok: false, error: "Segment not found" };
+  }
+
   if (input.relatedPriorEntryId) {
     const prior = await prisma.meetingRegisterEntry.findFirst({
       where: { id: input.relatedPriorEntryId, bidId },
@@ -127,6 +139,7 @@ export async function createManualEntry(
       ? new Date(`${input.dueDate}T00:00:00.000Z`)
       : null;
 
+  let envelope: AuditEnvelope | null = null;
   const entry = await prisma.$transaction(async (tx) => {
     const created = await tx.meetingRegisterEntry.create({
       data: {
@@ -154,7 +167,7 @@ export async function createManualEntry(
         createdBy,
       },
     });
-    await tx.meetingRegisterEntryRevision.create({
+    const revision = await tx.meetingRegisterEntryRevision.create({
       data: {
         entryId: created.id,
         bidId,
@@ -164,14 +177,25 @@ export async function createManualEntry(
         actor: createdBy,
       },
     });
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "register_entry_created",
+      decision: "created",
+      subjectKind: "MeetingRegisterEntry",
+      subjectId: created.id,
+      actor,
+      payload: {
+        bidId,
+        meetingId,
+        registerEntryId: created.id,
+        revisionId: revision.id,
+        entryType: input.entryType,
+        origin: "manual",
+        segmentId: input.segmentId ?? null,
+      },
+    });
     return created;
   });
-
-  await audit("register_entry_created", bidId, entry.id, actor, "created", {
-    meetingId,
-    entryType: input.entryType,
-    origin: "manual",
-  });
+  emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: { id: entry.id } };
 }
 
@@ -195,6 +219,9 @@ export async function editEntry(
   if (!editor) return { ok: false, error: "A session actor is required to edit" };
   const entry = await findEntry(bidId, meetingId, entryId);
   if (!entry) return { ok: false, error: "Not found" };
+  if (entry.reviewState === SUPERSEDED_STATE) {
+    return { ok: false, error: "Superseded entries are historical and cannot be edited" };
+  }
 
   const data: Record<string, unknown> = {};
   const changed: Record<string, boolean> = {};
@@ -235,9 +262,10 @@ export async function editEntry(
   }
   if (Object.keys(data).length === 0) return { ok: false, error: "No editable fields supplied" };
 
+  let envelope: AuditEnvelope | null = null;
   await prisma.$transaction(async (tx) => {
     await tx.meetingRegisterEntry.update({ where: { id: entry.id }, data });
-    await tx.meetingRegisterEntryRevision.create({
+    const revision = await tx.meetingRegisterEntryRevision.create({
       data: {
         entryId: entry.id,
         bidId,
@@ -248,11 +276,22 @@ export async function editEntry(
         actor: editor,
       },
     });
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "register_entry_edited",
+      decision: "edited",
+      subjectKind: "MeetingRegisterEntry",
+      subjectId: entry.id,
+      actor,
+      payload: {
+        bidId,
+        meetingId,
+        registerEntryId: entry.id,
+        revisionId: revision.id,
+        fields: Object.keys(changed),
+      },
+    });
   });
-  await audit("register_entry_edited", bidId, entry.id, actor, "edited", {
-    meetingId,
-    fields: Object.keys(changed),
-  });
+  emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: { id: entry.id } };
 }
 
@@ -287,6 +326,9 @@ export async function dispositionEntry(
   if (entry.reviewState === "PROMOTED_TO_OPERATIONS") {
     return { ok: false, error: "Promoted entries cannot be re-dispositioned" };
   }
+  if (entry.reviewState === SUPERSEDED_STATE) {
+    return { ok: false, error: "Superseded entries are historical and cannot be dispositioned" };
+  }
 
   const reason = bound(input.reason, 500);
   if (disposition === "DISMISSED_WITH_REASON" && !reason) {
@@ -315,6 +357,7 @@ export async function dispositionEntry(
     if (!correctedText) return { ok: false, error: "CORRECTED requires correctedText" };
   }
 
+  let envelope: AuditEnvelope | null = null;
   await prisma.$transaction(async (tx) => {
     await tx.meetingRegisterEntry.update({
       where: { id: entry.id },
@@ -327,7 +370,7 @@ export async function dispositionEntry(
         ...(correctedText ? { normalizedText: correctedText } : {}),
       },
     });
-    await tx.meetingRegisterEntryRevision.create({
+    const revision = await tx.meetingRegisterEntryRevision.create({
       data: {
         entryId: entry.id,
         bidId,
@@ -342,13 +385,26 @@ export async function dispositionEntry(
         reason,
       },
     });
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "register_entry_dispositioned",
+      decision: disposition.toLowerCase(),
+      subjectKind: "MeetingRegisterEntry",
+      subjectId: entry.id,
+      actor,
+      payload: {
+        bidId,
+        meetingId,
+        registerEntryId: entry.id,
+        revisionId: revision.id,
+        from: entry.reviewState,
+        to: disposition,
+        ...(targetEntryId ? { targetEntryId } : {}),
+        hasReason: Boolean(reason),
+        sourceExtractionRunId: entry.extractionRunId,
+      },
+    });
   });
-  await audit("register_entry_dispositioned", bidId, entry.id, actor, disposition.toLowerCase(), {
-    meetingId,
-    from: entry.reviewState,
-    to: disposition,
-    hasReason: Boolean(reason),
-  });
+  emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: { id: entry.id, reviewState: disposition } };
 }
 
@@ -356,6 +412,8 @@ export type RegisterCoverage = {
   total: number;
   extracted: number;
   pendingExtracted: number;
+  /** rerun-superseded entries — history, excluded from the review gate */
+  superseded: number;
   byReviewState: Record<string, number>;
   byEntryType: Record<string, number>;
   /** R2 rule 11 — false while any extracted entry is undispositioned */
@@ -374,8 +432,13 @@ export async function getCoverage(
   const byEntryType: Record<string, number> = {};
   let extracted = 0;
   let pendingExtracted = 0;
+  let superseded = 0;
   for (const e of entries) {
     byReviewState[e.reviewState] = (byReviewState[e.reviewState] ?? 0) + 1;
+    if (e.reviewState === SUPERSEDED_STATE) {
+      superseded++;
+      continue; // history — not part of the active register or review gate
+    }
     byEntryType[e.entryType] = (byEntryType[e.entryType] ?? 0) + 1;
     const isExtracted = (EXTRACTED_ORIGINS as readonly string[]).includes(e.origin);
     if (isExtracted) {
@@ -384,9 +447,10 @@ export async function getCoverage(
     }
   }
   return {
-    total: entries.length,
+    total: entries.length - superseded,
     extracted,
     pendingExtracted,
+    superseded,
     byReviewState,
     byEntryType,
     fullyReviewed: pendingExtracted === 0,

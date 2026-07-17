@@ -35,6 +35,8 @@ type Coverage = {
   total: number;
   extracted: number;
   pendingExtracted: number;
+  /** rerun-superseded history rows — excluded from total and the review gate */
+  superseded: number;
   byReviewState: Record<string, number>;
   byEntryType: Record<string, number>;
   fullyReviewed: boolean;
@@ -79,6 +81,8 @@ const STATE_STYLES: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
   PROMOTED_TO_OPERATIONS: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
   DISMISSED_WITH_REASON: "bg-zinc-100 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400",
+  // Rerun history — retained forever, never actionable.
+  SUPERSEDED: "bg-zinc-100 text-zinc-400 line-through dark:bg-zinc-800 dark:text-zinc-500",
 };
 
 export default function MeetingRegisterPanel({
@@ -169,8 +173,8 @@ export default function MeetingRegisterPanel({
             className="rounded border border-zinc-300 px-1 py-0.5 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
           >
             <option value="">all dispositions</option>
-            {["PENDING", "CONFIRMED", "CORRECTED", "MERGED", "DUPLICATE", "DISMISSED_WITH_REASON", "DISCUSSION_ONLY", "INFORMATIONAL", "PROMOTED_TO_OPERATIONS"].map((s) => (
-              <option key={s} value={s}>{s.replaceAll("_", " ").toLowerCase()}</option>
+            {["PENDING", "CONFIRMED", "CORRECTED", "MERGED", "DUPLICATE", "DISMISSED_WITH_REASON", "DISCUSSION_ONLY", "INFORMATIONAL", "PROMOTED_TO_OPERATIONS", "SUPERSEDED"].map((s) => (
+              <option key={s} value={s}>{s === "SUPERSEDED" ? "superseded (rerun history)" : s.replaceAll("_", " ").toLowerCase()}</option>
             ))}
           </select>
           <button
@@ -214,7 +218,13 @@ export default function MeetingRegisterPanel({
 function RunCard({ base, run, onChanged }: { base: string; run: RunRow; onChanged: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  let preview: { toAdd?: number; toReplacePending?: number; preservedDispositioned?: number } = {};
+  let preview: {
+    toAdd?: number;
+    unchanged?: number;
+    toSupersede?: number;
+    merged?: number;
+    preservedDispositioned?: number;
+  } = {};
   try {
     preview = JSON.parse(run.previewJson) as typeof preview;
   } catch { /* previewJson stays informational */ }
@@ -235,9 +245,12 @@ function RunCard({ base, run, onChanged }: { base: string; run: RunRow; onChange
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-violet-900 dark:text-violet-200">
-        Run #{run.id} ({run.trigger.toLowerCase()}): +{preview.toAdd ?? "?"} new ·{" "}
-        {preview.toReplacePending ?? "?"} pending replaced ·{" "}
-        {preview.preservedDispositioned ?? "?"} dispositioned preserved
+        Run #{run.id} ({run.trigger.toLowerCase()}): {preview.toAdd ?? "?"} create ·{" "}
+        {preview.unchanged ?? "?"} unchanged ·{" "}
+        {preview.toSupersede ?? "?"} supersede
+        {preview.merged ? ` (${preview.merged} merged)` : ""} ·{" "}
+        {preview.preservedDispositioned ?? "?"} preserved — nothing is deleted;
+        superseded entries stay queryable as history
       </span>
       <button onClick={() => void post("apply")} disabled={busy} className="rounded bg-violet-700 px-2 py-0.5 text-white disabled:opacity-40">
         Apply
@@ -458,7 +471,7 @@ function EntryCard({
         </div>
       )}
 
-      {!e.linkedTrackedItem && e.reviewState !== "PROMOTED_TO_OPERATIONS" && (
+      {!e.linkedTrackedItem && e.reviewState !== "PROMOTED_TO_OPERATIONS" && e.reviewState !== "SUPERSEDED" && (
         <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
           {mode === "promote" ? (
             <>

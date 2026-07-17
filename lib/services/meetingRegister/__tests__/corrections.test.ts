@@ -11,8 +11,8 @@ vi.mock("@/lib/prisma", () => ({
     return state.prisma;
   },
 }));
-const auditMock = vi.hoisted(() => vi.fn(async () => {}));
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+// Real audit module (fail-closed in-tx persistence) — stdout suppressed.
+process.env.OBSERVABILITY_AUDIT_QUIET = "true";
 
 import { applyCorrection } from "../corrections";
 
@@ -47,7 +47,6 @@ async function seed() {
 
 beforeEach(async () => {
   state.prisma = buildPrisma();
-  auditMock.mockClear();
   await seed();
 });
 
@@ -203,5 +202,96 @@ describe("MARK_UNKNOWN", () => {
     const seg = state.prisma.meetingTranscriptSegment.rows[2];
     expect(seg.isUnknownSpeaker).toBe(true);
     expect(seg.originalSpeakerLabel).toBe("SPEAKER_2");
+  });
+});
+
+describe("atomicity (release blocker 2) — mutation + history + audit commit together", () => {
+  it("rolls back the transcript mutation when correction-history creation fails", async () => {
+    state.prisma.meetingTranscriptCorrection.create = async () => {
+      throw new Error("history store down");
+    };
+    await expect(
+      applyCorrection(
+        1, 5,
+        { correctionType: "EDIT_TEXT", segmentId: 1, newText: "We will pour the deck Saturday." },
+        ACTOR
+      )
+    ).rejects.toThrow("history store down");
+    // The segment text did NOT change — no correction exists without history.
+    expect(state.prisma.meetingTranscriptSegment.rows[0].currentText).toBe(
+      "We will pour the deck Friday morning."
+    );
+    expect(state.prisma.meetingTranscriptCorrection.rows).toHaveLength(0);
+    expect(state.prisma.auditEvent.rows).toHaveLength(0);
+  });
+
+  it("rolls back the transcript mutation when the AuditEvent write fails", async () => {
+    state.prisma.auditEvent.create = async () => {
+      throw new Error("audit store down");
+    };
+    await expect(
+      applyCorrection(
+        1, 5,
+        { correctionType: "EDIT_TEXT", segmentId: 1, newText: "We will pour the deck Saturday." },
+        ACTOR
+      )
+    ).rejects.toThrow("audit store down");
+    expect(state.prisma.meetingTranscriptSegment.rows[0].currentText).toBe(
+      "We will pour the deck Friday morning."
+    );
+    // No history row claims a correction that did not occur.
+    expect(state.prisma.meetingTranscriptCorrection.rows).toHaveLength(0);
+  });
+
+  it("rolls back speaker reassignment (single + bulk) and merges the same way", async () => {
+    state.prisma.auditEvent.create = async () => {
+      throw new Error("audit store down");
+    };
+    await expect(
+      applyCorrection(1, 5, { correctionType: "REASSIGN_SEGMENT", segmentId: 1, toValue: "SPEAKER_2" }, ACTOR)
+    ).rejects.toThrow("audit store down");
+    await expect(
+      applyCorrection(1, 5, { correctionType: "REASSIGN_ALL_MATCHING", fromSpeakerLabel: "SPEAKER_2", toValue: "SPEAKER_1" }, ACTOR)
+    ).rejects.toThrow("audit store down");
+    await expect(
+      applyCorrection(1, 5, { correctionType: "MERGE_SPEAKERS", fromSpeakerLabel: "SPEAKER_2", toValue: "SPEAKER_1" }, ACTOR)
+    ).rejects.toThrow("audit store down");
+    // Every overlay label is exactly as seeded — all three ops rolled back.
+    expect(
+      state.prisma.meetingTranscriptSegment.rows.map((s) => s.currentSpeakerLabel)
+    ).toEqual(["SPEAKER_1", "SPEAKER_2", "SPEAKER_2"]);
+    expect(state.prisma.meetingTranscriptCorrection.rows).toHaveLength(0);
+  });
+
+  it("rolls back a split entirely (original stays active, no halves persist)", async () => {
+    state.prisma.meetingTranscriptCorrection.create = async () => {
+      throw new Error("history store down");
+    };
+    await expect(
+      applyCorrection(1, 5, { correctionType: "SPLIT_SEGMENT", segmentId: 2, splitOffset: 11 }, ACTOR)
+    ).rejects.toThrow("history store down");
+    const rows = state.prisma.meetingTranscriptSegment.rows;
+    expect(rows).toHaveLength(3); // no replacement halves persisted
+    expect(rows[1]).toMatchObject({ id: 2, isActive: true });
+  });
+
+  it("on success, mutation, history row, display rebuild and audit row all exist together", async () => {
+    const result = await applyCorrection(
+      1, 5,
+      { correctionType: "EDIT_TEXT", segmentId: 1, newText: "We will pour the deck Saturday.", reason: "spoken correction" },
+      ACTOR
+    );
+    expect(result.ok).toBe(true);
+    expect(state.prisma.meetingTranscriptSegment.rows[0].currentText).toBe("We will pour the deck Saturday.");
+    expect(state.prisma.meetingTranscriptCorrection.rows).toHaveLength(1);
+    const meeting = state.prisma.meeting.rows[0];
+    expect(meeting.transcript).toContain("We will pour the deck Saturday.");
+    const audits = state.prisma.auditEvent.rows.filter((a) => a.action === "transcript_corrected");
+    expect(audits).toHaveLength(1);
+    expect(JSON.parse(audits[0].payloadJson as string)).toMatchObject({
+      bidId: 1,
+      meetingId: 5,
+      correctionType: "EDIT_TEXT",
+    });
   });
 });

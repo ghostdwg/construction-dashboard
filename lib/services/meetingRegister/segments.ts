@@ -13,6 +13,9 @@
 import { prisma } from "@/lib/prisma";
 import type { ServiceResult } from "./types";
 
+type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+type Db = PrismaTx | typeof prisma;
+
 export type ParsedSegment = {
   segmentIndex: number;
   startSec: number | null;
@@ -139,8 +142,8 @@ export async function materializeSegments(
   return { ok: true, value: { created: parsed.length, existing: 0 } };
 }
 
-export async function listSegments(bidId: number, meetingId: number) {
-  return prisma.meetingTranscriptSegment.findMany({
+export async function listSegments(bidId: number, meetingId: number, db: Db = prisma) {
+  return db.meetingTranscriptSegment.findMany({
     where: { meetingId, bidId, isActive: true },
     orderBy: { sortKey: "asc" },
   });
@@ -161,12 +164,15 @@ function formatTimestamp(startSec: number | null): string {
  * Rebuild the DERIVED display transcript (Meeting.transcript) from the
  * current segment overlay so downstream consumers (analysis rerun, PDF)
  * see corrections. Raw JSON is untouched — this is projection, not source.
+ * Accepts a transaction client so correction ops can rebuild atomically
+ * with the segment mutation they record.
  */
 export async function rebuildDisplayTranscript(
   bidId: number,
-  meetingId: number
+  meetingId: number,
+  db: Db = prisma
 ): Promise<ServiceResult<{ lineCount: number }>> {
-  const segments = await listSegments(bidId, meetingId);
+  const segments = await listSegments(bidId, meetingId, db);
   if (segments.length === 0) return { ok: true, value: { lineCount: 0 } };
 
   const lines = segments.map((seg) => {
@@ -176,7 +182,7 @@ export async function rebuildDisplayTranscript(
       : seg.currentSpeakerLabel ?? "[UNKNOWN]";
     return `${ts ? ts + " " : ""}${speaker}: ${seg.currentText}`;
   });
-  await prisma.meeting.update({
+  await db.meeting.update({
     where: { id: meetingId },
     data: { transcript: lines.join("\n") },
   });

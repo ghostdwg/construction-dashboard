@@ -12,8 +12,8 @@ vi.mock("@/lib/prisma", () => ({
     return state.prisma;
   },
 }));
-const auditMock = vi.hoisted(() => vi.fn(async () => {}));
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+// Real audit module (fail-closed in-tx persistence) — stdout suppressed.
+process.env.OBSERVABILITY_AUDIT_QUIET = "true";
 
 import { linkEntryToItem, promoteEntry } from "../promotion";
 
@@ -42,7 +42,6 @@ async function seedEntry(overrides: Record<string, unknown> = {}) {
 
 beforeEach(async () => {
   state.prisma = buildPrisma();
-  auditMock.mockClear();
   await state.prisma.meeting.create({ data: { id: 5, bidId: 1 } });
   await state.prisma.meeting.create({ data: { id: 6, bidId: 1 } });
 });
