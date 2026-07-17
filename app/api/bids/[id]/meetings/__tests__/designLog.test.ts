@@ -236,7 +236,7 @@ describe("confirm", () => {
     expect(res.status).toBe(200);
     const { linkedTrackedItemId } = (await res.json()) as { linkedTrackedItemId: number };
     const item = h.items.find((i) => i.id === linkedTrackedItemId)!;
-    expect(item.sourceKind).toBe("meeting");
+    expect(item.sourceKind).toBe("meeting_design_change"); // canonical (legacy rows keep "meeting")
     expect(item.sourceMeetingId).toBe(5);
     expect(item.evidenceExcerpt).toBe("Let's go F-2 in lieu of F-1 on the louvers.");
     expect(item.sourceLocator).toBe("08 91 19");

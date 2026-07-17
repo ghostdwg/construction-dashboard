@@ -218,7 +218,7 @@ describe("trackedItems service", () => {
     expect(r.ok).toBe(true);
     const item = h.items[0];
     expect(item.kind).toBe("OAC_ACTION");
-    expect(item.sourceKind).toBe("meeting");
+    expect(item.sourceKind).toBe("meeting_action_item"); // canonical (legacy rows keep "meeting")
     expect(item.sourceMeetingId).toBe(12);
     expect(item.sourceMeetingActionItemId).toBe(77);
     expect(item.evidenceExcerpt).toMatch(/00:41:20/);

@@ -114,7 +114,7 @@ describe("POST spawn", () => {
     expect(json.spawnedItemId).toBe(json.trackedItemId);
 
     const item = h.items.find((i) => i.id === json.trackedItemId)!;
-    expect(item.sourceKind).toBe("consultant_report");
+    expect(item.sourceKind).toBe("consultant_observation"); // canonical (legacy rows keep "consultant_report")
     expect(item.sourceConsultantObservationId).toBe(100);
     expect(item.evidenceExcerpt).toBe("Handrail at stair 2 not yet installed");
     expect(item.dueDate).toBeNull(); // consultantTargetDate NEVER copied

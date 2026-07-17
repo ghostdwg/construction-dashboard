@@ -232,7 +232,7 @@ describe("POST accept-new", () => {
     expect(res.status).toBe(201);
     const { trackedItemId } = (await res.json()) as { trackedItemId: number };
     const item = h.items.find((i) => i.id === trackedItemId)!;
-    expect(item.sourceKind).toBe("consultant_report");
+    expect(item.sourceKind).toBe("consultant_observation"); // canonical (legacy rows keep "consultant_report")
     expect(item.sourceConsultantObservationId).toBe(id);
     expect(item.evidenceExcerpt).toBe("Handrail at stair 2 not yet installed");
     expect(item.sourceLocator).toBe("p.3");

@@ -23,6 +23,11 @@ import {
   promotedActionItemIds,
   statusCounts,
 } from "./registerViewHelpers";
+import {
+  TRACKED_ITEM_SOURCE_KIND,
+  isMeetingSourceKind,
+  sourceKindLabel,
+} from "@/lib/services/trackedItems/sourceKinds";
 
 type TrackedItemRow = {
   id: number;
@@ -261,22 +266,34 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
 }
 
 function sourceSummary(item: TrackedItemRow): string {
-  if (item.sourceKind === "meeting") {
+  // Canonical + legacy vocabulary both resolve here — legacy rows
+  // ("meeting", "consultant_report", "spec_section") are readable forever
+  // (lib/services/trackedItems/sourceKinds.ts is the single vocabulary).
+  if (isMeetingSourceKind(item.sourceKind)) {
     const meeting = item.sourceMeetingId ? `meeting #${item.sourceMeetingId}` : "meeting";
-    return `${meeting}${item.sourceMeetingActionItemId ? ` · action item #${item.sourceMeetingActionItemId}` : ""}`;
+    const detail = item.sourceMeetingActionItemId
+      ? ` · action item #${item.sourceMeetingActionItemId}`
+      : item.sourceKind === TRACKED_ITEM_SOURCE_KIND.MEETING_REGISTER
+        ? " · register entry"
+        : item.sourceKind === TRACKED_ITEM_SOURCE_KIND.MEETING_DESIGN_CHANGE
+          ? " · design change"
+          : "";
+    return `${meeting}${detail}`;
   }
-  if (item.sourceKind === "spec_section") return "spec section";
-  if (item.sourceKind === "field_report") {
+  if (item.sourceKind === TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT) {
     return item.sourceFieldReportId
       ? `field report #${item.sourceFieldReportId}`
       : "field report";
   }
-  if (item.sourceKind === "consultant_report") {
+  if (
+    item.sourceKind === TRACKED_ITEM_SOURCE_KIND.CONSULTANT_OBSERVATION ||
+    item.sourceKind === "consultant_report"
+  ) {
     return item.sourceConsultantObservationId
       ? `consultant observation #${item.sourceConsultantObservationId}`
       : "consultant report";
   }
-  return "manual entry";
+  return sourceKindLabel(item.sourceKind);
 }
 
 function ItemRow({
@@ -454,7 +471,7 @@ function ItemDetail({
             {item.sourceLocator ? ` · ${item.sourceLocator}` : ""}):
           </p>
           <p className="mt-1 italic text-zinc-700 dark:text-zinc-300">"{item.evidenceExcerpt}"</p>
-          {item.sourceKind === "meeting" && (
+          {isMeetingSourceKind(item.sourceKind) && (
             <p className="mt-1 text-zinc-400 dark:text-zinc-500">
               Speaker attributions in meeting evidence are draft labels, not verified identity.
             </p>

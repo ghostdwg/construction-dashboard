@@ -24,6 +24,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { TRACKED_ITEM_PRIORITIES, isTrackedItemKind } from "@/lib/services/trackedItems/fsm";
+import { TRACKED_ITEM_SOURCE_KIND } from "@/lib/services/trackedItems/sourceKinds";
 import { audit, actorLabel, type Actor, type ServiceResult } from "./index";
 
 export const OBSERVATION_STATES = [
@@ -196,7 +197,9 @@ async function createItemFromObservation(
         priority,
         assigneeName: input.assigneeName?.trim() || null,
         dueDate: input.dueDate ?? null,
-        sourceKind: "consultant_report",
+        // Canonical value (legacy rows carry "consultant_report" — readable
+        // forever, never rewritten; see lib/services/trackedItems/sourceKinds.ts).
+        sourceKind: TRACKED_ITEM_SOURCE_KIND.CONSULTANT_OBSERVATION,
         sourceConsultantObservationId: observationId,
         evidenceExcerpt: obs.observationText,
         sourceLocator: obs.sourcePage,

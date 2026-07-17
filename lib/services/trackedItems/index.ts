@@ -25,6 +25,7 @@ import {
   type TrackedItemKind,
   type TrackedItemStatus,
 } from "./fsm";
+import { TRACKED_ITEM_SOURCE_KIND } from "./sourceKinds";
 
 export type { TrackedItemKind, TrackedItemStatus } from "./fsm";
 
@@ -166,7 +167,7 @@ export async function createTrackedItem(
       assigneeName: input.assigneeName?.trim() || null,
       assigneeEmail: input.assigneeEmail?.trim() || null,
       dueDate: input.dueDate ?? null,
-      sourceKind: "manual",
+      sourceKind: TRACKED_ITEM_SOURCE_KIND.MANUAL,
       evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
       sourceLocator: input.sourceLocator?.trim() || null,
       // Explicit even though it matches the schema default — every producer
@@ -179,7 +180,7 @@ export async function createTrackedItem(
 
   await audit("tracked_item_create", bidId, String(created.id), actor, "created", {
     kind: input.kind,
-    sourceKind: "manual",
+    sourceKind: TRACKED_ITEM_SOURCE_KIND.MANUAL,
   });
 
   return { ok: true, value: created };
@@ -225,7 +226,9 @@ export async function promoteMeetingActionItem(
         assigneeName: source.assignedToName?.trim() || null,
         dueDate: source.dueDate ?? null,
         carriedFromDate: source.carriedFromDate ?? null,
-        sourceKind: "meeting",
+        // Canonical value (legacy rows carry "meeting" — readable forever,
+        // never rewritten; see ./sourceKinds.ts).
+        sourceKind: TRACKED_ITEM_SOURCE_KIND.MEETING_ACTION_ITEM,
         sourceMeetingId: source.meetingId ?? null,
         sourceMeetingActionItemId: source.id,
         // Paraphrased transcript evidence carried forward verbatim from the
@@ -320,7 +323,7 @@ export async function createItemFromFieldReport(
       priority,
       assigneeName: input.assigneeName?.trim() || null,
       dueDate: input.dueDate ?? null,
-      sourceKind: "field_report",
+      sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT,
       sourceFieldReportId: fieldReportId,
       evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
       sourceLocator: input.sourceLocator?.trim() || null,
@@ -337,7 +340,7 @@ export async function createItemFromFieldReport(
     String(created.id),
     actor,
     "created_from_field_report",
-    { kind: "FIELD_ITEM", sourceKind: "field_report", fieldReportId }
+    { kind: "FIELD_ITEM", sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT, fieldReportId }
   );
 
   return { ok: true, value: created };

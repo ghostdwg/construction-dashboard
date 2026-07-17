@@ -9,6 +9,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { emitAuditEvent } from "@/lib/observability/audit";
+import { TRACKED_ITEM_SOURCE_KIND } from "@/lib/services/trackedItems/sourceKinds";
 
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -93,7 +94,9 @@ export async function confirmDesignChange(
             ? `Design change — was: ${change.priorIntent.slice(0, 1500)}`
             : null,
           priority: change.severity === "CRITICAL" ? "CRITICAL" : "MEDIUM",
-          sourceKind: "meeting",
+          // Canonical value (legacy rows carry "meeting" — readable forever,
+          // never rewritten; see lib/services/trackedItems/sourceKinds.ts).
+          sourceKind: TRACKED_ITEM_SOURCE_KIND.MEETING_DESIGN_CHANGE,
           sourceMeetingId: meetingId,
           evidenceExcerpt: change.sourceQuote ?? change.changeText,
           sourceLocator: change.affectedSpec,
