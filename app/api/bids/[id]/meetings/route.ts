@@ -6,6 +6,7 @@
 //   Create a new meeting. Body: { title, meetingDate, meetingType?, location? }
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 const VALID_TYPES = new Set([
   "GENERAL", "OAC", "SUBCONTRACTOR", "PRECONSTRUCTION", "SAFETY", "KICKOFF",
@@ -19,6 +20,9 @@ export async function GET(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const meetings = await prisma.meeting.findMany({
     where: { bidId },
@@ -59,6 +63,9 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const body = (await request.json()) as {
     title?: string;

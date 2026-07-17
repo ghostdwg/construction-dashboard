@@ -30,6 +30,10 @@ function resetDb() {
   blobData.clear();
 }
 
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({ ok: true, user: { id: "u1", role: "admin" } })),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     meeting: {

@@ -24,6 +24,9 @@ import {
   parseMeetingAnalysis,
   writeMeetingAnalysis,
 } from "@/lib/meeting-analysis";
+import { meetingRouteContext } from "@/lib/services/meetingRegister/routeHelpers";
+import { recordAnalysisRun } from "@/lib/services/meetingRegister/extractionRuns";
+import { materializeSegments } from "@/lib/services/meetingRegister/segments";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -33,10 +36,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string; meetingId: string }> },
 ) {
   const { id, meetingId } = await params;
-  const bidId = parseInt(id, 10);
-  const mId   = parseInt(meetingId, 10);
-  if (isNaN(bidId) || isNaN(mId))
-    return Response.json({ error: "Invalid id" }, { status: 400 });
+  // R2-B1 hardening: requireBidAccess before any body parsing/service work.
+  const ctx = await meetingRouteContext(id, meetingId);
+  if (!ctx.ok) return ctx.response;
+  const { bidId, meetingId: mId, actor } = ctx;
 
   // Load meeting + project context
   const meeting = await prisma.meeting.findFirst({
@@ -178,7 +181,28 @@ export async function POST(
 
     const analysis = parseMeetingAnalysis(JSON.stringify(sidecarData.analysis));
 
-    await writeMeetingAnalysis(mId, bidId, analysis);
+    // R2-B1 — extraction-run discipline (rules 7–8): the FIRST analysis
+    // applies immediately (lifecycle write + register projection); every
+    // subsequent analysis lands as a PREVIEWED run for human apply/discard
+    // so corrections' downstream effects are previewed, never auto-applied.
+    const priorApplied = await prisma.meetingExtractionRun.count({
+      where: { meetingId: mId, status: "APPLIED" },
+    });
+
+    let runId: number | null = null;
+    let runStatus = "APPLIED";
+    if (priorApplied === 0) {
+      await materializeSegments(bidId, mId); // citation anchors for the projection
+      const writeResult = await writeMeetingAnalysis(mId, bidId, analysis);
+      const run = await recordAnalysisRun(bidId, mId, analysis, writeResult, actor);
+      if (run.ok) runId = run.value.runId;
+    } else {
+      const run = await recordAnalysisRun(bidId, mId, analysis, null, actor);
+      if (run.ok) {
+        runId = run.value.runId;
+        runStatus = run.value.status;
+      }
+    }
 
     await prisma.meeting.update({
       where: { id: mId },
@@ -188,6 +212,8 @@ export async function POST(
     return Response.json({
       ok: true,
       analysisVersion: meeting.analysisVersion + 1,
+      extractionRunId: runId,
+      extractionRunStatus: runStatus,
       participantsResolved: analysis.section2.length,
       actionItemsCreated: analysis.section5.length,
       decisionsFound: analysis.section4.length,

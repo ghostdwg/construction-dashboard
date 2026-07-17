@@ -8,6 +8,7 @@
 // Body: { mapping: { "SPEAKER_0": "Mike Johnson", "SPEAKER_1": "Sarah Chen" } }
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
 
@@ -20,6 +21,9 @@ export async function PATCH(
   const mId   = parseInt(meetingId, 10);
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const meeting = await prisma.meeting.findFirst({
     where:  { id: mId, bidId },

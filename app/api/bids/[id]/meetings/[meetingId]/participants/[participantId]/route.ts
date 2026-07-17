@@ -3,6 +3,7 @@
 //   labels (SPEAKER_A → "John Smith, GC PM") after transcription.
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 export async function PATCH(
   request: Request,
@@ -14,6 +15,9 @@ export async function PATCH(
   const pId = parseInt(participantId, 10);
   if (isNaN(bidId) || isNaN(mId) || isNaN(pId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   // Verify ownership via meeting → bid
   const participant = await prisma.meetingParticipant.findFirst({

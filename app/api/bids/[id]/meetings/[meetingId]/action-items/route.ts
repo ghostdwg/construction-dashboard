@@ -6,6 +6,7 @@
 //   dueDate?, priority?, notes? }
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 
@@ -18,6 +19,9 @@ export async function GET(
   const mId = parseInt(meetingId, 10);
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const items = await prisma.meetingActionItem.findMany({
     where: { meetingId: mId, bidId },
@@ -51,6 +55,9 @@ export async function POST(
   const mId = parseInt(meetingId, 10);
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const meeting = await prisma.meeting.findFirst({
     where: { id: mId, bidId },

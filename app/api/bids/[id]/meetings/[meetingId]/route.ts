@@ -10,6 +10,7 @@
 //   Deletes meeting and all related participants + action items (cascade).
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 const VALID_TYPES = new Set([
   "GENERAL", "OAC", "SUBCONTRACTOR", "PRECONSTRUCTION", "SAFETY", "KICKOFF",
@@ -38,6 +39,9 @@ export async function GET(
   const mId = parseInt(meetingId, 10);
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const meeting = await prisma.meeting.findFirst({
     where: { id: mId, bidId },
@@ -120,6 +124,9 @@ export async function PATCH(
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   const existing = await prisma.meeting.findFirst({
     where: { id: mId, bidId },
     select: { id: true },
@@ -165,6 +172,9 @@ export async function DELETE(
   const mId = parseInt(meetingId, 10);
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const existing = await prisma.meeting.findFirst({
     where: { id: mId, bidId },

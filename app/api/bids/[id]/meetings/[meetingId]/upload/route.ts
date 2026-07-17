@@ -9,6 +9,7 @@
 // transcript manually.
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -22,6 +23,9 @@ export async function POST(
   const mId = parseInt(meetingId, 10);
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const meeting = await prisma.meeting.findFirst({
     where: { id: mId, bidId },

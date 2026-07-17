@@ -6,6 +6,7 @@
 // DELETE /api/bids/[id]/meetings/[meetingId]/action-items/[itemId]
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 const VALID_STATUSES = new Set(["OPEN", "IN_PROGRESS", "CLOSED", "DEFERRED"]);
@@ -20,6 +21,9 @@ export async function PATCH(
   const aId = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(mId) || isNaN(aId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const existing = await prisma.meetingActionItem.findFirst({
     where: { id: aId, meetingId: mId, bidId },
@@ -70,6 +74,9 @@ export async function DELETE(
   const aId = parseInt(itemId, 10);
   if (isNaN(bidId) || isNaN(mId) || isNaN(aId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const existing = await prisma.meetingActionItem.findFirst({
     where: { id: aId, meetingId: mId, bidId },
