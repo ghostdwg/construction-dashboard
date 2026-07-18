@@ -10,6 +10,16 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
+import type { Prisma } from "@prisma/client";
+import {
+  FROZEN_TRANSCRIPT_CONFLICT,
+  meetingTranscriptMutationGate,
+  withMutableMeetingTranscript,
+} from "@/lib/services/meetingRegister/retention";
+import {
+  emitRegisterAuditPostCommit,
+  writeRegisterAuditTx,
+} from "@/lib/services/meetingRegister/txAudit";
 
 const SIDECAR_URL     = process.env.SIDECAR_URL     ?? "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
@@ -90,6 +100,38 @@ export async function GET(
   if (meeting.status !== "TRANSCRIBING" || !meeting.transcriptionJobId)
     return Response.json({ status: meeting.status });
 
+  // A selected job must never be polled once transcript history is frozen:
+  // provider output is not an audited correction overlay.
+  const preflight = await meetingTranscriptMutationGate(prisma, mId, bidId);
+  if (!preflight.ok) {
+    return Response.json(
+      { error: preflight.reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
+      { status: preflight.reason === "not-found" ? 404 : 409 },
+    );
+  }
+
+  const commitState = async (
+    update: Prisma.MeetingUpdateInput,
+    participants: SidecarParticipant[],
+    action: string,
+    payload: Record<string, unknown>,
+  ) => {
+    const guarded = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
+      await tx.meeting.update({ where: { id: mId }, data: update });
+      await upsertParticipants(tx, mId, participants);
+      return writeRegisterAuditTx(tx, {
+        action,
+        decision: "committed",
+        subjectKind: "Meeting",
+        subjectId: mId,
+        actor: access.user,
+        payload: { bidId, participantCount: participants.length, ...payload },
+      });
+    });
+    if (guarded.ok) emitRegisterAuditPostCommit(guarded.value);
+    return guarded;
+  };
+
   const isHybrid = meeting.transcriptionJobId.startsWith("HYBRID:");
   // Unwrap the real job ID for the sidecar poll
   const realJobId = isHybrid
@@ -119,7 +161,15 @@ export async function GET(
     if (data.status === "processing") return Response.json({ status: "TRANSCRIBING" });
 
     if (data.status === "error") {
-      await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
+      const failed = await commitState(
+        { status: "FAILED" },
+        [],
+        "meeting.transcription_failed",
+        { transcriptionSource: isHybrid ? "HYBRID" : "STANDARD" },
+      );
+      if (!failed.ok) {
+        return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+      }
       return Response.json({ status: "FAILED", error: data.error });
     }
 
@@ -127,36 +177,48 @@ export async function GET(
 
     if (!isHybrid) {
       // Standard flow — save transcript directly, advance to READY
-      await prisma.$transaction(async (tx) => {
-        await tx.meeting.update({
-          where: { id: mId },
-          data: {
-            status:        "READY",
-            transcript:    data.transcript  ?? null,
-            rawTranscript: data.rawTranscript ?? null,
-            durationSeconds: data.durationSeconds ?? null,
-          },
-        });
-        await upsertParticipants(tx, mId, data.participants ?? []);
-      });
+      const completed = await commitState(
+        {
+          status: "READY",
+          transcript: data.transcript ?? null,
+          rawTranscript: data.rawTranscript ?? null,
+          durationSeconds: data.durationSeconds ?? null,
+        },
+        data.participants ?? [],
+        "meeting.transcription_completed",
+        {
+          completionPath: "STANDARD",
+          transcriptLength: data.transcript?.length ?? 0,
+          rawTranscriptLength: data.rawTranscript?.length ?? 0,
+        },
+      );
+      if (!completed.ok) {
+        return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+      }
       return Response.json({ status: "READY" });
     }
 
     // ── HYBRID: call sidecar merge-hybrid ─────────────────────────────────────
     if (!meeting.vttContent) {
       // VTT content missing — fall back to standard transcript
-      await prisma.$transaction(async (tx) => {
-        await tx.meeting.update({
-          where: { id: mId },
-          data: {
-            status:        "READY",
-            transcript:    data.transcript  ?? null,
-            rawTranscript: data.rawTranscript ?? null,
-            durationSeconds: data.durationSeconds ?? null,
-          },
-        });
-        await upsertParticipants(tx, mId, data.participants ?? []);
-      });
+      const completed = await commitState(
+        {
+          status: "READY",
+          transcript: data.transcript ?? null,
+          rawTranscript: data.rawTranscript ?? null,
+          durationSeconds: data.durationSeconds ?? null,
+        },
+        data.participants ?? [],
+        "meeting.transcription_completed",
+        {
+          completionPath: "HYBRID_NO_VTT_FALLBACK",
+          transcriptLength: data.transcript?.length ?? 0,
+          rawTranscriptLength: data.rawTranscript?.length ?? 0,
+        },
+      );
+      if (!completed.ok) {
+        return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+      }
       return Response.json({ status: "READY" });
     }
 
@@ -184,19 +246,25 @@ export async function GET(
 
     if (!mergeRes.ok) {
       // Merge failed — fall back to plain diarization transcript
-      await prisma.$transaction(async (tx) => {
-        await tx.meeting.update({
-          where: { id: mId },
-          data: {
-            status:        "READY",
-            transcript:    data.transcript  ?? null,
-            rawTranscript: data.rawTranscript ?? null,
-            durationSeconds: data.durationSeconds ?? null,
-            vttContent:    null,
-          },
-        });
-        await upsertParticipants(tx, mId, data.participants ?? []);
-      });
+      const completed = await commitState(
+        {
+          status: "READY",
+          transcript: data.transcript ?? null,
+          rawTranscript: data.rawTranscript ?? null,
+          durationSeconds: data.durationSeconds ?? null,
+          vttContent: null,
+        },
+        data.participants ?? [],
+        "meeting.transcription_completed",
+        {
+          completionPath: "HYBRID_MERGE_FALLBACK",
+          transcriptLength: data.transcript?.length ?? 0,
+          rawTranscriptLength: data.rawTranscript?.length ?? 0,
+        },
+      );
+      if (!completed.ok) {
+        return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+      }
       return Response.json({ status: "READY" });
     }
 
@@ -220,20 +288,27 @@ export async function GET(
 
     const nextStatus = hasInRoom ? "AWAITING_NAMES" : "READY";
 
-    await prisma.$transaction(async (tx) => {
-      await tx.meeting.update({
-        where: { id: mId },
-        data: {
-          status:          nextStatus,
-          transcript:      merged.transcript,
-          rawTranscript:   data.rawTranscript ?? null,
-          durationSeconds: merged.durationSeconds,
-          speakerMapping:  speakerMappingJson,
-          vttContent:      null,  // clear — no longer needed
-        },
-      });
-      await upsertParticipants(tx, mId, merged.participants);
-    });
+    const completed = await commitState(
+      {
+        status: nextStatus,
+        transcript: merged.transcript,
+        rawTranscript: data.rawTranscript ?? null,
+        durationSeconds: merged.durationSeconds,
+        speakerMapping: speakerMappingJson,
+        vttContent: null, // clear — no longer needed
+      },
+      merged.participants,
+      "meeting.transcription_completed",
+      {
+        completionPath: "HYBRID_MERGED",
+        transcriptLength: merged.transcript.length,
+        rawTranscriptLength: data.rawTranscript?.length ?? 0,
+        inRoomClusterCount: inRoomClusters.length,
+      },
+    );
+    if (!completed.ok) {
+      return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+    }
 
     return Response.json({ status: nextStatus });
 

@@ -25,6 +25,10 @@ import {
 } from "@/lib/meeting-analysis";
 import { meetingRouteContext } from "@/lib/services/meetingRegister/routeHelpers";
 import { recordAnalysisRun } from "@/lib/services/meetingRegister/extractionRuns";
+import {
+  FROZEN_TRANSCRIPT_CONFLICT,
+  meetingTranscriptMutationGate,
+} from "@/lib/services/meetingRegister/retention";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -57,23 +61,40 @@ export async function POST(
   });
   if (!meeting) return Response.json({ error: "Meeting not found" }, { status: 404 });
 
-  const apiKey = await getSetting("ANTHROPIC_API_KEY");
-  if (!apiKey)
-    return Response.json(
-      { error: "ANTHROPIC_API_KEY not configured — set it in /settings → AI Configuration" },
-      { status: 503 },
-    );
-
   const body = await request.json().catch(() => ({})) as {
     transcript?: string;
     mode?: "full" | "actions_only" | "flags_only";
   };
 
-  const transcriptText = body.transcript?.trim() || meeting.transcript?.trim();
+  // Analysis always consumes the stored display transcript, which is rebuilt
+  // by the correction overlay after materialization. Client text is accepted
+  // only when it is exactly the already-stored value; alternate wording must
+  // first enter through audited initialization/correction workflows.
+  if (body.transcript !== undefined && body.transcript !== meeting.transcript) {
+    const gate = await meetingTranscriptMutationGate(prisma, mId, bidId);
+    return Response.json(
+      {
+        error:
+          !gate.ok && gate.reason === "frozen"
+            ? FROZEN_TRANSCRIPT_CONFLICT
+            : "Initialize manual transcript text through the audited Meeting PATCH before analysis.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const transcriptText = meeting.transcript?.trim();
   if (!transcriptText)
     return Response.json(
       { error: "No transcript — upload audio or paste transcript before analyzing" },
       { status: 400 },
+    );
+
+  const apiKey = await getSetting("ANTHROPIC_API_KEY");
+  if (!apiKey)
+    return Response.json(
+      { error: "ANTHROPIC_API_KEY not configured — set it in /settings → AI Configuration" },
+      { status: 503 },
     );
 
   const mode = body.mode ?? "full";

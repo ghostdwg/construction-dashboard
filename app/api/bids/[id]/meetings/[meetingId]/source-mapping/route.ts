@@ -3,6 +3,16 @@ import { requireBidAccess } from "@/lib/auth-helpers";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import { readMeetingStorageBuffer } from "@/lib/services/meetings/storagePath";
+import type { Prisma } from "@prisma/client";
+import {
+  FROZEN_TRANSCRIPT_CONFLICT,
+  meetingTranscriptMutationGate,
+  withMutableMeetingTranscript,
+} from "@/lib/services/meetingRegister/retention";
+import {
+  emitRegisterAuditPostCommit,
+  writeRegisterAuditTx,
+} from "@/lib/services/meetingRegister/txAudit";
 
 const SIDECAR_URL = process.env.SIDECAR_URL ?? "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
@@ -26,6 +36,16 @@ export async function POST(
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
 
+  // Source mapping re-arms transcription. Freeze before JSON parsing, audio
+  // reads, or provider work when accountable transcript history exists.
+  const preflight = await meetingTranscriptMutationGate(prisma, mId, bidId);
+  if (!preflight.ok) {
+    return Response.json(
+      { error: preflight.reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
+      { status: preflight.reason === "not-found" ? 404 : 409 },
+    );
+  }
+
   const body = (await request.json()) as {
     sources?: Record<string, TeamsSource>;
     audioOffsetSeconds?: number;
@@ -45,6 +65,26 @@ export async function POST(
   if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
   if (meeting.status !== "AWAITING_SOURCE_MAP")
     return Response.json({ error: "Meeting is not awaiting source mapping" }, { status: 400 });
+
+  const commitState = async (
+    data: Prisma.MeetingUpdateInput,
+    action: string,
+    payload: Record<string, unknown>,
+  ) => {
+    const guarded = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
+      await tx.meeting.update({ where: { id: mId }, data });
+      return writeRegisterAuditTx(tx, {
+        action,
+        decision: "committed",
+        subjectKind: "Meeting",
+        subjectId: mId,
+        actor: access.user,
+        payload: { bidId, ...payload },
+      });
+    });
+    if (guarded.ok) emitRegisterAuditPostCommit(guarded.value);
+    return guarded;
+  };
 
   const existing = meeting.speakerMapping
     ? JSON.parse(meeting.speakerMapping) as Record<string, unknown>
@@ -80,17 +120,28 @@ export async function POST(
       );
     }
   } catch {
-    await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
+    const failed = await commitState(
+      { status: "FAILED" },
+      "meeting.transcription_failed",
+      { completionPath: "HYBRID_SOURCE_AUDIO_READ" },
+    );
+    if (!failed.ok) {
+      return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+    }
     return Response.json({ error: "Failed to read audio file" }, { status: 500 });
   }
 
-  await prisma.meeting.update({
-    where: { id: mId },
-    data: {
+  const armed = await commitState(
+    {
       speakerMapping: JSON.stringify(updatedSpeakerMapping),
       status: "TRANSCRIBING",
     },
-  });
+    "meeting.hybrid_source_mapping_submitted",
+    { sourceCount: Object.keys(sources).length, numSpeakers },
+  );
+  if (!armed.ok) {
+    return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+  }
 
   const headers: Record<string, string> = {};
   if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
@@ -114,19 +165,28 @@ export async function POST(
         body: bgForm,
       });
       if (!res.ok) {
-        await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
+        await commitState(
+          { status: "FAILED" },
+          "meeting.transcription_failed",
+          { completionPath: "HYBRID_SOURCE_SUBMIT", providerStatus: res.status },
+        );
         return;
       }
       const data = (await res.json()) as { transcriptionJobId: string; source: string };
-      await prisma.meeting.update({
-        where: { id: mId },
-        data: {
+      await commitState(
+        {
           transcriptionJobId: `HYBRID:${data.transcriptionJobId}`,
           transcriptionSource: "HYBRID",
         },
-      });
+        "meeting.transcription_started",
+        { transcriptionSource: "HYBRID" },
+      );
     } catch {
-      await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
+      await commitState(
+        { status: "FAILED" },
+        "meeting.transcription_failed",
+        { completionPath: "HYBRID_SOURCE_SUBMIT" },
+      );
     }
   })();
 

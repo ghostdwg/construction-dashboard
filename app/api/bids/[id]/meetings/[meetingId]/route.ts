@@ -15,7 +15,8 @@ import { Prisma } from "@prisma/client";
 import {
   deleteMeetingWithoutHistory,
   DURABLE_HISTORY_CONFLICT,
-  meetingHasDurableHistory,
+  FROZEN_TRANSCRIPT_CONFLICT,
+  withMutableMeetingTranscript,
 } from "@/lib/services/meetingRegister/retention";
 import {
   emitRegisterAuditPostCommit,
@@ -174,7 +175,7 @@ export async function PATCH(
   if (body.summary !== undefined) data.summary = body.summary ?? null;
 
   if (transcript !== undefined) {
-    const outcome = await prisma.$transaction(async (tx) => {
+    const guarded = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
       const existing = await tx.meeting.findFirst({
         where: { id: mId, bidId },
         select: {
@@ -193,10 +194,7 @@ export async function PATCH(
         existing.analyzedAt === null &&
         existing.reviewStatus === "DRAFT" &&
         !existing.transcript;
-      if (
-        !explicitPreAnalysisState ||
-        (await meetingHasDurableHistory(tx, mId, bidId))
-      ) {
+      if (!explicitPreAnalysisState) {
         return { kind: "conflict" as const };
       }
 
@@ -215,6 +213,13 @@ export async function PATCH(
       });
       return { kind: "committed" as const, audit };
     });
+    if (!guarded.ok) {
+      if (guarded.reason === "not-found") {
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+      return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+    }
+    const outcome = guarded.value;
     if (outcome.kind === "not-found") {
       return Response.json({ error: "Not found" }, { status: 404 });
     }
@@ -228,6 +233,32 @@ export async function PATCH(
       );
     }
     emitRegisterAuditPostCommit(outcome.audit);
+    return Response.json({ ok: true });
+  }
+
+  // Status/job controls are transcript-source controls: after durable
+  // materialization they must not be used to re-arm a poll-based overwrite.
+  if ("status" in data || "transcriptionJobId" in data) {
+    const guarded = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
+      await tx.meeting.update({ where: { id: mId }, data });
+      return writeRegisterAuditTx(tx, {
+        action: "meeting.transcription_state_updated",
+        decision: "committed",
+        subjectKind: "Meeting",
+        subjectId: mId,
+        actor: access.user,
+        payload: { bidId, changedFields: Object.keys(data).sort() },
+      });
+    });
+    if (!guarded.ok) {
+      return Response.json(
+        {
+          error: guarded.reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT,
+        },
+        { status: guarded.reason === "not-found" ? 404 : 409 },
+      );
+    }
+    emitRegisterAuditPostCommit(guarded.value);
     return Response.json({ ok: true });
   }
 

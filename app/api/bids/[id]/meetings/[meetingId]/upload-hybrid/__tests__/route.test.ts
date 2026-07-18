@@ -47,6 +47,30 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+// Artifact-path tests isolate storage compatibility. Frozen-boundary behavior
+// is covered by the dedicated transcript-freeze route suite.
+vi.mock("@/lib/services/meetingRegister/retention", () => ({
+  FROZEN_TRANSCRIPT_CONFLICT: "frozen",
+  meetingTranscriptMutationGate: vi.fn(async () => ({ ok: true })),
+  withMutableMeetingTranscript: vi.fn(async (_bidId, _meetingId, mutate) => ({
+    ok: true,
+    value: await mutate({
+      meeting: {
+        update: async ({ data }: { data: Partial<MeetingRow> }) => {
+          db.updates.push(data);
+          if (db.meeting) Object.assign(db.meeting, data);
+          return db.meeting;
+        },
+      },
+    }),
+  })),
+}));
+
+vi.mock("@/lib/services/meetingRegister/txAudit", () => ({
+  writeRegisterAuditTx: vi.fn(async () => ({ action: "synthetic" })),
+  emitRegisterAuditPostCommit: vi.fn(),
+}));
+
 const blobData = new Map<string, Buffer>();
 const blobPutMock = vi.fn(async (key: string, data: Buffer) => {
   blobData.set(key, data);

@@ -10,6 +10,16 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
+import type { Prisma } from "@prisma/client";
+import {
+  FROZEN_TRANSCRIPT_CONFLICT,
+  meetingTranscriptMutationGate,
+  withMutableMeetingTranscript,
+} from "@/lib/services/meetingRegister/retention";
+import {
+  emitRegisterAuditPostCommit,
+  writeRegisterAuditTx,
+} from "@/lib/services/meetingRegister/txAudit";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -27,26 +37,57 @@ export async function POST(
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
 
-  const meeting = await prisma.meeting.findFirst({
-    where: { id: mId, bidId },
-    select: { id: true, status: true },
-  });
-  if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
+  // Freeze check deliberately precedes multipart parsing and provider work.
+  const preflight = await meetingTranscriptMutationGate(prisma, mId, bidId);
+  if (!preflight.ok) {
+    return Response.json(
+      { error: preflight.reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
+      { status: preflight.reason === "not-found" ? 404 : 409 },
+    );
+  }
 
   const formData = await request.formData();
   const audioFile = formData.get("audio") as File | null;
   if (!audioFile)
     return Response.json({ error: "audio file is required" }, { status: 400 });
 
-  // Mark as uploading
-  await prisma.meeting.update({
-    where: { id: mId },
-    data: {
+  const commitState = async (
+    data: Prisma.MeetingUpdateInput,
+    action: string,
+    payload: Record<string, unknown>,
+  ) => {
+    const guarded = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
+      await tx.meeting.update({ where: { id: mId }, data });
+      return writeRegisterAuditTx(tx, {
+        action,
+        decision: "committed",
+        subjectKind: "Meeting",
+        subjectId: mId,
+        actor: access.user,
+        payload: { bidId, ...payload },
+      });
+    });
+    if (guarded.ok) emitRegisterAuditPostCommit(guarded.value);
+    return guarded;
+  };
+
+  // Mark as uploading, atomically with the mandatory audit. The transaction
+  // repeats the freeze decision to close a materialization race after parsing.
+  const started = await commitState(
+    {
       status: "UPLOADING",
       audioFileName: audioFile.name,
       uploadedAt: new Date(),
     },
-  });
+    "meeting.transcription_upload_started",
+    { audioBytes: audioFile.size, contentType: audioFile.type || null },
+  );
+  if (!started.ok) {
+    return Response.json(
+      { error: started.reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
+      { status: started.reason === "not-found" ? 404 : 409 },
+    );
+  }
 
   // Proxy to sidecar
   const sidecarForm = new FormData();
@@ -71,10 +112,14 @@ export async function POST(
 
       if (res.status === 400 && String(err.detail).includes("not configured")) {
         // AssemblyAI not set up — remain PENDING for manual transcript entry
-        await prisma.meeting.update({
-          where: { id: mId },
-          data: { status: "PENDING" },
-        });
+        const pending = await commitState(
+          { status: "PENDING" },
+          "meeting.transcription_unavailable",
+          { providerStatus: res.status },
+        );
+        if (!pending.ok) {
+          return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+        }
         return Response.json({
           ok: false,
           manual: true,
@@ -82,10 +127,14 @@ export async function POST(
         });
       }
 
-      await prisma.meeting.update({
-        where: { id: mId },
-        data: { status: "FAILED" },
-      });
+      const failed = await commitState(
+        { status: "FAILED" },
+        "meeting.transcription_failed",
+        { providerStatus: res.status },
+      );
+      if (!failed.ok) {
+        return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+      }
       return Response.json(
         { error: err.detail ?? "Sidecar error" },
         { status: 502 }
@@ -94,14 +143,18 @@ export async function POST(
 
     const data = (await res.json()) as { transcriptionJobId: string; source: string };
 
-    await prisma.meeting.update({
-      where: { id: mId },
-      data: {
+    const armed = await commitState(
+      {
         status: "TRANSCRIBING",
         transcriptionJobId: data.transcriptionJobId,
         transcriptionSource: data.source,
       },
-    });
+      "meeting.transcription_started",
+      { transcriptionSource: data.source },
+    );
+    if (!armed.ok) {
+      return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+    }
 
     return Response.json({
       ok: true,
@@ -109,10 +162,14 @@ export async function POST(
       source: data.source,
     });
   } catch (err) {
-    await prisma.meeting.update({
-      where: { id: mId },
-      data: { status: "FAILED" },
-    });
+    const failed = await commitState(
+      { status: "FAILED" },
+      "meeting.transcription_failed",
+      { failureClass: err instanceof Error ? err.name : "unknown" },
+    );
+    if (!failed.ok) {
+      return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+    }
     return Response.json({ error: String(err) }, { status: 502 });
   }
 }

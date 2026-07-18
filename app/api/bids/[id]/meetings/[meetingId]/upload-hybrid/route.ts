@@ -12,6 +12,15 @@ import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
 import { meetingAudioStorageKey } from "@/lib/services/meetings/storagePath";
+import {
+  FROZEN_TRANSCRIPT_CONFLICT,
+  meetingTranscriptMutationGate,
+  withMutableMeetingTranscript,
+} from "@/lib/services/meetingRegister/retention";
+import {
+  emitRegisterAuditPostCommit,
+  writeRegisterAuditTx,
+} from "@/lib/services/meetingRegister/txAudit";
 
 export async function POST(
   request: Request,
@@ -25,6 +34,15 @@ export async function POST(
 
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
+
+  // Reject frozen meetings before multipart parsing or BlobStore activity.
+  const preflight = await meetingTranscriptMutationGate(prisma, mId, bidId);
+  if (!preflight.ok) {
+    return Response.json(
+      { error: preflight.reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
+      { status: preflight.reason === "not-found" ? 404 : 409 },
+    );
+  }
 
   const meeting = await prisma.meeting.findFirst({
     where: { id: mId, bidId },
@@ -51,10 +69,25 @@ export async function POST(
   // with no audioStorageKey) always agree on the on-disk filename.
   const safeAudioName = safeBlobFileName(audioFile.name);
   const storedAudioKey = meetingAudioStorageKey(mId, safeAudioName);
+  const blobStore = getBlobStore();
   try {
-    await getBlobStore().put(storedAudioKey, Buffer.from(await audioFile.arrayBuffer()));
+    await blobStore.put(storedAudioKey, Buffer.from(await audioFile.arrayBuffer()));
   } catch {
-    await prisma.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
+    const failed = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
+      await tx.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
+      return writeRegisterAuditTx(tx, {
+        action: "meeting.transcription_failed",
+        decision: "committed",
+        subjectKind: "Meeting",
+        subjectId: mId,
+        actor: access.user,
+        payload: { bidId, completionPath: "HYBRID_UPLOAD_STORAGE" },
+      });
+    });
+    if (!failed.ok) {
+      return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
+    }
+    emitRegisterAuditPostCommit(failed.value);
     return Response.json({ error: "Failed to save audio file" }, { status: 500 });
   }
 
@@ -63,18 +96,46 @@ export async function POST(
     .filter(Boolean)
     .filter((label, index, labels) => labels.indexOf(label) === index);
 
-  await prisma.meeting.update({
-    where: { id: mId },
-    data: {
-      status:          "AWAITING_SOURCE_MAP",
-      processingMode:  "HYBRID",
-      audioFileName:   safeAudioName,
-      audioStorageKey: storedAudioKey,
-      vttContent:      vttText,
-      speakerMapping:  JSON.stringify({ vtt_speakers: speakerLabels }),
-      uploadedAt:      new Date(),
-    },
-  });
+  try {
+    const armed = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
+      await tx.meeting.update({
+        where: { id: mId },
+        data: {
+          status: "AWAITING_SOURCE_MAP",
+          processingMode: "HYBRID",
+          audioFileName: safeAudioName,
+          audioStorageKey: storedAudioKey,
+          vttContent: vttText,
+          speakerMapping: JSON.stringify({ vtt_speakers: speakerLabels }),
+          uploadedAt: new Date(),
+        },
+      });
+      return writeRegisterAuditTx(tx, {
+        action: "meeting.hybrid_upload_started",
+        decision: "committed",
+        subjectKind: "Meeting",
+        subjectId: mId,
+        actor: access.user,
+        payload: {
+          bidId,
+          audioBytes: audioFile.size,
+          vttBytes: vttFile.size,
+          sourceCount: speakerLabels.length,
+        },
+      });
+    });
+    if (!armed.ok) {
+      await blobStore.delete(storedAudioKey).catch(() => undefined);
+      return Response.json(
+        { error: armed.reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
+        { status: armed.reason === "not-found" ? 404 : 409 },
+      );
+    }
+    emitRegisterAuditPostCommit(armed.value);
+  } catch (error) {
+    await blobStore.delete(storedAudioKey).catch(() => undefined);
+    throw error;
+  }
 
 
   return Response.json({ ok: true, source: "HYBRID" });
