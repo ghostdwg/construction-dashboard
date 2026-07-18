@@ -10,13 +10,25 @@
 // notifications, auto-assigns, auto-closes, destructively mutates
 // MeetingActionItem rows, or backfills historical rows. Every mutation here
 // is the direct result of an authenticated user action in the tracked-items
-// routes, and consequential mutations emit a DB-persisted "register_action"
-// AuditEvent (best-effort: an audit-write failure is logged, never allowed
-// to fail the user's action — matching lib/observability/audit.ts's own
-// fire-and-forget posture).
+// routes.
+//
+// R2 release-blocker remediation — audit is now FAIL-CLOSED and atomic: the
+// mandatory "register_action" AuditEvent row is written INSIDE the same
+// transaction as the mutation it records, so an audit-store failure rolls the
+// mutation back (no accountability-relevant change may exist without its audit
+// row), and the stdout telemetry line is emitted ONLY after the transaction
+// commits (external observers never see a rolled-back mutation). Every
+// mutating call validates existence/input BEFORE opening the transaction, so a
+// not-found or invalid request emits NO `committed` audit at all.
 
 import { prisma } from "@/lib/prisma";
-import { emitAuditEvent } from "@/lib/observability/audit";
+import {
+  buildAuditEnvelope,
+  emitAuditEnvelopeStdout,
+  persistAuditEnvelope,
+  type AuditEventWriter,
+} from "@/lib/observability/audit";
+import type { AuditEnvelope } from "@/lib/observability/taxonomy";
 import {
   isTrackedItemKind,
   isTrackedItemStatus,
@@ -41,31 +53,44 @@ function actorLabel(actor: Actor | null | undefined): string | null {
   return label || null;
 }
 
-async function audit(
+function buildTrackedItemAudit(
   action: string,
   bidId: number,
   subjectId: string,
   actor: Actor | null | undefined,
   decision: string,
   payload: Record<string, unknown>
-): Promise<void> {
-  try {
-    await emitAuditEvent({
-      category: "register_action",
-      action,
-      severity: "NOTICE",
-      decision,
-      subject: { kind: "TrackedItem", id: subjectId },
-      actor: {
-        kind: "operator",
-        userId: actor?.id ?? null,
-        email: actor?.email ?? null,
-      },
-      payload: { scope: "bid", bidId, ...payload },
-    });
-  } catch (err) {
-    console.error("[trackedItems] audit emit failed (action continues):", err);
-  }
+): AuditEnvelope {
+  return buildAuditEnvelope({
+    category: "register_action",
+    action,
+    severity: "NOTICE",
+    decision,
+    subject: { kind: "TrackedItem", id: subjectId },
+    actor: {
+      kind: "operator",
+      userId: actor?.id ?? null,
+      email: actor?.email ?? null,
+    },
+    payload: { scope: "bid", bidId, ...payload },
+  });
+}
+
+/** Write the mandatory AuditEvent row inside the caller's transaction. THROWS
+ *  on failure so the mutation rolls back. Returns the envelope for post-commit
+ *  stdout emission. */
+async function writeTrackedItemAuditTx(
+  tx: AuditEventWriter,
+  action: string,
+  bidId: number,
+  subjectId: string,
+  actor: Actor | null | undefined,
+  decision: string,
+  payload: Record<string, unknown>
+): Promise<AuditEnvelope> {
+  const envelope = buildTrackedItemAudit(action, bidId, subjectId, actor, decision, payload);
+  await persistAuditEnvelope(tx, envelope);
+  return envelope;
 }
 
 // ── List / filter ────────────────────────────────────────────────────────────
@@ -157,31 +182,35 @@ export async function createTrackedItem(
     return { ok: false, error: `Unknown priority: ${priority}` };
   }
 
-  const created = await prisma.trackedItem.create({
-    data: {
-      bidId,
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.trackedItem.create({
+      data: {
+        bidId,
+        kind: input.kind,
+        title: title.slice(0, MAX_TITLE_LENGTH),
+        description: input.description?.trim() || null,
+        priority,
+        assigneeName: input.assigneeName?.trim() || null,
+        assigneeEmail: input.assigneeEmail?.trim() || null,
+        dueDate: input.dueDate ?? null,
+        sourceKind: TRACKED_ITEM_SOURCE_KIND.MANUAL,
+        evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
+        sourceLocator: input.sourceLocator?.trim() || null,
+        // Explicit even though it matches the schema default — every producer
+        // writes extractionMethod deliberately (WP1a seeder-provenance lesson).
+        extractionMethod: "manual",
+        citationVerified: false,
+      },
+      select: { id: true },
+    });
+    envelope = await writeTrackedItemAuditTx(tx, "tracked_item_create", bidId, String(row.id), actor, "created", {
       kind: input.kind,
-      title: title.slice(0, MAX_TITLE_LENGTH),
-      description: input.description?.trim() || null,
-      priority,
-      assigneeName: input.assigneeName?.trim() || null,
-      assigneeEmail: input.assigneeEmail?.trim() || null,
-      dueDate: input.dueDate ?? null,
       sourceKind: TRACKED_ITEM_SOURCE_KIND.MANUAL,
-      evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
-      sourceLocator: input.sourceLocator?.trim() || null,
-      // Explicit even though it matches the schema default — every producer
-      // writes extractionMethod deliberately (WP1a seeder-provenance lesson).
-      extractionMethod: "manual",
-      citationVerified: false,
-    },
-    select: { id: true },
+    });
+    return row;
   });
-
-  await audit("tracked_item_create", bidId, String(created.id), actor, "created", {
-    kind: input.kind,
-    sourceKind: TRACKED_ITEM_SOURCE_KIND.MANUAL,
-  });
+  if (envelope) emitAuditEnvelopeStdout(envelope);
 
   return { ok: true, value: created };
 }
@@ -216,44 +245,50 @@ export async function promoteMeetingActionItem(
   }
 
   try {
-    const created = await prisma.trackedItem.create({
-      data: {
-        bidId,
-        kind: "OAC_ACTION",
-        title: source.description.slice(0, MAX_TITLE_LENGTH),
-        description: source.notes?.trim() || null,
-        priority: source.priority,
-        assigneeName: source.assignedToName?.trim() || null,
-        dueDate: source.dueDate ?? null,
-        carriedFromDate: source.carriedFromDate ?? null,
-        // Canonical value (legacy rows carry "meeting" — readable forever,
-        // never rewritten; see ./sourceKinds.ts).
-        sourceKind: TRACKED_ITEM_SOURCE_KIND.MEETING_ACTION_ITEM,
-        sourceMeetingId: source.meetingId ?? null,
-        sourceMeetingActionItemId: source.id,
-        // Paraphrased transcript evidence carried forward verbatim from the
-        // action item. Speaker attributions inside it are DRAFT diarization
-        // labels resolved by a human — never verified identity.
-        evidenceExcerpt: source.sourceText?.trim() || null,
-        sourceLocator: null, // rough/null in V1 — no transcript anchor yet
-        extractionMethod: source.source === "meeting" ? "meeting_analysis" : "manual",
-        citationVerified: false,
-      },
-      select: { id: true },
-    });
+    let envelope: AuditEnvelope | null = null;
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await tx.trackedItem.create({
+        data: {
+          bidId,
+          kind: "OAC_ACTION",
+          title: source.description.slice(0, MAX_TITLE_LENGTH),
+          description: source.notes?.trim() || null,
+          priority: source.priority,
+          assigneeName: source.assignedToName?.trim() || null,
+          dueDate: source.dueDate ?? null,
+          carriedFromDate: source.carriedFromDate ?? null,
+          // Canonical value (legacy rows carry "meeting" — readable forever,
+          // never rewritten; see ./sourceKinds.ts).
+          sourceKind: TRACKED_ITEM_SOURCE_KIND.MEETING_ACTION_ITEM,
+          sourceMeetingId: source.meetingId ?? null,
+          sourceMeetingActionItemId: source.id,
+          // Paraphrased transcript evidence carried forward verbatim from the
+          // action item. Speaker attributions inside it are DRAFT diarization
+          // labels resolved by a human — never verified identity.
+          evidenceExcerpt: source.sourceText?.trim() || null,
+          sourceLocator: null, // rough/null in V1 — no transcript anchor yet
+          extractionMethod: source.source === "meeting" ? "meeting_analysis" : "manual",
+          citationVerified: false,
+        },
+        select: { id: true },
+      });
 
-    await audit(
-      "tracked_item_promote",
-      bidId,
-      String(created.id),
-      actor,
-      "promoted_from_meeting_action_item",
-      {
-        meetingActionItemId: source.id,
-        meetingId: source.meetingId,
-        extractionMethod: source.source === "meeting" ? "meeting_analysis" : "manual",
-      }
-    );
+      envelope = await writeTrackedItemAuditTx(
+        tx,
+        "tracked_item_promote",
+        bidId,
+        String(row.id),
+        actor,
+        "promoted_from_meeting_action_item",
+        {
+          meetingActionItemId: source.id,
+          meetingId: source.meetingId,
+          extractionMethod: source.source === "meeting" ? "meeting_analysis" : "manual",
+        }
+      );
+      return row;
+    });
+    if (envelope) emitAuditEnvelopeStdout(envelope);
 
     return { ok: true, value: created };
   } catch (err) {
@@ -314,34 +349,40 @@ export async function createItemFromFieldReport(
     return { ok: false, error: `Unknown priority: ${priority}` };
   }
 
-  const created = await prisma.trackedItem.create({
-    data: {
-      bidId,
-      kind: "FIELD_ITEM",
-      title: title.slice(0, MAX_TITLE_LENGTH),
-      description: input.description?.trim() || null,
-      priority,
-      assigneeName: input.assigneeName?.trim() || null,
-      dueDate: input.dueDate ?? null,
-      sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT,
-      sourceFieldReportId: fieldReportId,
-      evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
-      sourceLocator: input.sourceLocator?.trim() || null,
-      // Human typed this item while reading the report — manual, explicitly.
-      extractionMethod: "manual",
-      citationVerified: false,
-    },
-    select: { id: true },
-  });
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.trackedItem.create({
+      data: {
+        bidId,
+        kind: "FIELD_ITEM",
+        title: title.slice(0, MAX_TITLE_LENGTH),
+        description: input.description?.trim() || null,
+        priority,
+        assigneeName: input.assigneeName?.trim() || null,
+        dueDate: input.dueDate ?? null,
+        sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT,
+        sourceFieldReportId: fieldReportId,
+        evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
+        sourceLocator: input.sourceLocator?.trim() || null,
+        // Human typed this item while reading the report — manual, explicitly.
+        extractionMethod: "manual",
+        citationVerified: false,
+      },
+      select: { id: true },
+    });
 
-  await audit(
-    "tracked_item_create",
-    bidId,
-    String(created.id),
-    actor,
-    "created_from_field_report",
-    { kind: "FIELD_ITEM", sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT, fieldReportId }
-  );
+    envelope = await writeTrackedItemAuditTx(
+      tx,
+      "tracked_item_create",
+      bidId,
+      String(row.id),
+      actor,
+      "created_from_field_report",
+      { kind: "FIELD_ITEM", sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT, fieldReportId }
+    );
+    return row;
+  });
+  if (envelope) emitAuditEnvelopeStdout(envelope);
 
   return { ok: true, value: created };
 }
@@ -363,13 +404,12 @@ export async function updateTrackedItem(
   patch: UpdateTrackedItemInput,
   actor: Actor = {}
 ): Promise<ServiceResult<{ id: number }>> {
+  // Validate existence and input BEFORE any audit or mutation. The
+  // pre-remediation code emitted an `updated`/`committed` audit here even when
+  // the item did not exist or the patch was invalid — a false commit record.
   const item = await prisma.trackedItem.findFirst({
     where: { id: itemId, bidId },
     select: { id: true },
-  });
-
-  await audit("tracked_item_update", bidId, String(itemId), actor, "updated", {
-    changedFields: Object.keys(patch),
   });
   if (!item) return { ok: false, error: "Not found" };
 
@@ -383,23 +423,30 @@ export async function updateTrackedItem(
     return { ok: false, error: `Unknown priority: ${patch.priority}` };
   }
 
-  await prisma.trackedItem.update({
-    where: { id: itemId },
-    data: {
-      ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, MAX_TITLE_LENGTH) } : {}),
-      ...(patch.description !== undefined
-        ? { description: patch.description?.trim() || null }
-        : {}),
-      ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
-      ...(patch.assigneeName !== undefined
-        ? { assigneeName: patch.assigneeName?.trim() || null }
-        : {}),
-      ...(patch.assigneeEmail !== undefined
-        ? { assigneeEmail: patch.assigneeEmail?.trim() || null }
-        : {}),
-      ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}),
-    },
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.trackedItem.update({
+      where: { id: itemId },
+      data: {
+        ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, MAX_TITLE_LENGTH) } : {}),
+        ...(patch.description !== undefined
+          ? { description: patch.description?.trim() || null }
+          : {}),
+        ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+        ...(patch.assigneeName !== undefined
+          ? { assigneeName: patch.assigneeName?.trim() || null }
+          : {}),
+        ...(patch.assigneeEmail !== undefined
+          ? { assigneeEmail: patch.assigneeEmail?.trim() || null }
+          : {}),
+        ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}),
+      },
+    });
+    envelope = await writeTrackedItemAuditTx(tx, "tracked_item_update", bidId, String(itemId), actor, "updated", {
+      changedFields: Object.keys(patch),
+    });
   });
+  if (envelope) emitAuditEnvelopeStdout(envelope);
 
   return { ok: true, value: { id: itemId } };
 }
@@ -433,36 +480,44 @@ export async function transitionTrackedItem(
   });
   if (!result.ok) return { ok: false, error: result.error };
 
-  await prisma.trackedItem.update({
-    where: { id: itemId },
-    data: result.updates,
-  });
-
   const note = options.note?.trim();
-  if (note) {
-    await prisma.trackedItemComment.create({
-      data: {
-        trackedItemId: itemId,
-        authorName: actor.name?.trim() || null,
-        authorEmail: actor.email?.trim() || null,
-        body: note,
-      },
-    });
-  }
 
-  await audit(
-    "tracked_item_transition",
-    bidId,
-    String(itemId),
-    actor,
-    `${from}->${to}`,
-    {
-      from,
-      to,
-      ...(to === "WAIVED" ? { waivedReason: options.waivedReason ?? null } : {}),
-      noteAdded: Boolean(note),
+  // Status change, the append-only closeout note, and the audit row commit
+  // together or not at all — the register's domain history stays consistent.
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.trackedItem.update({
+      where: { id: itemId },
+      data: result.updates,
+    });
+
+    if (note) {
+      await tx.trackedItemComment.create({
+        data: {
+          trackedItemId: itemId,
+          authorName: actor.name?.trim() || null,
+          authorEmail: actor.email?.trim() || null,
+          body: note,
+        },
+      });
     }
-  );
+
+    envelope = await writeTrackedItemAuditTx(
+      tx,
+      "tracked_item_transition",
+      bidId,
+      String(itemId),
+      actor,
+      `${from}->${to}`,
+      {
+        from,
+        to,
+        ...(to === "WAIVED" ? { waivedReason: options.waivedReason ?? null } : {}),
+        noteAdded: Boolean(note),
+      }
+    );
+  });
+  if (envelope) emitAuditEnvelopeStdout(envelope);
 
   return { ok: true, value: { id: itemId, status: to } };
 }
@@ -484,18 +539,23 @@ export async function addComment(
   });
   if (!item) return { ok: false, error: "Not found" };
 
-  const created = await prisma.trackedItemComment.create({
-    data: {
-      trackedItemId: itemId,
-      authorName: actor.name?.trim() || null,
-      authorEmail: actor.email?.trim() || null,
-      body: trimmed,
-    },
-    select: { id: true },
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.trackedItemComment.create({
+      data: {
+        trackedItemId: itemId,
+        authorName: actor.name?.trim() || null,
+        authorEmail: actor.email?.trim() || null,
+        body: trimmed,
+      },
+      select: { id: true },
+    });
+    envelope = await writeTrackedItemAuditTx(tx, "tracked_item_comment", bidId, String(itemId), actor, "comment_added", {
+      commentId: row.id,
+    });
+    return row;
   });
-  await audit("tracked_item_comment", bidId, String(itemId), actor, "comment_added", {
-    commentId: created.id,
-  });
+  if (envelope) emitAuditEnvelopeStdout(envelope);
   return { ok: true, value: created };
 }
 
@@ -544,26 +604,34 @@ export async function recordAttachment(
   });
   if (!item) return { ok: false, error: "Not found" };
 
-  const created = await prisma.trackedItemAttachment.create({
-    data: {
-      trackedItemId: itemId,
-      storageKey: meta.storageKey,
-      fileName: meta.fileName,
+  // Metadata row + audit commit together. If the audit write fails the
+  // metadata insert rolls back and this throws; the upload route then
+  // compensates the already-written blob (server-generated unique key), so no
+  // orphan metadata and no un-audited attachment can persist.
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.trackedItemAttachment.create({
+      data: {
+        trackedItemId: itemId,
+        storageKey: meta.storageKey,
+        fileName: meta.fileName,
+        mimeType: meta.mimeType,
+        byteSize: meta.byteSize,
+        kind: meta.kind,
+        caption: meta.caption?.trim() || null,
+        createdBy: actorLabel(actor),
+      },
+      select: { id: true },
+    });
+    envelope = await writeTrackedItemAuditTx(tx, "tracked_item_attachment", bidId, String(itemId), actor, "attachment_added", {
+      attachmentId: row.id,
+      kind: meta.kind,
       mimeType: meta.mimeType,
       byteSize: meta.byteSize,
-      kind: meta.kind,
-      caption: meta.caption?.trim() || null,
-      createdBy: actorLabel(actor),
-    },
-    select: { id: true },
+    });
+    return row;
   });
-
-  await audit("tracked_item_attachment", bidId, String(itemId), actor, "attachment_added", {
-    attachmentId: created.id,
-    kind: meta.kind,
-    mimeType: meta.mimeType,
-    byteSize: meta.byteSize,
-  });
+  if (envelope) emitAuditEnvelopeStdout(envelope);
 
   return { ok: true, value: created };
 }

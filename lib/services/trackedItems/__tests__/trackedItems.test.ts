@@ -1,20 +1,26 @@
 // Module OPS1 (Slice 1) — service coverage with the repo's mocked-Prisma
 // idiom. No real DB, no network, no provider imports anywhere on this path.
+//
+// R2 remediation: the mock now provides a rollback-capable `$transaction` and
+// an `auditEvent` table so the fail-closed, in-transaction audit path is
+// exercised for real — a mutation and its AuditEvent commit together or not at
+// all, and a not-found/invalid request emits no `committed` audit.
 import { beforeEach, describe, expect, test, vi } from "vitest";
+
+// Suppress the post-commit stdout audit line — persistence still runs.
+process.env.OBSERVABILITY_AUDIT_QUIET = "true";
 
 const h = vi.hoisted(() => ({
   items: [] as Array<Record<string, unknown> & { id: number; bidId: number; status: string }>,
   comments: [] as Array<Record<string, unknown> & { id: number; trackedItemId: number }>,
   attachments: [] as Array<Record<string, unknown> & { id: number; trackedItemId: number }>,
   meetingActionItems: [] as Array<Record<string, unknown> & { id: number; bidId: number }>,
+  audits: [] as Array<Record<string, unknown>>,
   nextId: 1,
 }));
 
-const auditMock = vi.hoisted(() => vi.fn(async () => undefined));
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
-
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const p: Record<string, unknown> = {
     trackedItem: {
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
         h.items.filter(
@@ -83,8 +89,36 @@ vi.mock("@/lib/prisma", () => ({
         h.meetingActionItems.find((m) => m.id === where.id && m.bidId === where.bidId) ?? null
       ),
     },
-  },
-}));
+    auditEvent: {
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        h.audits.push({ ...data });
+        return { id: h.nextId++ };
+      }),
+    },
+  };
+  // Interactive transaction WITH rollback — atomicity tests exercise real
+  // "mutation + audit commit together or not at all" behavior.
+  p.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => {
+    const snap = {
+      items: h.items.map((r) => ({ ...r })),
+      comments: h.comments.map((r) => ({ ...r })),
+      attachments: h.attachments.map((r) => ({ ...r })),
+      meetingActionItems: h.meetingActionItems.map((r) => ({ ...r })),
+      audits: h.audits.map((r) => ({ ...r })),
+    };
+    try {
+      return await fn(p);
+    } catch (err) {
+      h.items.splice(0, h.items.length, ...snap.items);
+      h.comments.splice(0, h.comments.length, ...snap.comments);
+      h.attachments.splice(0, h.attachments.length, ...snap.attachments);
+      h.meetingActionItems.splice(0, h.meetingActionItems.length, ...snap.meetingActionItems);
+      h.audits.splice(0, h.audits.length, ...snap.audits);
+      throw err;
+    }
+  };
+  return { prisma: p };
+});
 
 import {
   addComment,
@@ -99,13 +133,21 @@ import {
 
 const ACTOR = { name: "Josh", email: "josh@example.test" };
 
+const audited = (action: string, decision?: string) =>
+  h.audits.some(
+    (a) =>
+      a.action === action &&
+      a.subjectKind === "TrackedItem" &&
+      (decision === undefined || a.decision === decision)
+  );
+
 beforeEach(() => {
   h.items.length = 0;
   h.comments.length = 0;
   h.attachments.length = 0;
   h.meetingActionItems.length = 0;
+  h.audits.length = 0;
   h.nextId = 1;
-  auditMock.mockClear();
 });
 
 describe("trackedItems service", () => {
@@ -118,14 +160,16 @@ describe("trackedItems service", () => {
     expect(row.sourceKind).toBe("manual");
     expect(row.extractionMethod).toBe("manual");
     expect(row.citationVerified).toBe(false);
-    expect(auditMock).toHaveBeenCalledWith(
-      expect.objectContaining({ category: "register_action", action: "tracked_item_create" })
-    );
+    // The AuditEvent row committed in the same transaction.
+    expect(audited("tracked_item_create", "created")).toBe(true);
 
     const bad = await createTrackedItem(5, { kind: "PUNCH", title: "x" }, ACTOR);
     expect(bad.ok).toBe(false);
     const noTitle = await createTrackedItem(5, { kind: "OM", title: "   " }, ACTOR);
     expect(noTitle.ok).toBe(false);
+    // Invalid requests never mutate and never emit a committed audit.
+    expect(h.items.length).toBe(1);
+    expect(h.audits.length).toBe(1);
   });
 
   test("list/filter by bid, kind, status; other bids never leak", async () => {
@@ -164,9 +208,7 @@ describe("trackedItems service", () => {
     const reopen = await transitionTrackedItem(5, 1, "OPEN", ACTOR);
     expect(reopen.ok).toBe(false);
     // audited with from->to decision
-    expect(auditMock).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "tracked_item_transition", decision: "IN_PROGRESS->CLOSED" })
-    );
+    expect(audited("tracked_item_transition", "IN_PROGRESS->CLOSED")).toBe(true);
   });
 
   test("comments are append-only and bid-scoped", async () => {
@@ -179,12 +221,13 @@ describe("trackedItems service", () => {
     expect(empty.ok).toBe(false);
     expect(await listComments(6, 1)).toBeNull();
     expect((await listComments(5, 1))!.length).toBe(1);
+    expect(audited("tracked_item_comment", "comment_added")).toBe(true);
   });
 
   test("attachment metadata records and audits; bid-scoped", async () => {
     await createTrackedItem(5, { kind: "FIELD_ITEM", title: "cracked curb photo" }, ACTOR);
     const r = await recordAttachment(5, 1, ACTOR, {
-      storageKey: "plan-room/jobs/5/tracked-items/1/curb.jpg",
+      storageKey: "plan-room/jobs/5/tracked-items/1/tok/curb.jpg",
       fileName: "curb.jpg",
       mimeType: "image/jpeg",
       byteSize: 123456,
@@ -193,9 +236,7 @@ describe("trackedItems service", () => {
     expect(r.ok).toBe(true);
     expect(h.attachments[0].createdBy).toBe("josh@example.test");
     expect(await listAttachmentsSafe(6, 1)).toBeNull();
-    expect(auditMock).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "tracked_item_attachment" })
-    );
+    expect(audited("tracked_item_attachment", "attachment_added")).toBe(true);
   });
 
   test("OAC bridge: promotes with evidence carried, once only, source row untouched", async () => {
@@ -239,9 +280,7 @@ describe("trackedItems service", () => {
     expect(wrongBid.ok).toBe(false);
 
     // audited as a promotion
-    expect(auditMock).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "tracked_item_promote" })
-    );
+    expect(audited("tracked_item_promote", "promoted_from_meeting_action_item")).toBe(true);
   });
 
   test("OAC bridge: unique-constraint race maps P2002 to the friendly duplicate error", async () => {
@@ -276,9 +315,69 @@ describe("trackedItems service", () => {
     const ok = await updateTrackedItem(5, 1, { assigneeName: "Mech Sub PM", priority: "HIGH" });
     expect(ok.ok).toBe(true);
     expect(h.items[0].assigneeName).toBe("Mech Sub PM");
+    expect(audited("tracked_item_update", "updated")).toBe(true);
     expect((await updateTrackedItem(5, 1, { priority: "URGENT" })).ok).toBe(false);
     expect((await updateTrackedItem(5, 1, { title: "  " })).ok).toBe(false);
     expect((await updateTrackedItem(9, 1, { title: "x" })).ok).toBe(false);
+  });
+
+  // ── R2 remediation: audit atomicity ─────────────────────────────────────
+
+  test("update on a nonexistent/foreign item emits NO committed audit (no false success)", async () => {
+    await createTrackedItem(5, { kind: "OM", title: "manual" }, ACTOR);
+    h.audits.length = 0;
+    // not found in this bid
+    const notFound = await updateTrackedItem(5, 999, { title: "ghost" });
+    expect(notFound.ok).toBe(false);
+    // invalid patch on an existing item
+    const invalid = await updateTrackedItem(5, 1, { title: "   " });
+    expect(invalid.ok).toBe(false);
+    // cross-bid
+    const crossBid = await updateTrackedItem(9, 1, { title: "x" });
+    expect(crossBid.ok).toBe(false);
+    // NONE of these produced an audit row or mutated the item.
+    expect(h.audits.length).toBe(0);
+    expect(h.items[0].title).toBe("manual");
+  });
+
+  test("audit-store failure rolls the whole create back (fail-closed)", async () => {
+    const prisma = (await import("@/lib/prisma")).prisma as unknown as {
+      auditEvent: { create: (a: unknown) => Promise<unknown> };
+    };
+    const realCreate = prisma.auditEvent.create;
+    prisma.auditEvent.create = async () => {
+      throw new Error("audit store down");
+    };
+    await expect(
+      createTrackedItem(5, { kind: "WARRANTY", title: "letter" }, ACTOR)
+    ).rejects.toThrow("audit store down");
+    prisma.auditEvent.create = realCreate;
+    // No TrackedItem row survived the failed audit.
+    expect(h.items.length).toBe(0);
+    expect(h.audits.length).toBe(0);
+  });
+
+  test("audit-store failure rolls back a status transition AND its closeout note", async () => {
+    await createTrackedItem(5, { kind: "OAC_ACTION", title: "x" }, ACTOR);
+    await transitionTrackedItem(5, 1, "IN_PROGRESS", ACTOR);
+    h.audits.length = 0;
+
+    const prisma = (await import("@/lib/prisma")).prisma as unknown as {
+      auditEvent: { create: (a: unknown) => Promise<unknown> };
+    };
+    const realCreate = prisma.auditEvent.create;
+    prisma.auditEvent.create = async () => {
+      throw new Error("audit store down");
+    };
+    await expect(
+      transitionTrackedItem(5, 1, "CLOSED", ACTOR, { note: "done" })
+    ).rejects.toThrow("audit store down");
+    prisma.auditEvent.create = realCreate;
+
+    // Status stayed IN_PROGRESS, no closeout comment persisted, no audit row.
+    expect(h.items[0].status).toBe("IN_PROGRESS");
+    expect(h.comments.length).toBe(0);
+    expect(h.audits.length).toBe(0);
   });
 });
 
