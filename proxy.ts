@@ -31,9 +31,10 @@
 //      enforcement is the secondary boundary).
 //
 //   2. Landing-page routing. Authenticated visitors hitting / are redirected
-//      to /bids — app/page.tsx (the "Operations" dashboard) stops being
-//      reachable at the bare / URL once this ships; it is not deleted, just
-//      no longer routed to. Flagged for the operator, not silently resolved.
+//      to /bids — app/page.tsx (the "Operations" dashboard) is therefore not
+//      reachable at the bare / URL for an authenticated visitor. The stable
+//      /operations page re-exports that dashboard so the global Operations
+//      link remains distinct from Projects.
 //
 //   3. X-App-Env response header. Injected at request time so the value
 //      reflects the *runtime* APP_ENV (from the tier env_file), not whatever

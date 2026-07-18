@@ -11,7 +11,7 @@ import { test, expect, type Page } from "@playwright/test";
 // Runs only against the local fixture server defined in playwright.config.ts.
 
 const NAV_ITEMS = [
-  { label: "Operations", href: "/" },
+  { label: "Operations", href: "/operations" },
   { label: "Market Intelligence", href: "/market-intelligence" },
   { label: "Projects", href: "/bids" },
   { label: "Portfolio", href: "/portfolio" },
@@ -32,18 +32,16 @@ test.describe("global rail — hrefs and desktop navigation", () => {
 
   for (const item of NAV_ITEMS) {
     test(`collapsed rail navigates to ${item.href}`, async ({ page }) => {
-      await page.goto(item.href === "/" ? "/bids" : "/");
+      await page.goto(item.href === "/bids" ? "/operations" : "/bids");
       // Approach the icon directly without settling on the rail first.
       await page.mouse.move(720, 450);
       await railLink(page, item.href).click();
-      await expect(page).toHaveURL(
-        item.href === "/" ? /\/$/ : new RegExp(`${item.href.replace(/\//g, "\\/")}`)
-      );
+      await expect(page).toHaveURL(new RegExp(`${item.href.replace(/\//g, "\\/")}`));
     });
   }
 
   test("hover-expanded rail navigates and labels are visible", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/operations");
     const rail = page.locator("aside.gwx-rail");
     await rail.hover();
     // Expansion animates 64→240 over 200ms.
@@ -55,7 +53,7 @@ test.describe("global rail — hrefs and desktop navigation", () => {
   });
 
   test("active-route styling follows navigation", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/operations");
     await railLink(page, "/tasks").click();
     await expect(page).toHaveURL(/\/tasks/);
     // Active link: 3px accent left border (inactive links use transparent).
@@ -65,7 +63,7 @@ test.describe("global rail — hrefs and desktop navigation", () => {
       )
       .not.toMatch(/rgba\(0,\s*0,\s*0,\s*0\)|transparent/);
     // The link we navigated away from must not be styled active.
-    const opsBorder = await railLink(page, "/").evaluate(
+    const opsBorder = await railLink(page, "/operations").evaluate(
       (el) => getComputedStyle(el).borderLeftColor
     );
     expect(opsBorder).toMatch(/rgba\(0,\s*0,\s*0,\s*0\)|transparent/);
@@ -108,6 +106,24 @@ test.describe("layout regression — no double sidebar offset", () => {
       () => getComputedStyle(document.body, "::before").pointerEvents
     );
     expect(pe).toBe("none");
+  });
+
+  test("long content scrolls independently while the desktop rail remains in the viewport", async ({ page }) => {
+    await page.goto("/operations");
+    const rail = page.locator("aside.gwx-rail");
+    const main = page.locator("main");
+    const before = await rail.boundingBox();
+
+    expect(before).not.toBeNull();
+    expect(await main.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+    await main.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+    await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+    const after = await rail.boundingBox();
+    expect(after?.y).toBe(before?.y);
+    expect(after?.height).toBe(before?.height);
+    expect((after?.y ?? 0) + (after?.height ?? 0)).toBeLessThanOrEqual(720);
+    expect(await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0)).toBe(0);
   });
 });
 
@@ -178,5 +194,36 @@ test.describe("mobile navigation", () => {
       .click({ position: { x: 350, y: 500 } });
     await expect(page.locator("aside.gwx-rail")).not.toHaveClass(/gwx-rail-open/);
     await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("Escape closes the drawer and restores focus to its trigger", async ({ page }) => {
+    await page.goto("/operations");
+    const trigger = page.locator('button[aria-label="Open navigation"]');
+    await trigger.click();
+    const close = page.locator('button[aria-label="Close navigation"]');
+    await expect(close).toBeFocused();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    await page.keyboard.press("Shift+Tab");
+    await expect(railLink(page, "/settings")).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(close).toBeFocused();
+
+    await page.keyboard.press("Escape");
+    await expect(page.locator("aside.gwx-rail")).not.toHaveClass(/gwx-rail-open/);
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await expect(trigger).toBeFocused();
+  });
+
+  test("closed drawer does not obstruct or overflow mobile content", async ({ page }) => {
+    await page.goto("/operations");
+    await expect(page.locator("aside.gwx-rail")).toHaveCSS("visibility", "hidden");
+    const dimensions = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+      mainRight: document.querySelector("main")!.getBoundingClientRect().right,
+    }));
+    expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
+    expect(dimensions.mainRight).toBeLessThanOrEqual(dimensions.viewport);
   });
 });

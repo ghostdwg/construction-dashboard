@@ -22,6 +22,7 @@ describe("proxy isPublicPath", async () => {
   });
 
   it("protects everything else", () => {
+    expect(isPublicPath("/operations")).toBe(false);
     expect(isPublicPath("/bids")).toBe(false);
     expect(isPublicPath("/settings")).toBe(false);
     expect(isPublicPath("/api/bids")).toBe(false);

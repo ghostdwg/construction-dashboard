@@ -59,7 +59,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body
-        className="min-h-full flex flex-col"
+        className="flex h-dvh min-h-full flex-col overflow-hidden"
         style={{ "--topbar-h": `${TOPBAR_HEIGHT}px` } as React.CSSProperties}
       >
         <AuthProvider>
@@ -124,7 +124,7 @@ export default async function RootLayout({
             </header>
 
             {/* ── Below topbar: sidebar + main ────────────────────────── */}
-            <div className="flex flex-1 min-h-0 overflow-x-hidden">
+            <div className="flex min-h-0 flex-1 overflow-hidden">
               <AppSidebar
                 counts={{ projects: bidCount, activeJobs: activeJob, newSignals, openActionItems: globalOpenActionItems }}
               />
@@ -137,7 +137,7 @@ export default async function RootLayout({
                 shifted every page's content on mobile even with the
                 drawer closed.
               */}
-              <main className="flex-1 min-w-0 overflow-y-auto" style={{ transition: "flex-basis 200ms ease" }}>
+              <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain" style={{ transition: "flex-basis 200ms ease" }}>
                 {children}
               </main>
             </div>

@@ -28,6 +28,12 @@ describe("app/layout.tsx main content area", () => {
     expect(layout).toMatch(/TOPBAR_HEIGHT\s*=\s*62\s*\+\s*getBannerHeight\(env\.APP_ENV\)/);
     expect(layout).toMatch(/--topbar-h/);
   });
+
+  it("constrains the application shell to the viewport and scrolls main independently", () => {
+    expect(layout).toMatch(/<body[\s\S]*className="[^"]*h-dvh[^"]*overflow-hidden/);
+    expect(layout).toMatch(/<main className="[^"]*overflow-y-auto[^"]*"/);
+    expect(layout).toMatch(/<main className="[^"]*overflow-x-hidden[^"]*"/);
+  });
 });
 
 describe("app/globals.css .gwx-rail mobile anchor", () => {
@@ -40,6 +46,12 @@ describe("app/globals.css .gwx-rail mobile anchor", () => {
   it("still falls back to 64/240 sidebar width — unaffected by the topbar-h fix", () => {
     expect(css).toMatch(/--sidebar-width:\s*64px/);
   });
+
+  it("hides the closed mobile rail from focus while keeping it visible on desktop", () => {
+    expect(css).toMatch(/\.gwx-rail\s*\{[^}]*visibility:\s*hidden/);
+    expect(css).toMatch(/\.gwx-rail\.gwx-rail-open\s*\{[^}]*visibility:\s*visible/);
+    expect(css).toMatch(/@media \(min-width:\s*768px\)[\s\S]*\.gwx-rail\s*\{[^}]*visibility:\s*visible/);
+  });
 });
 
 describe("app/components/AppSidebar.tsx mobile hamburger", () => {
@@ -51,6 +63,30 @@ describe("app/components/AppSidebar.tsx mobile hamburger", () => {
   it("anchors below the real topbar height instead of a hardcoded 72px", () => {
     expect(sidebar).toMatch(/top:\s*"calc\(var\(--topbar-h,\s*62px\)\s*\+\s*10px\)"/);
     expect(sidebar).not.toMatch(/top-\[72px\]/);
+  });
+
+  it("routes Operations to its stable authenticated destination", () => {
+    expect(sidebar).toMatch(/href:\s*"\/operations"[\s\S]*label:\s*"Operations"/);
+    expect(sidebar).not.toMatch(/href:\s*"\/"[\s\S]*label:\s*"Operations"/);
+  });
+
+  it("exposes and restores focus for the keyboard-operable mobile drawer", () => {
+    expect(sidebar).toMatch(/aria-controls="primary-navigation"/);
+    expect(sidebar).toMatch(/aria-expanded=\{mobileOpen\}/);
+    expect(sidebar).toMatch(/event\.key === "Escape"/);
+    expect(sidebar).toMatch(/openButtonRef\.current\?\.focus\(\)/);
+  });
+});
+
+describe("authenticated Operations route", () => {
+  const operationsPage = readFileSync(
+    join(__dirname, "..", "app", "operations", "page.tsx"),
+    "utf8",
+  );
+
+  it("reuses the existing cross-project dashboard at a descriptive route", () => {
+    expect(operationsPage).toMatch(/export \{ default \} from "\.\.\/page"/);
+    expect(operationsPage).toMatch(/title:\s*"Operations \| GroundworX"/);
   });
 });
 

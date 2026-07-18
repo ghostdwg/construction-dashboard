@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:auth": "playwright test --config=playwright.auth.config.ts",
     "migrate:turso": "node scripts/apply-turso-migrations.mjs",
     "migrate:turso:status": "node scripts/apply-turso-migrations.mjs --dry-run",
     "validate:replay": "node scripts/replay-validation.mjs",

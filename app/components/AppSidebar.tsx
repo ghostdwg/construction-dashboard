@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -21,7 +21,7 @@ type SidebarCounts = {
 type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/",                     label: "Operations",          icon: Activity,    exact: true },
+  { href: "/operations",           label: "Operations",          icon: Activity,    exact: true },
   { href: "/market-intelligence",  label: "Market Intelligence", icon: TrendingUp },
   { href: "/bids",                 label: "Projects",            icon: Building2 },
   { href: "/portfolio",            label: "Portfolio",           icon: Layers },
@@ -30,7 +30,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 function getMeta(href: string, counts: SidebarCounts): string | null {
-  if (href === "/")                    return counts.activeJobs > 0 ? String(counts.activeJobs) : null;
+  if (href === "/operations")          return counts.activeJobs > 0 ? String(counts.activeJobs) : null;
   if (href === "/market-intelligence") return counts.newSignals > 0 ? String(counts.newSignals) : null;
   if (href === "/bids")                return counts.projects > 0 ? String(counts.projects) : null;
   if (href === "/portfolio")           return counts.projects > 0 ? String(counts.projects) : null;
@@ -42,19 +42,68 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
   const pathname = usePathname();
   const [pinned,     setPinned]     = useState(false);
   const [hovered,    setHovered]    = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpenPath, setMobileOpenPath] = useState<string | null>(null);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
 
+  // A route change closes the drawer without an effect-driven state update.
+  const mobileOpen = mobileOpenPath === pathname;
   const expanded = pinned || hovered;
   // On mobile the overlay always shows full-width; desktop animates 64↔240
   const sidebarWidth = mobileOpen ? 240 : (expanded ? 240 : 64);
 
   // Restore pinned preference
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate the persisted browser preference after mount
     try { setPinned(localStorage.getItem(PINNED_KEY) === "1"); } catch {}
   }, []);
 
-  // Close mobile panel on route change
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  // Treat the mobile rail as a modal drawer: move focus inside on open,
+  // contain keyboard focus, and let Escape close it. CSS visibility keeps the
+  // off-canvas links out of the tab order while the drawer is closed.
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    closeButtonRef.current?.focus();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileOpenPath(null);
+        requestAnimationFrame(() => openButtonRef.current?.focus());
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen]);
+
+  function closeMobileDrawer({ restoreFocus = false } = {}) {
+    setMobileOpenPath(null);
+    if (restoreFocus) {
+      requestAnimationFrame(() => openButtonRef.current?.focus());
+    }
+  }
 
   function togglePin() {
     const next = !pinned;
@@ -71,6 +120,7 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
     <>
       {/* ── Mobile hamburger ─────────────────────────────────────────────── */}
       <button
+        ref={openButtonRef}
         className="md:hidden fixed left-3 z-50 flex items-center justify-center w-9 h-9 rounded-[6px] border"
         style={{
           top: "calc(var(--topbar-h, 62px) + 10px)",
@@ -78,8 +128,10 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
           borderColor: "var(--color-border)",
           color: "var(--color-text-primary)",
         }}
-        onClick={() => setMobileOpen(true)}
+        onClick={() => setMobileOpenPath(pathname)}
         aria-label="Open navigation"
+        aria-controls="primary-navigation"
+        aria-expanded={mobileOpen}
       >
         <Menu size={18} />
       </button>
@@ -88,17 +140,21 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
       {mobileOpen && (
         <div
           className="md:hidden fixed inset-0 z-30 bg-black/60"
-          onClick={() => setMobileOpen(false)}
+          onClick={() => closeMobileDrawer({ restoreFocus: true })}
           aria-hidden="true"
         />
       )}
 
       {/* ── Rail ─────────────────────────────────────────────────────────── */}
       <aside
-        className={`gwx-rail flex flex-col${mobileOpen ? " gwx-rail-open" : ""}`}
+        ref={sidebarRef}
+        id="primary-navigation"
+        className={`gwx-rail flex shrink-0 flex-col${mobileOpen ? " gwx-rail-open" : ""}`}
+        role={mobileOpen ? "dialog" : undefined}
+        aria-modal={mobileOpen || undefined}
+        aria-label="Primary navigation"
         style={{
           width: sidebarWidth,
-          transition: "width 200ms ease",
           background: "var(--color-bg-surface)",
           borderRight: "1px solid var(--color-border)",
           overflow: "hidden",
@@ -109,9 +165,10 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
         {/* Mobile close ────────────────────────────────────────────────── */}
         <div className="md:hidden flex justify-end px-3 pt-3 pb-1">
           <button
+            ref={closeButtonRef}
             style={{ background: "transparent", border: "none", cursor: "pointer",
                      color: "var(--color-text-dim)", padding: 4 }}
-            onClick={() => setMobileOpen(false)}
+            onClick={() => closeMobileDrawer({ restoreFocus: true })}
             aria-label="Close navigation"
           >
             <X size={16} />
@@ -119,7 +176,7 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
         </div>
 
         {/* Nav items ───────────────────────────────────────────────────── */}
-        <nav className="flex flex-col flex-1 gap-0.5 px-2 py-3">
+        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-3">
           {NAV_ITEMS.map((item) => {
             const active = isActive(item.href, item.exact);
             const meta   = getMeta(item.href, counts);
