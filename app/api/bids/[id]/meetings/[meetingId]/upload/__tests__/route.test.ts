@@ -10,12 +10,17 @@ const state = vi.hoisted(() => ({
     audioStorageKey: string | null;
     transcriptionJobId: string | null;
     transcriptionSource: string | null;
+    reviewStatus: string;
+    rawTranscript: string | null;
+    analyzedAt: Date | null;
   },
   prismaCalls: 0,
   blobs: new Map<string, Buffer>(),
   storageFailure: false,
   createJobFailure: false,
   startJobFailure: false,
+  pointerPersistenceFailure: false,
+  deleteFailure: false,
 }));
 
 const mocks = vi.hoisted(() => ({
@@ -26,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   participantCount: vi.fn(),
   blobExists: vi.fn(),
   blobPut: vi.fn(),
+  blobDelete: vi.fn(),
   createJob: vi.fn(),
   startJob: vi.fn(),
   failJob: vi.fn(),
@@ -50,6 +56,7 @@ vi.mock("@/lib/storage/blobStore", () => ({
   getBlobStore: () => ({
     exists: mocks.blobExists,
     put: mocks.blobPut,
+    delete: mocks.blobDelete,
   }),
   safeBlobFileName: (name: string) =>
     name
@@ -112,6 +119,8 @@ beforeEach(() => {
   state.storageFailure = false;
   state.createJobFailure = false;
   state.startJobFailure = false;
+  state.pointerPersistenceFailure = false;
+  state.deleteFailure = false;
   state.meeting = {
     id: 9,
     bidId: 1,
@@ -120,6 +129,9 @@ beforeEach(() => {
     audioStorageKey: null,
     transcriptionJobId: null,
     transcriptionSource: null,
+    reviewStatus: "DRAFT",
+    rawTranscript: null,
+    analyzedAt: null,
   };
 
   mocks.requireBidAccess.mockImplementation(async () =>
@@ -137,6 +149,9 @@ beforeEach(() => {
   mocks.update.mockImplementation(
     async ({ data }: { data: Record<string, unknown> }) => {
       state.prismaCalls += 1;
+      if (data.audioStorageKey && state.pointerPersistenceFailure) {
+        throw new Error("pointer persistence unavailable");
+      }
       if (state.meeting) Object.assign(state.meeting, data);
       return state.meeting;
     }
@@ -146,7 +161,10 @@ beforeEach(() => {
       state.prismaCalls += 1;
       if (
         !state.meeting ||
-        ["UPLOADING", "TRANSCRIBING"].includes(state.meeting.status)
+        !["PENDING", "FAILED"].includes(state.meeting.status) ||
+        state.meeting.reviewStatus === "PUBLISHED" ||
+        state.meeting.rawTranscript !== null ||
+        state.meeting.analyzedAt !== null
       ) {
         return { count: 0 };
       }
@@ -169,6 +187,10 @@ beforeEach(() => {
       sha256: "synthetic-sha",
       storedAt: "2026-07-18T00:00:00.000Z",
     };
+  });
+  mocks.blobDelete.mockImplementation(async (key: string) => {
+    if (state.deleteFailure) throw new Error("synthetic delete failure");
+    state.blobs.delete(key);
   });
   mocks.createJob.mockImplementation(async () => {
     if (state.createJobFailure) throw new Error("job table unavailable");
@@ -300,12 +322,80 @@ describe("durable immutable audio", () => {
     expect(mocks.createJob).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it("compensates only the new blob when pointer persistence fails", async () => {
+    const priorKey = "uploads/meetings/9/prior-failed-attempt.wav";
+    state.meeting!.audioStorageKey = priorKey;
+    state.blobs.set(priorKey, Buffer.from("prior immutable bytes"));
+    state.pointerPersistenceFailure = true;
+
+    const response = await POST(uploadRequest(), routeParams);
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "Unable to persist meeting audio reference",
+    });
+    expect(mocks.blobDelete).toHaveBeenCalledOnce();
+    const deletedKey = mocks.blobDelete.mock.calls[0][0] as string;
+    expect(deletedKey).not.toBe(priorKey);
+    expect(state.blobs.has(deletedKey)).toBe(false);
+    expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
+    expect(state.meeting?.audioStorageKey).toBe(priorKey);
+    expect(state.meeting?.status).toBe("FAILED");
+    expect(mocks.createJob).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("emits generic telemetry if new-blob compensation fails", async () => {
+    const priorKey = "uploads/meetings/9/prior-failed-attempt.wav";
+    state.meeting!.audioStorageKey = priorKey;
+    state.blobs.set(priorKey, Buffer.from("prior immutable bytes"));
+    state.pointerPersistenceFailure = true;
+    state.deleteFailure = true;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await POST(uploadRequest("confidential-name.wav"), routeParams);
+
+    expect(response.status).toBe(500);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[meeting-upload] Failed to compensate unreferenced audio blob"
+    );
+    expect(errorSpy.mock.calls.flat().join(" ")).not.toContain("confidential-name");
+    expect(errorSpy.mock.calls.flat().join(" ")).not.toContain("synthetic audio");
+    expect(state.meeting?.audioStorageKey).toBe(priorKey);
+    expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
+    expect(mocks.createJob).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("duplicate guards and BackgroundJob consistency", () => {
-  for (const status of ["UPLOADING", "TRANSCRIBING"]) {
-    it(`returns 409 for ${status} before form/blob/job/provider work`, async () => {
-      state.meeting!.status = status;
+  const frozenCases: Array<{
+    name: string;
+    status?: string;
+    reviewStatus?: string;
+    rawTranscript?: string;
+    analyzedAt?: Date;
+  }> = [
+    { name: "UPLOADING", status: "UPLOADING" },
+    { name: "TRANSCRIBING", status: "TRANSCRIBING" },
+    { name: "READY", status: "READY" },
+    { name: "AWAITING_NAMES", status: "AWAITING_NAMES" },
+    { name: "ANALYZING", status: "ANALYZING" },
+    { name: "published", reviewStatus: "PUBLISHED" },
+    { name: "completed raw transcript", rawTranscript: '{"segments":[]}' },
+    { name: "previously analyzed meeting", analyzedAt: new Date("2026-07-18") },
+  ];
+
+  for (const frozen of frozenCases) {
+    it(`returns 409 for ${frozen.name} before form/blob/job/provider work`, async () => {
+      if (frozen.status) state.meeting!.status = frozen.status;
+      if (frozen.reviewStatus) state.meeting!.reviewStatus = frozen.reviewStatus;
+      if (frozen.rawTranscript) state.meeting!.rawTranscript = frozen.rawTranscript;
+      if (frozen.analyzedAt) state.meeting!.analyzedAt = frozen.analyzedAt;
+      const priorKey = "uploads/meetings/9/frozen-source.wav";
+      state.meeting!.audioStorageKey = priorKey;
+      state.blobs.set(priorKey, Buffer.from("frozen source bytes"));
       const request = uploadRequest();
       const formDataSpy = vi.spyOn(request, "formData");
 
@@ -313,11 +403,43 @@ describe("duplicate guards and BackgroundJob consistency", () => {
 
       expect(response.status).toBe(409);
       expect(formDataSpy).not.toHaveBeenCalled();
+      expect(state.meeting?.audioStorageKey).toBe(priorKey);
+      expect(state.meeting?.rawTranscript).toBe(frozen.rawTranscript ?? null);
+      expect(state.blobs.get(priorKey)?.toString()).toBe("frozen source bytes");
+      expect(mocks.updateMany).not.toHaveBeenCalled();
       expect(mocks.blobPut).not.toHaveBeenCalled();
       expect(mocks.createJob).not.toHaveBeenCalled();
       expect(fetch).not.toHaveBeenCalled();
     });
   }
+
+  it("repeats the full eligibility predicate in the atomic claim", async () => {
+    const request = uploadRequest();
+    const originalFormData = request.formData.bind(request);
+    vi.spyOn(request, "formData").mockImplementation(async () => {
+      state.meeting!.reviewStatus = "PUBLISHED";
+      return originalFormData();
+    });
+
+    const response = await POST(request, routeParams);
+
+    expect(response.status).toBe(409);
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 9,
+          bidId: 1,
+          status: { in: ["PENDING", "FAILED"] },
+          reviewStatus: { not: "PUBLISHED" },
+          rawTranscript: null,
+          analyzedAt: null,
+        }),
+      })
+    );
+    expect(mocks.blobPut).not.toHaveBeenCalled();
+    expect(mocks.createJob).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 
   it("creates a queued job and starts it with the prefixed external id", async () => {
     await POST(uploadRequest(), routeParams);

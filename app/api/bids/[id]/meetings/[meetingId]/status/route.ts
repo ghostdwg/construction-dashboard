@@ -123,7 +123,6 @@ function transcriptConflictResponse(reason: "not-found" | "frozen") {
     { status: reason === "not-found" ? 404 : 409 }
   );
 }
-
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string; meetingId: string }> }

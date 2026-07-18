@@ -10,14 +10,19 @@ const state = vi.hoisted(() => ({
     processingMode: string;
     vttContent: string | null;
     speakerMapping: string | null;
+    transcript: string | null;
+    rawTranscript: string | null;
+    durationSeconds: number | null;
   },
   jobLookupFailure: false,
+  participants: [] as Array<{ speakerLabel: string }>,
 }));
 
 const mocks = vi.hoisted(() => ({
   requireBidAccess: vi.fn(),
   findFirst: vi.fn(),
   meetingUpdate: vi.fn(),
+  meetingUpdateMany: vi.fn(),
   participantFindMany: vi.fn(),
   participantCreateMany: vi.fn(),
   transaction: vi.fn(),
@@ -32,7 +37,10 @@ vi.mock("@/lib/auth-helpers", () => ({
 
 vi.mock("@/lib/prisma", () => {
   const tx = {
-    meeting: { update: mocks.meetingUpdate },
+    meeting: {
+      update: mocks.meetingUpdate,
+      updateMany: mocks.meetingUpdateMany,
+    },
     meetingParticipant: {
       findMany: mocks.participantFindMany,
       createMany: mocks.participantCreateMany,
@@ -43,6 +51,7 @@ vi.mock("@/lib/prisma", () => {
       meeting: {
         findFirst: mocks.findFirst,
         update: mocks.meetingUpdate,
+        updateMany: mocks.meetingUpdateMany,
       },
       meetingParticipant: tx.meetingParticipant,
       $transaction: mocks.transaction.mockImplementation(
@@ -85,7 +94,11 @@ beforeEach(() => {
     processingMode: "AUTO",
     vttContent: null,
     speakerMapping: null,
+    transcript: null,
+    rawTranscript: null,
+    durationSeconds: null,
   };
+  state.participants = [];
   mocks.requireBidAccess.mockImplementation(async () =>
     state.denied
       ? {
@@ -105,8 +118,27 @@ beforeEach(() => {
       return state.meeting;
     }
   );
-  mocks.participantFindMany.mockResolvedValue([]);
-  mocks.participantCreateMany.mockResolvedValue({ count: 0 });
+  mocks.meetingUpdateMany.mockImplementation(
+    async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      state.prismaCalls += 1;
+      if (
+        !state.meeting ||
+        state.meeting.status !== where.status ||
+        state.meeting.transcriptionJobId !== where.transcriptionJobId
+      ) {
+        return { count: 0 };
+      }
+      Object.assign(state.meeting, data);
+      return { count: 1 };
+    }
+  );
+  mocks.participantFindMany.mockImplementation(async () => state.participants);
+  mocks.participantCreateMany.mockImplementation(
+    async ({ data }: { data: Array<{ speakerLabel: string }> }) => {
+      state.participants.push(...data.map((row) => ({ speakerLabel: row.speakerLabel })));
+      return { count: data.length };
+    }
+  );
   mocks.findJobByExternalId.mockImplementation(async () => {
     if (state.jobLookupFailure) throw new Error("job table unavailable");
     return { id: "bg-1" };
@@ -187,6 +219,18 @@ describe("meeting and BackgroundJob terminal state", () => {
 
     expect(await result.json()).toEqual({ status: "READY" });
     expect(state.meeting?.status).toBe("READY");
+    expect(mocks.meetingUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 9,
+          bidId: 1,
+          status: "TRANSCRIBING",
+          transcriptionJobId: "WHISPERX:worker-1",
+          reviewStatus: { not: "PUBLISHED" },
+          rawTranscript: null,
+        },
+      })
+    );
     expect(mocks.findJobByExternalId).toHaveBeenCalledWith(
       "WHISPERX:worker-1",
       1
@@ -218,6 +262,186 @@ describe("meeting and BackgroundJob terminal state", () => {
       "bg-1",
       "WhisperX worker restarted — job lost"
     );
+  });
+
+  it("allows one concurrent completion winner and preserves its source/participants/job outcome", async () => {
+    let releaseFirst!: () => void;
+    const firstBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let fetchCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCount += 1;
+        if (fetchCount === 1) {
+          await firstBlocked;
+          return jsonResponse({
+            status: "completed",
+            transcript: "losing transcript",
+            rawTranscript: '{"source":"loser"}',
+            durationSeconds: 10,
+            participants: [
+              { speakerLabel: "SPEAKER_00", name: "Loser", wordCount: 1 },
+            ],
+          });
+        }
+        return jsonResponse({
+          status: "completed",
+          transcript: "winning transcript",
+          rawTranscript: '{"source":"winner"}',
+          durationSeconds: 20,
+          participants: [
+            { speakerLabel: "SPEAKER_00", name: "Winner", wordCount: 2 },
+            { speakerLabel: "SPEAKER_00", name: "Duplicate", wordCount: 2 },
+            { speakerLabel: "SPEAKER_01", name: "Second", wordCount: 1 },
+          ],
+        });
+      })
+    );
+
+    const losingPoll = GET(new Request("http://local/status"), routeParams);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    const winningResponse = await GET(
+      new Request("http://local/status"),
+      routeParams
+    );
+    releaseFirst();
+    const losingResponse = await losingPoll;
+
+    expect(await winningResponse.json()).toEqual({ status: "READY" });
+    expect(await losingResponse.json()).toEqual({ status: "READY" });
+    expect(state.meeting?.rawTranscript).toBe('{"source":"winner"}');
+    expect(state.meeting?.transcript).toBe("winning transcript");
+    expect(state.meeting?.durationSeconds).toBe(20);
+    expect(state.participants).toEqual([
+      { speakerLabel: "SPEAKER_00" },
+      { speakerLabel: "SPEAKER_01" },
+    ]);
+    expect(mocks.participantCreateMany).toHaveBeenCalledOnce();
+    expect(mocks.completeJob).toHaveBeenCalledOnce();
+    expect(mocks.failJob).not.toHaveBeenCalled();
+  });
+
+  it("lets a completion winner defeat a stale concurrent error", async () => {
+    let releaseError!: () => void;
+    const errorBlocked = new Promise<void>((resolve) => {
+      releaseError = resolve;
+    });
+    let fetchCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCount += 1;
+        if (fetchCount === 1) {
+          await errorBlocked;
+          return jsonResponse({ status: "error", error: "stale worker error" });
+        }
+        return jsonResponse({
+          status: "completed",
+          transcript: "authoritative transcript",
+          rawTranscript: '{"source":"authoritative"}',
+          durationSeconds: 30,
+          participants: [],
+        });
+      })
+    );
+
+    const staleErrorPoll = GET(new Request("http://local/status"), routeParams);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    const completionResponse = await GET(
+      new Request("http://local/status"),
+      routeParams
+    );
+    releaseError();
+    const staleErrorResponse = await staleErrorPoll;
+
+    expect(await completionResponse.json()).toEqual({ status: "READY" });
+    expect(await staleErrorResponse.json()).toEqual({ status: "READY" });
+    expect(state.meeting?.rawTranscript).toBe('{"source":"authoritative"}');
+    expect(mocks.completeJob).toHaveBeenCalledOnce();
+    expect(mocks.failJob).not.toHaveBeenCalled();
+  });
+
+  it("uses the same conditional winner for hybrid completion", async () => {
+    state.meeting!.transcriptionJobId = "HYBRID:WHISPERX:hybrid-1";
+    state.meeting!.vttContent = "WEBVTT\n\n<v Alice>hello";
+    let fetchCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCount += 1;
+        if (fetchCount === 1) {
+          return jsonResponse({
+            status: "completed",
+            transcript: "diarized",
+            rawTranscript: '{"segments":[]}',
+            durationSeconds: 40,
+            participants: [],
+          });
+        }
+        return jsonResponse({
+          ok: true,
+          transcript: "merged",
+          participants: [
+            { speakerLabel: "SPEAKER_00", name: "Alice", wordCount: 1 },
+          ],
+          clusters: [
+            {
+              id: "SPEAKER_00",
+              type: "IN_ROOM",
+              resolvedName: null,
+              totalSeconds: 4,
+              segmentCount: 1,
+            },
+          ],
+          durationSeconds: 40,
+        });
+      })
+    );
+
+    const result = await GET(new Request("http://local/status"), routeParams);
+
+    expect(await result.json()).toEqual({ status: "AWAITING_NAMES" });
+    expect(mocks.meetingUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          transcriptionJobId: "HYBRID:WHISPERX:hybrid-1",
+          status: "TRANSCRIBING",
+        }),
+      })
+    );
+    expect(state.meeting?.rawTranscript).toBe('{"segments":[]}');
+    expect(state.meeting?.vttContent).toBeNull();
+    expect(mocks.completeJob).toHaveBeenCalledOnce();
+  });
+
+  it("uses the same conditional winner for hybrid merge fallback", async () => {
+    state.meeting!.transcriptionJobId = "HYBRID:WHISPERX:hybrid-1";
+    state.meeting!.vttContent = "WEBVTT\n\n<v Alice>hello";
+    let fetchCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fetchCount += 1;
+        return fetchCount === 1
+          ? jsonResponse({
+              status: "completed",
+              transcript: "fallback transcript",
+              rawTranscript: '{"segments":[]}',
+              durationSeconds: 40,
+              participants: [],
+            })
+          : jsonResponse({ detail: "merge unavailable" }, 503);
+      })
+    );
+
+    const result = await GET(new Request("http://local/status"), routeParams);
+
+    expect(await result.json()).toEqual({ status: "READY" });
+    expect(state.meeting?.transcript).toBe("fallback transcript");
+    expect(state.meeting?.vttContent).toBeNull();
+    expect(mocks.completeJob).toHaveBeenCalledOnce();
   });
 
   it("does not corrupt completed meeting state when job lookup fails", async () => {

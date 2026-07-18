@@ -217,7 +217,6 @@ export async function POST(
     if (!failed.ok) return transcriptConflictResponse(failed.reason);
     return Response.json({ error: "Unable to read audio upload" }, { status: 400 });
   }
-
   let store: BlobStore;
   let storageKey: string;
   try {

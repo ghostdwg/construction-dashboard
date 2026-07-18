@@ -20,7 +20,9 @@ it on both submission and status requests.
 The WhisperX worker now authenticates at the ASGI boundary. Unauthorized or
 misconfigured requests are rejected before FastAPI can parse multipart audio.
 Only the exact `/health` path is exempt; `/transcribe`, `/jobs`, `/status/*`,
-documentation paths, and health-like suffixes remain protected.
+documentation paths, and health-like suffixes remain protected. Coverage imports
+the actual exported worker app with model/runtime dependencies stubbed and
+invokes that ASGI app, so removing the middleware registration fails the test.
 
 ## Immutable audio and retry behavior
 
@@ -32,11 +34,18 @@ storage key. Each attempt allocates a server-generated key:
 The route checks that the candidate is unused before `BlobStore.put`, persists
 the bytes, and then stores the relative `audioStorageKey` before contacting the
 Sidecar. A FAILED retry receives a new key, so the previous source recording is
-not overwritten. Manual mode also retains the durable audio.
+not overwritten. Manual mode also retains the durable audio. If the blob write
+succeeds but persisting its Meeting pointer fails, the route deletes only that
+new key. A compensation failure emits generic telemetry without filenames,
+keys, audio, transcript, or project content.
 
-`UPLOADING` and `TRANSCRIBING` requests return 409. In addition to the early
-status guard, an `updateMany` status claim prevents two requests that observed
-the same retryable state from both submitting provider work.
+Upload eligibility is an explicit frozen-source allowlist: only `PENDING` or
+`FAILED`, non-published, never-analyzed meetings with no completed
+`rawTranscript` may accept audio. `READY`, `AWAITING_NAMES`, `ANALYZING`, every
+other status, published review state, a completed raw source, or prior analysis
+returns 409 before form parsing or downstream work. The same complete predicate
+is repeated in an atomic `updateMany` claim after parsing so a concurrent state
+change cannot submit provider work.
 
 ## Meeting and BackgroundJob state
 
@@ -58,6 +67,15 @@ standard and hybrid/fallback paths complete the matching BackgroundJob. A
 worker-restart 404 is translated by the Sidecar into an explicit error, causing
 both Meeting and job to fail. Non-404 transport failures return 502 and leave
 the running state intact for a later retry.
+
+Every terminal transition has one database winner. Completion performs a
+conditional update inside the same transaction and before participant reads or
+inserts, scoped by bid, meeting, current `TRANSCRIBING` state, exact stored job
+id, unpublished state, and an empty raw-source slot. Error finalization uses the
+same bid/meeting/status/job predicate. Losing concurrent polls re-read and
+return the authoritative stored state; they cannot rewrite the raw transcript,
+insert participants, or complete/fail the BackgroundJob. Provider participant
+labels are also deduplicated within the winning payload before insertion.
 
 ## WhisperX transport contract
 
