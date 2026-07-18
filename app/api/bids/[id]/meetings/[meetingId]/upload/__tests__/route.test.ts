@@ -41,6 +41,31 @@ vi.mock("@/lib/auth-helpers", () => ({
   requireBidAccess: mocks.requireBidAccess,
 }));
 
+vi.mock("@/lib/services/meetingRegister/retention", () => ({
+  FROZEN_TRANSCRIPT_CONFLICT: "frozen transcript",
+  meetingTranscriptMutationGate: vi.fn(async () =>
+    state.meeting ? { ok: true } : { ok: false, reason: "not-found" }
+  ),
+  withMutableMeetingTranscript: vi.fn(async (_bidId, _meetingId, mutate) => {
+    if (!state.meeting) return { ok: false, reason: "not-found" };
+    return {
+      ok: true,
+      value: await mutate({
+        meeting: {
+          findFirst: mocks.findFirst,
+          update: mocks.update,
+          updateMany: mocks.updateMany,
+        },
+      }),
+    };
+  }),
+}));
+
+vi.mock("@/lib/services/meetingRegister/txAudit", () => ({
+  writeRegisterAuditTx: vi.fn(async (_tx, args) => args),
+  emitRegisterAuditPostCommit: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     meeting: {

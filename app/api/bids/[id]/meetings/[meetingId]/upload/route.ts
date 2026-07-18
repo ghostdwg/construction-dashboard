@@ -247,6 +247,15 @@ export async function POST(
     if (stored && !stored.ok && stored.reason === "frozen") {
       return transcriptConflictResponse(stored.reason);
     }
+    // If the pointer write itself failed, record the attempt as FAILED through
+    // the same guarded/audited mutation path. An audit failure still fails
+    // closed: the status update rolls back and the compensated blob stays gone.
+    const failed = await commitState(
+      { status: "FAILED" },
+      "meeting.transcription_failed",
+      { failureClass: "audio-pointer" }
+    ).catch(() => null);
+    if (failed && !failed.ok) return transcriptConflictResponse(failed.reason);
     return Response.json(
       { error: "Unable to persist meeting audio reference" },
       { status: 500 }
