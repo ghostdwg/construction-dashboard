@@ -156,7 +156,7 @@ def _run_transcription(
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
-def health():
+async def health():
     return {"ok": True, "device": DEVICE, "model": MODEL_SIZE}
 
 
@@ -185,7 +185,7 @@ async def transcribe(
 
 
 @app.get("/jobs")
-def list_jobs():
+async def list_jobs():
     """List all job IDs and their statuses (no transcript data)."""
     with _jobs_lock:
         summary = {
@@ -196,7 +196,7 @@ def list_jobs():
 
 
 @app.get("/status/{job_id}")
-def status(job_id: str):
+async def status(job_id: str):
     with _jobs_lock:
         job = _jobs.get(job_id)
     if not job:

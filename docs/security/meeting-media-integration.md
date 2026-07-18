@@ -21,8 +21,9 @@ The WhisperX worker now authenticates at the ASGI boundary. Unauthorized or
 misconfigured requests are rejected before FastAPI can parse multipart audio.
 Only the exact `/health` path is exempt; `/transcribe`, `/jobs`, `/status/*`,
 documentation paths, and health-like suffixes remain protected. Coverage imports
-the actual exported worker app with model/runtime dependencies stubbed and
-invokes that ASGI app, so removing the middleware registration fails the test.
+the actual exported `fastapi.applications.FastAPI` worker app with only the
+Torch/WhisperX model-loading seams stubbed, then invokes it through Starlette's
+ASGI contract. Removing the middleware registration therefore fails the test.
 
 ## Immutable audio and retry behavior
 
