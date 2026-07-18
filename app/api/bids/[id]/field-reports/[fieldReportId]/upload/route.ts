@@ -11,6 +11,7 @@
 // extraction, NO auto-created items — parseStatus stays UNPARSED.
 
 import { getBlobStore } from "@/lib/storage/blobStore";
+import { randomUUID } from "node:crypto";
 import { requireBidAccess } from "@/lib/auth-helpers";
 import {
   fieldReportExists,
@@ -58,7 +59,12 @@ export async function POST(
   const exists = await fieldReportExists(bidId, rid);
   if (!exists) return Response.json({ error: "Not found" }, { status: 404 });
 
-  const storageKey = fieldReportStorageKey(bidId, rid, validation.safeFileName);
+  const storageKey = fieldReportStorageKey(
+    bidId,
+    rid,
+    randomUUID(),
+    validation.safeFileName,
+  );
   const store = getBlobStore();
 
   // (2) bytes, guarded.

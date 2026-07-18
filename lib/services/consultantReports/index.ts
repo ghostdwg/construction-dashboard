@@ -18,12 +18,13 @@ import { consultantReportStorageKey } from "./storagePath";
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
 export interface Actor {
+  id?: string | null;
   name?: string | null;
   email?: string | null;
 }
 
 export function actorLabel(actor: Actor | null | undefined): string | null {
-  const label = actor?.email?.trim() || actor?.name?.trim();
+  const label = actor?.email?.trim() || actor?.name?.trim() || actor?.id?.trim();
   return label || null;
 }
 
@@ -63,7 +64,7 @@ export async function audit(
       subject,
       actor: {
         kind: "operator",
-        userId: null,
+        userId: actor?.id ?? null,
         email: actor?.email ?? null,
       },
       // ids/hashes/sizes/bounded metadata ONLY — never report text, PDF

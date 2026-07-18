@@ -9,7 +9,11 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUser, requireBidAccess, ROLES } from "@/lib/auth-helpers";
-import { emitAuditEvent } from "@/lib/observability/audit";
+import type { AuditEnvelope } from "@/lib/observability/taxonomy";
+import {
+  emitOperationsAuditPostCommit,
+  writeOperationsAuditTx,
+} from "@/lib/services/operationsAudit";
 
 export async function PATCH(
   request: Request,
@@ -41,6 +45,7 @@ export async function PATCH(
   if (typeof body.pmReviewRequired !== "boolean") {
     return Response.json({ error: "pmReviewRequired must be a boolean" }, { status: 400 });
   }
+  const pmReviewRequired = body.pmReviewRequired;
 
   const item = await prisma.trackedItem.findFirst({
     where: { id: tid, bidId },
@@ -48,29 +53,24 @@ export async function PATCH(
   });
   if (!item) return Response.json({ error: "Not found" }, { status: 404 });
 
-  await prisma.trackedItem.update({
-    where: { id: tid },
-    data: { pmReviewRequired: body.pmReviewRequired },
-  });
-
   const session = await auth().catch(() => null);
   const su = session?.user as { email?: string | null } | undefined;
-  try {
-    await emitAuditEvent({
-      category: "register_action",
-      action: body.pmReviewRequired ? "pm_review_flagged" : "pm_review_cleared",
-      severity: "NOTICE",
-      decision: body.pmReviewRequired ? "flagged" : "cleared",
-      subject: { kind: "TrackedItem", id: String(tid) },
-      actor: { kind: "operator", userId: null, email: su?.email ?? null },
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.trackedItem.update({
+      where: { id: tid },
+      data: { pmReviewRequired },
+    });
+    envelope = await writeOperationsAuditTx(tx, {
+      action: pmReviewRequired ? "pm_review_flagged" : "pm_review_cleared",
+      decision: pmReviewRequired ? "flagged" : "cleared",
+      subjectKind: "TrackedItem",
+      subjectId: tid,
+      actor: { id: access.user.id, email: su?.email ?? null },
       payload: { bidId, prior: item.pmReviewRequired },
     });
-  } catch (err) {
-    console.error(
-      "[tracked-items] pm-review-flag audit emit failed (action continues):",
-      err instanceof Error ? err.message : err
-    );
-  }
+  });
+  emitOperationsAuditPostCommit(envelope);
 
-  return Response.json({ ok: true, pmReviewRequired: body.pmReviewRequired });
+  return Response.json({ ok: true, pmReviewRequired });
 }

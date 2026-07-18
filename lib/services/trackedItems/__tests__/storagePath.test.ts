@@ -7,14 +7,14 @@ import {
 } from "../storagePath";
 
 describe("trackedItems storagePath", () => {
-  test("canonical key shape: plan-room/jobs/{bidId}/tracked-items/{itemId}/{safeFileName}", () => {
-    expect(trackedItemStorageKey(7, 42, "site photo #3.jpg")).toBe(
-      "plan-room/jobs/7/tracked-items/42/site photo _3.jpg"
+  test("canonical key shape includes a server-generated immutable id", () => {
+    expect(trackedItemStorageKey(7, 42, "12345678-abcd", "site photo #3.jpg")).toBe(
+      "plan-room/jobs/7/tracked-items/42/12345678-abcd/site photo _3.jpg"
     );
   });
 
   test("hostile filenames are sanitized through the shared helper (no traversal, no separators)", () => {
-    const key = trackedItemStorageKey(7, 42, "../../.env.staging");
+    const key = trackedItemStorageKey(7, 42, "12345678-abcd", "../../.env.staging");
     expect(key.startsWith("plan-room/jobs/7/tracked-items/42/")).toBe(true);
     const fileSegment = key.split("/").pop()!;
     expect(fileSegment).not.toContain("..");

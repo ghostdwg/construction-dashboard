@@ -41,6 +41,7 @@ export async function POST(
   const user = session?.user as { name?: string | null; email?: string | null } | undefined;
 
   const result = await promoteMeetingActionItem(bidId, actionItemId, {
+    id: access.user.id,
     name: user?.name ?? null,
     email: user?.email ?? null,
   });

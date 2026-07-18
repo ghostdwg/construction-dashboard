@@ -8,14 +8,24 @@ const h = vi.hoisted(() => ({
   items: [] as Array<Record<string, unknown> & { id: number; bidId: number }>,
   bidExists: true,
   nextId: 1,
+  auditFail: false,
 }));
 
 const putMock = vi.hoisted(() => vi.fn(async () => ({ key: "x" })));
 const deleteMock = vi.hoisted(() => vi.fn(async () => undefined));
-const auditMock = vi.hoisted(() => vi.fn(async () => undefined));
+const auditMock = vi.hoisted(() =>
+  vi.fn(async (_input: Record<string, unknown>) => undefined),
+);
 const accessMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>());
 
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+vi.mock("@/lib/services/operationsAudit", () => ({
+  writeOperationsAuditTx: vi.fn(async (_tx, args) => {
+    if (h.auditFail) throw new Error("synthetic audit failure");
+    await auditMock({ category: "register_action", ...args });
+    return args;
+  }),
+  emitOperationsAuditPostCommit: vi.fn(),
+}));
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
@@ -28,8 +38,8 @@ vi.mock("@/lib/storage/blobStore", () => ({
   },
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     bid: { findUnique: vi.fn(async () => (h.bidExists ? { id: 1 } : null)) },
     fieldReport: {
       findMany: vi.fn(async ({ where }: { where: { bidId: number } }) =>
@@ -76,8 +86,24 @@ vi.mock("@/lib/prisma", () => ({
         return { id: row.id };
       }),
     },
-  },
-}));
+  } as Record<string, unknown>;
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const snapshot = {
+      reports: structuredClone(h.reports),
+      items: structuredClone(h.items),
+      nextId: h.nextId,
+    };
+    try {
+      return await fn(prisma);
+    } catch (error) {
+      h.reports.splice(0, h.reports.length, ...snapshot.reports);
+      h.items.splice(0, h.items.length, ...snapshot.items);
+      h.nextId = snapshot.nextId;
+      throw error;
+    }
+  });
+  return { prisma };
+});
 
 import { GET as listGET, POST as createPOST } from "../route";
 import { GET as detailGET, PATCH as detailPATCH } from "../[fieldReportId]/route";
@@ -105,6 +131,7 @@ beforeEach(() => {
   h.items.length = 0;
   h.bidExists = true;
   h.nextId = 1;
+  h.auditFail = false;
   putMock.mockClear();
   deleteMock.mockClear();
   auditMock.mockClear();
@@ -147,6 +174,29 @@ describe("field-reports routes", () => {
     expect(h.reports[0].title).toBe("Daily r2");
   });
 
+  test("audit failure rolls back create/update and invalid/not-found requests write no audit", async () => {
+    h.auditFail = true;
+    await expect(createPOST(jsonReq({ title: "Confidential daily" }), p("5")))
+      .rejects.toThrow("synthetic audit failure");
+    expect(h.reports).toEqual([]);
+    expect(auditMock).not.toHaveBeenCalled();
+
+    h.auditFail = false;
+    expect((await createPOST(jsonReq({ title: "Seed" }), p("5"))).status).toBe(201);
+    const before = structuredClone(h.reports);
+    const auditCount = auditMock.mock.calls.length;
+    h.auditFail = true;
+    await expect(detailPATCH(jsonReq({ title: "Confidential revised" }), pr("5", "1")))
+      .rejects.toThrow("synthetic audit failure");
+    expect(h.reports).toEqual(before);
+    expect(auditMock).toHaveBeenCalledTimes(auditCount);
+
+    h.auditFail = false;
+    expect((await detailPATCH(jsonReq({ title: "  " }), pr("5", "1"))).status).toBe(400);
+    expect((await detailPATCH(jsonReq({ title: "x" }), pr("6", "1"))).status).toBe(404);
+    expect(auditMock).toHaveBeenCalledTimes(auditCount);
+  });
+
   test("upload: MIME allowlist + size gate; canonical storage key; tenancy before bytes", async () => {
     await createPOST(jsonReq({ title: "Daily" }), p("5"));
 
@@ -158,12 +208,9 @@ describe("field-reports routes", () => {
 
     const ok = await uploadPOST(fileReq("daily report.pdf", "application/pdf"), pr("5", "1"));
     expect(ok.status).toBe(201);
-    expect((putMock.mock.calls[0] as unknown[])[0]).toBe(
-      "plan-room/jobs/5/field-reports/1/daily report.pdf"
-    );
-    expect(h.reports[0].sourceFileStorageKey).toBe(
-      "plan-room/jobs/5/field-reports/1/daily report.pdf"
-    );
+    const key = (putMock.mock.calls[0] as unknown[])[0] as string;
+    expect(key).toMatch(/^plan-room\/jobs\/5\/field-reports\/1\/[a-f0-9-]{36}\/daily report\.pdf$/);
+    expect(h.reports[0].sourceFileStorageKey).toBe(key);
     expect(h.reports[0].parseStatus).toBe("UNPARSED"); // upload never advances parse state
   });
 
@@ -182,19 +229,30 @@ describe("field-reports routes", () => {
     const metaFail = await uploadPOST(fileReq("b.pdf", "application/pdf"), pr("5", "1"));
     expect(metaFail.status).toBe(500);
     expect(deleteMock).toHaveBeenCalledTimes(1);
-    expect((deleteMock.mock.calls[0] as unknown[])[0]).toBe(
-      "plan-room/jobs/5/field-reports/1/b.pdf"
-    );
+    const failedMetadataKey = (putMock.mock.calls[1] as unknown[])[0];
+    expect((deleteMock.mock.calls[0] as unknown[])[0]).toBe(failedMetadataKey);
     expect(h.reports[0].sourceFileStorageKey).toBeNull();
 
     deleteMock.mockClear();
     expect((await uploadPOST(fileReq("c.pdf", "application/pdf"), pr("5", "1"))).status).toBe(201);
+    const cKey = (putMock.mock.calls[2] as unknown[])[0];
     expect((await uploadPOST(fileReq("d.pdf", "application/pdf"), pr("5", "1"))).status).toBe(201);
     // superseded c.pdf blob cleaned up after successful d.pdf metadata write
     expect(deleteMock).toHaveBeenCalledTimes(1);
-    expect((deleteMock.mock.calls[0] as unknown[])[0]).toBe(
-      "plan-room/jobs/5/field-reports/1/c.pdf"
-    );
+    expect((deleteMock.mock.calls[0] as unknown[])[0]).toBe(cKey);
+  });
+
+  test("file-record audit failure restores prior metadata and deletes only the new immutable blob", async () => {
+    await createPOST(jsonReq({ title: "Daily" }), p("5"));
+    expect((await uploadPOST(fileReq("same.pdf", "application/pdf", 2), pr("5", "1"))).status).toBe(201);
+    const priorKey = h.reports[0].sourceFileStorageKey;
+    h.auditFail = true;
+    const response = await uploadPOST(fileReq("same.pdf", "application/pdf", 3), pr("5", "1"));
+    expect(response.status).toBe(500);
+    expect(h.reports[0].sourceFileStorageKey).toBe(priorKey);
+    const newKey = (putMock.mock.calls.at(-1) as unknown[])[0];
+    expect(newKey).not.toBe(priorKey);
+    expect((deleteMock.mock.calls.at(-1) as unknown[])[0]).toBe(newKey);
   });
 
   test("create TrackedItem from report: FIELD_ITEM on the spine with citation; cross-bid refused; audited", async () => {

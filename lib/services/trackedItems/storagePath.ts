@@ -8,7 +8,7 @@
 // shapes to classify and no legacyPathCompat instantiation is needed. New
 // writes follow the Ledger's canonical new-write namespace:
 //
-//   plan-room/jobs/{bidId}/tracked-items/{trackedItemId}/{safeFileName}
+//   plan-room/jobs/{bidId}/tracked-items/{trackedItemId}/{immutableId}/{safeFileName}
 //
 // Bytes live in the existing BlobStore (getBlobStore()); this module never
 // invents storage machinery — it only builds keys (via the shared
@@ -37,10 +37,14 @@ export const TRACKED_ITEM_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export function trackedItemStorageKey(
   bidId: number,
   trackedItemId: number,
+  immutableId: string,
   fileName: string
 ): string {
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(immutableId)) {
+    throw new Error("immutable attachment id is invalid");
+  }
   const safe = safeBlobFileName(fileName);
-  return `plan-room/jobs/${bidId}/tracked-items/${trackedItemId}/${safe}`;
+  return `plan-room/jobs/${bidId}/tracked-items/${trackedItemId}/${immutableId}/${safe}`;
 }
 
 export type AttachmentValidation =

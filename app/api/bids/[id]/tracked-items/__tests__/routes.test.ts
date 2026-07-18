@@ -12,28 +12,49 @@ const h = vi.hoisted(() => ({
   meetingActionItems: [] as Array<Record<string, unknown> & { id: number; bidId: number }>,
   bidExists: true,
   nextId: 1,
+  auditFail: false,
 }));
 
-const putMock = vi.hoisted(() => vi.fn(async () => ({ key: "x" })));
-const deleteMock = vi.hoisted(() => vi.fn(async () => undefined));
-const auditMock = vi.hoisted(() => vi.fn(async () => undefined));
+const blobBytes = vi.hoisted(() => new Map<string, Buffer>());
+const putMock = vi.hoisted(() => vi.fn(async (key: string, bytes: Buffer) => {
+  blobBytes.set(key, Buffer.from(bytes));
+  return { key };
+}));
+const deleteMock = vi.hoisted(() => vi.fn(async (key: string) => {
+  blobBytes.delete(key);
+}));
+const getMock = vi.hoisted(() => vi.fn(async (key: string) => {
+  const bytes = blobBytes.get(key);
+  if (!bytes) throw new Error("missing");
+  return Buffer.from(bytes);
+}));
+const auditMock = vi.hoisted(() =>
+  vi.fn(async (_input: Record<string, unknown>) => undefined),
+);
 const accessMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>());
 
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+vi.mock("@/lib/services/operationsAudit", () => ({
+  writeOperationsAuditTx: vi.fn(async (_tx, args) => {
+    if (h.auditFail) throw new Error("synthetic audit failure");
+    await auditMock({ category: "register_action", ...args });
+    return args;
+  }),
+  emitOperationsAuditPostCommit: vi.fn(),
+}));
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
 vi.mock("@/lib/auth-helpers", () => ({ requireBidAccess: accessMock }));
 vi.mock("@/lib/storage/blobStore", () => ({
-  getBlobStore: () => ({ put: putMock, delete: deleteMock }),
+  getBlobStore: () => ({ put: putMock, get: getMock, delete: deleteMock }),
   safeBlobFileName: (name: string) => {
     const base = name.split("/").pop()!.trim();
     return base.replace(/[^A-Za-z0-9._() -]/g, "_").slice(0, 180) || "upload.bin";
   },
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     bid: { findUnique: vi.fn(async () => (h.bidExists ? { id: 1 } : null)) },
     // Spec gap hint count: no specBook in test data → all items get gapHintCount 0.
     specBook: { findFirst: vi.fn(async () => null) },
@@ -101,20 +122,44 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(async ({ where }: { where: { trackedItemId: number } }) =>
         h.attachments.filter((a) => a.trackedItemId === where.trackedItemId)
       ),
+      findFirst: vi.fn(async ({ where }: { where: { id: number; trackedItemId: number } }) =>
+        h.attachments.find(
+          (attachment) => attachment.id === where.id && attachment.trackedItemId === where.trackedItemId,
+        ) ?? null
+      ),
     },
     meetingActionItem: {
       findFirst: vi.fn(async ({ where }: { where: { id: number; bidId: number } }) =>
         h.meetingActionItems.find((m) => m.id === where.id && m.bidId === where.bidId) ?? null
       ),
     },
-  },
-}));
+  } as Record<string, unknown>;
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const snapshot = {
+      items: structuredClone(h.items),
+      comments: structuredClone(h.comments),
+      attachments: structuredClone(h.attachments),
+      nextId: h.nextId,
+    };
+    try {
+      return await fn(prisma);
+    } catch (error) {
+      h.items.splice(0, h.items.length, ...snapshot.items);
+      h.comments.splice(0, h.comments.length, ...snapshot.comments);
+      h.attachments.splice(0, h.attachments.length, ...snapshot.attachments);
+      h.nextId = snapshot.nextId;
+      throw error;
+    }
+  });
+  return { prisma };
+});
 
 import { GET as listGET, POST as createPOST } from "../route";
 import { POST as promotePOST } from "../promote/route";
 import { POST as statusPOST } from "../[itemId]/status/route";
 import { GET as commentsGET, POST as commentsPOST } from "../[itemId]/comments/route";
 import { POST as attachmentsPOST } from "../[itemId]/attachments/route";
+import { GET as attachmentDownloadGET } from "../[itemId]/attachments/[attachmentId]/download/route";
 
 const p = (id: string) => ({ params: Promise.resolve({ id }) });
 const pi = (id: string, itemId: string) => ({ params: Promise.resolve({ id, itemId }) });
@@ -132,6 +177,8 @@ beforeEach(() => {
   h.meetingActionItems.length = 0;
   h.bidExists = true;
   h.nextId = 1;
+  h.auditFail = false;
+  blobBytes.clear();
   putMock.mockClear();
   deleteMock.mockClear();
   auditMock.mockClear();
@@ -151,6 +198,43 @@ describe("tracked-items routes", () => {
     expect(request.formData).not.toHaveBeenCalled();
     expect(putMock).not.toHaveBeenCalled();
     expect(h.attachments).toHaveLength(0);
+  });
+
+  test("same-name uploads use distinct keys and the older id returns its original bytes", async () => {
+    await createPOST(jsonReq({ kind: "FIELD_ITEM", title: "photo item" }), p("5"));
+    const upload = (bytes: number[]) => {
+      const form = new FormData();
+      form.append("file", new File([new Uint8Array(bytes)], "same.jpg", { type: "image/jpeg" }));
+      return attachmentsPOST(new Request("http://t", { method: "POST", body: form }), pi("5", "1"));
+    };
+    expect((await upload([1, 2, 3])).status).toBe(201);
+    const first = { ...h.attachments[0] };
+    expect((await upload([9, 8, 7])).status).toBe(201);
+    expect(h.attachments[1].storageKey).not.toBe(first.storageKey);
+
+    const response = await attachmentDownloadGET(
+      new Request("http://t"),
+      { params: Promise.resolve({ id: "5", itemId: "1", attachmentId: String(first.id) }) },
+    );
+    expect(response.status).toBe(200);
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([1, 2, 3]);
+  });
+
+  test("attachment audit failure rolls metadata back and compensates only the new blob", async () => {
+    await createPOST(jsonReq({ kind: "FIELD_ITEM", title: "photo item" }), p("5"));
+    h.auditFail = true;
+    const form = new FormData();
+    form.append("file", new File([new Uint8Array([4, 5])], "audit.jpg", { type: "image/jpeg" }));
+    const response = await attachmentsPOST(
+      new Request("http://t", { method: "POST", body: form }),
+      pi("5", "1"),
+    );
+    expect(response.status).toBe(500);
+    expect(h.attachments).toEqual([]);
+    expect(deleteMock).toHaveBeenCalledOnce();
+    const newKey = (putMock.mock.calls.at(-1) as unknown[])[0] as string;
+    expect((deleteMock.mock.calls.at(-1) as unknown[])[0]).toBe(newKey);
+    expect(blobBytes.has(newKey)).toBe(false);
   });
   test("POST create: 201 with actor from session; 400 on bad kind; 404 on missing bid", async () => {
     const ok = await createPOST(jsonReq({ kind: "WARRANTY", title: "roof warranty letter" }), p("5"));
@@ -253,7 +337,7 @@ describe("tracked-items routes", () => {
     expect(accepted.status).toBe(201);
     expect(putMock).toHaveBeenCalledTimes(1);
     const key = (putMock.mock.calls[0] as unknown[])[0] as string;
-    expect(key).toBe("plan-room/jobs/5/tracked-items/1/site photo.jpg");
+    expect(key).toMatch(/^plan-room\/jobs\/5\/tracked-items\/1\/[a-f0-9-]{36}\/site photo\.jpg$/);
     expect(h.attachments[0].kind).toBe("photo");
     expect(h.attachments[0].caption).toBe("cracked curb");
 
@@ -303,7 +387,7 @@ describe("tracked-items routes", () => {
     expect(putMock).toHaveBeenCalledTimes(1); // blob DID land first...
     expect(deleteMock).toHaveBeenCalledTimes(1); // ...and was cleaned up
     expect((deleteMock.mock.calls[0] as unknown[])[0]).toBe(
-      "plan-room/jobs/5/tracked-items/1/b.jpg"
+      (putMock.mock.calls[0] as unknown[])[0],
     );
     expect(h.attachments.length).toBe(0); // and no metadata row survived
   });

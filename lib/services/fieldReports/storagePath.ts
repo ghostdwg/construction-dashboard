@@ -24,10 +24,14 @@ export const FIELD_REPORT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export function fieldReportStorageKey(
   bidId: number,
   fieldReportId: number,
+  immutableId: string,
   fileName: string
 ): string {
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(immutableId)) {
+    throw new Error("immutable field-report file id is invalid");
+  }
   const safe = safeBlobFileName(fileName);
-  return `plan-room/jobs/${bidId}/field-reports/${fieldReportId}/${safe}`;
+  return `plan-room/jobs/${bidId}/field-reports/${fieldReportId}/${immutableId}/${safe}`;
 }
 
 export type FieldReportUploadValidation =

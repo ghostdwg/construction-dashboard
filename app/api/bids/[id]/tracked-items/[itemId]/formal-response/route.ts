@@ -5,8 +5,8 @@
 // ONE stored value per item (TrackedItem.formalResponse); both edit
 // surfaces (Register Item detail, Consultant Report detail) call THIS
 // route. Explicit save only — no autosave. Every edit records the prior
-// value on the item (formalResponsePrior) AND bounded in the DB audit
-// row's payloadJson; stdout never carries formal-response text (see
+// value on the item (formalResponsePrior). The mandatory AuditEvent is
+// transactional and carries lengths only; no generic audit/stdout carries response text (see
 // lib/services/consultantReports/formalResponse.ts for the split
 // fan-out). TrackedItemComment is untouched — a comment thread is not a
 // formal response.
@@ -42,6 +42,7 @@ export async function PATCH(
   const user = session?.user as { name?: string | null; email?: string | null } | undefined;
 
   const result = await setFormalResponse(bidId, tid, body.formalResponse, {
+    id: access.user.id,
     name: user?.name ?? null,
     email: user?.email ?? null,
   });

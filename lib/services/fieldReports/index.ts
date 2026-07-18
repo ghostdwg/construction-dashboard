@@ -8,24 +8,28 @@
 // anything. parseStatus stays "UNPARSED" in V0 — no code path changes it.
 
 import { prisma } from "@/lib/prisma";
-import { emitAuditEvent } from "@/lib/observability/audit";
+import type { AuditEnvelope } from "@/lib/observability/taxonomy";
+import {
+  emitOperationsAuditPostCommit,
+  writeOperationsAuditTx,
+} from "@/lib/services/operationsAudit";
 
 type Actor = { id?: string | null; email?: string | null } | null;
 
-async function auditFieldReport(
+async function auditFieldReportTx(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   action: string,
   bidId: number,
   reportId: number,
   actor: Actor,
   payload: Record<string, unknown>
 ) {
-  await emitAuditEvent({
-    category: "register_action",
+  return writeOperationsAuditTx(tx, {
     action,
-    severity: "NOTICE",
     decision: "committed",
-    subject: { kind: "FieldReport", id: String(reportId) },
-    actor: { kind: "operator", userId: actor?.id ?? null, email: actor?.email ?? null },
+    subjectKind: "FieldReport",
+    subjectId: reportId,
+    actor,
     payload: { bidId, ...payload },
   });
 }
@@ -66,19 +70,24 @@ export async function createFieldReport(
   const title = input.title?.trim();
   if (!title) return { ok: false, error: "title is required" };
 
-  const created = await prisma.fieldReport.create({
-    data: {
-      bidId,
-      title: title.slice(0, 300),
-      reportDate: input.reportDate ?? null,
-      authorName: input.authorName?.trim() || null,
-      parseStatus: "UNPARSED",
-    },
-    select: { id: true },
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.fieldReport.create({
+      data: {
+        bidId,
+        title: title.slice(0, 300),
+        reportDate: input.reportDate ?? null,
+        authorName: input.authorName?.trim() || null,
+        parseStatus: "UNPARSED",
+      },
+      select: { id: true },
+    });
+    envelope = await auditFieldReportTx(tx, "field_report_create", bidId, row.id, actor, {
+      hasReportDate: Boolean(input.reportDate),
+    });
+    return row;
   });
-  await auditFieldReport("field_report_create", bidId, created.id, actor, {
-    hasReportDate: Boolean(input.reportDate),
-  });
+  emitOperationsAuditPostCommit(envelope);
   return { ok: true, value: created };
 }
 
@@ -94,28 +103,32 @@ export async function updateFieldReport(
   patch: UpdateFieldReportInput,
   actor: Actor = null
 ): Promise<ServiceResult<{ id: number }>> {
+  if (patch.title !== undefined && !patch.title.trim()) {
+    return { ok: false, error: "title cannot be empty" };
+  }
   const report = await prisma.fieldReport.findFirst({
     where: { id: fieldReportId, bidId },
     select: { id: true },
   });
-  await auditFieldReport("field_report_update", bidId, fieldReportId, actor, {
-    changedFields: Object.keys(patch),
-  });
   if (!report) return { ok: false, error: "Not found" };
-  if (patch.title !== undefined && !patch.title.trim()) {
-    return { ok: false, error: "title cannot be empty" };
-  }
 
-  await prisma.fieldReport.update({
-    where: { id: fieldReportId },
-    data: {
-      ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, 300) } : {}),
-      ...(patch.reportDate !== undefined ? { reportDate: patch.reportDate } : {}),
-      ...(patch.authorName !== undefined
-        ? { authorName: patch.authorName?.trim() || null }
-        : {}),
-    },
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.fieldReport.update({
+      where: { id: fieldReportId },
+      data: {
+        ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, 300) } : {}),
+        ...(patch.reportDate !== undefined ? { reportDate: patch.reportDate } : {}),
+        ...(patch.authorName !== undefined
+          ? { authorName: patch.authorName?.trim() || null }
+          : {}),
+      },
+    });
+    envelope = await auditFieldReportTx(tx, "field_report_update", bidId, fieldReportId, actor, {
+      changedFields: Object.keys(patch).sort(),
+    });
   });
+  emitOperationsAuditPostCommit(envelope);
   return { ok: true, value: { id: fieldReportId } };
 }
 
@@ -151,21 +164,29 @@ export async function recordReportFile(
     where: { id: fieldReportId, bidId },
     select: { id: true, sourceFileStorageKey: true },
   });
-  await auditFieldReport("field_report_file_recorded", bidId, fieldReportId, actor, {
-    mimeType: meta.mimeType,
-    byteSize: meta.byteSize,
-  });
   if (!report) return { ok: false, error: "Not found" };
 
-  await prisma.fieldReport.update({
-    where: { id: fieldReportId },
-    data: {
-      sourceFileStorageKey: meta.storageKey,
-      originalFileName: meta.fileName,
-      mimeType: meta.mimeType,
-      byteSize: meta.byteSize,
-    },
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.fieldReport.update({
+      where: { id: fieldReportId },
+      data: {
+        sourceFileStorageKey: meta.storageKey,
+        originalFileName: meta.fileName,
+        mimeType: meta.mimeType,
+        byteSize: meta.byteSize,
+      },
+    });
+    envelope = await auditFieldReportTx(
+      tx,
+      "field_report_file_recorded",
+      bidId,
+      fieldReportId,
+      actor,
+      { mimeType: meta.mimeType, byteSize: meta.byteSize },
+    );
   });
+  emitOperationsAuditPostCommit(envelope);
 
   const previous =
     report.sourceFileStorageKey && report.sourceFileStorageKey !== meta.storageKey

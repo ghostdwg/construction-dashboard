@@ -8,13 +8,24 @@ const h = vi.hoisted(() => ({
   attachments: [] as Array<Record<string, unknown> & { id: number; trackedItemId: number }>,
   meetingActionItems: [] as Array<Record<string, unknown> & { id: number; bidId: number }>,
   nextId: 1,
+  auditFail: false,
+  emitted: [] as unknown[],
 }));
 
-const auditMock = vi.hoisted(() => vi.fn(async () => undefined));
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+const auditMock = vi.hoisted(() =>
+  vi.fn(async (_input: Record<string, unknown>) => undefined),
+);
+vi.mock("@/lib/services/operationsAudit", () => ({
+  writeOperationsAuditTx: vi.fn(async (_tx, args) => {
+    if (h.auditFail) throw new Error("synthetic audit failure");
+    await auditMock({ category: "register_action", ...args });
+    return args;
+  }),
+  emitOperationsAuditPostCommit: vi.fn((envelope) => h.emitted.push(envelope)),
+}));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     trackedItem: {
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
         h.items.filter(
@@ -83,8 +94,26 @@ vi.mock("@/lib/prisma", () => ({
         h.meetingActionItems.find((m) => m.id === where.id && m.bidId === where.bidId) ?? null
       ),
     },
-  },
-}));
+  } as Record<string, unknown>;
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const snapshot = {
+      items: structuredClone(h.items),
+      comments: structuredClone(h.comments),
+      attachments: structuredClone(h.attachments),
+      nextId: h.nextId,
+    };
+    try {
+      return await fn(prisma);
+    } catch (error) {
+      h.items.splice(0, h.items.length, ...snapshot.items);
+      h.comments.splice(0, h.comments.length, ...snapshot.comments);
+      h.attachments.splice(0, h.attachments.length, ...snapshot.attachments);
+      h.nextId = snapshot.nextId;
+      throw error;
+    }
+  });
+  return { prisma };
+});
 
 import {
   addComment,
@@ -105,6 +134,8 @@ beforeEach(() => {
   h.attachments.length = 0;
   h.meetingActionItems.length = 0;
   h.nextId = 1;
+  h.auditFail = false;
+  h.emitted.length = 0;
   auditMock.mockClear();
 });
 
@@ -279,6 +310,67 @@ describe("trackedItems service", () => {
     expect((await updateTrackedItem(5, 1, { priority: "URGENT" })).ok).toBe(false);
     expect((await updateTrackedItem(5, 1, { title: "  " })).ok).toBe(false);
     expect((await updateTrackedItem(9, 1, { title: "x" })).ok).toBe(false);
+  });
+
+  test("audit failure rolls back create, update, status+note, comment, and attachment metadata", async () => {
+    h.auditFail = true;
+    await expect(
+      createTrackedItem(5, { kind: "FIELD_ITEM", title: "sensitive title" }, ACTOR),
+    ).rejects.toThrow("synthetic audit failure");
+    expect(h.items).toEqual([]);
+    expect(h.emitted).toEqual([]);
+
+    h.auditFail = false;
+    await createTrackedItem(5, { kind: "FIELD_ITEM", title: "seed" }, ACTOR);
+    const seed = structuredClone(h.items);
+    const emittedBefore = h.emitted.length;
+    h.auditFail = true;
+
+    await expect(updateTrackedItem(5, 1, { description: "confidential update" }, ACTOR))
+      .rejects.toThrow("synthetic audit failure");
+    expect(h.items).toEqual(seed);
+
+    await expect(
+      transitionTrackedItem(5, 1, "CLOSED", ACTOR, { note: "confidential note" }),
+    ).rejects.toThrow("synthetic audit failure");
+    expect(h.items).toEqual(seed);
+    expect(h.comments).toEqual([]);
+
+    await expect(addComment(5, 1, ACTOR, "confidential comment"))
+      .rejects.toThrow("synthetic audit failure");
+    expect(h.comments).toEqual([]);
+
+    await expect(recordAttachment(5, 1, ACTOR, {
+      storageKey: "immutable-key",
+      fileName: "private.pdf",
+      mimeType: "application/pdf",
+      byteSize: 10,
+      kind: "document",
+      caption: "confidential caption",
+    })).rejects.toThrow("synthetic audit failure");
+    expect(h.attachments).toEqual([]);
+    expect(h.emitted).toHaveLength(emittedBefore);
+  });
+
+  test("generic audit payloads contain no title, comment, note, caption, or waiver text", async () => {
+    await createTrackedItem(5, { kind: "FIELD_ITEM", title: "secret title" }, ACTOR);
+    await addComment(5, 1, ACTOR, "secret comment");
+    await recordAttachment(5, 1, ACTOR, {
+      storageKey: "immutable-key",
+      fileName: "private.pdf",
+      mimeType: "application/pdf",
+      byteSize: 10,
+      kind: "document",
+      caption: "secret caption",
+    });
+    await transitionTrackedItem(5, 1, "WAIVED", ACTOR, {
+      waivedReason: "secret waiver",
+      note: "secret note",
+    });
+    const auditJson = JSON.stringify(auditMock.mock.calls);
+    for (const secret of ["secret title", "secret comment", "secret caption", "secret waiver", "secret note"]) {
+      expect(auditJson).not.toContain(secret);
+    }
   });
 });
 

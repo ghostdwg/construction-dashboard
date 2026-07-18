@@ -41,7 +41,7 @@ export async function POST(
     bidId,
     tid,
     body.to,
-    { name: user?.name ?? null, email: user?.email ?? null },
+    { id: access.user.id, name: user?.name ?? null, email: user?.email ?? null },
     {
       waivedReason: typeof body.waivedReason === "string" ? body.waivedReason : null,
       note: typeof body.note === "string" ? body.note : null,

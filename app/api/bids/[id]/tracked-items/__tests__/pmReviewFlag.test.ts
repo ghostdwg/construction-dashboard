@@ -9,6 +9,8 @@ const h = vi.hoisted(() => ({
   audits: [] as Array<{ action: string; payload: Record<string, unknown> | undefined }>,
   currentUser: { id: "u1", role: "pm" } as { id: string; role: string } | null,
   authOk: true,
+  auditFail: false,
+  emitted: [] as unknown[],
 }));
 
 const auditMock = vi.hoisted(() =>
@@ -17,7 +19,14 @@ const auditMock = vi.hoisted(() =>
   })
 );
 
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+vi.mock("@/lib/services/operationsAudit", () => ({
+  writeOperationsAuditTx: vi.fn(async (_tx, args) => {
+    if (h.auditFail) throw new Error("synthetic audit failure");
+    await auditMock(args);
+    return args;
+  }),
+  emitOperationsAuditPostCommit: vi.fn((envelope) => h.emitted.push(envelope)),
+}));
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
@@ -37,8 +46,8 @@ vi.mock("@/lib/auth-helpers", () => ({
 const matches = (row: Row, where: Record<string, unknown>) =>
   Object.entries(where).every(([k, v]) => row[k] === v);
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     trackedItem: {
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
         const found = h.items.find((i) => matches(i, where));
@@ -50,8 +59,18 @@ vi.mock("@/lib/prisma", () => ({
         return { ...row };
       }),
     },
-  },
-}));
+  } as Record<string, unknown>;
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const snapshot = structuredClone(h.items);
+    try {
+      return await fn(prisma);
+    } catch (error) {
+      h.items.splice(0, h.items.length, ...snapshot);
+      throw error;
+    }
+  });
+  return { prisma };
+});
 
 import { PATCH as flagPATCH } from "../[itemId]/pm-review-flag/route";
 
@@ -70,6 +89,8 @@ beforeEach(() => {
   h.audits.length = 0;
   h.currentUser = { id: "u1", role: "pm" };
   h.authOk = true;
+  h.auditFail = false;
+  h.emitted.length = 0;
   h.items.push({ id: 7, bidId: 1, pmReviewRequired: false });
 });
 
@@ -105,5 +126,14 @@ describe("PATCH pm-review-flag", () => {
     expect((await flagPATCH(patchReq({ pmReviewRequired: true }), pi("2", "7"))).status).toBe(404);
     expect(h.items[0].pmReviewRequired).toBe(false);
     expect(h.audits).toHaveLength(0);
+  });
+
+  test("audit failure rolls the flag back and emits no committed telemetry", async () => {
+    h.auditFail = true;
+    await expect(flagPATCH(patchReq({ pmReviewRequired: true }), pi("1", "7")))
+      .rejects.toThrow("synthetic audit failure");
+    expect(h.items[0].pmReviewRequired).toBe(false);
+    expect(h.audits).toEqual([]);
+    expect(h.emitted).toEqual([]);
   });
 });

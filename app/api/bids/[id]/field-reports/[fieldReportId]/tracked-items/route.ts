@@ -56,7 +56,7 @@ export async function POST(
       evidenceExcerpt: typeof body.evidenceExcerpt === "string" ? body.evidenceExcerpt : null,
       sourceLocator: typeof body.sourceLocator === "string" ? body.sourceLocator : null,
     },
-    { name: user?.name ?? null, email: user?.email ?? null }
+    { id: access.user.id, name: user?.name ?? null, email: user?.email ?? null }
   );
 
   if (!result.ok) {

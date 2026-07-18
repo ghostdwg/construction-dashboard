@@ -64,7 +64,7 @@ export async function POST(
   const result = await addComment(
     bidId,
     tid,
-    { name: user?.name ?? null, email: user?.email ?? null },
+    { id: access.user.id, name: user?.name ?? null, email: user?.email ?? null },
     body.body
   );
   if (!result.ok) {

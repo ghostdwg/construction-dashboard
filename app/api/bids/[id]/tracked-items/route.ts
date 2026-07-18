@@ -160,7 +160,7 @@ export async function POST(
       evidenceExcerpt: typeof body.evidenceExcerpt === "string" ? body.evidenceExcerpt : null,
       sourceLocator: typeof body.sourceLocator === "string" ? body.sourceLocator : null,
     },
-    await sessionActor()
+    { ...(await sessionActor()), id: access.user.id }
   );
 
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 });

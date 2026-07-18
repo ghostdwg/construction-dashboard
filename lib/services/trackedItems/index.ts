@@ -11,12 +11,15 @@
 // MeetingActionItem rows, or backfills historical rows. Every mutation here
 // is the direct result of an authenticated user action in the tracked-items
 // routes, and consequential mutations emit a DB-persisted "register_action"
-// AuditEvent (best-effort: an audit-write failure is logged, never allowed
-// to fail the user's action — matching lib/observability/audit.ts's own
-// fire-and-forget posture).
+// AuditEvent in the same transaction (fail-closed). Stdout telemetry is
+// emitted only after commit and carries no confidential domain text.
 
 import { prisma } from "@/lib/prisma";
-import { emitAuditEvent } from "@/lib/observability/audit";
+import type { AuditEnvelope } from "@/lib/observability/taxonomy";
+import {
+  emitOperationsAuditPostCommit,
+  writeOperationsAuditTx,
+} from "@/lib/services/operationsAudit";
 import {
   isTrackedItemKind,
   isTrackedItemStatus,
@@ -37,35 +40,29 @@ export interface Actor {
 }
 
 function actorLabel(actor: Actor | null | undefined): string | null {
-  const label = actor?.email?.trim() || actor?.name?.trim();
+  const label = actor?.email?.trim() || actor?.name?.trim() || actor?.id?.trim();
   return label || null;
 }
 
-async function audit(
+type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+async function auditTx(
+  tx: PrismaTx,
   action: string,
   bidId: number,
   subjectId: string,
   actor: Actor | null | undefined,
   decision: string,
   payload: Record<string, unknown>
-): Promise<void> {
-  try {
-    await emitAuditEvent({
-      category: "register_action",
-      action,
-      severity: "NOTICE",
-      decision,
-      subject: { kind: "TrackedItem", id: subjectId },
-      actor: {
-        kind: "operator",
-        userId: actor?.id ?? null,
-        email: actor?.email ?? null,
-      },
-      payload: { scope: "bid", bidId, ...payload },
-    });
-  } catch (err) {
-    console.error("[trackedItems] audit emit failed (action continues):", err);
-  }
+): Promise<AuditEnvelope> {
+  return writeOperationsAuditTx(tx, {
+    action,
+    decision,
+    subjectKind: "TrackedItem",
+    subjectId: Number(subjectId),
+    actor: actor ?? null,
+    payload: { scope: "bid", bidId, ...payload },
+  });
 }
 
 // ── List / filter ────────────────────────────────────────────────────────────
@@ -157,31 +154,33 @@ export async function createTrackedItem(
     return { ok: false, error: `Unknown priority: ${priority}` };
   }
 
-  const created = await prisma.trackedItem.create({
-    data: {
-      bidId,
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.trackedItem.create({
+      data: {
+        bidId,
+        kind: input.kind,
+        title: title.slice(0, MAX_TITLE_LENGTH),
+        description: input.description?.trim() || null,
+        priority,
+        assigneeName: input.assigneeName?.trim() || null,
+        assigneeEmail: input.assigneeEmail?.trim() || null,
+        dueDate: input.dueDate ?? null,
+        sourceKind: TRACKED_ITEM_SOURCE_KIND.MANUAL,
+        evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
+        sourceLocator: input.sourceLocator?.trim() || null,
+        extractionMethod: "manual",
+        citationVerified: false,
+      },
+      select: { id: true },
+    });
+    envelope = await auditTx(tx, "tracked_item_create", bidId, String(row.id), actor, "created", {
       kind: input.kind,
-      title: title.slice(0, MAX_TITLE_LENGTH),
-      description: input.description?.trim() || null,
-      priority,
-      assigneeName: input.assigneeName?.trim() || null,
-      assigneeEmail: input.assigneeEmail?.trim() || null,
-      dueDate: input.dueDate ?? null,
       sourceKind: TRACKED_ITEM_SOURCE_KIND.MANUAL,
-      evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
-      sourceLocator: input.sourceLocator?.trim() || null,
-      // Explicit even though it matches the schema default — every producer
-      // writes extractionMethod deliberately (WP1a seeder-provenance lesson).
-      extractionMethod: "manual",
-      citationVerified: false,
-    },
-    select: { id: true },
+    });
+    return row;
   });
-
-  await audit("tracked_item_create", bidId, String(created.id), actor, "created", {
-    kind: input.kind,
-    sourceKind: TRACKED_ITEM_SOURCE_KIND.MANUAL,
-  });
+  emitOperationsAuditPostCommit(envelope);
 
   return { ok: true, value: created };
 }
@@ -216,45 +215,44 @@ export async function promoteMeetingActionItem(
   }
 
   try {
-    const created = await prisma.trackedItem.create({
-      data: {
+    let envelope: AuditEnvelope | null = null;
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await tx.trackedItem.create({
+        data: {
+          bidId,
+          kind: "OAC_ACTION",
+          title: source.description.slice(0, MAX_TITLE_LENGTH),
+          description: source.notes?.trim() || null,
+          priority: source.priority,
+          assigneeName: source.assignedToName?.trim() || null,
+          dueDate: source.dueDate ?? null,
+          carriedFromDate: source.carriedFromDate ?? null,
+          sourceKind: TRACKED_ITEM_SOURCE_KIND.MEETING_ACTION_ITEM,
+          sourceMeetingId: source.meetingId ?? null,
+          sourceMeetingActionItemId: source.id,
+          evidenceExcerpt: source.sourceText?.trim() || null,
+          sourceLocator: null,
+          extractionMethod: source.source === "meeting" ? "meeting_analysis" : "manual",
+          citationVerified: false,
+        },
+        select: { id: true },
+      });
+      envelope = await auditTx(
+        tx,
+        "tracked_item_promote",
         bidId,
-        kind: "OAC_ACTION",
-        title: source.description.slice(0, MAX_TITLE_LENGTH),
-        description: source.notes?.trim() || null,
-        priority: source.priority,
-        assigneeName: source.assignedToName?.trim() || null,
-        dueDate: source.dueDate ?? null,
-        carriedFromDate: source.carriedFromDate ?? null,
-        // Canonical value (legacy rows carry "meeting" — readable forever,
-        // never rewritten; see ./sourceKinds.ts).
-        sourceKind: TRACKED_ITEM_SOURCE_KIND.MEETING_ACTION_ITEM,
-        sourceMeetingId: source.meetingId ?? null,
-        sourceMeetingActionItemId: source.id,
-        // Paraphrased transcript evidence carried forward verbatim from the
-        // action item. Speaker attributions inside it are DRAFT diarization
-        // labels resolved by a human — never verified identity.
-        evidenceExcerpt: source.sourceText?.trim() || null,
-        sourceLocator: null, // rough/null in V1 — no transcript anchor yet
-        extractionMethod: source.source === "meeting" ? "meeting_analysis" : "manual",
-        citationVerified: false,
-      },
-      select: { id: true },
+        String(row.id),
+        actor,
+        "promoted_from_meeting_action_item",
+        {
+          meetingActionItemId: source.id,
+          meetingId: source.meetingId,
+          extractionMethod: source.source === "meeting" ? "meeting_analysis" : "manual",
+        },
+      );
+      return row;
     });
-
-    await audit(
-      "tracked_item_promote",
-      bidId,
-      String(created.id),
-      actor,
-      "promoted_from_meeting_action_item",
-      {
-        meetingActionItemId: source.id,
-        meetingId: source.meetingId,
-        extractionMethod: source.source === "meeting" ? "meeting_analysis" : "manual",
-      }
-    );
-
+    emitOperationsAuditPostCommit(envelope);
     return { ok: true, value: created };
   } catch (err) {
     // Unique-constraint race (two promotions of the same action item at
@@ -314,35 +312,38 @@ export async function createItemFromFieldReport(
     return { ok: false, error: `Unknown priority: ${priority}` };
   }
 
-  const created = await prisma.trackedItem.create({
-    data: {
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.trackedItem.create({
+      data: {
+        bidId,
+        kind: "FIELD_ITEM",
+        title: title.slice(0, MAX_TITLE_LENGTH),
+        description: input.description?.trim() || null,
+        priority,
+        assigneeName: input.assigneeName?.trim() || null,
+        dueDate: input.dueDate ?? null,
+        sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT,
+        sourceFieldReportId: fieldReportId,
+        evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
+        sourceLocator: input.sourceLocator?.trim() || null,
+        extractionMethod: "manual",
+        citationVerified: false,
+      },
+      select: { id: true },
+    });
+    envelope = await auditTx(
+      tx,
+      "tracked_item_create",
       bidId,
-      kind: "FIELD_ITEM",
-      title: title.slice(0, MAX_TITLE_LENGTH),
-      description: input.description?.trim() || null,
-      priority,
-      assigneeName: input.assigneeName?.trim() || null,
-      dueDate: input.dueDate ?? null,
-      sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT,
-      sourceFieldReportId: fieldReportId,
-      evidenceExcerpt: input.evidenceExcerpt?.trim() || null,
-      sourceLocator: input.sourceLocator?.trim() || null,
-      // Human typed this item while reading the report — manual, explicitly.
-      extractionMethod: "manual",
-      citationVerified: false,
-    },
-    select: { id: true },
+      String(row.id),
+      actor,
+      "created_from_field_report",
+      { kind: "FIELD_ITEM", sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT, fieldReportId },
+    );
+    return row;
   });
-
-  await audit(
-    "tracked_item_create",
-    bidId,
-    String(created.id),
-    actor,
-    "created_from_field_report",
-    { kind: "FIELD_ITEM", sourceKind: TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT, fieldReportId }
-  );
-
+  emitOperationsAuditPostCommit(envelope);
   return { ok: true, value: created };
 }
 
@@ -363,16 +364,6 @@ export async function updateTrackedItem(
   patch: UpdateTrackedItemInput,
   actor: Actor = {}
 ): Promise<ServiceResult<{ id: number }>> {
-  const item = await prisma.trackedItem.findFirst({
-    where: { id: itemId, bidId },
-    select: { id: true },
-  });
-
-  await audit("tracked_item_update", bidId, String(itemId), actor, "updated", {
-    changedFields: Object.keys(patch),
-  });
-  if (!item) return { ok: false, error: "Not found" };
-
   if (patch.title !== undefined && !patch.title.trim()) {
     return { ok: false, error: "title cannot be empty" };
   }
@@ -382,24 +373,36 @@ export async function updateTrackedItem(
   ) {
     return { ok: false, error: `Unknown priority: ${patch.priority}` };
   }
-
-  await prisma.trackedItem.update({
-    where: { id: itemId },
-    data: {
-      ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, MAX_TITLE_LENGTH) } : {}),
-      ...(patch.description !== undefined
-        ? { description: patch.description?.trim() || null }
-        : {}),
-      ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
-      ...(patch.assigneeName !== undefined
-        ? { assigneeName: patch.assigneeName?.trim() || null }
-        : {}),
-      ...(patch.assigneeEmail !== undefined
-        ? { assigneeEmail: patch.assigneeEmail?.trim() || null }
-        : {}),
-      ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}),
-    },
+  const item = await prisma.trackedItem.findFirst({
+    where: { id: itemId, bidId },
+    select: { id: true },
   });
+  if (!item) return { ok: false, error: "Not found" };
+
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.trackedItem.update({
+      where: { id: itemId },
+      data: {
+        ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, MAX_TITLE_LENGTH) } : {}),
+        ...(patch.description !== undefined
+          ? { description: patch.description?.trim() || null }
+          : {}),
+        ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+        ...(patch.assigneeName !== undefined
+          ? { assigneeName: patch.assigneeName?.trim() || null }
+          : {}),
+        ...(patch.assigneeEmail !== undefined
+          ? { assigneeEmail: patch.assigneeEmail?.trim() || null }
+          : {}),
+        ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}),
+      },
+    });
+    envelope = await auditTx(tx, "tracked_item_update", bidId, String(itemId), actor, "updated", {
+      changedFields: Object.keys(patch).sort(),
+    });
+  });
+  emitOperationsAuditPostCommit(envelope);
 
   return { ok: true, value: { id: itemId } };
 }
@@ -433,36 +436,39 @@ export async function transitionTrackedItem(
   });
   if (!result.ok) return { ok: false, error: result.error };
 
-  await prisma.trackedItem.update({
-    where: { id: itemId },
-    data: result.updates,
-  });
-
   const note = options.note?.trim();
-  if (note) {
-    await prisma.trackedItemComment.create({
-      data: {
-        trackedItemId: itemId,
-        authorName: actor.name?.trim() || null,
-        authorEmail: actor.email?.trim() || null,
-        body: note,
-      },
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.trackedItem.update({
+      where: { id: itemId },
+      data: result.updates,
     });
-  }
-
-  await audit(
-    "tracked_item_transition",
-    bidId,
-    String(itemId),
-    actor,
-    `${from}->${to}`,
-    {
-      from,
-      to,
-      ...(to === "WAIVED" ? { waivedReason: options.waivedReason ?? null } : {}),
-      noteAdded: Boolean(note),
+    if (note) {
+      await tx.trackedItemComment.create({
+        data: {
+          trackedItemId: itemId,
+          authorName: actor.name?.trim() || null,
+          authorEmail: actor.email?.trim() || null,
+          body: note,
+        },
+      });
     }
-  );
+    envelope = await auditTx(
+      tx,
+      "tracked_item_transition",
+      bidId,
+      String(itemId),
+      actor,
+      `${from}->${to}`,
+      {
+        from,
+        to,
+        waivedReasonProvided: to === "WAIVED" && Boolean(options.waivedReason?.trim()),
+        noteAdded: Boolean(note),
+      },
+    );
+  });
+  emitOperationsAuditPostCommit(envelope);
 
   return { ok: true, value: { id: itemId, status: to } };
 }
@@ -484,18 +490,29 @@ export async function addComment(
   });
   if (!item) return { ok: false, error: "Not found" };
 
-  const created = await prisma.trackedItemComment.create({
-    data: {
-      trackedItemId: itemId,
-      authorName: actor.name?.trim() || null,
-      authorEmail: actor.email?.trim() || null,
-      body: trimmed,
-    },
-    select: { id: true },
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.trackedItemComment.create({
+      data: {
+        trackedItemId: itemId,
+        authorName: actor.name?.trim() || null,
+        authorEmail: actor.email?.trim() || null,
+        body: trimmed,
+      },
+      select: { id: true },
+    });
+    envelope = await auditTx(
+      tx,
+      "tracked_item_comment",
+      bidId,
+      String(itemId),
+      actor,
+      "comment_added",
+      { commentId: row.id, bodyLength: trimmed.length },
+    );
+    return row;
   });
-  await audit("tracked_item_comment", bidId, String(itemId), actor, "comment_added", {
-    commentId: created.id,
-  });
+  emitOperationsAuditPostCommit(envelope);
   return { ok: true, value: created };
 }
 
@@ -544,26 +561,39 @@ export async function recordAttachment(
   });
   if (!item) return { ok: false, error: "Not found" };
 
-  const created = await prisma.trackedItemAttachment.create({
-    data: {
-      trackedItemId: itemId,
-      storageKey: meta.storageKey,
-      fileName: meta.fileName,
-      mimeType: meta.mimeType,
-      byteSize: meta.byteSize,
-      kind: meta.kind,
-      caption: meta.caption?.trim() || null,
-      createdBy: actorLabel(actor),
-    },
-    select: { id: true },
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.trackedItemAttachment.create({
+      data: {
+        trackedItemId: itemId,
+        storageKey: meta.storageKey,
+        fileName: meta.fileName,
+        mimeType: meta.mimeType,
+        byteSize: meta.byteSize,
+        kind: meta.kind,
+        caption: meta.caption?.trim() || null,
+        createdBy: actorLabel(actor),
+      },
+      select: { id: true },
+    });
+    envelope = await auditTx(
+      tx,
+      "tracked_item_attachment",
+      bidId,
+      String(itemId),
+      actor,
+      "attachment_added",
+      {
+        attachmentId: row.id,
+        kind: meta.kind,
+        mimeType: meta.mimeType,
+        byteSize: meta.byteSize,
+        captionLength: meta.caption?.trim().length ?? 0,
+      },
+    );
+    return row;
   });
-
-  await audit("tracked_item_attachment", bidId, String(itemId), actor, "attachment_added", {
-    attachmentId: created.id,
-    kind: meta.kind,
-    mimeType: meta.mimeType,
-    byteSize: meta.byteSize,
-  });
+  emitOperationsAuditPostCommit(envelope);
 
   return { ok: true, value: created };
 }

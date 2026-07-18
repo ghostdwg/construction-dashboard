@@ -13,6 +13,7 @@
 // thumbnails.
 
 import { auth } from "@/lib/auth";
+import { randomUUID } from "node:crypto";
 import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore } from "@/lib/storage/blobStore";
 import {
@@ -93,9 +94,11 @@ export async function POST(
 
   const session = await auth().catch(() => null);
   const user = session?.user as { name?: string | null; email?: string | null } | undefined;
-  const actor = { name: user?.name ?? null, email: user?.email ?? null };
-
-  const storageKey = trackedItemStorageKey(bidId, tid, validation.safeFileName);
+  const actor = {
+    id: access.user.id,
+    name: user?.name ?? null,
+    email: user?.email ?? null,
+  };
 
   // Ordering contract (Codex review fix): (1) bid/item tenancy is enforced
   // BEFORE any byte is written, so a blob can never land for an item outside
@@ -107,6 +110,12 @@ export async function POST(
   const exists = await trackedItemExists(bidId, tid);
   if (!exists) return Response.json({ error: "Not found" }, { status: 404 });
 
+  const storageKey = trackedItemStorageKey(
+    bidId,
+    tid,
+    randomUUID(),
+    validation.safeFileName,
+  );
   const store = getBlobStore();
   try {
     await store.put(storageKey, buffer, { contentType: file.type });
