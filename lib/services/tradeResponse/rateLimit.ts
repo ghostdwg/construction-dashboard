@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import type { PrismaClient } from "@prisma/client";
 
 export const EXTERNAL_RATE_LIMIT_WINDOW_MS = 60_000;
 export const EXTERNAL_RATE_LIMIT_MAX_REQUESTS = 60;
 const UNIQUE_RETRY_LIMIT = 3;
+const ACTIVE_EXTERNAL_PACKAGE_STATUSES = ["ISSUED", "RESPONSES_IN", "GC_REVIEW"] as const;
+
+type RateLimitDatabase = Pick<PrismaClient, "$transaction">;
 
 function hashToken(rawToken: string): string {
   return createHash("sha256").update(rawToken, "utf8").digest("hex");
@@ -31,13 +35,22 @@ function isUniqueConflict(error: unknown): boolean {
  * only a server-resolved non-secret token digest (or the singleton unknown identity),
  * never x-forwarded-for, caller-provided identity, or the raw token.
  */
-export async function checkExternalRateLimit(rawToken: string, now = new Date()): Promise<boolean> {
+async function checkExternalRateLimitWithDatabase(
+  database: RateLimitDatabase,
+  rawToken: string,
+  now = new Date()
+): Promise<boolean> {
   for (let attempt = 0; attempt < UNIQUE_RETRY_LIMIT; attempt += 1) {
     try {
-      return await prisma.$transaction(async (tx) => {
+      return await database.$transaction(async (tx) => {
         await tx.externalResponseRateLimitBucket.deleteMany({ where: { expiresAt: { lte: now } } });
-        const token = await tx.responseAccessToken.findUnique({
-          where: { tokenHash: hashToken(rawToken) },
+        const token = await tx.responseAccessToken.findFirst({
+          where: {
+            tokenHash: hashToken(rawToken),
+            revokedAt: null,
+            expiresAt: { gt: now },
+            package: { status: { in: [...ACTIVE_EXTERNAL_PACKAGE_STATUSES] } },
+          },
           select: { tokenHash: true },
         });
         const key = bucketKey(token?.tokenHash ?? null);
@@ -73,4 +86,12 @@ export async function checkExternalRateLimit(rawToken: string, now = new Date())
   return false;
 }
 
-export const rateLimitInternalsForTests = { bucketKey };
+export async function checkExternalRateLimit(rawToken: string, now = new Date()): Promise<boolean> {
+  return checkExternalRateLimitWithDatabase(prisma as unknown as RateLimitDatabase, rawToken, now);
+}
+
+export const rateLimitInternalsForTests = {
+  bucketKey,
+  createChecker: (database: RateLimitDatabase) =>
+    (rawToken: string, now = new Date()) => checkExternalRateLimitWithDatabase(database, rawToken, now),
+};

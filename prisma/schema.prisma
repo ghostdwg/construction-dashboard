@@ -4064,7 +4064,10 @@ model TrackedItem {
   projectContact              ProjectContact?         @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
   trade                       Trade?                  @relation(fields: [tradeId], references: [id], onDelete: SetNull)
   leadTrade                   Trade?                  @relation("TrackedItemLeadTrade", fields: [leadTradeId], references: [id], onDelete: SetNull)
-  responsibleContractor      Subcontractor?          @relation("TrackedItemResponsibleContractor", fields: [responsibleContractorId], references: [id], onDelete: Restrict)
+  // Physical FK remains SET NULL from the additive Build 2 migration. The
+  // R2B2_responsible_contractor_retention_guard trigger owns the effective
+  // history-retention restriction without rebuilding this inherited table.
+  responsibleContractor      Subcontractor?          @relation("TrackedItemResponsibleContractor", fields: [responsibleContractorId], references: [id], onDelete: SetNull)
   sourceReportObservation    ReportObservation?      @relation("PromotedReportObservation", fields: [sourceReportObservationId], references: [id], onDelete: Restrict)
   sourceMeeting               Meeting?                @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
   sourceMeetingActionItem     MeetingActionItem?      @relation(fields: [sourceMeetingActionItemId], references: [id], onDelete: SetNull)

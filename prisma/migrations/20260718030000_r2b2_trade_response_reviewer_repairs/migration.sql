@@ -160,9 +160,10 @@ ALTER TABLE "TrackedItem" ADD COLUMN "sourceReportObservationId" INTEGER
   REFERENCES "ReportObservation" ("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 CREATE UNIQUE INDEX "TrackedItem_sourceReportObservationId_key" ON "TrackedItem"("sourceReportObservationId");
 
--- The original additive migration used SET NULL for responsible contractors.
--- A BEFORE DELETE guard supplies effective RESTRICT behavior without rebuilding
--- the large legacy TrackedItem table or overlapping the separate base lane.
+-- TrackedItem retains its inherited SET NULL foreign key. The Prisma relation
+-- models that physical DDL accurately; this owned BEFORE DELETE guard is the
+-- explicit history-retention policy and supplies effective RESTRICT behavior
+-- without rebuilding the large legacy table or overlapping the separate base lane.
 CREATE TRIGGER "R2B2_responsible_contractor_retention_guard"
 BEFORE DELETE ON "Subcontractor"
 WHEN EXISTS (SELECT 1 FROM "TrackedItem" WHERE "responsibleContractorId" = OLD."id")
@@ -185,6 +186,26 @@ CREATE TABLE "TradeResponseReviewDecision" (
 );
 CREATE INDEX "TradeResponseReviewDecision_bidId_responseRevisionId_createdAt_idx" ON "TradeResponseReviewDecision"("bidId", "responseRevisionId", "createdAt");
 CREATE INDEX "TradeResponseReviewDecision_correctionOfId_idx" ON "TradeResponseReviewDecision"("correctionOfId");
+
+-- Preserve every review that predates the append-only decision table. Valid
+-- legacy writes always supplied reviewer and timestamp; the fallbacks keep the
+-- migration total and evidence-retaining if an older row is incomplete while
+-- preserving every present legacy value byte-for-byte.
+INSERT INTO "TradeResponseReviewDecision" (
+  "bidId", "responseRevisionId", "decision", "commentary",
+  "reviewedBy", "correctionOfId", "createdAt"
+)
+SELECT
+  "bidId",
+  "id",
+  "gcReview",
+  "gcCommentary",
+  COALESCE(NULLIF("gcReviewBy", ''), 'legacy-reviewer-unknown'),
+  NULL,
+  COALESCE("gcReviewAt", "submittedAt")
+FROM "TradeResponseRevision"
+WHERE "gcReview" <> 'PENDING'
+ORDER BY "id";
 
 CREATE TABLE "ExternalResponseRateLimitBucket" (
   "key" TEXT NOT NULL PRIMARY KEY,
