@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "certify:r2-lifecycle": "node scripts/certification/run-r2-certification.mjs",
     "migrate:turso": "node scripts/apply-turso-migrations.mjs",
     "migrate:turso:status": "node scripts/apply-turso-migrations.mjs --dry-run",
     "validate:replay": "node scripts/replay-validation.mjs",
