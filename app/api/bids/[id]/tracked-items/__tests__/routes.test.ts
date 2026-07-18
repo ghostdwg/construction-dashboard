@@ -5,21 +5,23 @@
 // anywhere on these paths.
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+// Suppress the post-commit stdout audit line — persistence still runs.
+process.env.OBSERVABILITY_AUDIT_QUIET = "true";
+
 const h = vi.hoisted(() => ({
   items: [] as Array<Record<string, unknown> & { id: number; bidId: number; status: string }>,
   comments: [] as Array<Record<string, unknown> & { id: number; trackedItemId: number }>,
   attachments: [] as Array<Record<string, unknown> & { id: number; trackedItemId: number }>,
   meetingActionItems: [] as Array<Record<string, unknown> & { id: number; bidId: number }>,
+  audits: [] as Array<Record<string, unknown>>,
   bidExists: true,
   nextId: 1,
 }));
 
 const putMock = vi.hoisted(() => vi.fn(async () => ({ key: "x" })));
 const deleteMock = vi.hoisted(() => vi.fn(async () => undefined));
-const auditMock = vi.hoisted(() => vi.fn(async () => undefined));
 const accessMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>());
 
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
@@ -32,13 +34,19 @@ vi.mock("@/lib/storage/blobStore", () => ({
   },
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const p: Record<string, unknown> = {
     bid: { findUnique: vi.fn(async () => (h.bidExists ? { id: 1 } : null)) },
     // Spec gap hint count: no specBook in test data → all items get gapHintCount 0.
     specBook: { findFirst: vi.fn(async () => null) },
     // Phase 1B — badge derivation queries this model on every list read.
     consultantDispositionRecord: { findMany: vi.fn(async () => []) },
+    auditEvent: {
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        h.audits.push({ ...data });
+        return { id: h.nextId++ };
+      }),
+    },
     trackedItem: {
       findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
         h.items
@@ -107,8 +115,27 @@ vi.mock("@/lib/prisma", () => ({
         h.meetingActionItems.find((m) => m.id === where.id && m.bidId === where.bidId) ?? null
       ),
     },
-  },
-}));
+  };
+  // Rollback-capable interactive transaction — mutation + audit are atomic.
+  p.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => {
+    const snap = {
+      items: h.items.map((r) => ({ ...r })),
+      comments: h.comments.map((r) => ({ ...r })),
+      attachments: h.attachments.map((r) => ({ ...r })),
+      audits: h.audits.map((r) => ({ ...r })),
+    };
+    try {
+      return await fn(p);
+    } catch (err) {
+      h.items.splice(0, h.items.length, ...snap.items);
+      h.comments.splice(0, h.comments.length, ...snap.comments);
+      h.attachments.splice(0, h.attachments.length, ...snap.attachments);
+      h.audits.splice(0, h.audits.length, ...snap.audits);
+      throw err;
+    }
+  };
+  return { prisma: p };
+});
 
 import { GET as listGET, POST as createPOST } from "../route";
 import { POST as promotePOST } from "../promote/route";
@@ -130,11 +157,11 @@ beforeEach(() => {
   h.comments.length = 0;
   h.attachments.length = 0;
   h.meetingActionItems.length = 0;
+  h.audits.length = 0;
   h.bidExists = true;
   h.nextId = 1;
   putMock.mockClear();
   deleteMock.mockClear();
-  auditMock.mockClear();
   accessMock.mockReset();
   accessMock.mockResolvedValue({ ok: true, user: { id: "user-1" } });
 });
@@ -253,7 +280,13 @@ describe("tracked-items routes", () => {
     expect(accepted.status).toBe(201);
     expect(putMock).toHaveBeenCalledTimes(1);
     const key = (putMock.mock.calls[0] as unknown[])[0] as string;
-    expect(key).toBe("plan-room/jobs/5/tracked-items/1/site photo.jpg");
+    // R2 remediation: key carries a unique server-generated token segment, so
+    // it is NOT the bare filename path, but keeps the readable name last.
+    expect(key.startsWith("plan-room/jobs/5/tracked-items/1/")).toBe(true);
+    expect(key.endsWith("/site photo.jpg")).toBe(true);
+    expect(key).not.toBe("plan-room/jobs/5/tracked-items/1/site photo.jpg");
+    // metadata row points at exactly the bytes we wrote
+    expect(h.attachments[0].storageKey).toBe(key);
     expect(h.attachments[0].kind).toBe("photo");
     expect(h.attachments[0].caption).toBe("cracked curb");
 
@@ -302,9 +335,42 @@ describe("tracked-items routes", () => {
     expect(res.status).toBe(500);
     expect(putMock).toHaveBeenCalledTimes(1); // blob DID land first...
     expect(deleteMock).toHaveBeenCalledTimes(1); // ...and was cleaned up
+    // the cleaned-up blob is exactly the one we wrote (unique token key)
     expect((deleteMock.mock.calls[0] as unknown[])[0]).toBe(
-      "plan-room/jobs/5/tracked-items/1/b.jpg"
+      (putMock.mock.calls[0] as unknown[])[0]
     );
     expect(h.attachments.length).toBe(0); // and no metadata row survived
   });
+
+  test("R2 remediation: same-named uploads never overwrite — distinct keys, both bytes preserved", async () => {
+    await createTrackedItem5();
+
+    const upload = async (bytes: number[]) => {
+      const form = new FormData();
+      form.append("file", new File([new Uint8Array(bytes)], "photo.jpg", { type: "image/jpeg" }));
+      return attachmentsPOST(
+        new Request("http://t", { method: "POST", body: form }),
+        pi("5", "1")
+      );
+    };
+
+    expect((await upload([1, 1, 1])).status).toBe(201);
+    expect((await upload([2, 2, 2])).status).toBe(201);
+
+    const key1 = (putMock.mock.calls[0] as unknown[])[0] as string;
+    const key2 = (putMock.mock.calls[1] as unknown[])[0] as string;
+    // Same sanitized name, but the two blob keys must differ — no overwrite.
+    expect(key1).not.toBe(key2);
+    expect(key1.endsWith("/photo.jpg")).toBe(true);
+    expect(key2.endsWith("/photo.jpg")).toBe(true);
+    // Two independent metadata rows, each pointing at its own object.
+    expect(h.attachments.length).toBe(2);
+    expect(h.attachments[0].storageKey).toBe(key1);
+    expect(h.attachments[1].storageKey).toBe(key2);
+    expect(h.attachments[0].storageKey).not.toBe(h.attachments[1].storageKey);
+  });
 });
+
+async function createTrackedItem5() {
+  await createPOST(jsonReq({ kind: "FIELD_ITEM", title: "photo item" }), p("5"));
+}

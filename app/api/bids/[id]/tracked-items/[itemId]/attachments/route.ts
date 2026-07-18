@@ -21,6 +21,7 @@ import {
   trackedItemExists,
 } from "@/lib/services/trackedItems";
 import {
+  newAttachmentToken,
   trackedItemStorageKey,
   validateTrackedItemUpload,
 } from "@/lib/services/trackedItems/storagePath";
@@ -95,7 +96,14 @@ export async function POST(
   const user = session?.user as { name?: string | null; email?: string | null } | undefined;
   const actor = { name: user?.name ?? null, email: user?.email ?? null };
 
-  const storageKey = trackedItemStorageKey(bidId, tid, validation.safeFileName);
+  // A fresh server-generated token per upload — same-named files never share
+  // a key, so an older attachment id keeps returning its own bytes forever.
+  const storageKey = trackedItemStorageKey(
+    bidId,
+    tid,
+    newAttachmentToken(),
+    validation.safeFileName
+  );
 
   // Ordering contract (Codex review fix): (1) bid/item tenancy is enforced
   // BEFORE any byte is written, so a blob can never land for an item outside
