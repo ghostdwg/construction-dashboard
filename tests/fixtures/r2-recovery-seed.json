@@ -1,0 +1,76 @@
+{
+  "_comment": "Synthetic-only fixture values for scripts/certification. No real project, customer, or sub data. All timestamps are fixed (not wall-clock) so seeded content hashes deterministically across certification runs.",
+  "baseline": {
+    "trade": { "name": "[CERT] Synthetic Electrical" },
+    "subcontractor": { "company": "[CERT] Synthetic Sub Co" },
+    "bid": {
+      "projectName": "[CERT] Synthetic R2 Recovery Project",
+      "scope": "synthetic-certification-fixture"
+    },
+    "meeting": {
+      "title": "[CERT] Synthetic OAC Meeting",
+      "meetingDate": "2026-01-05T15:00:00.000Z"
+    },
+    "registerEntry": {
+      "entryType": "ACTION_ITEM",
+      "rawSourceText": "[CERT] synthetic raw source text for register entry",
+      "normalizedText": "[CERT] synthetic normalized register entry text",
+      "origin": "manual"
+    },
+    "registerEntryRevision": {
+      "changeType": "CREATED",
+      "actor": "cert-harness"
+    },
+    "commitment": {
+      "committedBy": "[CERT] Synthetic PM",
+      "commitmentText": "[CERT] synthetic commitment text"
+    },
+    "trackedItem": {
+      "kind": "OAC_ACTION",
+      "title": "[CERT] Synthetic tracked item"
+    },
+    "trackedItemAttachment": {
+      "storageKey": "plan-room/jobs/cert/tracked-items/cert/synthetic-photo.jpg",
+      "fileName": "synthetic-photo.jpg",
+      "mimeType": "image/jpeg",
+      "byteSize": 1024
+    },
+    "backgroundJob": {
+      "jobType": "cert_synthetic_job",
+      "status": "completed"
+    },
+    "auditEvent": {
+      "category": "certification_harness",
+      "action": "synthetic_baseline_seed",
+      "decision": "seeded"
+    }
+  },
+  "responsePackageEra": {
+    "responsePackage": {
+      "packageNumber": 1,
+      "title": "[CERT] Synthetic Response Package"
+    },
+    "tradeResponseRevision": {
+      "responderName": "[CERT] Synthetic Responder",
+      "responderCompany": "[CERT] Synthetic Sub Co",
+      "responseType": "SUBSTANTIVE",
+      "responseText": "[CERT] synthetic response text",
+      "gcReview": "APPROVED",
+      "gcReviewBy": "[CERT] Synthetic Reviewer",
+      "gcReviewAt": "2026-01-08T12:00:00.000Z",
+      "gcCommentary": "[CERT] synthetic reviewer commentary"
+    },
+    "tradeResponseAttachment": {
+      "storageKey": "plan-room/jobs/cert/trade-responses/cert/synthetic-response.pdf",
+      "fileName": "synthetic-response.pdf",
+      "mimeType": "application/pdf",
+      "byteSize": 2048
+    },
+    "responseAccessToken": {
+      "tokenHash": "cert-synthetic-token-hash-0001",
+      "expiresAt": "2026-06-01T00:00:00.000Z",
+      "createdBy": "cert-harness"
+    }
+  },
+  "fixedTimestamp": "2026-01-01T00:00:00.000Z"
+}
