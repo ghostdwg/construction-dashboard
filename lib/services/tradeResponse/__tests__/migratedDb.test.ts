@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 
 let db: (typeof import("@/lib/prisma"))["prisma"];
@@ -167,15 +169,46 @@ describe.sequential("R2 Build 2 migrated-database reviewer repairs", () => {
     expect(decisions[0]).toMatchObject({ commentary: "First retained commentary", correctionOfId: null });
     expect(decisions[1]).toMatchObject({ commentary: "Corrected retained commentary", correctionOfId: decisions[0].id });
 
-    expect(await rateLimit.checkExternalRateLimit(issued.value.rawToken!)).toBe(true);
-    let unknownAllowed = 0;
-    for (let index = 0; index < 100; index += 1) {
-      if (await rateLimit.checkExternalRateLimit(`unknown-${index}`)) unknownAllowed += 1;
+    const limiterNow = new Date();
+    const activePackage = await db.responsePackage.create({ data: { bidId: bid.id, packageNumber: 3, title: "Active limiter package", contractorId: contractor.id, status: "ISSUED", createdBy: "synthetic" } });
+    const inactivePackage = await db.responsePackage.create({ data: { bidId: bid.id, packageNumber: 4, title: "Inactive limiter package", contractorId: contractor.id, status: "READY_TO_TRANSMIT", createdBy: "synthetic" } });
+    const limiterTokens = {
+      active: "synthetic-active-limiter-token",
+      expired: "synthetic-expired-limiter-token",
+      revoked: "synthetic-revoked-limiter-token",
+      inactive: "synthetic-inactive-limiter-token",
+    };
+    await db.responseAccessToken.createMany({
+      data: [
+        { bidId: bid.id, packageId: activePackage.id, tokenHash: packages.hashResponseToken(limiterTokens.active), expiresAt: new Date(limiterNow.getTime() + 120_000), createdBy: "synthetic" },
+        { bidId: bid.id, packageId: activePackage.id, tokenHash: packages.hashResponseToken(limiterTokens.expired), expiresAt: new Date(limiterNow.getTime() - 1), createdBy: "synthetic" },
+        { bidId: bid.id, packageId: activePackage.id, tokenHash: packages.hashResponseToken(limiterTokens.revoked), expiresAt: new Date(limiterNow.getTime() + 120_000), revokedAt: limiterNow, createdBy: "synthetic" },
+        { bidId: bid.id, packageId: inactivePackage.id, tokenHash: packages.hashResponseToken(limiterTokens.inactive), expiresAt: new Date(limiterNow.getTime() + 120_000), createdBy: "synthetic" },
+      ],
+    });
+
+    const databaseUrl = process.env.DATABASE_URL!;
+    const firstClient = new PrismaClient({ adapter: new PrismaLibSql({ url: databaseUrl }) });
+    const secondClient = new PrismaClient({ adapter: new PrismaLibSql({ url: databaseUrl }) });
+    try {
+      const firstLimiter = rateLimit.rateLimitInternalsForTests.createChecker(firstClient);
+      const secondLimiter = rateLimit.rateLimitInternalsForTests.createChecker(secondClient);
+      expect(await firstLimiter(limiterTokens.active, limiterNow)).toBe(true);
+      let unknownAllowed = 0;
+      for (let index = 0; index < 100; index += 1) {
+        const checker = index % 2 === 0 ? firstLimiter : secondLimiter;
+        if (await checker(`unknown-${index}`, limiterNow)) unknownAllowed += 1;
+      }
+      expect(unknownAllowed).toBe(rateLimit.EXTERNAL_RATE_LIMIT_MAX_REQUESTS);
+      for (const invalid of [limiterTokens.expired, limiterTokens.revoked, limiterTokens.inactive, "malformed-after-exhaustion"]) {
+        expect(await secondLimiter(invalid, limiterNow)).toBe(false);
+      }
+      expect(await db.externalResponseRateLimitBucket.count()).toBe(2);
+      const later = new Date(limiterNow.getTime() + rateLimit.EXTERNAL_RATE_LIMIT_WINDOW_MS + 1);
+      expect(await firstLimiter("unknown-after-expiry", later)).toBe(true);
+      expect(await db.externalResponseRateLimitBucket.count()).toBe(1);
+    } finally {
+      await Promise.all([firstClient.$disconnect(), secondClient.$disconnect()]);
     }
-    expect(unknownAllowed).toBe(rateLimit.EXTERNAL_RATE_LIMIT_MAX_REQUESTS);
-    expect(await db.externalResponseRateLimitBucket.count()).toBe(2);
-    const later = new Date(Date.now() + rateLimit.EXTERNAL_RATE_LIMIT_WINDOW_MS + 1);
-    expect(await rateLimit.checkExternalRateLimit("unknown-after-expiry", later)).toBe(true);
-    expect(await db.externalResponseRateLimitBucket.count()).toBe(1);
   }, 30_000);
 });
