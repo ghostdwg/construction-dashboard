@@ -7,6 +7,7 @@ import { createClient } from "@libsql/client";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 
 const REPAIR_MIGRATION = "20260718030000_r2b2_trade_response_reviewer_repairs";
+const BASE_RETENTION_MIGRATION = "20260718024444_r2_release_blocker_retention";
 const LEGACY_REVIEWED_AT = "2026-07-17T18:30:00.000Z";
 const LEGACY_COMMENTARY = "Pre-repair detailed reviewer commentary";
 const LEGACY_REVIEWER = "legacy-gc-reviewer";
@@ -25,13 +26,23 @@ function deployMigrations(databaseUrl: string): void {
   });
 }
 
-async function applyFirstNinetyNineMigrations(databaseUrl: string): Promise<void> {
+async function applyPreIntegrationMigrations(databaseUrl: string): Promise<void> {
   const migrationsRoot = path.join(process.cwd(), "prisma", "migrations");
   const migrations = (await readdir(migrationsRoot, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory() && entry.name !== REPAIR_MIGRATION)
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        entry.name !== BASE_RETENTION_MIGRATION &&
+        entry.name !== REPAIR_MIGRATION
+    )
     .map((entry) => entry.name)
     .sort();
+  // Seed the true 99-migration predecessor state, then let Prisma apply both
+  // accepted forward migrations in their integrated order. This proves the
+  // base-retention table rebuild does not erase trade review evidence before
+  // the trade repair backfills it.
   expect(migrations).toHaveLength(99);
+  expect(migrations).toContain("20260718010000_r2b2_trade_response_packages");
   const client = createClient({ url: databaseUrl });
   try {
     await client.executeMultiple(`
@@ -82,7 +93,7 @@ async function seedReviewedRevision(databaseUrl: string): Promise<void> {
 beforeAll(async () => {
   testDir = await mkdtemp(path.join(tmpdir(), "gwx-r2b2-upgrade-test-"));
   const databaseUrl = `file:${path.join(testDir, "upgrade.db")}`;
-  await applyFirstNinetyNineMigrations(databaseUrl);
+  await applyPreIntegrationMigrations(databaseUrl);
   await seedReviewedRevision(databaseUrl);
   deployMigrations(databaseUrl);
 
@@ -106,13 +117,14 @@ afterAll(async () => {
   if (testDir) await rm(testDir, { recursive: true, force: true });
 });
 
-describe.sequential("R2 Build 2 true 99-to-100 reviewer migration", () => {
+describe.sequential("R2 Build 2 integrated 99-to-101 migration", () => {
   test("backfills legacy review evidence and links the next correction", async () => {
     const applied = await db.$queryRawUnsafe<Array<{ migration_name: string }>>(
       'SELECT "migration_name" FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL ORDER BY "migration_name"'
     );
-    expect(applied).toHaveLength(100);
+    expect(applied).toHaveLength(101);
     expect(applied.at(-1)?.migration_name).toBe(REPAIR_MIGRATION);
+    expect(applied.at(-2)?.migration_name).toBe(BASE_RETENTION_MIGRATION);
 
     const before = await db.tradeResponseReviewDecision.findMany({ orderBy: { id: "asc" } });
     expect(before).toHaveLength(1);
