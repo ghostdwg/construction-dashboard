@@ -474,7 +474,15 @@ Expired/revoked/unknown token → 404. Rate-limited. Every use stamps
 7. Attachment isolation: token cannot fetch another bid's storage keys.
 8. Manual-channel entry preserves channel + enteredBy.
 
-## Part E — Build 3 contract (FROZEN): Originator Return & Closure
+## Part E — Build 3 contract (SUPERSEDED): Originator Return & Closure
+
+> **[R2-B3] SUPERSEDED 2026-07-18.** The implementation-ready Build 3
+> contract is `docs/r2/BUILD3-RESPONSE-CONTROL-LOOP-CONTRACT.md`, frozen
+> under operator mission `20260718T163033Z-r2-build3-contract-freeze`. It
+> reconciles this Part E skeleton with the accepted SOL Build 2
+> implementation (`43449a1`, integrated at `9b283b9`); its §20 records every
+> delta from the text below. Implement against that document, not this
+> section. The text below is retained unmodified as history.
 
 ### E.1 New models
 
