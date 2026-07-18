@@ -17,6 +17,7 @@ import ConsultantReportsSection, {
   FormalResponseEditor,
 } from "./ConsultantReportsSection";
 import SpecGapHint from "./SpecGapHint";
+import ResponsePackagesSection from "./ResponsePackagesSection";
 import {
   actionItemOptionLabel,
   isOverdue,
@@ -261,6 +262,11 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
       {/* Phase 1A — Consultant Reports (observations accepted here land in
           the register above, citing their originating observation). */}
       <ConsultantReportsSection bidId={bidId} onItemsChanged={load} />
+
+      <ResponsePackagesSection
+        bidId={bidId}
+        items={items.map(({ id, title }) => ({ id, title }))}
+      />
     </div>
   );
 }
