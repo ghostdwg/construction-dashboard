@@ -9,6 +9,7 @@ type PackageRow = {
 };
 type Revision = { id: number; revisionIndex: number; responderName: string; channel: string; responseType: string; responseText: string; gcReview: string; gcCommentary: string | null };
 type PackageDetail = PackageRow & {
+  contractorId: number | null;
   items: Array<{ id: number; displayNumber: string | null; trackedItem: ItemOption; responses: Revision[] }>;
 };
 
@@ -128,7 +129,7 @@ export default function ResponsePackagesSection({ bidId, items }: { bidId: numbe
           {NEXT[detail.status] && (
             <div className="flex flex-wrap gap-2">
               <button onClick={() => void mutate(`/api/bids/${bidId}/response-packages/${detail.id}/status`, { to: NEXT[detail.status] })} className="rounded border px-2 py-1 text-xs">Advance to {NEXT[detail.status]}</button>
-              <button onClick={() => void mutate(`/api/bids/${bidId}/response-packages/${detail.id}/rotate-token`, {})} className="rounded border px-2 py-1 text-xs">Rotate portal link</button>
+              {detail.contractorId && <button onClick={() => void mutate(`/api/bids/${bidId}/response-packages/${detail.id}/rotate-token`, {})} className="rounded border px-2 py-1 text-xs">Rotate portal link</button>}
             </div>
           )}
           <ul className="space-y-2">

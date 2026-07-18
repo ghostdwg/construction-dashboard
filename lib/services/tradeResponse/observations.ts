@@ -13,6 +13,14 @@ import {
 } from "./types";
 import { emitTradeAudits, writeTradeAuditTx } from "./txAudit";
 
+class ObservationClaimError extends Error {}
+
+function isUniqueConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === "P2002" || (typeof candidate.message === "string" && /unique constraint/i.test(candidate.message));
+}
+
 type CreateObservationInput = {
   sourceKind: string;
   fieldReportId?: number | null;
@@ -105,14 +113,15 @@ export async function updateOpenObservation(
     const current = await tx.reportObservation.findFirst({ where: { id: observationId, bidId } });
     if (!current) return { error: "Not found" as const };
     if (current.disposition !== "OPEN") return { error: "Verbatim observation fields are frozen" as const };
-    await tx.reportObservation.update({
-      where: { id: observationId },
+    const claimed = await tx.reportObservation.updateMany({
+      where: { id: observationId, bidId, disposition: "OPEN" },
       data: {
         ...(text !== undefined ? { observationText: text! } : {}),
         ...(input.sourceLocator !== undefined ? { sourceLocator: cleanText(input.sourceLocator, 500) } : {}),
         ...(input.observedAt !== undefined ? { observedAt: input.observedAt } : {}),
       },
     });
+    if (claimed.count !== 1) return { error: "Verbatim observation fields are frozen" as const };
     const audit = await writeTradeAuditTx(tx, {
       action: "report_observation_update",
       subjectKind: "ReportObservation",
@@ -142,11 +151,8 @@ export async function dispositionObservation(
     return { ok: false, error: "A dismissal reason is required" };
   }
   const committed = await prisma.$transaction(async (tx) => {
-    const current = await tx.reportObservation.findFirst({ where: { id: observationId, bidId }, select: { disposition: true } });
-    if (!current) return { error: "Not found" as const };
-    if (current.disposition !== "OPEN") return { error: "Observation is already dispositioned" as const };
-    await tx.reportObservation.update({
-      where: { id: observationId },
+    const claimed = await tx.reportObservation.updateMany({
+      where: { id: observationId, bidId, disposition: "OPEN" },
       data: {
         disposition: input.disposition,
         dispositionReason: reason,
@@ -154,6 +160,10 @@ export async function dispositionObservation(
         dispositionAt: new Date(),
       },
     });
+    if (claimed.count !== 1) {
+      const existing = await tx.reportObservation.findFirst({ where: { id: observationId, bidId }, select: { id: true } });
+      return { error: existing ? "Observation is already dispositioned" as const : "Not found" as const };
+    }
     const audit = await writeTradeAuditTx(tx, {
       action: "report_observation_disposition",
       subjectKind: "ReportObservation",
@@ -176,47 +186,64 @@ export async function promoteObservation(
   input: { title?: string; description?: string | null; priority?: string; dueDate?: Date | null },
   actor: Actor
 ): Promise<ServiceResult<{ trackedItemId: number }>> {
-  const committed = await prisma.$transaction(async (tx) => {
-    const observation = await tx.reportObservation.findFirst({ where: { id: observationId, bidId } });
-    if (!observation) return { error: "Not found" as const };
-    if (observation.disposition !== "ACCEPTED") return { error: "Observation must be accepted before promotion" as const };
-    if (observation.registerItemId) return { error: "Observation is already linked" as const };
-    const title = cleanText(input.title, 300) ?? observation.observationText.slice(0, 300);
-    const sourceKind = observation.sourceKind === "field_report"
-      ? TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT
-      : observation.sourceKind === "consultant_report"
-        ? TRACKED_ITEM_SOURCE_KIND.CONSULTANT_OBSERVATION
-        : TRACKED_ITEM_SOURCE_KIND.MANUAL;
-    const item = await tx.trackedItem.create({
-      data: {
+  let committed;
+  try {
+    committed = await prisma.$transaction(async (tx) => {
+      const observation = await tx.reportObservation.findFirst({ where: { id: observationId, bidId } });
+      if (!observation) return { error: "Not found" as const };
+      if (observation.disposition !== "ACCEPTED") return { error: "Observation must be accepted before promotion" as const };
+      if (observation.registerItemId) return { item: { id: observation.registerItemId }, audit: null };
+      const title = cleanText(input.title, 300) ?? observation.observationText.slice(0, 300);
+      const sourceKind = observation.sourceKind === "field_report"
+        ? TRACKED_ITEM_SOURCE_KIND.FIELD_REPORT
+        : observation.sourceKind === "consultant_report"
+          ? TRACKED_ITEM_SOURCE_KIND.CONSULTANT_OBSERVATION
+          : TRACKED_ITEM_SOURCE_KIND.MANUAL;
+      const item = await tx.trackedItem.create({
+        data: {
+          bidId,
+          kind: observation.sourceKind === "field_report" ? "FIELD_ITEM" : "JSO_ITEM",
+          title,
+          description: cleanText(input.description, 4_000),
+          priority: input.priority ?? "MEDIUM",
+          dueDate: input.dueDate ?? null,
+          sourceKind,
+          sourceFieldReportId: observation.fieldReportId,
+          sourceReportObservationId: observation.id,
+          evidenceExcerpt: observation.observationText,
+          sourceLocator: observation.sourceLocator,
+          extractionMethod: "manual",
+          citationVerified: true,
+        },
+        select: { id: true },
+      });
+      const claimed = await tx.reportObservation.updateMany({
+        where: { id: observationId, bidId, disposition: "ACCEPTED", registerItemId: null },
+        data: { registerItemId: item.id },
+      });
+      if (claimed.count !== 1) throw new ObservationClaimError("Observation promotion was already claimed");
+      const audit = await writeTradeAuditTx(tx, {
+        action: "report_observation_promote",
+        subjectKind: "ReportObservation",
+        subjectId: observationId,
         bidId,
-        kind: observation.sourceKind === "field_report" ? "FIELD_ITEM" : "JSO_ITEM",
-        title,
-        description: cleanText(input.description, 4_000),
-        priority: input.priority ?? "MEDIUM",
-        dueDate: input.dueDate ?? null,
-        sourceKind,
-        sourceFieldReportId: observation.fieldReportId,
-        evidenceExcerpt: observation.observationText,
-        sourceLocator: observation.sourceLocator,
-        extractionMethod: "manual",
-        citationVerified: true,
-      },
-      select: { id: true },
+        actor,
+        payload: { trackedItemId: item.id, sourceKind },
+      });
+      return { item, audit };
     });
-    await tx.reportObservation.update({ where: { id: observationId }, data: { registerItemId: item.id } });
-    const audit = await writeTradeAuditTx(tx, {
-      action: "report_observation_promote",
-      subjectKind: "ReportObservation",
-      subjectId: observationId,
-      bidId,
-      actor,
-      payload: { trackedItemId: item.id, sourceKind },
-    });
-    return { item, audit };
-  });
+  } catch (error) {
+    if (error instanceof ObservationClaimError || isUniqueConflict(error)) {
+      const existing = await prisma.reportObservation.findFirst({
+        where: { id: observationId, bidId, registerItemId: { not: null } },
+        select: { registerItemId: true },
+      });
+      if (existing?.registerItemId) return { ok: true, value: { trackedItemId: existing.registerItemId } };
+    }
+    throw error;
+  }
   if ("error" in committed && committed.error) return { ok: false, error: committed.error };
-  emitTradeAudits(committed.audit);
+  if (committed.audit) emitTradeAudits(committed.audit);
   return { ok: true, value: { trackedItemId: committed.item.id } };
 }
 
@@ -234,7 +261,11 @@ export async function linkObservation(
     if (!observation || !item) return { error: "Not found" as const };
     if (observation.disposition !== "ACCEPTED") return { error: "Observation must be accepted before linking" as const };
     if (observation.registerItemId) return { error: "Observation is already linked" as const };
-    await tx.reportObservation.update({ where: { id: observationId }, data: { registerItemId: item.id } });
+    const claimed = await tx.reportObservation.updateMany({
+      where: { id: observationId, bidId, disposition: "ACCEPTED", registerItemId: null },
+      data: { registerItemId: item.id },
+    });
+    if (claimed.count !== 1) return { error: "Observation is already linked" as const };
     const audit = await writeTradeAuditTx(tx, {
       action: "report_observation_link",
       subjectKind: "ReportObservation",

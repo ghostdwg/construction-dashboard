@@ -24,8 +24,34 @@ export function mintRawResponseToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
-function isValidTokenRow(token: { expiresAt: Date; revokedAt: Date | null } | null, now: Date): boolean {
-  return Boolean(token && !token.revokedAt && token.expiresAt.getTime() > now.getTime());
+export const ACTIVE_EXTERNAL_PACKAGE_STATUSES = ["ISSUED", "RESPONSES_IN", "GC_REVIEW"] as const;
+const UNIQUE_RETRY_LIMIT = 5;
+
+function isUniqueConflict(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === "P2002" || (typeof candidate.message === "string" && /unique constraint/i.test(candidate.message));
+}
+
+async function withUniqueRetry<T>(work: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < UNIQUE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      if (!isUniqueConflict(error) || attempt === UNIQUE_RETRY_LIMIT - 1) throw error;
+      await Promise.resolve();
+    }
+  }
+  throw new Error("Unreachable bounded retry state");
+}
+
+function isValidTokenRow(token: { expiresAt: Date; revokedAt: Date | null; package: { status: string } } | null, now: Date): boolean {
+  return Boolean(
+    token &&
+    !token.revokedAt &&
+    token.expiresAt.getTime() > now.getTime() &&
+    ACTIVE_EXTERNAL_PACKAGE_STATUSES.includes(token.package.status as typeof ACTIVE_EXTERNAL_PACKAGE_STATUSES[number])
+  );
 }
 
 export function derivePackageDisplayStatus(input: {
@@ -128,7 +154,7 @@ export async function createResponsePackage(
   const title = cleanText(input.title, 300);
   if (!title) return { ok: false, error: "title is required" };
   if (!isValidOptionalDate(input.responseDueDate)) return { ok: false, error: "Invalid response due date" };
-  const committed = await prisma.$transaction(async (tx) => {
+  const committed = await withUniqueRetry(() => prisma.$transaction(async (tx) => {
     if (input.contractorId) {
       const contractor = await tx.bidInviteSelection.findFirst({
         where: { bidId, subcontractorId: input.contractorId },
@@ -158,7 +184,7 @@ export async function createResponsePackage(
       payload: { packageNumber, contractorId: input.contractorId ?? null, hasDueDate: Boolean(input.responseDueDate) },
     });
     return { pkg, audit };
-  });
+  }));
   if ("error" in committed && committed.error) return { ok: false, error: committed.error };
   emitTradeAudits(committed.audit);
   return { ok: true, value: committed.pkg };
@@ -167,9 +193,12 @@ export async function createResponsePackage(
 export async function changePackageItem(
   bidId: number,
   packageId: number,
-  input: { action: "ADD" | "REMOVE"; trackedItemId: number; displayNumber?: string | null },
+  input: { action: string; trackedItemId: number; displayNumber?: string | null },
   actor: Actor
 ): Promise<ServiceResult<{ packageItemId?: number }>> {
+  if (input.action !== "ADD" && input.action !== "REMOVE") {
+    return { ok: false, error: "Invalid package item action" };
+  }
   const committed = await prisma.$transaction(async (tx) => {
     const pkg = await tx.responsePackage.findFirst({ where: { id: packageId, bidId }, select: { id: true, status: true } });
     if (!pkg) return { error: "Not found" as const };
@@ -221,13 +250,22 @@ export async function issueResponsePackage(
   bidId: number,
   packageId: number,
   input: {
-    delivery: "PORTAL" | "MANUAL";
+    delivery: string;
     contractorEmail?: string | null;
     expiresAt?: Date | null;
     manualChannel?: string | null;
   },
   actor: Actor
 ): Promise<ServiceResult<{ rawToken?: string; expiresAt?: Date }>> {
+  if (input.delivery !== "PORTAL" && input.delivery !== "MANUAL") {
+    return { ok: false, error: "Invalid delivery mechanism" };
+  }
+  if (input.delivery === "PORTAL" && input.manualChannel != null) {
+    return { ok: false, error: "Portal delivery cannot record a manual channel" };
+  }
+  if (input.delivery === "MANUAL" && (input.expiresAt != null || input.contractorEmail != null)) {
+    return { ok: false, error: "Manual delivery cannot include portal credential fields" };
+  }
   const now = new Date();
   const rawToken = input.delivery === "PORTAL" ? mintRawResponseToken() : undefined;
   const tokenHash = rawToken ? hashResponseToken(rawToken) : undefined;
@@ -246,11 +284,21 @@ export async function issueResponsePackage(
     if (!pkg) return { error: "Not found" as const };
     if (pkg.status !== "DRAFT") return { error: "Only DRAFT packages may be issued" as const };
     if (pkg._count.items < 1) return { error: "Package requires at least one item" as const };
-    if (pkg.contractorId && input.delivery !== "PORTAL" && !input.manualChannel) {
-      return { error: "External package requires a token or manual channel" as const };
+    if (!pkg.contractorId && input.delivery !== "MANUAL") {
+      return { error: "Internal package requires a recorded manual channel" as const };
     }
     const audits: AuditEnvelope[] = [];
     let tokenId: string | null = null;
+    const claimed = await tx.responsePackage.updateMany({
+      where: { id: packageId, bidId, status: "DRAFT" },
+      data: {
+        status: "ISSUED",
+        issuedAt: now,
+        issuedBy: actorLabel(actor),
+        manualChannel: input.delivery === "MANUAL" ? input.manualChannel : null,
+      },
+    });
+    if (claimed.count !== 1) return { error: "Package state changed; retry" as const };
     if (tokenHash) {
       const token = await tx.responseAccessToken.create({
         data: {
@@ -273,15 +321,6 @@ export async function issueResponsePackage(
         payload: { packageId, expiresAt: expiresAt.toISOString(), hasContractorEmail: Boolean(input.contractorEmail) },
       }));
     }
-    await tx.responsePackage.update({
-      where: { id: packageId },
-      data: {
-        status: "ISSUED",
-        issuedAt: now,
-        issuedBy: actorLabel(actor),
-        manualChannel: input.delivery === "MANUAL" ? input.manualChannel : null,
-      },
-    });
     audits.push(await writeTradeAuditTx(tx, {
       action: "response_package_issue",
       subjectKind: "ResponsePackage",
@@ -316,11 +355,12 @@ export async function rotateResponsePackageToken(
   const committed = await prisma.$transaction(async (tx) => {
     const pkg = await tx.responsePackage.findFirst({
       where: { id: packageId, bidId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, contractorId: true },
     });
     if (!pkg || !["ISSUED", "RESPONSES_IN", "GC_REVIEW"].includes(pkg.status)) {
       return { error: "Not found" as const };
     }
+    if (!pkg.contractorId) return { error: "Internal package cannot use a portal token" as const };
     const revoked = await tx.responseAccessToken.updateMany({
       where: { packageId, bidId, revokedAt: null },
       data: { revokedAt: now },
@@ -466,14 +506,14 @@ export async function submitManualResponse(
   const validation = validateResponseInput(input);
   if (validation) return { ok: false, error: validation };
   if (input.channel === "PORTAL") return { ok: false, error: "Manual entry must preserve a non-portal channel" };
-  const committed = await prisma.$transaction((tx) => appendResponseTx(tx, {
+  const committed = await withUniqueRetry(() => prisma.$transaction((tx) => appendResponseTx(tx, {
     bidId,
     packageId,
     packageItemId,
     input,
     enteredBy: actorLabel(actor),
     actor,
-  }));
+  })));
   if ("error" in committed && committed.error) return { ok: false, error: committed.error };
   emitTradeAudits(committed.audit);
   return { ok: true, value: committed.revision };
@@ -487,7 +527,14 @@ async function authorizeTokenTx(
 ) {
   const token = await tx.responseAccessToken.findUnique({
     where: { tokenHash: hashResponseToken(rawToken) },
-    select: { id: true, bidId: true, packageId: true, expiresAt: true, revokedAt: true },
+    select: {
+      id: true,
+      bidId: true,
+      packageId: true,
+      expiresAt: true,
+      revokedAt: true,
+      package: { select: { status: true } },
+    },
   });
   if (!isValidTokenRow(token, now)) return null;
   await tx.responseAccessToken.update({ where: { id: token!.id }, data: { lastUsedAt: now } });
@@ -507,7 +554,7 @@ export async function getExternalPackageProjection(rawToken: string): Promise<Se
     const auth = await authorizeTokenTx(tx, rawToken, "response_access_token_read");
     if (!auth) return null;
     const pkg = await tx.responsePackage.findFirst({
-      where: { id: auth.token.packageId, bidId: auth.token.bidId, status: { not: "VOIDED" } },
+      where: { id: auth.token.packageId, bidId: auth.token.bidId, status: { in: [...ACTIVE_EXTERNAL_PACKAGE_STATUSES] } },
       select: {
         id: true,
         packageNumber: true,
@@ -556,7 +603,7 @@ export async function submitExternalResponse(
   const portalInput = { ...input, channel: "PORTAL" };
   const validation = validateResponseInput(portalInput);
   if (validation) return { ok: false, error: validation };
-  const committed = await prisma.$transaction(async (tx) => {
+  const committed = await withUniqueRetry(() => prisma.$transaction(async (tx) => {
     const auth = await authorizeTokenTx(tx, rawToken, "response_access_token_submit");
     if (!auth) return null;
     const response = await appendResponseTx(tx, {
@@ -568,7 +615,7 @@ export async function submitExternalResponse(
       actor: null,
     });
     return { auth, response };
-  });
+  }));
   if (!committed || "error" in committed.response) return { ok: false, error: "Not found" };
   emitTradeAudits([committed.auth.audit, committed.response.audit]);
   return { ok: true, value: committed.response.revision };
@@ -618,6 +665,22 @@ export async function reviewTradeResponse(
       select: { id: true },
     });
     if (!revision) return { error: "Not found" as const };
+    const previous = await tx.tradeResponseReviewDecision.findFirst({
+      where: { bidId, responseRevisionId: revisionId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true },
+    });
+    const decision = await tx.tradeResponseReviewDecision.create({
+      data: {
+        bidId,
+        responseRevisionId: revisionId,
+        decision: input.gcReview,
+        commentary,
+        reviewedBy: actorLabel(actor),
+        correctionOfId: previous?.id ?? null,
+      },
+      select: { id: true },
+    });
     await tx.tradeResponseRevision.update({
       where: { id: revisionId },
       data: {
@@ -634,7 +697,14 @@ export async function reviewTradeResponse(
       bidId,
       actor,
       decision: input.gcReview,
-      payload: { packageId, packageItemId, gcReview: input.gcReview, hasCommentary: Boolean(commentary) },
+      payload: {
+        packageId,
+        packageItemId,
+        gcReview: input.gcReview,
+        decisionId: decision.id,
+        correctionOfId: previous?.id ?? null,
+        hasCommentary: Boolean(commentary),
+      },
     });
     return { audit };
   });
@@ -681,13 +751,22 @@ export async function transitionResponsePackage(
     if (to === "READY_TO_TRANSMIT" && !pkg.items.every((item) => item.responses[0]?.gcReview === "ACCEPTED_FOR_TRANSMITTAL")) {
       return { error: "Latest responses must be accepted for transmittal" as const };
     }
-    await tx.responsePackage.update({
-      where: { id: packageId },
+    const claimed = await tx.responsePackage.updateMany({
+      where: { id: packageId, bidId, status: pkg.status },
       data: {
         status: to,
         ...(to === "VOIDED" ? { voidedBy: actorLabel(actor), voidedAt: new Date() } : {}),
       },
     });
+    if (claimed.count !== 1) return { error: "Package state changed; retry" as const };
+    let revokedCount = 0;
+    if (to === "VOIDED") {
+      const revoked = await tx.responseAccessToken.updateMany({
+        where: { packageId, bidId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      revokedCount = revoked.count;
+    }
     const audit = await writeTradeAuditTx(tx, {
       action: "response_package_transition",
       subjectKind: "ResponsePackage",
@@ -695,7 +774,7 @@ export async function transitionResponsePackage(
       bidId,
       actor,
       decision: to,
-      payload: { from: pkg.status, to, itemCount: pkg.items.length },
+      payload: { from: pkg.status, to, itemCount: pkg.items.length, revokedTokenCount: revokedCount },
     });
     return { audit };
   });

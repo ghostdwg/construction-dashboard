@@ -2,20 +2,24 @@ import { getBlobStore } from "@/lib/storage/blobStore";
 import { privateDownloadHeaders } from "@/lib/services/storage/downloadHeaders";
 import { findExternalResponseAttachment } from "@/lib/services/tradeResponse/attachments";
 import { checkExternalRateLimit } from "@/lib/services/tradeResponse/rateLimit";
+import { externalNotFound } from "@/lib/services/tradeResponse/externalHttp";
 import { positiveId } from "@/lib/services/tradeResponse/routeHelpers";
 
-export async function GET(request: Request, { params }: { params: Promise<{ token: string; attachmentId: string }> }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ token: string; attachmentId: string }> }) {
   const { token, attachmentId } = await params;
   const aid = positiveId(attachmentId);
-  if (!aid) return Response.json({ error: "Not found" }, { status: 404 });
-  const hint = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  if (!checkExternalRateLimit(token, hint)) return Response.json({ error: "Not found" }, { status: 404 });
+  if (!aid) return externalNotFound();
+  if (!(await checkExternalRateLimit(token))) return externalNotFound();
   const result = await findExternalResponseAttachment(token, aid);
-  if (!result.ok) return Response.json({ error: "Not found" }, { status: 404 });
+  if (!result.ok) return externalNotFound();
+  const beforeBlob = await findExternalResponseAttachment(token, aid);
+  if (!beforeBlob.ok || beforeBlob.value.storageKey !== result.value.storageKey) return externalNotFound();
   try {
     const buffer = await getBlobStore().get(result.value.storageKey);
+    const afterBlob = await findExternalResponseAttachment(token, aid);
+    if (!afterBlob.ok || afterBlob.value.storageKey !== result.value.storageKey) return externalNotFound();
     return new Response(new Uint8Array(buffer), { headers: privateDownloadHeaders({ mimeType: result.value.mimeType, fileName: result.value.fileName, byteSize: buffer.byteLength }) });
   } catch {
-    return Response.json({ error: "File is missing from storage" }, { status: 404 });
+    return externalNotFound();
   }
 }

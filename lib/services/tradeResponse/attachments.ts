@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Actor, ServiceResult } from "./types";
 import { emitTradeAudits, writeTradeAuditTx } from "./txAudit";
-import { authorizeTokenTx } from "./packages";
+import { ACTIVE_EXTERNAL_PACKAGE_STATUSES, authorizeTokenTx } from "./packages";
 
 export async function getInternalAttachmentTarget(
   bidId: number,
@@ -36,7 +36,7 @@ export async function preflightExternalAttachmentTarget(
         packageItem: {
           packageId: auth.token.packageId,
           bidId: auth.token.bidId,
-          package: { bidId: auth.token.bidId, status: { in: ["ISSUED", "RESPONSES_IN", "GC_REVIEW"] } },
+          package: { bidId: auth.token.bidId, status: { in: [...ACTIVE_EXTERNAL_PACKAGE_STATUSES] } },
         },
       },
       select: { id: true },
@@ -110,7 +110,7 @@ export async function recordExternalResponseAttachment(
           bidId: auth.token.bidId,
           // Repeat the active-package predicate after blob write so a state
           // transition between preflight and metadata commit fails closed.
-          package: { bidId: auth.token.bidId, status: { in: ["ISSUED", "RESPONSES_IN", "GC_REVIEW"] } },
+          package: { bidId: auth.token.bidId, status: { in: [...ACTIVE_EXTERNAL_PACKAGE_STATUSES] } },
         },
       },
       select: { id: true },
@@ -182,7 +182,7 @@ export async function findExternalResponseAttachment(
           packageItem: {
             bidId: auth.token.bidId,
             packageId: auth.token.packageId,
-            package: { bidId: auth.token.bidId },
+            package: { bidId: auth.token.bidId, status: { in: [...ACTIVE_EXTERNAL_PACKAGE_STATUSES] } },
           },
         },
       },
