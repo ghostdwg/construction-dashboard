@@ -59,6 +59,10 @@ export function cleanText(value: unknown, max: number): string | null {
   return text ? text.slice(0, max) : null;
 }
 
+export function isValidOptionalDate(value: Date | null | undefined): boolean {
+  return value == null || Number.isFinite(value.getTime());
+}
+
 export function statusForError(error: string): number {
   if (error === "Not found") return 404;
   if (error === "Rate limit exceeded") return 429;

@@ -10,6 +10,7 @@ import {
   actorLabel,
   cleanText,
   includes,
+  isValidOptionalDate,
   type Actor,
   type ServiceResult,
 } from "./types";
@@ -126,6 +127,7 @@ export async function createResponsePackage(
 ): Promise<ServiceResult<{ id: number; packageNumber: number }>> {
   const title = cleanText(input.title, 300);
   if (!title) return { ok: false, error: "title is required" };
+  if (!isValidOptionalDate(input.responseDueDate)) return { ok: false, error: "Invalid response due date" };
   const committed = await prisma.$transaction(async (tx) => {
     if (input.contractorId) {
       const contractor = await tx.bidInviteSelection.findFirst({
@@ -395,6 +397,8 @@ type ResponseInput = {
 function validateResponseInput(input: ResponseInput): string | null {
   if (!includes(RESPONSE_CHANNELS, input.channel)) return "Invalid response channel";
   if (!includes(RESPONSE_TYPES, input.responseType)) return "Invalid response type";
+  if (!isValidOptionalDate(input.proposedCompletionDate) || !isValidOptionalDate(input.actualCompletionDate)) return "Invalid response date";
+  if (input.responseType === "PROPOSED_DATE" && !input.proposedCompletionDate) return "Proposed completion date is required";
   if (!cleanText(input.responderName, 300) || !cleanText(input.responseText, 20_000)) return "Responder name and response text are required";
   return null;
 }

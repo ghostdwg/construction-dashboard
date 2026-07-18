@@ -7,6 +7,7 @@ import {
   actorLabel,
   cleanText,
   includes,
+  isValidOptionalDate,
   type Actor,
   type ServiceResult,
 } from "./types";
@@ -60,6 +61,7 @@ export async function createReportObservation(
   if (!includes(OBSERVATION_SOURCE_KINDS, input.sourceKind) || !observationText) {
     return { ok: false, error: "Invalid observation source or text" };
   }
+  if (!isValidOptionalDate(input.observedAt)) return { ok: false, error: "Invalid observed date" };
   const committed = await prisma.$transaction(async (tx) => {
     if (!(await validateSource(tx as typeof prisma, bidId, input))) return null;
     const row = await tx.reportObservation.create({
@@ -98,6 +100,7 @@ export async function updateOpenObservation(
 ): Promise<ServiceResult<{ id: number }>> {
   const text = input.observationText === undefined ? undefined : cleanText(input.observationText, 8_000);
   if (input.observationText !== undefined && !text) return { ok: false, error: "observationText is required" };
+  if (!isValidOptionalDate(input.observedAt)) return { ok: false, error: "Invalid observed date" };
   const committed = await prisma.$transaction(async (tx) => {
     const current = await tx.reportObservation.findFirst({ where: { id: observationId, bidId } });
     if (!current) return { error: "Not found" as const };

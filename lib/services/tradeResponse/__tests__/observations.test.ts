@@ -54,6 +54,11 @@ const actor = { id: "gc-1", email: "gc@example.test" };
 beforeEach(() => h.reset());
 
 describe("ReportObservation freeze, Operations linkage, and bid-owned assignments", () => {
+  test("invalid observation dates fail before persistence", async () => {
+    expect(await createReportObservation(7, { sourceKind: "direct_entry", observationText: "date probe", observedAt: new Date("invalid") }, actor)).toEqual({ ok: false, error: "Invalid observed date" });
+    expect(h.state.observations).toHaveLength(0);
+  });
+
   test("source parent must belong to the bid and exactly one source is set", async () => {
     expect((await createReportObservation(8, { sourceKind: "field_report", fieldReportId: 5, observationText: "foreign" }, actor))).toEqual({ ok: false, error: "Not found" });
     expect((await createReportObservation(7, { sourceKind: "field_report", fieldReportId: 5, consultantReportId: 6, observationText: "two sources" }, actor))).toEqual({ ok: false, error: "Not found" });

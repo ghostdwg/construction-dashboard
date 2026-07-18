@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ preflight: vi.fn(), submit: vi.fn(), attachmentPreflight: vi.fn(), externalAttachment: vi.fn(), blobGet: vi.fn(), blobPut: vi.fn(), blobDelete: vi.fn() }));
+const h = vi.hoisted(() => ({ projection: vi.fn(), preflight: vi.fn(), submit: vi.fn(), attachmentPreflight: vi.fn(), externalAttachment: vi.fn(), blobGet: vi.fn(), blobPut: vi.fn(), blobDelete: vi.fn() }));
 vi.mock("@/lib/services/tradeResponse/rateLimit", () => ({ checkExternalRateLimit: () => true }));
 vi.mock("@/lib/services/tradeResponse/routeHelpers", () => ({
   positiveId: (raw: string) => { const value = Number(raw); return Number.isSafeInteger(value) && value > 0 ? value : null; },
@@ -9,7 +9,7 @@ vi.mock("@/lib/services/tradeResponse/routeHelpers", () => ({
 vi.mock("@/lib/services/tradeResponse/packages", () => ({
   preflightExternalResponseItem: h.preflight,
   submitExternalResponse: h.submit,
-  getExternalPackageProjection: vi.fn(),
+  getExternalPackageProjection: h.projection,
 }));
 vi.mock("@/lib/services/tradeResponse/attachments", () => ({
   preflightExternalAttachmentTarget: h.attachmentPreflight,
@@ -21,10 +21,21 @@ vi.mock("@/lib/storage/blobStore", () => ({ getBlobStore: () => ({ get: h.blobGe
 import { POST as submitPOST } from "../[token]/items/[itemId]/responses/route";
 import { POST as uploadPOST } from "../[token]/items/[itemId]/responses/[revId]/attachments/route";
 import { GET as downloadGET } from "../[token]/attachments/[attachmentId]/download/route";
+import { GET as packageGET } from "../[token]/route";
 
-beforeEach(() => { vi.clearAllMocks(); h.preflight.mockResolvedValue({ ok: false, error: "Not found" }); h.attachmentPreflight.mockResolvedValue({ ok: false, error: "Not found" }); h.externalAttachment.mockResolvedValue({ ok: false, error: "Not found" }); h.blobDelete.mockResolvedValue(undefined); });
+beforeEach(() => { vi.clearAllMocks(); h.projection.mockResolvedValue({ ok: false, error: "Not found" }); h.preflight.mockResolvedValue({ ok: false, error: "Not found" }); h.attachmentPreflight.mockResolvedValue({ ok: false, error: "Not found" }); h.externalAttachment.mockResolvedValue({ ok: false, error: "Not found" }); h.blobDelete.mockResolvedValue(undefined); });
 
 describe("external token wall ordering and non-oracular failures", () => {
+  test("package projections and failures are private and non-cacheable", async () => {
+    let response = await packageGET(new Request("http://test/x"), { params: Promise.resolve({ token: "synthetic" }) });
+    expect(response.status).toBe(404);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    h.projection.mockResolvedValueOnce({ ok: true, value: { packageNumber: 1, items: [] } });
+    response = await packageGET(new Request("http://test/x"), { params: Promise.resolve({ token: "synthetic" }) });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
   test("unknown/cross-package submission returns 404 before JSON parsing or mutation", async () => {
     const request = { json: vi.fn(), headers: new Headers() } as unknown as Request;
     const response = await submitPOST(request, { params: Promise.resolve({ token: "synthetic", itemId: "9" }) });

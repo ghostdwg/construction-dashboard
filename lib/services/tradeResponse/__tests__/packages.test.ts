@@ -148,6 +148,14 @@ describe("response package, immutable revision, token, and GC acceptance", () =>
     expect(await rotateResponsePackageToken(7, 1, { expiresAt: new Date("invalid") }, actor)).toEqual({ ok: false, error: "Token expiry must be within 90 days" });
   });
 
+  test("invalid package/response dates fail closed and proposed-date responses require their date", async () => {
+    expect(await createResponsePackage(7, { title: "Invalid date", responseDueDate: new Date("invalid") }, actor)).toEqual({ ok: false, error: "Invalid response due date" });
+    h.state.packages[0].status = "ISSUED";
+    expect(await submitManualResponse(7, 1, 2, { responderName: "Trade", channel: "EMAIL", responseType: "PROPOSED_DATE", responseText: "Soon" }, actor)).toEqual({ ok: false, error: "Proposed completion date is required" });
+    expect(await submitManualResponse(7, 1, 2, { responderName: "Trade", channel: "EMAIL", responseType: "COMPLETED", responseText: "Done", actualCompletionDate: new Date("invalid") }, actor)).toEqual({ ok: false, error: "Invalid response date" });
+    expect(h.state.responses).toHaveLength(0);
+  });
+
   test("package FSM rejects skipped transitions and permits VOIDED from DRAFT", async () => {
     expect(await transitionResponsePackage(7, 1, "GC_REVIEW", actor)).toEqual({ ok: false, error: "Invalid package transition" });
     expect(await transitionResponsePackage(7, 1, "VOIDED", actor)).toEqual({ ok: true, value: { status: "VOIDED" } });
@@ -159,7 +167,7 @@ describe("response package, immutable revision, token, and GC acceptance", () =>
     const first = await submitManualResponse(7, 1, 2, { responderName: "Trade One", channel: "EMAIL", responseType: "COMPLETED", responseText: "First exact bytes" }, actor);
     expect(first).toEqual({ ok: true, value: expect.objectContaining({ revisionIndex: 0 }) });
     const snapshot = structuredClone(h.state.responses[0]);
-    const second = await submitManualResponse(7, 1, 2, { responderName: "Trade One", channel: "PROCORE", responseType: "PROPOSED_DATE", responseText: "Second revision" }, actor);
+    const second = await submitManualResponse(7, 1, 2, { responderName: "Trade One", channel: "PROCORE", responseType: "PROPOSED_DATE", responseText: "Second revision", proposedCompletionDate: new Date("2026-08-10") }, actor);
     expect(second).toEqual({ ok: true, value: expect.objectContaining({ revisionIndex: 1 }) });
     expect(h.state.responses[0]).toEqual(snapshot);
     expect(h.state.responses[0].enteredBy).toBe("gc@example.test");
