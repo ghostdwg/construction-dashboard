@@ -183,6 +183,7 @@ model Bid {
   responsePackages            ResponsePackage[]
   responsePackageItems        ResponsePackageItem[]
   tradeResponseRevisions      TradeResponseRevision[]
+  tradeResponseReviewDecisions TradeResponseReviewDecision[]
   tradeResponseAttachments    TradeResponseAttachment[]
   responseAccessTokens        ResponseAccessToken[]
 }
@@ -4014,6 +4015,7 @@ model TrackedItem {
   responsibleContractorId Int?
   gcInternalResponsibility Boolean @default(false)
   consultantDiscipline String?
+  sourceReportObservationId Int? @unique
   dueDate          DateTime?
   carriedFromDate  String? // ISO date — mirrors MeetingActionItem.carriedFromDate
 
@@ -4062,7 +4064,8 @@ model TrackedItem {
   projectContact              ProjectContact?         @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
   trade                       Trade?                  @relation(fields: [tradeId], references: [id], onDelete: SetNull)
   leadTrade                   Trade?                  @relation("TrackedItemLeadTrade", fields: [leadTradeId], references: [id], onDelete: SetNull)
-  responsibleContractor      Subcontractor?          @relation("TrackedItemResponsibleContractor", fields: [responsibleContractorId], references: [id], onDelete: SetNull)
+  responsibleContractor      Subcontractor?          @relation("TrackedItemResponsibleContractor", fields: [responsibleContractorId], references: [id], onDelete: Restrict)
+  sourceReportObservation    ReportObservation?      @relation("PromotedReportObservation", fields: [sourceReportObservationId], references: [id], onDelete: Restrict)
   sourceMeeting               Meeting?                @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
   sourceMeetingActionItem     MeetingActionItem?      @relation(fields: [sourceMeetingActionItemId], references: [id], onDelete: SetNull)
   sourceSpecSection           SpecSection?            @relation(fields: [sourceSpecSectionId], references: [id], onDelete: SetNull)
@@ -4075,7 +4078,7 @@ model TrackedItem {
   comments                    TrackedItemComment[]
   attachments                 TrackedItemAttachment[]
   linkedDesignChanges         DesignIntentChange[]
-  reportObservations          ReportObservation[]
+  reportObservations          ReportObservation[]    @relation("ReportObservationRegisterItem")
   tradeAssignments           TrackedItemTradeAssignment[]
   responsePackageItems       ResponsePackageItem[]
 
@@ -4332,10 +4335,11 @@ model ReportObservation {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  bid              Bid               @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  fieldReport      FieldReport?      @relation(fields: [fieldReportId], references: [id], onDelete: SetNull)
-  consultantReport ConsultantReport? @relation(fields: [consultantReportId], references: [id], onDelete: SetNull)
-  registerItem     TrackedItem?       @relation(fields: [registerItemId], references: [id], onDelete: SetNull)
+  bid              Bid               @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  fieldReport      FieldReport?      @relation(fields: [fieldReportId], references: [id], onDelete: Restrict)
+  consultantReport ConsultantReport? @relation(fields: [consultantReportId], references: [id], onDelete: Restrict)
+  registerItem     TrackedItem?       @relation("ReportObservationRegisterItem", fields: [registerItemId], references: [id], onDelete: Restrict)
+  promotedTrackedItem TrackedItem?    @relation("PromotedReportObservation")
 
   @@index([bidId, disposition])
   @@index([fieldReportId])
@@ -4375,8 +4379,8 @@ model ResponsePackage {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  bid        Bid            @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  contractor Subcontractor? @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+  bid        Bid            @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  contractor Subcontractor? @relation(fields: [contractorId], references: [id], onDelete: Restrict)
   items      ResponsePackageItem[]
   tokens     ResponseAccessToken[]
 
@@ -4393,7 +4397,7 @@ model ResponsePackageItem {
   displayNumber String?
 
   package     ResponsePackage       @relation(fields: [packageId], references: [id], onDelete: Restrict)
-  bid         Bid                   @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bid         Bid                   @relation(fields: [bidId], references: [id], onDelete: Restrict)
   trackedItem TrackedItem           @relation(fields: [trackedItemId], references: [id], onDelete: Restrict)
   responses   TradeResponseRevision[]
 
@@ -4423,9 +4427,10 @@ model TradeResponseRevision {
   gcReviewAt             DateTime?
   gcCommentary           String?
 
-  bid         Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bid         Bid                 @relation(fields: [bidId], references: [id], onDelete: Restrict)
   packageItem ResponsePackageItem @relation(fields: [packageItemId], references: [id], onDelete: Restrict)
   attachments TradeResponseAttachment[]
+  reviewDecisions TradeResponseReviewDecision[]
 
   @@unique([packageItemId, revisionIndex])
   @@index([bidId, packageItemId])
@@ -4442,7 +4447,7 @@ model TradeResponseAttachment {
   createdAt          DateTime @default(now())
 
   responseRevision TradeResponseRevision @relation(fields: [responseRevisionId], references: [id], onDelete: Restrict)
-  bid              Bid                   @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bid              Bid                   @relation(fields: [bidId], references: [id], onDelete: Restrict)
 
   @@index([bidId, responseRevisionId])
   @@unique([responseRevisionId, storageKey])
@@ -4460,10 +4465,45 @@ model ResponseAccessToken {
   createdAt       DateTime  @default(now())
   lastUsedAt      DateTime?
 
-  bid     Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bid     Bid             @relation(fields: [bidId], references: [id], onDelete: Restrict)
   package ResponsePackage @relation(fields: [packageId], references: [id], onDelete: Restrict)
 
   @@index([bidId, packageId])
+  @@index([expiresAt])
+}
+
+// Immutable GC review evidence. The projection fields on TradeResponseRevision
+// remain convenient for readiness checks, while every decision/correction is
+// retained here with explicit provenance.
+model TradeResponseReviewDecision {
+  id                 Int      @id @default(autoincrement())
+  bidId              Int
+  responseRevisionId Int
+  decision           String
+  commentary         String?
+  reviewedBy         String
+  correctionOfId     Int?
+  createdAt          DateTime @default(now())
+
+  bid              Bid                         @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  responseRevision TradeResponseRevision       @relation(fields: [responseRevisionId], references: [id], onDelete: Restrict)
+  correctionOf     TradeResponseReviewDecision? @relation("ReviewDecisionCorrections", fields: [correctionOfId], references: [id], onDelete: Restrict)
+  corrections      TradeResponseReviewDecision[] @relation("ReviewDecisionCorrections")
+
+  @@index([bidId, responseRevisionId, createdAt])
+  @@index([correctionOfId])
+}
+
+// Shared, expiring coordination state for the public token wall. Rows are
+// keyed by a server-derived digest (never a caller-provided address or raw
+// token), and expired rows are removed on consumption.
+model ExternalResponseRateLimitBucket {
+  key             String   @id
+  requestCount    Int      @default(0)
+  windowStartedAt DateTime
+  expiresAt       DateTime
+  updatedAt       DateTime @updatedAt
+
   @@index([expiresAt])
 }
 

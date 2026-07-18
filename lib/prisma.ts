@@ -78,6 +78,9 @@ function createPrisma() {
           throw new Error("ResponseAccessToken history is retained; revoke the token");
         },
       },
+      tradeResponseReviewDecision: appendOnly(
+        "TradeResponseReviewDecision is append-only: corrections append a linked decision"
+      ),
     },
   });
 }
