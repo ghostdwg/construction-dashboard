@@ -103,13 +103,22 @@ export async function materializeSegments(
   bidId: number,
   meetingId: number
 ): Promise<ServiceResult<{ created: number; existing: number }>> {
-  const meeting = await prisma.meeting.findFirst({
+  return prisma.$transaction((tx) => materializeSegmentsTx(tx, bidId, meetingId));
+}
+
+/** Transaction-scoped materialization for initial-analysis atomicity. */
+export async function materializeSegmentsTx(
+  db: PrismaTx,
+  bidId: number,
+  meetingId: number,
+): Promise<ServiceResult<{ created: number; existing: number }>> {
+  const meeting = await db.meeting.findFirst({
     where: { id: meetingId, bidId },
     select: { id: true, rawTranscript: true, transcript: true },
   });
   if (!meeting) return { ok: false, error: "Not found" };
 
-  const existing = await prisma.meetingTranscriptSegment.count({
+  const existing = await db.meetingTranscriptSegment.count({
     where: { meetingId },
   });
   if (existing > 0) return { ok: true, value: { created: 0, existing } };
@@ -121,9 +130,8 @@ export async function materializeSegments(
   }
   if (parsed.length === 0) return { ok: true, value: { created: 0, existing: 0 } };
 
-  await prisma.$transaction(async (tx) => {
-    for (const seg of parsed) {
-      await tx.meetingTranscriptSegment.create({
+  for (const seg of parsed) {
+      await db.meetingTranscriptSegment.create({
         data: {
           meetingId,
           bidId,
@@ -137,8 +145,7 @@ export async function materializeSegments(
           currentText: seg.text,
         },
       });
-    }
-  });
+  }
   return { ok: true, value: { created: parsed.length, existing: 0 } };
 }
 

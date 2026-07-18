@@ -22,11 +22,9 @@ import {
   getProjectContext,
   getPriorOpenItems,
   parseMeetingAnalysis,
-  writeMeetingAnalysis,
 } from "@/lib/meeting-analysis";
 import { meetingRouteContext } from "@/lib/services/meetingRegister/routeHelpers";
 import { recordAnalysisRun } from "@/lib/services/meetingRegister/extractionRuns";
-import { materializeSegments } from "@/lib/services/meetingRegister/segments";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
@@ -52,6 +50,7 @@ export async function POST(
       analysisVersion: true,
       bid: { select: { projectName: true } },
       participants: {
+        where: { isActive: true },
         select: { name: true, role: true, company: true, speakerLabel: true, isGcTeam: true },
       },
     },
@@ -185,24 +184,10 @@ export async function POST(
     // applies immediately (lifecycle write + register projection); every
     // subsequent analysis lands as a PREVIEWED run for human apply/discard
     // so corrections' downstream effects are previewed, never auto-applied.
-    const priorApplied = await prisma.meetingExtractionRun.count({
-      where: { meetingId: mId, status: "APPLIED" },
-    });
-
-    let runId: number | null = null;
-    let runStatus = "APPLIED";
-    if (priorApplied === 0) {
-      await materializeSegments(bidId, mId); // citation anchors for the projection
-      const writeResult = await writeMeetingAnalysis(mId, bidId, analysis);
-      const run = await recordAnalysisRun(bidId, mId, analysis, writeResult, actor);
-      if (run.ok) runId = run.value.runId;
-    } else {
-      const run = await recordAnalysisRun(bidId, mId, analysis, null, actor);
-      if (run.ok) {
-        runId = run.value.runId;
-        runStatus = run.value.status;
-      }
-    }
+    const run = await recordAnalysisRun(bidId, mId, analysis, actor);
+    if (!run.ok) throw new Error(run.error);
+    const runId = run.value.runId;
+    const runStatus = run.value.status;
 
     await prisma.meeting.update({
       where: { id: mId },

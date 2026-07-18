@@ -495,10 +495,11 @@ export async function writeMeetingAnalysisTx(
       },
     });
 
-    // §2 participants — upsert by speakerLabel within this meeting
+    // §2 participants — upsert active identities only. A merged source row
+    // is durable provenance and must never be silently reactivated by rerun.
     for (const p of analysis.section2) {
       const existing = await tx.meetingParticipant.findFirst({
-        where: { meetingId, speakerLabel: p.speakerId },
+        where: { meetingId, speakerLabel: p.speakerId, isActive: true },
       });
       if (existing) {
         await tx.meetingParticipant.update({
@@ -573,16 +574,34 @@ export async function writeMeetingAnalysisTx(
       result.commitmentIds.push(createdCommitment.id);
     }
 
-    // §5 action items — delete prior AI-generated items, insert fresh
-    // (manual items preserved by not touching rows where sourceText is null and createdAt predates analysis)
-    await tx.meetingActionItem.deleteMany({
+    // §5 action items — non-destructive exact reconciliation. Human-advanced
+    // OPEN/CLOSED/DEFERRED and promoted rows retain identity, status and all
+    // source links. Only genuinely new canonical items are inserted; an AI
+    // rerun never deletes or rewrites an existing action-item row.
+    const existingActionItems = await tx.meetingActionItem.findMany({
       where: { meetingId, sourceText: { not: null } },
+      orderBy: { id: "asc" },
     });
+    const reusedActionItemIds = new Set<number>();
+    const canonical = (value: string | null | undefined) =>
+      (value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 
     for (const item of analysis.section5) {
+      const exact = existingActionItems.find(
+        (row) =>
+          !reusedActionItemIds.has(row.id) &&
+          canonical(row.description) === canonical(item.task) &&
+          canonical(row.sourceText) === canonical(item.evidenceText) &&
+          canonical(row.assignedToName) === canonical(item.person),
+      );
+      if (exact) {
+        reusedActionItemIds.add(exact.id);
+        result.actionItemIds.push(exact.id);
+        continue;
+      }
       // Resolve participant ID from name if possible
       const participant = await tx.meetingParticipant.findFirst({
-        where: { meetingId, name: item.person },
+        where: { meetingId, name: item.person, isActive: true },
       });
       const createdItem = await tx.meetingActionItem.create({
         data: {

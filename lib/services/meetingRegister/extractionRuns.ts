@@ -40,6 +40,7 @@ import {
   type RegisterEntryDraft,
 } from "./registerBuilder";
 import { emitRegisterAuditPostCommit, writeRegisterAuditTx } from "./txAudit";
+import { materializeSegmentsTx } from "./segments";
 import {
   EXTRACTED_ORIGINS,
   SUPERSEDED_STATE,
@@ -157,6 +158,7 @@ export function computeReconcile(
     const hits = [...unmatchedExisting.values()]
       .filter((e) => e.entryType === d.entryType && e.segmentId === d.segmentId)
       .sort((a, b) => a.id - b.id);
+    if (hits.length > 0) draftMatched.add(i);
     hits.forEach((e, hitIndex) => {
       unmatchedExisting.delete(e.id);
       outcomes.push({
@@ -180,7 +182,7 @@ export function computeReconcile(
   return outcomes;
 }
 
-function summarizeOutcomes(outcomes: RunOutcome[]): RunPreview {
+export function summarizeOutcomes(outcomes: RunOutcome[]): RunPreview {
   const addByType: Record<string, number> = {};
   let toAdd = 0;
   let unchanged = 0;
@@ -272,11 +274,12 @@ async function loadReconcileInputs(
 async function computePreview(
   meetingId: number,
   bidId: number,
-  analysis: MeetingAnalysis
+  analysis: MeetingAnalysis,
+  db: PrismaTx | typeof prisma = prisma,
 ): Promise<RunPreview> {
   // Lifecycle-row ids are unknown until apply; identity matching uses only
   // entryType + wording + anchors, so empty ids preview the same outcomes.
-  const { existing, drafts } = await loadReconcileInputs(prisma, meetingId, bidId, analysis, {
+  const { existing, drafts } = await loadReconcileInputs(db, meetingId, bidId, analysis, {
     actionItemIds: [],
     commitmentIds: [],
     designChangeIds: [],
@@ -417,52 +420,71 @@ async function reconcileRegisterTx(
  * Record an analysis as an extraction run. First-ever run (or none applied
  * yet) applies immediately; later runs land PREVIEWED for human review.
  */
+export function recordAnalysisRun(
+  bidId: number,
+  meetingId: number,
+  analysis: MeetingAnalysis,
+  actor: Actor,
+): Promise<ServiceResult<{ runId: number; status: string; preview: RunPreview }>>;
+/** @deprecated Compatibility overload for pre-remediation callers/tests. */
+export function recordAnalysisRun(
+  bidId: number,
+  meetingId: number,
+  analysis: MeetingAnalysis,
+  ignoredWriteResult: WriteMeetingAnalysisResult | null,
+  actor: Actor,
+): Promise<ServiceResult<{ runId: number; status: string; preview: RunPreview }>>;
 export async function recordAnalysisRun(
   bidId: number,
   meetingId: number,
   analysis: MeetingAnalysis,
-  writeResult: WriteMeetingAnalysisResult | null,
-  actor: Actor
+  actorOrIgnoredWriteResult: Actor | WriteMeetingAnalysisResult | null,
+  legacyActor?: Actor,
 ): Promise<ServiceResult<{ runId: number; status: string; preview: RunPreview }>> {
-  const meeting = await prisma.meeting.findFirst({
-    where: { id: meetingId, bidId },
-    select: { id: true, analysisVersion: true },
-  });
-  if (!meeting) return { ok: false, error: "Not found" };
+  const actor = legacyActor ?? (actorOrIgnoredWriteResult as Actor);
+  const appliedBy = actorLabel(actor) ?? "system";
+  let envelope: AuditEnvelope | null = null;
 
-  const priorApplied = await prisma.meetingExtractionRun.count({
-    where: { meetingId, status: "APPLIED" },
-  });
-  const preview = await computePreview(meetingId, bidId, analysis);
+  const result = await prisma.$transaction(async (tx) => {
+    const meeting = await tx.meeting.findFirst({
+      where: { id: meetingId, bidId },
+      select: { id: true, analysisVersion: true },
+    });
+    if (!meeting) return { kind: "not-found" as const };
 
-  if (priorApplied === 0 && writeResult) {
-    // Initial population — analysis was already written by the caller;
-    // project the register + write the mandatory audit row in ONE
-    // transaction and record an APPLIED run.
-    let envelope: AuditEnvelope | null = null;
-    const run = await prisma.$transaction(async (tx) => {
+    const priorApplied = await tx.meetingExtractionRun.count({
+      where: { meetingId, bidId, status: "APPLIED" },
+    });
+    if (priorApplied === 0) {
+      const materialized = await materializeSegmentsTx(tx, bidId, meetingId);
+      if (!materialized.ok) throw new Error(materialized.error);
+      const writeResult = await writeMeetingAnalysisTx(tx, meetingId, bidId, analysis);
       const created = await tx.meetingExtractionRun.create({
         data: {
           meetingId,
           bidId,
-          analysisVersion: meeting.analysisVersion,
+          analysisVersion: meeting.analysisVersion + 1,
           trigger: "INITIAL",
           status: "APPLIED",
-          previewJson: JSON.stringify(preview),
+          previewJson: "{}",
           createdBy: actorLabel(actor),
           appliedBy: actorLabel(actor),
           appliedAt: new Date(),
         },
       });
-      const applied = await reconcileRegisterTx(
+      const preview = await reconcileRegisterTx(
         tx,
         meetingId,
         bidId,
         analysis,
         writeResult,
         created.id,
-        actorLabel(actor) ?? "system"
+        appliedBy,
       );
+      await tx.meetingExtractionRun.update({
+        where: { id: created.id },
+        data: { previewJson: JSON.stringify(preview) },
+      });
       envelope = await writeRegisterAuditTx(tx, {
         action: "extraction_run_applied",
         decision: "applied",
@@ -474,20 +496,16 @@ export async function recordAnalysisRun(
           meetingId,
           extractionRunId: created.id,
           trigger: "INITIAL",
-          toAdd: applied.toAdd,
-          unchanged: applied.unchanged,
-          superseded: applied.toSupersede,
-          preservedDispositioned: applied.preservedDispositioned,
+          toAdd: preview.toAdd,
+          unchanged: preview.unchanged,
+          superseded: preview.toSupersede,
+          preservedDispositioned: preview.preservedDispositioned,
         },
       });
-      return created;
-    });
-    emitRegisterAuditPostCommit(envelope);
-    return { ok: true, value: { runId: run.id, status: "APPLIED", preview } };
-  }
+      return { kind: "committed" as const, run: created, status: "APPLIED", preview };
+    }
 
-  let envelope: AuditEnvelope | null = null;
-  const run = await prisma.$transaction(async (tx) => {
+    const preview = await computePreview(meetingId, bidId, analysis, tx);
     const created = await tx.meetingExtractionRun.create({
       data: {
         meetingId,
@@ -517,10 +535,15 @@ export async function recordAnalysisRun(
         preservedDispositioned: preview.preservedDispositioned,
       },
     });
-    return created;
+    return { kind: "committed" as const, run: created, status: "PREVIEWED", preview };
   });
+
+  if (result.kind === "not-found") return { ok: false, error: "Not found" };
   emitRegisterAuditPostCommit(envelope);
-  return { ok: true, value: { runId: run.id, status: "PREVIEWED", preview } };
+  return {
+    ok: true,
+    value: { runId: result.run.id, status: result.status, preview: result.preview },
+  };
 }
 
 export async function getRun(bidId: number, meetingId: number, runId: number) {
@@ -546,6 +569,8 @@ export async function listRuns(bidId: number, meetingId: number) {
     },
   });
 }
+
+class RunClaimError extends Error {}
 
 /**
  * Human APPLY of a PREVIEWED run — one transaction: lifecycle write +
@@ -575,46 +600,57 @@ export async function applyRun(
   }
 
   let envelope: AuditEnvelope | null = null;
-  const applied = await prisma.$transaction(async (tx) => {
-    const writeResult = await writeMeetingAnalysisTx(tx, meetingId, bidId, analysis);
-    const result = await reconcileRegisterTx(
-      tx,
-      meetingId,
-      bidId,
-      analysis,
-      writeResult,
-      run.id,
-      appliedBy
-    );
-    await tx.meetingExtractionRun.update({
-      where: { id: run.id },
-      data: {
-        status: "APPLIED",
-        analysisJson: "{}", // clear the bulky payload once applied
-        previewJson: JSON.stringify(result), // final outcomes incl. created ids
-        appliedBy,
-        appliedAt: new Date(),
-      },
-    });
-    envelope = await writeRegisterAuditTx(tx, {
-      action: "extraction_run_applied",
-      decision: "applied",
-      subjectKind: "MeetingExtractionRun",
-      subjectId: run.id,
-      actor,
-      payload: {
-        bidId,
+  let applied: RunPreview;
+  try {
+    applied = await prisma.$transaction(async (tx) => {
+      // Claim first, scoped by tenant + lifecycle state. If another request
+      // won the claim, no writer/reconcile/audit work is allowed to begin.
+      const claim = await tx.meetingExtractionRun.updateMany({
+        where: { id: run.id, meetingId, bidId, status: "PREVIEWED" },
+        data: { status: "APPLIED", appliedBy, appliedAt: new Date() },
+      });
+      if (claim.count !== 1) throw new RunClaimError("Run is no longer PREVIEWED");
+
+      const writeResult = await writeMeetingAnalysisTx(tx, meetingId, bidId, analysis);
+      const result = await reconcileRegisterTx(
+        tx,
         meetingId,
-        extractionRunId: run.id,
-        trigger: run.trigger,
-        toAdd: result.toAdd,
-        unchanged: result.unchanged,
-        superseded: result.toSupersede,
-        preservedDispositioned: result.preservedDispositioned,
-      },
+        bidId,
+        analysis,
+        writeResult,
+        run.id,
+        appliedBy,
+      );
+      await tx.meetingExtractionRun.update({
+        where: { id: run.id },
+        data: {
+          analysisJson: "{}", // clear the bulky payload once applied
+          previewJson: JSON.stringify(result), // final outcomes incl. created ids
+        },
+      });
+      envelope = await writeRegisterAuditTx(tx, {
+        action: "extraction_run_applied",
+        decision: "applied",
+        subjectKind: "MeetingExtractionRun",
+        subjectId: run.id,
+        actor,
+        payload: {
+          bidId,
+          meetingId,
+          extractionRunId: run.id,
+          trigger: run.trigger,
+          toAdd: result.toAdd,
+          unchanged: result.unchanged,
+          superseded: result.toSupersede,
+          preservedDispositioned: result.preservedDispositioned,
+        },
+      });
+      return result;
     });
-    return result;
-  });
+  } catch (error) {
+    if (error instanceof RunClaimError) return { ok: false, error: error.message };
+    throw error;
+  }
   emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: { runId: run.id, preview: applied } };
 }

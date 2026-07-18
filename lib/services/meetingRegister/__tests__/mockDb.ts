@@ -180,7 +180,14 @@ const TABLE_NAMES = [
 export function buildPrisma(): MockPrisma {
   const prisma = {
     meeting: makeTable(),
-    meetingParticipant: makeTable(),
+    meetingParticipant: makeTable({
+      defaults: {
+        isActive: true,
+        mergedIntoParticipantId: null,
+        mergedAt: null,
+        mergedBy: null,
+      },
+    }),
     meetingTranscriptSegment: makeTable({
       defaults: { isActive: true, isUnknownSpeaker: false, participantId: null, splitFromSegmentId: null },
     }),

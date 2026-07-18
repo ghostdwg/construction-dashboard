@@ -17,7 +17,13 @@ vi.mock("@/lib/prisma", () => ({
 process.env.OBSERVABILITY_AUDIT_QUIET = "true";
 
 import type { MeetingAnalysis } from "@/lib/meeting-analysis";
-import { applyRun, discardRun, recordAnalysisRun } from "../extractionRuns";
+import {
+  applyRun,
+  computeReconcile,
+  discardRun,
+  recordAnalysisRun,
+  summarizeOutcomes,
+} from "../extractionRuns";
 
 const ACTOR = { name: "Josh", email: "josh@example.com" };
 
@@ -59,7 +65,9 @@ describe("recordAnalysisRun", () => {
     const entries = state.prisma.meetingRegisterEntry.rows;
     expect(entries).toHaveLength(2); // DECISION + ACTION_ITEM bridge
     expect(entries.every((e) => e.reviewState === "PENDING")).toBe(true);
-    expect(entries.find((e) => e.entryType === "ACTION_ITEM")?.linkedActionItemId).toBe(101);
+    expect(entries.find((e) => e.entryType === "ACTION_ITEM")?.linkedActionItemId).toBe(
+      state.prisma.meetingActionItem.rows[0].id,
+    );
     expect(state.prisma.meetingExtractionRun.rows[0]).toMatchObject({
       trigger: "INITIAL",
       status: "APPLIED",
@@ -100,6 +108,72 @@ describe("recordAnalysisRun", () => {
     const outcomes = rerun.ok ? rerun.value.preview.outcomes : [];
     expect(outcomes.map((o) => o.outcome).sort()).toEqual(["create", "supersede", "unchanged"]);
   });
+
+  it.each(["OPEN", "CLOSED", "DEFERRED"])(
+    "preserves %s action-item identity, lifecycle, and promotion source links",
+    async (status) => {
+      await recordAnalysisRun(1, 5, analysis, ACTOR);
+      const actionId = state.prisma.meetingActionItem.rows[0].id as number;
+      await state.prisma.meetingActionItem.update({
+        where: { id: actionId },
+        data: { status, notes: "human lifecycle state", closedAt: status === "CLOSED" ? new Date() : null },
+      });
+      await state.prisma.trackedItem.create({
+        data: { bidId: 1, title: "Promoted action", sourceMeetingActionItemId: actionId },
+      });
+      const before = { ...state.prisma.meetingActionItem.rows[0] };
+
+      const rerun = await recordAnalysisRun(1, 5, analysis, ACTOR);
+      const applied = await applyRun(1, 5, rerun.ok ? rerun.value.runId : -1, ACTOR);
+      expect(applied.ok).toBe(true);
+      expect(state.prisma.meetingActionItem.rows).toHaveLength(1);
+      expect(state.prisma.meetingActionItem.rows[0]).toEqual(before);
+      expect(state.prisma.trackedItem.rows[0].sourceMeetingActionItemId).toBe(actionId);
+    },
+  );
+
+  it.each(["lifecycle", "register", "audit"])(
+    "rolls initial analysis across every table back on %s failure",
+    async (failure) => {
+      const table = failure === "lifecycle"
+        ? state.prisma.meetingActionItem
+        : failure === "register"
+          ? state.prisma.meetingRegisterEntry
+          : state.prisma.auditEvent;
+      const realCreate = table.create;
+      table.create = async () => {
+        throw new Error(`synthetic ${failure} failure`);
+      };
+      const before = {
+        meeting: state.prisma.meeting.rows.map((row) => ({ ...row })),
+        participants: state.prisma.meetingParticipant.rows.map((row) => ({ ...row })),
+        segments: state.prisma.meetingTranscriptSegment.rows.map((row) => ({ ...row })),
+        actions: state.prisma.meetingActionItem.rows.map((row) => ({ ...row })),
+        commitments: state.prisma.meetingCommitment.rows.map((row) => ({ ...row })),
+        designs: state.prisma.designIntentChange.rows.map((row) => ({ ...row })),
+        runs: state.prisma.meetingExtractionRun.rows.map((row) => ({ ...row })),
+        entries: state.prisma.meetingRegisterEntry.rows.map((row) => ({ ...row })),
+        revisions: state.prisma.meetingRegisterEntryRevision.rows.map((row) => ({ ...row })),
+        audits: state.prisma.auditEvent.rows.map((row) => ({ ...row })),
+      };
+      await expect(recordAnalysisRun(1, 5, analysis, ACTOR)).rejects.toThrow(
+        `synthetic ${failure} failure`,
+      );
+      table.create = realCreate;
+      expect({
+        meeting: state.prisma.meeting.rows,
+        participants: state.prisma.meetingParticipant.rows,
+        segments: state.prisma.meetingTranscriptSegment.rows,
+        actions: state.prisma.meetingActionItem.rows,
+        commitments: state.prisma.meetingCommitment.rows,
+        designs: state.prisma.designIntentChange.rows,
+        runs: state.prisma.meetingExtractionRun.rows,
+        entries: state.prisma.meetingRegisterEntry.rows,
+        revisions: state.prisma.meetingRegisterEntryRevision.rows,
+        audits: state.prisma.auditEvent.rows,
+      }).toEqual(before);
+    },
+  );
 });
 
 describe("applyRun — freeze + preservation discipline", () => {
@@ -252,16 +326,15 @@ describe("applyRun — freeze + preservation discipline", () => {
     expect(fromRun1.find((r) => r.reviewState === "SUPERSEDED")?.rawSourceText).toBe("Decision A");
   });
 
-  it("re-applies lifecycle rows through the analysis writer on apply", async () => {
+  it("reuses lifecycle rows through the analysis writer on apply", async () => {
     await recordAnalysisRun(1, 5, analysis, { actionItemIds: [101], commitmentIds: [], designChangeIds: [] }, ACTOR);
     const rerun = await recordAnalysisRun(1, 5, analysis, null, ACTOR);
     const runId = rerun.ok ? rerun.value.runId : -1;
     await applyRun(1, 5, runId, ACTOR);
-    // writeMeetingAnalysisTx created a fresh AI action item row
+    // writeMeetingAnalysisTx reused the canonical AI action item row.
     expect(state.prisma.meetingActionItem.rows.length).toBe(1);
     expect(state.prisma.meetingActionItem.rows[0]).toMatchObject({ description: "Do the thing" });
-    // ...and the UNCHANGED bridge entry was re-pointed at it (old FK would
-    // have gone stale via SetNull when the writer replaced the row).
+    // The UNCHANGED bridge keeps pointing at the same durable identity.
     const bridge = state.prisma.meetingRegisterEntry.rows.find((r) => r.entryType === "ACTION_ITEM");
     expect(bridge?.linkedActionItemId).toBe(state.prisma.meetingActionItem.rows[0].id);
   });
@@ -290,6 +363,69 @@ describe("applyRun — freeze + preservation discipline", () => {
     expect(alreadyApplied.ok).toBe(false);
     const crossBid = await applyRun(2, 5, 1, ACTOR);
     expect(crossBid).toMatchObject({ ok: false, error: "Not found" });
+  });
+
+  it("claims PREVIEWED atomically so concurrent double-apply has one winner", async () => {
+    await recordAnalysisRun(1, 5, analysis, ACTOR);
+    const rerun = await recordAnalysisRun(1, 5, changedAnalysis, ACTOR);
+    const runId = rerun.ok ? rerun.value.runId : -1;
+    const results = await Promise.all([
+      applyRun(1, 5, runId, ACTOR),
+      applyRun(1, 5, runId, ACTOR),
+    ]);
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toEqual([
+      { ok: false, error: "Run is no longer PREVIEWED" },
+    ]);
+    expect(state.prisma.meetingExtractionRun.rows[1].status).toBe("APPLIED");
+    expect(
+      state.prisma.auditEvent.rows.filter(
+        (row) => row.action === "extraction_run_applied" && row.subjectId === String(runId),
+      ),
+    ).toHaveLength(1);
+  });
+});
+
+describe("same-anchor reconcile accounting", () => {
+  const draft = (rawSourceText: string) => ({
+    entryType: "DECISION" as const,
+    agendaTopic: null,
+    rawSourceText,
+    normalizedText: rawSourceText,
+    speakerLabel: null,
+    speakerName: null,
+    responsibleParty: null,
+    dueDate: null,
+    confidence: "MEDIUM" as const,
+    origin: "ai_extraction" as const,
+    linkedActionItemId: null,
+    linkedCommitmentId: null,
+    linkedDesignChangeId: null,
+    segmentId: 77,
+    startSec: 1,
+    endSec: 2,
+    sourceCitation: "[00:01] SPEAKER_0",
+  });
+
+  it("classifies changed wording once and counts one replacement", () => {
+    const outcomes = computeReconcile(
+      [{ id: 1, entryType: "DECISION", rawSourceText: "Old wording", segmentId: 77, reviewState: "PENDING", origin: "ai_extraction" }],
+      [draft("Changed wording")],
+    );
+    expect(outcomes.map((outcome) => outcome.outcome)).toEqual(["supersede"]);
+    expect(summarizeOutcomes(outcomes)).toMatchObject({ toAdd: 1, toSupersede: 1, merged: 0 });
+  });
+
+  it("counts a many-to-one anchor merge as one replacement and two supersessions", () => {
+    const outcomes = computeReconcile(
+      [
+        { id: 1, entryType: "DECISION", rawSourceText: "Old A", segmentId: 77, reviewState: "PENDING", origin: "ai_extraction" },
+        { id: 2, entryType: "DECISION", rawSourceText: "Old B", segmentId: 77, reviewState: "PENDING", origin: "ai_extraction" },
+      ],
+      [draft("Canonical merged wording")],
+    );
+    expect(outcomes.map((outcome) => outcome.outcome)).toEqual(["supersede", "merge"]);
+    expect(summarizeOutcomes(outcomes)).toMatchObject({ toAdd: 1, toSupersede: 2, merged: 1 });
   });
 });
 
