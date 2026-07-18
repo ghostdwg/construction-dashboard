@@ -19,9 +19,11 @@ from typing import Optional
 
 import torch
 import whisperx
-from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
+
+from whisperx_auth import WhisperXAuthMiddleware
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -42,17 +44,7 @@ _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
 app = FastAPI(title="WhisperX GPU Worker")
-
-
-# ── Auth ──────────────────────────────────────────────────────────────────────
-
-def _check_key(x_api_key: Optional[str]):
-    from whisperx_auth import check_key, ServiceAuthError
-
-    try:
-        check_key(x_api_key)
-    except ServiceAuthError as exc:
-        raise HTTPException(exc.status_code, str(exc)) from exc
+app.add_middleware(WhisperXAuthMiddleware)
 
 
 # ── Background transcription ──────────────────────────────────────────────────
@@ -172,9 +164,7 @@ def health():
 async def transcribe(
     audio: UploadFile = File(...),
     num_speakers: Optional[int] = Form(None),
-    x_api_key: Optional[str] = Header(None),
 ):
-    _check_key(x_api_key)
     audio_bytes = await audio.read()
     if not audio_bytes:
         raise HTTPException(400, "Empty file")
@@ -195,9 +185,8 @@ async def transcribe(
 
 
 @app.get("/jobs")
-def list_jobs(x_api_key: Optional[str] = Header(None)):
+def list_jobs():
     """List all job IDs and their statuses (no transcript data)."""
-    _check_key(x_api_key)
     with _jobs_lock:
         summary = {
             jid: {"status": j.get("status"), "durationSeconds": j.get("durationSeconds")}
@@ -207,8 +196,7 @@ def list_jobs(x_api_key: Optional[str] = Header(None)):
 
 
 @app.get("/status/{job_id}")
-def status(job_id: str, x_api_key: Optional[str] = Header(None)):
-    _check_key(x_api_key)
+def status(job_id: str):
     with _jobs_lock:
         job = _jobs.get(job_id)
     if not job:
