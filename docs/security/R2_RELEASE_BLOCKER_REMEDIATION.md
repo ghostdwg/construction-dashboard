@@ -23,6 +23,16 @@ exists. Accepted bootstrap mutations and their audit event commit in the same
 transaction. After materialization these routes return a conflict and callers
 must use the correction workflow.
 
+The same centralized frozen-transcript boundary now covers direct status/job
+re-arming, standard and hybrid upload, hybrid source mapping, and every
+standard/hybrid polling completion or fallback. Once a segment, correction,
+register entry, extraction run, or minutes revision exists, these routes return
+409 before request-body parsing, BlobStore access, or provider polling. Every
+permitted source mutation repeats the check inside its write transaction and
+commits with its audit event; hybrid BlobStore writes are compensated if that
+transaction fails. Post-materialization analysis always uses the stored
+correction-overlay transcript and rejects alternate request-body wording.
+
 ## Analysis and register integrity
 
 Initial segment materialization, analysis lifecycle writes, extraction-run
@@ -37,6 +47,11 @@ of the exact match without excluding evidence-free rows. Rerun apply claims a
 preview transactionally, so only one concurrent caller can apply it. Reconcile
 counts classify same-anchor changed wording once rather than simultaneously as
 both a match and a creation.
+
+Both APPLY and DISCARD atomically claim a preview using its run, meeting, bid,
+and `PREVIEWED` state inside the owning transaction. Concurrent double-discard
+and apply-versus-discard tests prove one winner, one terminal state, and one
+matching audit event.
 
 Speaker merge keeps the source participant as an inactive, queryable record
 with target, actor, and timestamp provenance. Segments move to the target and
