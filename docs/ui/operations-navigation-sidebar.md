@@ -26,7 +26,19 @@ reserve horizontal space. While closed it uses `visibility: hidden`, removing
 its links from keyboard navigation. The open control exposes `aria-controls`
 and `aria-expanded`; opening moves focus to the close control, Tab stays within
 the drawer, and Escape/backdrop/close-control dismissal restores focus to the
-trigger. Reduced-motion preferences disable rail transitions.
+trigger. Link, programmatic, and browser-history navigation clear the drawer
+state permanently. Crossing the desktop breakpoint also clears drawer state
+and immediately removes modal semantics/focus trapping, so a later resize back
+to mobile cannot reopen it. Reduced-motion preferences disable rail
+transitions.
+
+## Print behavior
+
+Screen media constrains the shell to the dynamic viewport so `main` can scroll
+independently. Under `@media print`, the body, shell, and main surface return to
+normal block flow with automatic height and visible overflow. The global rail
+and decorative fixed grid are omitted, allowing long route content to fragment
+across printed/PDF pages instead of clipping at one viewport.
 
 ## Local verification
 

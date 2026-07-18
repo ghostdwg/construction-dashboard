@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,6 +10,21 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 const PINNED_KEY = "gwx-sidebar-pinned";
+const MOBILE_VIEWPORT_QUERY = "(max-width: 767px)";
+
+function subscribeToMobileViewport(onStoreChange: () => void) {
+  const mediaQuery = window.matchMedia(MOBILE_VIEWPORT_QUERY);
+  mediaQuery.addEventListener("change", onStoreChange);
+  return () => mediaQuery.removeEventListener("change", onStoreChange);
+}
+
+function getMobileViewportSnapshot() {
+  return window.matchMedia(MOBILE_VIEWPORT_QUERY).matches;
+}
+
+function getServerMobileViewportSnapshot() {
+  return false;
+}
 
 type SidebarCounts = {
   projects: number;
@@ -42,16 +57,23 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
   const pathname = usePathname();
   const [pinned,     setPinned]     = useState(false);
   const [hovered,    setHovered]    = useState(false);
-  const [mobileOpenPath, setMobileOpenPath] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const openButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
+  const isMobileViewport = useSyncExternalStore(
+    subscribeToMobileViewport,
+    getMobileViewportSnapshot,
+    getServerMobileViewportSnapshot,
+  );
 
-  // A route change closes the drawer without an effect-driven state update.
-  const mobileOpen = mobileOpenPath === pathname;
+  // Modal behavior exists only while the rail is presented as a mobile drawer.
+  // The effect below also clears the underlying state when crossing to desktop,
+  // so shrinking the viewport later cannot resurrect a previously open drawer.
+  const mobileDialogOpen = isMobileViewport && mobileOpen;
   const expanded = pinned || hovered;
   // On mobile the overlay always shows full-width; desktop animates 64↔240
-  const sidebarWidth = mobileOpen ? 240 : (expanded ? 240 : 64);
+  const sidebarWidth = mobileDialogOpen ? 240 : (expanded ? 240 : 64);
 
   // Restore pinned preference
   useEffect(() => {
@@ -59,18 +81,32 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
     try { setPinned(localStorage.getItem(PINNED_KEY) === "1"); } catch {}
   }, []);
 
+  // Every completed navigation permanently closes the drawer. Link clicks
+  // also close eagerly below; this pathname guard covers browser history and
+  // programmatic navigation without retaining a route key that can reopen.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronize transient drawer state with the committed route
+    setMobileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (isMobileViewport) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- discard modal state when CSS crosses to the desktop rail
+    setMobileOpen(false);
+  }, [isMobileViewport]);
+
   // Treat the mobile rail as a modal drawer: move focus inside on open,
   // contain keyboard focus, and let Escape close it. CSS visibility keeps the
   // off-canvas links out of the tab order while the drawer is closed.
   useEffect(() => {
-    if (!mobileOpen) return;
+    if (!mobileDialogOpen) return;
 
     closeButtonRef.current?.focus();
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        setMobileOpenPath(null);
+        setMobileOpen(false);
         requestAnimationFrame(() => openButtonRef.current?.focus());
         return;
       }
@@ -96,10 +132,10 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [mobileOpen]);
+  }, [mobileDialogOpen]);
 
   function closeMobileDrawer({ restoreFocus = false } = {}) {
-    setMobileOpenPath(null);
+    setMobileOpen(false);
     if (restoreFocus) {
       requestAnimationFrame(() => openButtonRef.current?.focus());
     }
@@ -128,16 +164,16 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
           borderColor: "var(--color-border)",
           color: "var(--color-text-primary)",
         }}
-        onClick={() => setMobileOpenPath(pathname)}
+        onClick={() => setMobileOpen(true)}
         aria-label="Open navigation"
         aria-controls="primary-navigation"
-        aria-expanded={mobileOpen}
+        aria-expanded={mobileDialogOpen}
       >
         <Menu size={18} />
       </button>
 
       {/* ── Mobile backdrop ──────────────────────────────────────────────── */}
-      {mobileOpen && (
+      {mobileDialogOpen && (
         <div
           className="md:hidden fixed inset-0 z-30 bg-black/60"
           onClick={() => closeMobileDrawer({ restoreFocus: true })}
@@ -149,9 +185,9 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
       <aside
         ref={sidebarRef}
         id="primary-navigation"
-        className={`gwx-rail flex shrink-0 flex-col${mobileOpen ? " gwx-rail-open" : ""}`}
-        role={mobileOpen ? "dialog" : undefined}
-        aria-modal={mobileOpen || undefined}
+        className={`gwx-rail flex shrink-0 flex-col${mobileDialogOpen ? " gwx-rail-open" : ""}`}
+        role={mobileDialogOpen ? "dialog" : undefined}
+        aria-modal={mobileDialogOpen || undefined}
         aria-label="Primary navigation"
         style={{
           width: sidebarWidth,
@@ -185,6 +221,7 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setMobileOpen(false)}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -201,7 +238,7 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
                   transition: "background 0.15s, color 0.15s",
                   textDecoration: "none",
                   overflow: "hidden",
-                  justifyContent: expanded || mobileOpen ? "flex-start" : "center",
+                  justifyContent: expanded || mobileDialogOpen ? "flex-start" : "center",
                   whiteSpace: "nowrap",
                 }}
                 onMouseEnter={(e) => {
@@ -222,7 +259,7 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
                   fontSize: 13,
                   fontWeight: 600,
                   letterSpacing: "-0.01em",
-                  opacity: (expanded || mobileOpen) ? 1 : 0,
+                  opacity: (expanded || mobileDialogOpen) ? 1 : 0,
                   transition: "opacity 150ms ease",
                   flex: 1,
                   minWidth: 0,
@@ -236,7 +273,7 @@ export default function AppSidebar({ counts }: { counts: SidebarCounts }) {
                     fontFamily: "var(--font-mono, monospace)",
                     color: "var(--color-text-dim)",
                     flexShrink: 0,
-                    opacity: (expanded || mobileOpen) ? 1 : 0,
+                    opacity: (expanded || mobileDialogOpen) ? 1 : 0,
                     transition: "opacity 150ms ease 50ms",
                   }}>
                     {meta}

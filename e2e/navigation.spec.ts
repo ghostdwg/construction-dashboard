@@ -127,6 +127,58 @@ test.describe("layout regression — no double sidebar offset", () => {
   });
 });
 
+test.describe("print layout", () => {
+  test("long content enters document flow and produces a multi-page PDF", async ({ page }) => {
+    await page.goto("/operations");
+    // Prove the client boundary has hydrated before mutating the DOM. Injecting
+    // the probe during hydration would correctly let React discard it while
+    // reconciling the server tree, making the print assertion racey.
+    const rail = page.locator("aside.gwx-rail");
+    await rail.hover();
+    await page.getByTitle("Pin sidebar open").click();
+    await page.evaluate(() => {
+      const probe = document.createElement("section");
+      probe.id = "print-pagination-probe";
+      for (let index = 0; index < 60; index += 1) {
+        const row = document.createElement("div");
+        row.textContent = `Synthetic print row ${index + 1}`;
+        row.style.height = "72px";
+        row.style.breakInside = "avoid";
+        probe.appendChild(row);
+      }
+      document.querySelector("main")?.appendChild(probe);
+    });
+
+    await page.emulateMedia({ media: "print" });
+    const printLayout = await page.evaluate(() => {
+      const body = getComputedStyle(document.body);
+      const main = document.querySelector("main")!;
+      const mainStyle = getComputedStyle(main);
+      return {
+        bodyOverflow: body.overflow,
+        mainOverflow: mainStyle.overflow,
+        documentHeight: document.documentElement.scrollHeight,
+        probeBottom: document
+          .querySelector("#print-pagination-probe")!
+          .getBoundingClientRect().bottom,
+      };
+    });
+    expect(printLayout.bodyOverflow).toBe("visible");
+    expect(printLayout.mainOverflow).toBe("visible");
+    expect(printLayout.documentHeight).toBeGreaterThan(4_000);
+    expect(printLayout.probeBottom).toBeGreaterThan(4_000);
+
+    const pdf = await page.pdf({ format: "Letter", printBackground: true });
+    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const pdfDocument = await getDocument({ data: new Uint8Array(pdf) }).promise;
+    try {
+      expect(pdfDocument.numPages).toBeGreaterThan(1);
+    } finally {
+      await pdfDocument.destroy();
+    }
+  });
+});
+
 test.describe("per-bid navigation keeps the bid id", () => {
   const phases = [
     { label: "Pursuit", tab: "documents" },
@@ -185,6 +237,37 @@ test.describe("mobile navigation", () => {
       .toBe(true);
   });
 
+  test("link, Back, Forward, and later return never resurrect a closed drawer", async ({ page }) => {
+    await page.goto("/bids");
+    await page.goto("/operations");
+    const rail = page.locator("aside.gwx-rail");
+    const trigger = page.locator('button[aria-label="Open navigation"]');
+
+    await trigger.click();
+    await railLink(page, "/bids").click();
+    await expect(page).toHaveURL(/\/bids$/);
+    await expect(rail).not.toHaveClass(/gwx-rail-open/);
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/operations$/);
+    await expect(rail).not.toHaveClass(/gwx-rail-open/);
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    await trigger.click();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/bids$/);
+    await expect(rail).not.toHaveClass(/gwx-rail-open/);
+    await page.goForward();
+    await expect(page).toHaveURL(/\/operations$/);
+    await expect(rail).not.toHaveClass(/gwx-rail-open/);
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    await page.goto("/tasks");
+    await page.goto("/operations");
+    await expect(rail).not.toHaveClass(/gwx-rail-open/);
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
   test("backdrop click closes the drawer without navigating", async ({ page }) => {
     await page.goto("/");
     await page.locator('button[aria-label="Open navigation"]').click();
@@ -225,5 +308,26 @@ test.describe("mobile navigation", () => {
     }));
     expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
     expect(dimensions.mainRight).toBeLessThanOrEqual(dimensions.viewport);
+  });
+
+  test("resizing an open drawer to desktop clears modal state permanently", async ({ page }) => {
+    await page.goto("/operations");
+    const rail = page.locator("aside.gwx-rail");
+    const trigger = page.locator('button[aria-label="Open navigation"]');
+
+    await trigger.click();
+    await expect(rail).toHaveAttribute("role", "dialog");
+    await expect(rail).toHaveAttribute("aria-modal", "true");
+
+    await page.setViewportSize({ width: 1024, height: 720 });
+    await expect(rail).not.toHaveClass(/gwx-rail-open/);
+    await expect(rail).not.toHaveAttribute("role", "dialog");
+    await expect(rail).not.toHaveAttribute("aria-modal", "true");
+    await expect(page.locator('div[aria-hidden="true"].fixed.inset-0')).toHaveCount(0);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(rail).not.toHaveClass(/gwx-rail-open/);
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await expect(rail).toHaveCSS("visibility", "hidden");
   });
 });

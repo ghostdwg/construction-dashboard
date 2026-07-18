@@ -34,6 +34,12 @@ describe("app/layout.tsx main content area", () => {
     expect(layout).toMatch(/<main className="[^"]*overflow-y-auto[^"]*"/);
     expect(layout).toMatch(/<main className="[^"]*overflow-x-hidden[^"]*"/);
   });
+
+  it("names the shell elements so print media can release screen overflow constraints", () => {
+    expect(layout).toMatch(/className="gwx-app-body/);
+    expect(layout).toMatch(/className="gwx-app-shell/);
+    expect(layout).toMatch(/className="gwx-app-main/);
+  });
 });
 
 describe("app/globals.css .gwx-rail mobile anchor", () => {
@@ -51,6 +57,12 @@ describe("app/globals.css .gwx-rail mobile anchor", () => {
     expect(css).toMatch(/\.gwx-rail\s*\{[^}]*visibility:\s*hidden/);
     expect(css).toMatch(/\.gwx-rail\.gwx-rail-open\s*\{[^}]*visibility:\s*visible/);
     expect(css).toMatch(/@media \(min-width:\s*768px\)[\s\S]*\.gwx-rail\s*\{[^}]*visibility:\s*visible/);
+  });
+
+  it("releases viewport height and overflow constraints for paged media", () => {
+    expect(css).toMatch(/@media print\s*\{/);
+    expect(css).toMatch(/body\.gwx-app-body\s*\{[^}]*height:\s*auto\s*!important/);
+    expect(css).toMatch(/main\.gwx-app-main\s*\{[^}]*[\s\S]*overflow:\s*visible\s*!important/);
   });
 });
 
@@ -72,9 +84,22 @@ describe("app/components/AppSidebar.tsx mobile hamburger", () => {
 
   it("exposes and restores focus for the keyboard-operable mobile drawer", () => {
     expect(sidebar).toMatch(/aria-controls="primary-navigation"/);
-    expect(sidebar).toMatch(/aria-expanded=\{mobileOpen\}/);
+    expect(sidebar).toMatch(/aria-expanded=\{mobileDialogOpen\}/);
     expect(sidebar).toMatch(/event\.key === "Escape"/);
     expect(sidebar).toMatch(/openButtonRef\.current\?\.focus\(\)/);
+  });
+
+  it("clears drawer state on every route change instead of retaining an opening pathname", () => {
+    expect(sidebar).not.toMatch(/mobileOpenPath/);
+    expect(sidebar).toMatch(/setMobileOpen\(false\);\s*\n\s*}, \[pathname\]\)/);
+    expect(sidebar).toMatch(/onClick=\{\(\) => setMobileOpen\(false\)\}/);
+  });
+
+  it("conditions modal state on the mobile breakpoint and clears it on desktop", () => {
+    expect(sidebar).toMatch(/MOBILE_VIEWPORT_QUERY\s*=\s*"\(max-width: 767px\)"/);
+    expect(sidebar).toMatch(/mobileDialogOpen\s*=\s*isMobileViewport\s*&&\s*mobileOpen/);
+    expect(sidebar).toMatch(/if \(isMobileViewport\) return;[\s\S]*setMobileOpen\(false\)/);
+    expect(sidebar).toMatch(/role=\{mobileDialogOpen \? "dialog" : undefined\}/);
   });
 });
 

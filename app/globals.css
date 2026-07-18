@@ -488,3 +488,34 @@ body::before {
     transition: none;
   }
 }
+
+/* Release the viewport-constrained application shell for paged media. Screen
+   uses an independently scrolling main surface; print needs normal document
+   flow so content beyond the first viewport fragments across PDF/pages. */
+@media print {
+  html,
+  body.gwx-app-body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.gwx-app-body,
+  .gwx-app-shell,
+  main.gwx-app-main {
+    display: block !important;
+  }
+
+  .gwx-app-shell,
+  main.gwx-app-main {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    overscroll-behavior: auto !important;
+  }
+
+  .gwx-rail,
+  body::before {
+    display: none !important;
+  }
+}
