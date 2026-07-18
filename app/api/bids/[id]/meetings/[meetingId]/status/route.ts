@@ -1,16 +1,11 @@
 // GET /api/bids/[id]/meetings/[meetingId]/status
 //
-// Polls the sidecar for transcription status. When the job completes:
-//   - STANDARD jobs (ASSEMBLYAI / WHISPERX): saves transcript + participants,
-//     advances status to READY.
-//   - HYBRID jobs (HYBRID:{job_id}): after GPU job completes, calls sidecar
-//     merge-hybrid with the stored VTT to combine named online speakers with
-//     diarized in-room clusters. If in-room clusters exist → AWAITING_NAMES;
-//     if all speakers are VTT-named → READY.
+// Polls the sidecar for transcription status. STANDARD completion writes the
+// durable transcript directly. HYBRID completion merges the GPU result with
+// the stored VTT before committing one terminal result.
 
 import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
-import type { Prisma } from "@prisma/client";
 import {
   FROZEN_TRANSCRIPT_CONFLICT,
   meetingTranscriptMutationGate,
@@ -20,32 +15,67 @@ import {
   emitRegisterAuditPostCommit,
   writeRegisterAuditTx,
 } from "@/lib/services/meetingRegister/txAudit";
+import {
+  completeJob,
+  failJob,
+  findJobByExternalId,
+} from "@/lib/services/jobs/backgroundJobService";
 
-const SIDECAR_URL     = process.env.SIDECAR_URL     ?? "http://127.0.0.1:8001";
-const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
+const SIDECAR_URL = process.env.SIDECAR_URL ?? "http://127.0.0.1:8001";
 
 type SidecarParticipant = {
   speakerLabel: string;
-  name:         string;
-  wordCount:    number;
+  name: string;
+  wordCount: number;
   totalSeconds?: number;
   segmentCount?: number;
-  speakerType?:  string;
+  speakerType?: string;
 };
 
 type SidecarCluster = {
-  id:           string;
-  type:         "REMOTE" | "IN_ROOM";
+  id: string;
+  type: "REMOTE" | "IN_ROOM";
   resolvedName: string | null;
   totalSeconds: number;
   segmentCount: number;
   vttOverlap?: string | null;
 };
 
+type CompletionData = {
+  status: string;
+  transcript: string | null;
+  rawTranscript: string | null;
+  durationSeconds: number | null;
+  participants: SidecarParticipant[];
+  speakerMapping?: string;
+  clearVtt?: boolean;
+};
+
 function sidecarHeaders(): Record<string, string> {
-  const h: Record<string, string> = {};
-  if (SIDECAR_API_KEY) h["X-API-Key"] = SIDECAR_API_KEY;
-  return h;
+  const key = process.env.SIDECAR_API_KEY?.trim();
+  if (key) return { "X-API-Key": key };
+  if (
+    ["local", "development", "test"].includes(
+      process.env.APP_ENV?.toLowerCase() ?? ""
+    )
+  ) {
+    return {};
+  }
+  throw new Error("SIDECAR_API_KEY is required outside local/test mode");
+}
+
+async function finishTrackedJob(
+  externalJobId: string,
+  bidId: number,
+  outcome: { status: "complete"; summary: string } | { status: "failed"; error: string }
+) {
+  const job = await findJobByExternalId(externalJobId, bidId).catch(() => null);
+  if (!job) return;
+  if (outcome.status === "complete") {
+    await completeJob(job.id, { resultSummary: outcome.summary }).catch(() => {});
+  } else {
+    await failJob(job.id, outcome.error).catch(() => {});
+  }
 }
 
 async function upsertParticipants(
@@ -54,21 +84,44 @@ async function upsertParticipants(
   participants: SidecarParticipant[]
 ) {
   const existing = await tx.meetingParticipant.findMany({
-    where:  { meetingId },
+    where: { meetingId },
     select: { speakerLabel: true },
   });
-  const existingLabels = new Set(existing.map((p) => p.speakerLabel));
-  const fresh = participants.filter((p) => p.speakerLabel && !existingLabels.has(p.speakerLabel));
+  const existingLabels = new Set(existing.map((participant) => participant.speakerLabel));
+  const uniqueByLabel = new Map<string, SidecarParticipant>();
+  for (const participant of participants) {
+    if (participant.speakerLabel && !uniqueByLabel.has(participant.speakerLabel)) {
+      uniqueByLabel.set(participant.speakerLabel, participant);
+    }
+  }
+  const fresh = [...uniqueByLabel.values()].filter(
+    (participant) => !existingLabels.has(participant.speakerLabel)
+  );
   if (fresh.length > 0) {
     await tx.meetingParticipant.createMany({
-      data: fresh.map((p) => ({
+      data: fresh.map((participant) => ({
         meetingId,
-        name:        p.name,
-        speakerLabel: p.speakerLabel,
-        speakerType: p.speakerType ?? "UNKNOWN",
+        name: participant.name,
+        speakerLabel: participant.speakerLabel,
+        speakerType: participant.speakerType ?? "UNKNOWN",
       })),
     });
   }
+}
+
+async function authoritativeStatus(bidId: number, meetingId: number) {
+  const current = await prisma.meeting.findFirst({
+    where: { id: meetingId, bidId },
+    select: { status: true },
+  });
+  return Response.json({ status: current?.status ?? "FAILED" });
+}
+
+function transcriptConflictResponse(reason: "not-found" | "frozen") {
+  return Response.json(
+    { error: reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
+    { status: reason === "not-found" ? 404 : 409 }
+  );
 }
 
 export async function GET(
@@ -77,15 +130,22 @@ export async function GET(
 ) {
   const { id, meetingId } = await params;
   const bidId = parseInt(id, 10);
-  const mId   = parseInt(meetingId, 10);
+  const mId = parseInt(meetingId, 10);
   if (isNaN(bidId) || isNaN(mId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
 
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
 
+  let headers: Record<string, string>;
+  try {
+    headers = sidecarHeaders();
+  } catch (err) {
+    return Response.json({ error: String(err) }, { status: 503 });
+  }
+
   const meeting = await prisma.meeting.findFirst({
-    where:  { id: mId, bidId },
+    where: { id: mId, bidId },
     select: {
       id: true,
       status: true,
@@ -97,137 +157,188 @@ export async function GET(
   });
   if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
 
-  if (meeting.status !== "TRANSCRIBING" || !meeting.transcriptionJobId)
+  if (meeting.status !== "TRANSCRIBING" || !meeting.transcriptionJobId) {
     return Response.json({ status: meeting.status });
-
-  // A selected job must never be polled once transcript history is frozen:
-  // provider output is not an audited correction overlay.
-  const preflight = await meetingTranscriptMutationGate(prisma, mId, bidId);
-  if (!preflight.ok) {
-    return Response.json(
-      { error: preflight.reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
-      { status: preflight.reason === "not-found" ? 404 : 409 },
-    );
   }
 
-  const commitState = async (
-    update: Prisma.MeetingUpdateInput,
-    participants: SidecarParticipant[],
-    action: string,
-    payload: Record<string, unknown>,
+  // Frozen meetings never reach Sidecar polling. The same decision is repeated
+  // in each owning terminal transaction after the provider response arrives.
+  const preflight = await meetingTranscriptMutationGate(prisma, mId, bidId);
+  if (!preflight.ok) return transcriptConflictResponse(preflight.reason);
+
+  const expectedJobId = meeting.transcriptionJobId;
+  const isHybrid = expectedJobId.startsWith("HYBRID:");
+  const realJobId = isHybrid
+    ? expectedJobId.slice("HYBRID:".length)
+    : expectedJobId;
+
+  const finalizeCompletion = async (
+    data: CompletionData,
+    completionPath: string,
+    extraPayload: Record<string, unknown> = {}
   ) => {
     const guarded = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
-      await tx.meeting.update({ where: { id: mId }, data: update });
-      await upsertParticipants(tx, mId, participants);
-      return writeRegisterAuditTx(tx, {
-        action,
+      const claim = await tx.meeting.updateMany({
+        where: {
+          id: mId,
+          bidId,
+          status: "TRANSCRIBING",
+          transcriptionJobId: expectedJobId,
+          reviewStatus: { not: "PUBLISHED" },
+          rawTranscript: null,
+        },
+        data: {
+          status: data.status,
+          transcript: data.transcript,
+          rawTranscript: data.rawTranscript,
+          durationSeconds: data.durationSeconds,
+          ...(data.speakerMapping !== undefined
+            ? { speakerMapping: data.speakerMapping }
+            : {}),
+          ...(data.clearVtt ? { vttContent: null } : {}),
+        },
+      });
+      if (claim.count !== 1) return { won: false as const, audit: null };
+      await upsertParticipants(tx, mId, data.participants);
+      const audit = await writeRegisterAuditTx(tx, {
+        action: "meeting.transcription_completed",
         decision: "committed",
         subjectKind: "Meeting",
         subjectId: mId,
         actor: access.user,
-        payload: { bidId, participantCount: participants.length, ...payload },
+        payload: {
+          bidId,
+          completionPath,
+          participantCount: data.participants.length,
+          transcriptLength: data.transcript?.length ?? 0,
+          rawTranscriptLength: data.rawTranscript?.length ?? 0,
+          ...extraPayload,
+        },
       });
+      return { won: true as const, audit };
     });
-    if (guarded.ok) emitRegisterAuditPostCommit(guarded.value);
+    if (guarded.ok && guarded.value.won) {
+      emitRegisterAuditPostCommit(guarded.value.audit);
+    }
     return guarded;
   };
 
-  const isHybrid = meeting.transcriptionJobId.startsWith("HYBRID:");
-  // Unwrap the real job ID for the sidecar poll
-  const realJobId = isHybrid
-    ? meeting.transcriptionJobId.slice("HYBRID:".length)
-    : meeting.transcriptionJobId;
+  const finalizeFailure = async (error: string | undefined) => {
+    const guarded = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
+      const claim = await tx.meeting.updateMany({
+        where: {
+          id: mId,
+          bidId,
+          status: "TRANSCRIBING",
+          transcriptionJobId: expectedJobId,
+        },
+        data: { status: "FAILED" },
+      });
+      if (claim.count !== 1) return { won: false as const, audit: null };
+      const audit = await writeRegisterAuditTx(tx, {
+        action: "meeting.transcription_failed",
+        decision: "committed",
+        subjectKind: "Meeting",
+        subjectId: mId,
+        actor: access.user,
+        payload: {
+          bidId,
+          transcriptionSource: isHybrid ? "HYBRID" : "STANDARD",
+          hasProviderError: Boolean(error),
+        },
+      });
+      return { won: true as const, audit };
+    });
+    if (guarded.ok && guarded.value.won) {
+      emitRegisterAuditPostCommit(guarded.value.audit);
+    }
+    return guarded;
+  };
 
   try {
     const res = await fetch(
       `${SIDECAR_URL}/meetings/transcribe/status/${realJobId}`,
-      { headers: sidecarHeaders() }
+      { headers }
     );
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: "Sidecar error" }));
-      return Response.json({ error: (err as { detail?: string }).detail }, { status: 502 });
+      return Response.json(
+        { error: (err as { detail?: string }).detail },
+        { status: 502 }
+      );
     }
 
     const data = (await res.json()) as {
-      status:          "processing" | "completed" | "error";
-      transcript?:     string;
-      rawTranscript?:  string;
+      status: "processing" | "completed" | "error";
+      transcript?: string;
+      rawTranscript?: string;
       durationSeconds?: number;
-      participants?:   SidecarParticipant[];
-      error?:          string;
+      participants?: SidecarParticipant[];
+      error?: string;
     };
 
-    if (data.status === "processing") return Response.json({ status: "TRANSCRIBING" });
+    if (data.status === "processing") {
+      return Response.json({ status: "TRANSCRIBING" });
+    }
 
     if (data.status === "error") {
-      const failed = await commitState(
-        { status: "FAILED" },
-        [],
-        "meeting.transcription_failed",
-        { transcriptionSource: isHybrid ? "HYBRID" : "STANDARD" },
-      );
-      if (!failed.ok) {
-        return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
-      }
+      const failed = await finalizeFailure(data.error);
+      if (!failed.ok) return transcriptConflictResponse(failed.reason);
+      if (!failed.value.won) return authoritativeStatus(bidId, mId);
+      await finishTrackedJob(realJobId, bidId, {
+        status: "failed",
+        error: data.error ?? "Transcription error",
+      });
       return Response.json({ status: "FAILED", error: data.error });
     }
 
-    // ── Job completed ─────────────────────────────────────────────────────────
-
     if (!isHybrid) {
-      // Standard flow — save transcript directly, advance to READY
-      const completed = await commitState(
+      const completed = await finalizeCompletion(
         {
           status: "READY",
           transcript: data.transcript ?? null,
           rawTranscript: data.rawTranscript ?? null,
           durationSeconds: data.durationSeconds ?? null,
+          participants: data.participants ?? [],
         },
-        data.participants ?? [],
-        "meeting.transcription_completed",
-        {
-          completionPath: "STANDARD",
-          transcriptLength: data.transcript?.length ?? 0,
-          rawTranscriptLength: data.rawTranscript?.length ?? 0,
-        },
+        "STANDARD"
       );
-      if (!completed.ok) {
-        return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
-      }
+      if (!completed.ok) return transcriptConflictResponse(completed.reason);
+      if (!completed.value.won) return authoritativeStatus(bidId, mId);
+      await finishTrackedJob(realJobId, bidId, {
+        status: "complete",
+        summary: "transcript ready",
+      });
       return Response.json({ status: "READY" });
     }
 
-    // ── HYBRID: call sidecar merge-hybrid ─────────────────────────────────────
     if (!meeting.vttContent) {
-      // VTT content missing — fall back to standard transcript
-      const completed = await commitState(
+      const completed = await finalizeCompletion(
         {
           status: "READY",
           transcript: data.transcript ?? null,
           rawTranscript: data.rawTranscript ?? null,
           durationSeconds: data.durationSeconds ?? null,
+          participants: data.participants ?? [],
         },
-        data.participants ?? [],
-        "meeting.transcription_completed",
-        {
-          completionPath: "HYBRID_NO_VTT_FALLBACK",
-          transcriptLength: data.transcript?.length ?? 0,
-          rawTranscriptLength: data.rawTranscript?.length ?? 0,
-        },
+        "HYBRID_NO_VTT_FALLBACK"
       );
-      if (!completed.ok) {
-        return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
-      }
+      if (!completed.ok) return transcriptConflictResponse(completed.reason);
+      if (!completed.value.won) return authoritativeStatus(bidId, mId);
+      await finishTrackedJob(realJobId, bidId, {
+        status: "complete",
+        summary: "hybrid transcript ready without VTT merge",
+      });
       return Response.json({ status: "READY" });
     }
 
     const existingSpeakerMapping = meeting.speakerMapping
-      ? JSON.parse(meeting.speakerMapping) as {
+      ? (JSON.parse(meeting.speakerMapping) as {
           teams_sources?: unknown;
           audio_offset_seconds?: number;
           mapping?: Record<string, string>;
-        }
+        })
       : {};
     const mergeBody: Record<string, unknown> = {
       rawTranscriptJson: data.rawTranscript ?? "{}",
@@ -239,79 +350,67 @@ export async function GET(
     }
 
     const mergeRes = await fetch(`${SIDECAR_URL}/meetings/merge-hybrid`, {
-      method:  "POST",
-      headers: { ...sidecarHeaders(), "Content-Type": "application/json" },
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify(mergeBody),
     });
 
     if (!mergeRes.ok) {
-      // Merge failed — fall back to plain diarization transcript
-      const completed = await commitState(
+      const completed = await finalizeCompletion(
         {
           status: "READY",
           transcript: data.transcript ?? null,
           rawTranscript: data.rawTranscript ?? null,
           durationSeconds: data.durationSeconds ?? null,
-          vttContent: null,
+          participants: data.participants ?? [],
+          clearVtt: true,
         },
-        data.participants ?? [],
-        "meeting.transcription_completed",
-        {
-          completionPath: "HYBRID_MERGE_FALLBACK",
-          transcriptLength: data.transcript?.length ?? 0,
-          rawTranscriptLength: data.rawTranscript?.length ?? 0,
-        },
+        "HYBRID_MERGE_FALLBACK"
       );
-      if (!completed.ok) {
-        return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
-      }
+      if (!completed.ok) return transcriptConflictResponse(completed.reason);
+      if (!completed.value.won) return authoritativeStatus(bidId, mId);
+      await finishTrackedJob(realJobId, bidId, {
+        status: "complete",
+        summary: "hybrid transcript ready after merge fallback",
+      });
       return Response.json({ status: "READY" });
     }
 
     const merged = (await mergeRes.json()) as {
-      ok:              boolean;
-      transcript:      string;
-      participants:    SidecarParticipant[];
-      clusters:        SidecarCluster[];
+      ok: boolean;
+      transcript: string;
+      participants: SidecarParticipant[];
+      clusters: SidecarCluster[];
       durationSeconds: number;
     };
-
-    const inRoomClusters = merged.clusters.filter((c) => c.type === "IN_ROOM");
-    const hasInRoom      = inRoomClusters.length > 0;
-
-    // Store cluster metadata in speakerMapping for the naming UI
+    const inRoomClusters = merged.clusters.filter((cluster) => cluster.type === "IN_ROOM");
+    const nextStatus = inRoomClusters.length > 0 ? "AWAITING_NAMES" : "READY";
     const speakerMappingJson = JSON.stringify({
       ...existingSpeakerMapping,
       clusters: merged.clusters,
-      mapping:  existingSpeakerMapping.mapping ?? {},
+      mapping: existingSpeakerMapping.mapping ?? {},
     });
 
-    const nextStatus = hasInRoom ? "AWAITING_NAMES" : "READY";
-
-    const completed = await commitState(
+    const completed = await finalizeCompletion(
       {
         status: nextStatus,
         transcript: merged.transcript,
         rawTranscript: data.rawTranscript ?? null,
         durationSeconds: merged.durationSeconds,
+        participants: merged.participants,
         speakerMapping: speakerMappingJson,
-        vttContent: null, // clear — no longer needed
+        clearVtt: true,
       },
-      merged.participants,
-      "meeting.transcription_completed",
-      {
-        completionPath: "HYBRID_MERGED",
-        transcriptLength: merged.transcript.length,
-        rawTranscriptLength: data.rawTranscript?.length ?? 0,
-        inRoomClusterCount: inRoomClusters.length,
-      },
+      "HYBRID_MERGED",
+      { inRoomClusterCount: inRoomClusters.length }
     );
-    if (!completed.ok) {
-      return Response.json({ error: FROZEN_TRANSCRIPT_CONFLICT }, { status: 409 });
-    }
-
+    if (!completed.ok) return transcriptConflictResponse(completed.reason);
+    if (!completed.value.won) return authoritativeStatus(bidId, mId);
+    await finishTrackedJob(realJobId, bidId, {
+      status: "complete",
+      summary: `hybrid transcript ${nextStatus}`,
+    });
     return Response.json({ status: nextStatus });
-
   } catch (err) {
     return Response.json({ error: String(err) }, { status: 502 });
   }
