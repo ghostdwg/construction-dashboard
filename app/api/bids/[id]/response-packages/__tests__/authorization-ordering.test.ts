@@ -88,6 +88,20 @@ describe("every R2 Build 2 internal route denies before body/DB/blob work", () =
     expect(h.blobGet).not.toHaveBeenCalled();
     expect(h.blobPut).not.toHaveBeenCalled();
   });
+  test("authorized routes pass raw runtime discriminants to fail-closed services without coercion", async () => {
+    h.context.mockResolvedValue({ ok: true, bidId: 7, actor: { id: "user-1" } });
+    h.readJson.mockResolvedValueOnce({ ok: true, value: { action: "BOGUS", trackedItemId: 9 } });
+    h.service.mockResolvedValueOnce({ ok: false, error: "Invalid package item action" });
+    let response = await itemsPOST(new Request("http://test/x", { method: "POST" }), { params: Promise.resolve({ id: "7", pkgId: "2" }) });
+    expect(response.status).toBe(400);
+    expect(h.service).toHaveBeenLastCalledWith(7, 2, { action: "BOGUS", trackedItemId: 9 }, { id: "user-1" });
+
+    h.readJson.mockResolvedValueOnce({ ok: true, value: { delivery: "BOGUS", manualChannel: "EMAIL" } });
+    h.service.mockResolvedValueOnce({ ok: false, error: "Invalid delivery mechanism" });
+    response = await issuePOST(new Request("http://test/x", { method: "POST" }), { params: Promise.resolve({ id: "7", pkgId: "2" }) });
+    expect(response.status).toBe(400);
+    expect(h.service).toHaveBeenLastCalledWith(7, 2, { delivery: "BOGUS", manualChannel: "EMAIL", expiresAt: null }, { id: "user-1" });
+  });
   test("authorized internal attachment download remains parent-scoped and private", async () => {
     h.context.mockResolvedValueOnce({ ok: true, bidId: 7, actor: { id: "user-1" } });
     h.service.mockResolvedValueOnce({ storageKey: "plan-room/jobs/7/response-packages/2/4-proof.pdf", fileName: "proof.pdf", mimeType: "application/pdf", byteSize: 4 });

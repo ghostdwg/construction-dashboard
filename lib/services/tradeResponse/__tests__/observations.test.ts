@@ -18,6 +18,11 @@ const h = vi.hoisted(() => {
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { const row = { id: holder.nextId++, disposition: "OPEN", registerItemId: null, ...data } as Row; current().observations.push(row); return { id: row.id }; }),
     findFirst: vi.fn(async ({ where }: { where: { id: number; bidId: number } }) => current().observations.find((row) => row.id === where.id && row.bidId === where.bidId) ?? null),
     update: vi.fn(async ({ where, data }: { where: { id: number }; data: Record<string, unknown> }) => { const row = current().observations.find((entry) => entry.id === where.id)!; Object.assign(row, data); return row; }),
+    updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      const rows = current().observations.filter((row) => row.id === where.id && row.bidId === where.bidId && (where.disposition === undefined || row.disposition === where.disposition) && (where.registerItemId !== null || row.registerItemId == null));
+      rows.forEach((row) => Object.assign(row, data));
+      return { count: rows.length };
+    }),
   };
   db.trackedItem = {
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { const row = { id: holder.nextId++, ...data } as Row; current().tracked.push(row); return { id: row.id }; }),
@@ -82,7 +87,7 @@ describe("ReportObservation freeze, Operations linkage, and bid-owned assignment
     await dispositionObservation(7, id, { disposition: "ACCEPTED" }, actor);
     const promoted = await promoteObservation(7, id, {}, actor);
     expect(promoted.ok).toBe(true);
-    expect(h.state.tracked.at(-1)).toMatchObject({ kind: "FIELD_ITEM", sourceKind: "field_report", sourceFieldReportId: 5 });
+    expect(h.state.tracked.at(-1)).toMatchObject({ kind: "FIELD_ITEM", sourceKind: "field_report", sourceFieldReportId: 5, sourceReportObservationId: id });
     await createReportObservation(7, { sourceKind: "direct_entry", observationText: "Link me" }, actor);
     const linkId = h.state.observations.at(-1)!.id;
     await dispositionObservation(7, linkId, { disposition: "ACCEPTED" }, actor);

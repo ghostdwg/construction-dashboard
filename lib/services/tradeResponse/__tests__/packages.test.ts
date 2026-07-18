@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const h = vi.hoisted(() => {
   type Row = Record<string, unknown> & { id: number };
-  type State = { packages: Row[]; items: Row[]; tracked: Row[]; responses: Row[]; tokens: Array<Record<string, unknown> & { id: string }>; attachments: Row[]; audits: Row[] };
+  type State = { packages: Row[]; items: Row[]; tracked: Row[]; responses: Row[]; reviewDecisions: Row[]; tokens: Array<Record<string, unknown> & { id: string }>; attachments: Row[]; audits: Row[] };
   const holder = { state: {} as State, active: {} as State, failAudit: false, nextId: 20 };
   const db: Record<string, unknown> = {};
   const current = () => holder.active;
@@ -32,6 +32,11 @@ const h = vi.hoisted(() => {
       return { ...row };
     }),
     update: vi.fn(async ({ where, data }: { where: { id: number }; data: Record<string, unknown> }) => { const row = current().packages.find((entry) => entry.id === where.id)!; Object.assign(row, data); return row; }),
+    updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      const rows = current().packages.filter((row) => row.id === where.id && row.bidId === where.bidId && (where.status === undefined || row.status === where.status));
+      rows.forEach((row) => Object.assign(row, data));
+      return { count: rows.length };
+    }),
   };
   db.responsePackageItem = {
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { const row = { id: holder.nextId++, ...data } as Row; current().items.push(row); return { id: row.id }; }),
@@ -46,7 +51,12 @@ const h = vi.hoisted(() => {
   db.trackedItem = { findFirst: vi.fn(async ({ where }: { where: { id: number; bidId: number } }) => current().tracked.find((row) => row.id === where.id && row.bidId === where.bidId) ?? null) };
   db.responseAccessToken = {
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { const row = { id: `tok-${holder.nextId++}`, ...data } as State["tokens"][number]; current().tokens.push(row); return { id: row.id }; }),
-    findUnique: vi.fn(async ({ where }: { where: { tokenHash: string } }) => current().tokens.find((row) => row.tokenHash === where.tokenHash) ?? null),
+    findUnique: vi.fn(async ({ where }: { where: { tokenHash: string } }) => {
+      const token = current().tokens.find((row) => row.tokenHash === where.tokenHash);
+      if (!token) return null;
+      const pkg = current().packages.find((row) => row.id === token.packageId)!;
+      return { ...token, package: { status: pkg.status } };
+    }),
     update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => { const row = current().tokens.find((entry) => entry.id === where.id)!; Object.assign(row, data); return row; }),
     updateMany: vi.fn(async ({ where, data }: { where: { packageId: number; bidId: number; revokedAt: null }; data: Record<string, unknown> }) => { const rows = current().tokens.filter((row) => row.packageId === where.packageId && row.bidId === where.bidId && !row.revokedAt); rows.forEach((row) => Object.assign(row, data)); return { count: rows.length }; }),
   };
@@ -65,10 +75,14 @@ const h = vi.hoisted(() => {
   db.tradeResponseAttachment = {
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { const row = { id: holder.nextId++, ...data } as Row; current().attachments.push(row); return { id: row.id }; }),
   };
+  db.tradeResponseReviewDecision = {
+    findFirst: vi.fn(async ({ where }: { where: { bidId: number; responseRevisionId: number } }) => current().reviewDecisions.filter((row) => row.bidId === where.bidId && row.responseRevisionId === where.responseRevisionId).at(-1) ?? null),
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { const row = { id: holder.nextId++, createdAt: new Date(), ...data } as Row; current().reviewDecisions.push(row); return { id: row.id }; }),
+  };
   db.auditEvent = { create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { if (holder.failAudit) throw new Error("audit injection"); const row = { id: holder.nextId++, ...data } as Row; current().audits.push(row); return row; }) };
   const exposed = {
     db,
-    reset() { holder.state = { packages: [{ id: 1, bidId: 7, packageNumber: 1, title: "Synthetic package", contractorId: 3, status: "DRAFT", responseDueDate: new Date("2026-08-01"), manualChannel: null }], items: [{ id: 2, packageId: 1, bidId: 7, trackedItemId: 9, displayNumber: "AFR-17.1" }], tracked: [{ id: 9, bidId: 7, dueDate: new Date("2026-07-25"), consultantTargetDate: new Date("2026-07-20") }], responses: [], tokens: [], attachments: [], audits: [] }; holder.active = holder.state; holder.failAudit = false; holder.nextId = 20; },
+    reset() { holder.state = { packages: [{ id: 1, bidId: 7, packageNumber: 1, title: "Synthetic package", contractorId: 3, status: "DRAFT", responseDueDate: new Date("2026-08-01"), manualChannel: null }], items: [{ id: 2, packageId: 1, bidId: 7, trackedItemId: 9, displayNumber: "AFR-17.1" }], tracked: [{ id: 9, bidId: 7, dueDate: new Date("2026-07-25"), consultantTargetDate: new Date("2026-07-20") }], responses: [], reviewDecisions: [], tokens: [], attachments: [], audits: [] }; holder.active = holder.state; holder.failAudit = false; holder.nextId = 20; },
   } as typeof holder & { db: typeof db; reset(): void };
   Object.defineProperties(exposed, {
     state: { get: () => holder.state, set: (value: State) => { holder.state = value; holder.active = value; } },
@@ -87,6 +101,7 @@ vi.mock("@/lib/observability/audit", () => ({
 }));
 
 import {
+  changePackageItem,
   createResponsePackage,
   getExternalPackageProjection,
   hashResponseToken,
@@ -104,6 +119,22 @@ const actor = { id: "user-1", email: "gc@example.test" };
 beforeEach(() => h.reset());
 
 describe("response package, immutable revision, token, and GC acceptance", () => {
+  test("runtime discriminants reject invalid delivery/member actions without mutation or audit", async () => {
+    const baseline = structuredClone(h.state);
+    expect(await issueResponsePackage(7, 1, { delivery: "BOGUS", manualChannel: "EMAIL" }, actor)).toEqual({ ok: false, error: "Invalid delivery mechanism" });
+    expect(await changePackageItem(7, 1, { action: "BOGUS", trackedItemId: 9 }, actor)).toEqual({ ok: false, error: "Invalid package item action" });
+    expect(h.state).toEqual(baseline);
+  });
+
+  test("internal packages reject portal credentials and require a recorded manual channel", async () => {
+    h.state.packages[0].contractorId = null;
+    expect(await issueResponsePackage(7, 1, { delivery: "PORTAL" }, actor)).toEqual({ ok: false, error: "Internal package requires a recorded manual channel" });
+    expect((await issueResponsePackage(7, 1, { delivery: "MANUAL", manualChannel: "OTHER" }, actor)).ok).toBe(true);
+    expect(h.state.packages[0]).toMatchObject({ status: "ISSUED", manualChannel: "OTHER" });
+    expect(h.state.tokens).toHaveLength(0);
+    expect(await rotateResponsePackageToken(7, 1, {} , actor)).toEqual({ ok: false, error: "Internal package cannot use a portal token" });
+  });
+
   test("issue requires members and stores only a token hash; package due date never changes item/consultant dates", async () => {
     h.state.items = [];
     expect((await issueResponsePackage(7, 1, { delivery: "PORTAL" }, actor)).ok).toBe(false);
@@ -207,7 +238,21 @@ describe("response package, immutable revision, token, and GC acceptance", () =>
     expect((await reviewTradeResponse(7, 1, 2, revisionId, { gcReview: "ACCEPTED_FOR_TRANSMITTAL", gcCommentary: "GC commentary only" }, actor)).ok).toBe(true);
     expect(h.state.responses[0].responseText).toBe(beforeText);
     expect(h.state.responses[0].gcCommentary).toBe("GC commentary only");
+    expect((await reviewTradeResponse(7, 1, 2, revisionId, { gcReview: "ACCEPTED_FOR_TRANSMITTAL", gcCommentary: "Corrected GC commentary" }, actor)).ok).toBe(true);
+    expect(h.state.reviewDecisions).toHaveLength(2);
+    expect(h.state.reviewDecisions[0]).toMatchObject({ commentary: "GC commentary only", correctionOfId: null });
+    expect(h.state.reviewDecisions[1]).toMatchObject({ commentary: "Corrected GC commentary", correctionOfId: h.state.reviewDecisions[0].id });
     expect((await transitionResponsePackage(7, 1, "READY_TO_TRANSMIT", actor)).ok).toBe(true);
+  });
+
+  test("VOID atomically revokes active tokens and terminates every external read", async () => {
+    const issued = await issueResponsePackage(7, 1, { delivery: "PORTAL" }, actor);
+    expect(issued.ok).toBe(true);
+    if (!issued.ok) return;
+    expect((await transitionResponsePackage(7, 1, "VOIDED", actor)).ok).toBe(true);
+    expect(h.state.tokens[0].revokedAt).toBeInstanceOf(Date);
+    expect(await getExternalPackageProjection(issued.value.rawToken!)).toEqual({ ok: false, error: "Not found" });
+    expect(h.state.audits.some((audit) => audit.action === "response_package_transition" && (audit.payload as { revokedTokenCount?: number }).revokedTokenCount === 1)).toBe(true);
   });
 
   test("RETURNED_FOR_REVISION produces a durable hook and blocks readiness until a newer accepted revision", async () => {
