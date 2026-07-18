@@ -366,6 +366,10 @@ describe("duplicate guards and BackgroundJob consistency", () => {
 
     expect(response.status).toBe(200);
     expect(state.meeting?.status).toBe("TRANSCRIBING");
+    expect(mocks.failJob).toHaveBeenCalledWith(
+      "bg-1",
+      "Unable to link transcription tracking job"
+    );
   });
 
   it("returns 404 for a meeting outside the bid before parsing", async () => {

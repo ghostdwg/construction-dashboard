@@ -334,6 +334,8 @@ export async function POST(
       try {
         await startJob(backgroundJobId, data.transcriptionJobId);
       } catch {
+        // Do not leave a queued activeSlot stranded if external-id linkage
+        // fails after the authoritative Meeting transition succeeded.
         await bestEffortFailJob(
           backgroundJobId,
           "Unable to link transcription tracking job"
