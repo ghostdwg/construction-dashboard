@@ -26,7 +26,9 @@ export type RegisterAuditArgs = {
     | "MeetingRegisterEntry"
     | "MeetingTranscriptCorrection"
     | "MeetingExtractionRun"
-    | "MeetingMinutesRevision";
+    | "MeetingMinutesRevision"
+    | "Meeting"
+    | "MeetingParticipant";
   subjectId: number;
   actor: Actor | null;
   /** ids/counts/labels only — never transcript or entry text */
@@ -49,7 +51,11 @@ export async function writeRegisterAuditTx(
     severity: "NOTICE",
     decision: args.decision,
     subject: { kind: args.subjectKind, id: String(args.subjectId) },
-    actor: { kind: "operator", userId: null, email: args.actor?.email ?? null },
+    actor: {
+      kind: "operator",
+      userId: args.actor?.id ?? null,
+      email: args.actor?.email ?? null,
+    },
     payload: { actorLabel: actorLabel(args.actor), ...args.payload },
   });
   await persistAuditEnvelope(tx, envelope);

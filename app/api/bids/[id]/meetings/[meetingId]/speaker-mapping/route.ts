@@ -9,8 +9,11 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
-
-const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
+import { meetingHasDurableHistory } from "@/lib/services/meetingRegister/retention";
+import {
+  emitRegisterAuditPostCommit,
+  writeRegisterAuditTx,
+} from "@/lib/services/meetingRegister/txAudit";
 
 export async function PATCH(
   request: Request,
@@ -25,57 +28,54 @@ export async function PATCH(
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
 
-  const meeting = await prisma.meeting.findFirst({
-    where:  { id: mId, bidId },
-    select: { id: true, status: true, transcript: true, speakerMapping: true },
-  });
-  if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
-
   const body = (await request.json().catch(() => null)) as
     { mapping?: Record<string, string> } | null;
   const mapping = body?.mapping ?? {};
 
-  if (typeof mapping !== "object" || Array.isArray(mapping))
+  if (
+    typeof mapping !== "object" ||
+    Array.isArray(mapping) ||
+    Object.entries(mapping).some(
+      ([label, name]) => !label.trim() || typeof name !== "string",
+    )
+  )
     return Response.json({ error: "mapping must be an object" }, { status: 400 });
 
-  // Apply names via sidecar helper (handles edge cases like SPEAKER_10 vs SPEAKER_1)
-  let updatedTranscript = meeting.transcript ?? "";
+  const outcome = await prisma.$transaction(async (tx) => {
+    const meeting = await tx.meeting.findFirst({
+      where: { id: mId, bidId },
+      select: { id: true, transcript: true, speakerMapping: true },
+    });
+    if (!meeting) return { kind: "not-found" as const };
+    if (await meetingHasDurableHistory(tx, mId, bidId)) {
+      return { kind: "conflict" as const };
+    }
 
-  if (Object.keys(mapping).length > 0 && updatedTranscript) {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (SIDECAR_API_KEY) headers["X-API-Key"] = SIDECAR_API_KEY;
-
-    // Inline apply — the sidecar replace logic is simple enough to replicate
-    // here so we don't need a round-trip for pure text replacement.
-    for (const [label, name] of Object.entries(mapping)) {
+    let updatedTranscript = meeting.transcript ?? "";
+    for (const [label, name] of Object.entries(mapping).sort(
+      ([left], [right]) => right.length - left.length,
+    )) {
       if (!name.trim()) continue;
-      // Pattern: ] SPEAKER_N:  →  ] Name:
-      // Sort longer labels first to avoid SPEAKER_1 matching inside SPEAKER_10
       updatedTranscript = updatedTranscript.replace(
         new RegExp(`(\\]\\s*)${escapeRegex(label)}(\\s*:)`, "g"),
-        `$1${name.trim()}$2`
+        `$1${name.trim()}$2`,
       );
     }
-  }
 
-  // Update speakerMapping to record the final name assignments
-  let updatedSpeakerMapping = meeting.speakerMapping ?? "{}";
-  try {
-    const sm = JSON.parse(updatedSpeakerMapping) as {
-      clusters?: unknown[];
-      mapping?: Record<string, string>;
-      teams_sources?: unknown;
-      audio_offset_seconds?: unknown;
-    };
-    sm.mapping = { ...(sm.mapping ?? {}), ...mapping };
-    sm.teams_sources = sm.teams_sources ?? undefined;
-    sm.audio_offset_seconds = sm.audio_offset_seconds ?? undefined;
-    updatedSpeakerMapping = JSON.stringify(sm);
-  } catch {
-    updatedSpeakerMapping = JSON.stringify({ mapping });
-  }
+    let updatedSpeakerMapping: string;
+    try {
+      const sm = JSON.parse(meeting.speakerMapping ?? "{}") as {
+        clusters?: unknown[];
+        mapping?: Record<string, string>;
+        teams_sources?: unknown;
+        audio_offset_seconds?: unknown;
+      };
+      sm.mapping = { ...(sm.mapping ?? {}), ...mapping };
+      updatedSpeakerMapping = JSON.stringify(sm);
+    } catch {
+      updatedSpeakerMapping = JSON.stringify({ mapping });
+    }
 
-  await prisma.$transaction(async (tx) => {
     await tx.meeting.update({
       where: { id: mId },
       data: {
@@ -93,7 +93,30 @@ export async function PATCH(
         data:  { name: name.trim() },
       });
     }
+    const audit = await writeRegisterAuditTx(tx, {
+      action: "meeting.speaker_mapping_updated",
+      decision: "committed",
+      subjectKind: "Meeting",
+      subjectId: mId,
+      actor: access.user,
+      payload: { bidId, mappingCount: Object.keys(mapping).length },
+    });
+    return { kind: "committed" as const, audit };
   });
+
+  if (outcome.kind === "not-found") {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  if (outcome.kind === "conflict") {
+    return Response.json(
+      {
+        error:
+          "Legacy speaker mapping is locked after materialization or analysis. Use audited segment corrections.",
+      },
+      { status: 409 },
+    );
+  }
+  emitRegisterAuditPostCommit(outcome.audit);
 
   return Response.json({ ok: true });
 }

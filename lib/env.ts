@@ -7,7 +7,7 @@ import { z } from 'zod'
 //
 // Tier-to-DB / tier-to-auth fences are documented in
 // runtime/env/README.md and Migration/TURSO_ENVIRONMENT_SEPERATION_STRATEGY.md
-// §6. The production-DB fence and the AUTH_DISABLED-in-production rejection
+// §6. The production-DB fence and the non-local AUTH_DISABLED rejection
 // below are that hardening step — ported from the production branch
 // (feat/storage-auth-job-dedupe, commit 9be8c5d) and re-keyed from that
 // branch's NODE_ENV discriminator onto this repo's APP_ENV discriminator,
@@ -21,7 +21,7 @@ import { z } from 'zod'
 // required strict values in every tier before this port, and loosening that
 // is a separate dev-ergonomics decision, out of scope for a stabilization
 // pass whose job is to close gaps, not open new ones. Only the two genuinely
-// new safeguards (production-DB fence, AUTH_DISABLED-in-production rejection)
+// new safeguards (production-DB fence, non-local AUTH_DISABLED rejection)
 // are added below.
 //
 // See runtime/runbooks/app-env-rollout.md for the rollout sequencing required
@@ -58,14 +58,14 @@ const schema = z.object({
   }
 
   // AUTH_DISABLED is a solo-dev escape hatch only (see proxy.ts's solo-dev
-  // bypass). Refuse to start in production — if it ever ends up set there it
+  // bypass). Refuse to start in every shared tier — if it ever ends up set there it
   // is almost certainly an accident, and every request would receive fake
   // admin access.
-  if (isProd && env.AUTH_DISABLED === 'true') {
+  if (env.APP_ENV !== 'local' && env.AUTH_DISABLED === 'true') {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['AUTH_DISABLED'],
-      message: 'AUTH_DISABLED=true is not permitted when APP_ENV=production',
+      message: 'AUTH_DISABLED=true is permitted only when APP_ENV=local',
     })
   }
 
@@ -96,10 +96,8 @@ export const env = schema.parse(process.env)
 export type AppEnv = z.infer<typeof schema>['APP_ENV']
 
 // AUTH_DISABLED is a solo-dev escape hatch (see proxy.ts's bypass branch).
-// The superRefine above already refuses to boot with it set in production;
-// this just makes it loudly visible whenever it's set at all, since a
-// forgotten AUTH_DISABLED=true in a shared staging env file would otherwise
-// fail silently — every request there gets a fake admin session.
+// The superRefine above refuses shared tiers; make the explicit local bypass
+// loudly visible as well.
 if (env.AUTH_DISABLED === 'true') {
   console.warn(
     `[env] AUTH_DISABLED=true — authentication is bypassed (APP_ENV=${env.APP_ENV}). ` +

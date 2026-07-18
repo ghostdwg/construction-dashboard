@@ -11,6 +11,16 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
+import { Prisma } from "@prisma/client";
+import {
+  deleteMeetingWithoutHistory,
+  DURABLE_HISTORY_CONFLICT,
+  meetingHasDurableHistory,
+} from "@/lib/services/meetingRegister/retention";
+import {
+  emitRegisterAuditPostCommit,
+  writeRegisterAuditTx,
+} from "@/lib/services/meetingRegister/txAudit";
 
 const VALID_TYPES = new Set([
   "GENERAL", "OAC", "SUBCONTRACTOR", "PRECONSTRUCTION", "SAFETY", "KICKOFF",
@@ -127,14 +137,9 @@ export async function PATCH(
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
 
-  const existing = await prisma.meeting.findFirst({
-    where: { id: mId, bidId },
-    select: { id: true },
-  });
-  if (!existing) return Response.json({ error: "Not found" }, { status: 404 });
-
   const body = (await request.json()) as Record<string, unknown>;
   const data: Record<string, unknown> = {};
+  const transcript = body.transcript;
 
   if (body.title !== undefined) data.title = String(body.title).trim();
   if (body.location !== undefined) data.location = body.location ? String(body.location).trim() : null;
@@ -156,9 +161,80 @@ export async function PATCH(
     const rs = String(body.reviewStatus).toUpperCase();
     if (VALID_REVIEW_STATUSES.has(rs)) data.reviewStatus = rs;
   }
-  if (body.transcript !== undefined) data.transcript = body.transcript ?? null;
+  if (transcript !== undefined) {
+    if (typeof transcript !== "string" || !transcript.trim()) {
+      return Response.json(
+        { error: "Manual transcript initialization requires non-empty transcript text" },
+        { status: 400 },
+      );
+    }
+    data.transcript = transcript;
+  }
   if (body.summary !== undefined) data.summary = body.summary ?? null;
 
+  if (transcript !== undefined) {
+    const outcome = await prisma.$transaction(async (tx) => {
+      const existing = await tx.meeting.findFirst({
+        where: { id: mId, bidId },
+        select: {
+          id: true,
+          transcript: true,
+          status: true,
+          analysisVersion: true,
+          analyzedAt: true,
+          reviewStatus: true,
+        },
+      });
+      if (!existing) return { kind: "not-found" as const };
+      const explicitPreAnalysisState =
+        (existing.status === "PENDING" || existing.status === "FAILED") &&
+        existing.analysisVersion === 0 &&
+        existing.analyzedAt === null &&
+        existing.reviewStatus === "DRAFT" &&
+        !existing.transcript;
+      if (
+        !explicitPreAnalysisState ||
+        (await meetingHasDurableHistory(tx, mId, bidId))
+      ) {
+        return { kind: "conflict" as const };
+      }
+
+      await tx.meeting.update({ where: { id: mId }, data });
+      const audit = await writeRegisterAuditTx(tx, {
+        action: "meeting.transcript_initialized",
+        decision: "committed",
+        subjectKind: "Meeting",
+        subjectId: mId,
+        actor: access.user,
+        payload: {
+          bidId,
+          transcriptLength: transcript.length,
+          changedFields: Object.keys(data).sort(),
+        },
+      });
+      return { kind: "committed" as const, audit };
+    });
+    if (outcome.kind === "not-found") {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+    if (outcome.kind === "conflict") {
+      return Response.json(
+        {
+          error:
+            "Whole-transcript mutation is locked after materialization or analysis. Use audited segment corrections.",
+        },
+        { status: 409 },
+      );
+    }
+    emitRegisterAuditPostCommit(outcome.audit);
+    return Response.json({ ok: true });
+  }
+
+  const existing = await prisma.meeting.findFirst({
+    where: { id: mId, bidId },
+    select: { id: true },
+  });
+  if (!existing) return Response.json({ error: "Not found" }, { status: 404 });
   await prisma.meeting.update({ where: { id: mId }, data });
   return Response.json({ ok: true });
 }
@@ -176,12 +252,16 @@ export async function DELETE(
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
 
-  const existing = await prisma.meeting.findFirst({
-    where: { id: mId, bidId },
-    select: { id: true },
-  });
-  if (!existing) return Response.json({ error: "Not found" }, { status: 404 });
-
-  await prisma.meeting.delete({ where: { id: mId } });
-  return Response.json({ ok: true });
+  try {
+    const result = await deleteMeetingWithoutHistory(bidId, mId);
+    if (!result.ok) {
+      return Response.json({ error: result.error }, { status: result.status });
+    }
+    return Response.json({ ok: true });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      return Response.json({ error: DURABLE_HISTORY_CONFLICT }, { status: 409 });
+    }
+    throw error;
+  }
 }

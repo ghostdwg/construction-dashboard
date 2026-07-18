@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { recalculateSchedule } from "@/lib/services/schedule/scheduleService";
+import { requireBidAccess } from "@/lib/auth-helpers";
+import {
+  deleteBidWithoutHistory,
+  DURABLE_HISTORY_CONFLICT,
+} from "@/lib/services/meetingRegister/retention";
 
 // Module INT1 — valid enum-string values for intake fields
 const VALID_DELIVERY_METHODS = ["HARD_BID", "DESIGN_BUILD", "CM_AT_RISK", "NEGOTIATED"];
@@ -186,11 +191,14 @@ export async function DELETE(
     return Response.json({ error: "Invalid id" }, { status: 400 });
   }
 
-  // Hard delete the bid. Most relations cascade via Prisma schema; for any that
-  // don't, Prisma raises P2003. The user has explicitly confirmed deletion in
-  // the UI before we reach here.
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   try {
-    await prisma.bid.delete({ where: { id: bidId } });
+    const result = await deleteBidWithoutHistory(bidId);
+    if (!result.ok) {
+      return Response.json({ error: result.error }, { status: result.status });
+    }
     return Response.json({ deleted: bidId });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
@@ -199,7 +207,7 @@ export async function DELETE(
       }
       if (err.code === "P2003") {
         return Response.json(
-          { error: "Bid has dependent records that cannot be cascaded. Contact support." },
+          { error: DURABLE_HISTORY_CONFLICT },
           { status: 409 },
         );
       }
