@@ -128,6 +128,7 @@ async function commitCorrection(args: {
   correctedBy: string;
   reason: string | null;
   actor: Actor;
+  auditPayload?: Record<string, unknown>;
   /** Perform the overlay mutations; returns the affected segment count. */
   mutate: (tx: PrismaTx) => Promise<number>;
 }): Promise<OpResult> {
@@ -165,6 +166,7 @@ async function commitCorrection(args: {
         segmentId: record.segmentId ?? null,
         affectedSegmentCount,
         affectedRegisterEntries: affected.registerEntryIds.length,
+        ...args.auditPayload,
       },
     });
     return { correctionId: correction.id, affectedSegmentCount };
@@ -227,7 +229,7 @@ async function renameSpeaker(
   if (!label || !newName) return { ok: false, error: "fromSpeakerLabel and toValue are required" };
 
   const participant = await prisma.meetingParticipant.findFirst({
-    where: { meetingId, speakerLabel: label },
+    where: { meetingId, speakerLabel: label, isActive: true },
     select: { id: true },
   });
   const affected = await computeAffectedDerived(meetingId, { speakerLabel: label });
@@ -277,7 +279,7 @@ async function reassignSegment(
   if (!segment) return { ok: false, error: "Segment not found" };
 
   const participant = await prisma.meetingParticipant.findFirst({
-    where: { meetingId, speakerLabel: toLabel },
+    where: { meetingId, speakerLabel: toLabel, isActive: true },
     select: { id: true },
   });
   const affected = await computeAffectedDerived(meetingId, {
@@ -326,7 +328,7 @@ async function reassignAllMatching(
     return { ok: false, error: "fromSpeakerLabel and toValue are required" };
   }
   const participant = await prisma.meetingParticipant.findFirst({
-    where: { meetingId, speakerLabel: toLabel },
+    where: { meetingId, speakerLabel: toLabel, isActive: true },
     select: { id: true },
   });
   const affected = await computeAffectedDerived(meetingId, { speakerLabel: fromLabel });
@@ -372,10 +374,16 @@ async function mergeSpeakers(
   }
   if (fromLabel === intoLabel) return { ok: false, error: "Cannot merge a speaker into itself" };
 
-  const intoParticipant = await prisma.meetingParticipant.findFirst({
-    where: { meetingId, speakerLabel: intoLabel },
-    select: { id: true },
+  const participants = await prisma.meetingParticipant.findMany({
+    where: { meetingId, isActive: true, speakerLabel: { in: [fromLabel, intoLabel] } },
+    select: { id: true, speakerLabel: true },
+    orderBy: { id: "asc" },
   });
+  const fromParticipant = participants.find((participant) => participant.speakerLabel === fromLabel);
+  const intoParticipant = participants.find((participant) => participant.speakerLabel === intoLabel);
+  if (!fromParticipant || !intoParticipant) {
+    return { ok: false, error: "Both source and target must be active meeting participants" };
+  }
   const affected = await computeAffectedDerived(meetingId, { speakerLabel: fromLabel });
 
   return commitCorrection({
@@ -386,7 +394,26 @@ async function mergeSpeakers(
     correctedBy,
     reason,
     actor,
+    auditPayload: {
+      sourceParticipantId: fromParticipant.id,
+      targetParticipantId: intoParticipant.id,
+    },
     mutate: async (tx) => {
+      const target = await tx.meetingParticipant.findFirst({
+        where: { id: intoParticipant.id, meetingId, isActive: true },
+        select: { id: true },
+      });
+      if (!target) throw new Error("Merge target is no longer active");
+      const disposition = await tx.meetingParticipant.updateMany({
+        where: { id: fromParticipant.id, meetingId, isActive: true },
+        data: {
+          isActive: false,
+          mergedIntoParticipantId: intoParticipant.id,
+          mergedAt: new Date(),
+          mergedBy: correctedBy,
+        },
+      });
+      if (disposition.count !== 1) throw new Error("Merge source is no longer active");
       const updated = await tx.meetingTranscriptSegment.updateMany({
         where: { meetingId, bidId, isActive: true, currentSpeakerLabel: fromLabel },
         data: {
@@ -437,7 +464,7 @@ async function splitSegment(
 
   const secondParticipant = secondLabel
     ? await prisma.meetingParticipant.findFirst({
-        where: { meetingId, speakerLabel: secondLabel },
+        where: { meetingId, speakerLabel: secondLabel, isActive: true },
         select: { id: true },
       })
     : null;

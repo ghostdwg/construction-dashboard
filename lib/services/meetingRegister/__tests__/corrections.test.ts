@@ -23,6 +23,9 @@ async function seed() {
   await state.prisma.meetingParticipant.create({
     data: { id: 11, meetingId: 5, name: "Speaker One", speakerLabel: "SPEAKER_1" },
   });
+  await state.prisma.meetingParticipant.create({
+    data: { id: 12, meetingId: 5, name: "Speaker Two", speakerLabel: "SPEAKER_2" },
+  });
   const mk = (i: number, label: string, text: string) =>
     state.prisma.meetingTranscriptSegment.create({
       data: {
@@ -133,6 +136,21 @@ describe("REASSIGN_SEGMENT / REASSIGN_ALL_MATCHING / MERGE_SPEAKERS", () => {
       ACTOR
     );
     expect(result.ok && result.value.affectedSegmentCount).toBe(2);
+    const source = state.prisma.meetingParticipant.rows.find((row) => row.id === 12);
+    expect(source).toMatchObject({
+      isActive: false,
+      mergedIntoParticipantId: 11,
+      mergedBy: "josh@example.com",
+    });
+    expect(source?.mergedAt).toBeInstanceOf(Date);
+    expect(
+      state.prisma.meetingParticipant.rows.filter((row) => row.isActive).map((row) => row.id),
+    ).toEqual([11]);
+    // The source remains directly queryable as permanent provenance.
+    expect(await state.prisma.meetingParticipant.findUnique({ where: { id: 12 } })).toMatchObject({
+      speakerLabel: "SPEAKER_2",
+      isActive: false,
+    });
   });
 });
 
@@ -260,6 +278,12 @@ describe("atomicity (release blocker 2) — mutation + history + audit commit to
     expect(
       state.prisma.meetingTranscriptSegment.rows.map((s) => s.currentSpeakerLabel)
     ).toEqual(["SPEAKER_1", "SPEAKER_2", "SPEAKER_2"]);
+    expect(state.prisma.meetingParticipant.rows.find((row) => row.id === 12)).toMatchObject({
+      isActive: true,
+      mergedIntoParticipantId: null,
+      mergedAt: null,
+      mergedBy: null,
+    });
     expect(state.prisma.meetingTranscriptCorrection.rows).toHaveLength(0);
   });
 

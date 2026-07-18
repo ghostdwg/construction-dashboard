@@ -57,6 +57,7 @@ export async function GET(
     where: { id: mId, bidId },
     include: {
       participants: {
+        where: { isActive: true },
         include: { projectContact: { select: { id: true, name: true, role: true } } },
         orderBy: { id: "asc" },
       },

@@ -108,7 +108,7 @@ export async function publishMinutes(
       },
     }),
     prisma.meetingParticipant.findMany({
-      where: { meetingId },
+      where: { meetingId, isActive: true },
       select: { name: true, role: true, company: true, speakerLabel: true },
     }),
     prisma.meetingTranscriptCorrection.count({ where: { meetingId, bidId } }),

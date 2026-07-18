@@ -38,7 +38,7 @@ export async function GET(
     where: { id: mId, bidId },
     include: {
       bid: { select: { projectName: true, location: true } },
-      participants: { orderBy: { id: "asc" } },
+      participants: { where: { isActive: true }, orderBy: { id: "asc" } },
       actionItems:  { orderBy: [{ priority: "desc" }, { createdAt: "asc" }] },
     },
   });
