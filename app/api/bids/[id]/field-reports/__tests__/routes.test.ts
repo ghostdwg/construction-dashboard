@@ -3,19 +3,21 @@
 // provider or Procore import anywhere on these paths.
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+// Suppress the post-commit stdout audit line — persistence still runs.
+process.env.OBSERVABILITY_AUDIT_QUIET = "true";
+
 const h = vi.hoisted(() => ({
   reports: [] as Array<Record<string, unknown> & { id: number; bidId: number }>,
   items: [] as Array<Record<string, unknown> & { id: number; bidId: number }>,
+  audits: [] as Array<Record<string, unknown>>,
   bidExists: true,
   nextId: 1,
 }));
 
 const putMock = vi.hoisted(() => vi.fn(async () => ({ key: "x" })));
 const deleteMock = vi.hoisted(() => vi.fn(async () => undefined));
-const auditMock = vi.hoisted(() => vi.fn(async () => undefined));
 const accessMock = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>());
 
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
@@ -28,9 +30,15 @@ vi.mock("@/lib/storage/blobStore", () => ({
   },
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const p: Record<string, unknown> = {
     bid: { findUnique: vi.fn(async () => (h.bidExists ? { id: 1 } : null)) },
+    auditEvent: {
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        h.audits.push({ ...data });
+        return { id: h.nextId++ };
+      }),
+    },
     fieldReport: {
       findMany: vi.fn(async ({ where }: { where: { bidId: number } }) =>
         h.reports
@@ -76,8 +84,25 @@ vi.mock("@/lib/prisma", () => ({
         return { id: row.id };
       }),
     },
-  },
-}));
+  };
+  // Rollback-capable interactive transaction — mutation + audit are atomic.
+  p.$transaction = async (fn: (tx: unknown) => Promise<unknown>) => {
+    const snap = {
+      reports: h.reports.map((r) => ({ ...r })),
+      items: h.items.map((r) => ({ ...r })),
+      audits: h.audits.map((r) => ({ ...r })),
+    };
+    try {
+      return await fn(p);
+    } catch (err) {
+      h.reports.splice(0, h.reports.length, ...snap.reports);
+      h.items.splice(0, h.items.length, ...snap.items);
+      h.audits.splice(0, h.audits.length, ...snap.audits);
+      throw err;
+    }
+  };
+  return { prisma: p };
+});
 
 import { GET as listGET, POST as createPOST } from "../route";
 import { GET as detailGET, PATCH as detailPATCH } from "../[fieldReportId]/route";
@@ -103,11 +128,11 @@ const fileReq = (name: string, type: string, bytes = 3) => {
 beforeEach(() => {
   h.reports.length = 0;
   h.items.length = 0;
+  h.audits.length = 0;
   h.bidExists = true;
   h.nextId = 1;
   putMock.mockClear();
   deleteMock.mockClear();
-  auditMock.mockClear();
   accessMock.mockReset();
   accessMock.mockResolvedValue({ ok: true, user: { id: "user-1" } });
 });
@@ -216,9 +241,12 @@ describe("field-reports routes", () => {
     expect(item.extractionMethod).toBe("manual");
     expect(item.citationVerified).toBe(false);
     expect(item.evidenceExcerpt).toBe("photo 3 shows spall at grid B/2");
-    expect(auditMock).toHaveBeenCalledWith(
-      expect.objectContaining({ decision: "created_from_field_report" })
-    );
+    // The FIELD_ITEM creation audit committed in-transaction (persisted row).
+    expect(
+      h.audits.some(
+        (a) => a.subjectKind === "TrackedItem" && a.decision === "created_from_field_report"
+      )
+    ).toBe(true);
 
     // cross-bid: report 1 belongs to bid 5 — bid 6 cannot create items from it
     const crossBid = await itemPOST(jsonReq({ title: "nope" }), pr("6", "1"));

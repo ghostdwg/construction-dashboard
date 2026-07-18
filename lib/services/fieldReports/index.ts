@@ -8,18 +8,32 @@
 // anything. parseStatus stays "UNPARSED" in V0 — no code path changes it.
 
 import { prisma } from "@/lib/prisma";
-import { emitAuditEvent } from "@/lib/observability/audit";
+import {
+  buildAuditEnvelope,
+  emitAuditEnvelopeStdout,
+  persistAuditEnvelope,
+  type AuditEventWriter,
+} from "@/lib/observability/audit";
+import type { AuditEnvelope } from "@/lib/observability/taxonomy";
 
 type Actor = { id?: string | null; email?: string | null } | null;
 
-async function auditFieldReport(
+// R2 remediation — fail-closed, in-transaction Field Report audit. The
+// AuditEvent row is written INSIDE the mutation's transaction: an audit-store
+// failure rolls the mutation back (audit never fails open), and the
+// `decision: "committed"` telemetry line is emitted to stdout ONLY after the
+// transaction commits, so external observers never see a mutation that did
+// not actually happen. Payloads carry ids/counts/flags only — never report
+// body text. Callers validate existence/input BEFORE opening the transaction,
+// so a not-found/invalid request produces NO audit at all.
+function buildFieldReportAudit(
   action: string,
   bidId: number,
   reportId: number,
   actor: Actor,
   payload: Record<string, unknown>
-) {
-  await emitAuditEvent({
+): AuditEnvelope {
+  return buildAuditEnvelope({
     category: "register_action",
     action,
     severity: "NOTICE",
@@ -28,6 +42,19 @@ async function auditFieldReport(
     actor: { kind: "operator", userId: actor?.id ?? null, email: actor?.email ?? null },
     payload: { bidId, ...payload },
   });
+}
+
+async function writeFieldReportAuditTx(
+  tx: AuditEventWriter,
+  action: string,
+  bidId: number,
+  reportId: number,
+  actor: Actor,
+  payload: Record<string, unknown>
+): Promise<AuditEnvelope> {
+  const envelope = buildFieldReportAudit(action, bidId, reportId, actor, payload);
+  await persistAuditEnvelope(tx, envelope);
+  return envelope;
 }
 
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -66,19 +93,24 @@ export async function createFieldReport(
   const title = input.title?.trim();
   if (!title) return { ok: false, error: "title is required" };
 
-  const created = await prisma.fieldReport.create({
-    data: {
-      bidId,
-      title: title.slice(0, 300),
-      reportDate: input.reportDate ?? null,
-      authorName: input.authorName?.trim() || null,
-      parseStatus: "UNPARSED",
-    },
-    select: { id: true },
+  let envelope: AuditEnvelope | null = null;
+  const created = await prisma.$transaction(async (tx) => {
+    const row = await tx.fieldReport.create({
+      data: {
+        bidId,
+        title: title.slice(0, 300),
+        reportDate: input.reportDate ?? null,
+        authorName: input.authorName?.trim() || null,
+        parseStatus: "UNPARSED",
+      },
+      select: { id: true },
+    });
+    envelope = await writeFieldReportAuditTx(tx, "field_report_create", bidId, row.id, actor, {
+      hasReportDate: Boolean(input.reportDate),
+    });
+    return row;
   });
-  await auditFieldReport("field_report_create", bidId, created.id, actor, {
-    hasReportDate: Boolean(input.reportDate),
-  });
+  if (envelope) emitAuditEnvelopeStdout(envelope);
   return { ok: true, value: created };
 }
 
@@ -94,28 +126,35 @@ export async function updateFieldReport(
   patch: UpdateFieldReportInput,
   actor: Actor = null
 ): Promise<ServiceResult<{ id: number }>> {
+  // Validate BEFORE any audit or mutation — a not-found or invalid request
+  // must never emit a `committed` audit (the pre-remediation code audited
+  // first and could record a commit for a mutation that never happened).
   const report = await prisma.fieldReport.findFirst({
     where: { id: fieldReportId, bidId },
     select: { id: true },
-  });
-  await auditFieldReport("field_report_update", bidId, fieldReportId, actor, {
-    changedFields: Object.keys(patch),
   });
   if (!report) return { ok: false, error: "Not found" };
   if (patch.title !== undefined && !patch.title.trim()) {
     return { ok: false, error: "title cannot be empty" };
   }
 
-  await prisma.fieldReport.update({
-    where: { id: fieldReportId },
-    data: {
-      ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, 300) } : {}),
-      ...(patch.reportDate !== undefined ? { reportDate: patch.reportDate } : {}),
-      ...(patch.authorName !== undefined
-        ? { authorName: patch.authorName?.trim() || null }
-        : {}),
-    },
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.fieldReport.update({
+      where: { id: fieldReportId },
+      data: {
+        ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, 300) } : {}),
+        ...(patch.reportDate !== undefined ? { reportDate: patch.reportDate } : {}),
+        ...(patch.authorName !== undefined
+          ? { authorName: patch.authorName?.trim() || null }
+          : {}),
+      },
+    });
+    envelope = await writeFieldReportAuditTx(tx, "field_report_update", bidId, fieldReportId, actor, {
+      changedFields: Object.keys(patch),
+    });
   });
+  if (envelope) emitAuditEnvelopeStdout(envelope);
   return { ok: true, value: { id: fieldReportId } };
 }
 
@@ -147,25 +186,30 @@ export async function recordReportFile(
   meta: ReportFileMetaInput,
   actor: Actor = null
 ): Promise<ServiceResult<{ id: number; previousStorageKey: string | null }>> {
+  // Existence/tenancy BEFORE audit — a not-found report records no audit.
   const report = await prisma.fieldReport.findFirst({
     where: { id: fieldReportId, bidId },
     select: { id: true, sourceFileStorageKey: true },
   });
-  await auditFieldReport("field_report_file_recorded", bidId, fieldReportId, actor, {
-    mimeType: meta.mimeType,
-    byteSize: meta.byteSize,
-  });
   if (!report) return { ok: false, error: "Not found" };
 
-  await prisma.fieldReport.update({
-    where: { id: fieldReportId },
-    data: {
-      sourceFileStorageKey: meta.storageKey,
-      originalFileName: meta.fileName,
+  let envelope: AuditEnvelope | null = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.fieldReport.update({
+      where: { id: fieldReportId },
+      data: {
+        sourceFileStorageKey: meta.storageKey,
+        originalFileName: meta.fileName,
+        mimeType: meta.mimeType,
+        byteSize: meta.byteSize,
+      },
+    });
+    envelope = await writeFieldReportAuditTx(tx, "field_report_file_recorded", bidId, fieldReportId, actor, {
       mimeType: meta.mimeType,
       byteSize: meta.byteSize,
-    },
+    });
   });
+  if (envelope) emitAuditEnvelopeStdout(envelope);
 
   const previous =
     report.sourceFileStorageKey && report.sourceFileStorageKey !== meta.storageKey
