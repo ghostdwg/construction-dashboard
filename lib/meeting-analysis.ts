@@ -456,6 +456,11 @@ export type WriteMeetingAnalysisResult = {
 // Prisma interactive-transaction client shape (subset used here).
 type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
+// Deterministic text normalization for matching a fresh §5 draft against a
+// surviving (human-touched) action-item row — same rule the register
+// reconcile uses, so behavior is identical and idempotent.
+const normActionText = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
 export async function writeMeetingAnalysis(
   meetingId: number,
   bidId: number,
@@ -573,13 +578,93 @@ export async function writeMeetingAnalysisTx(
       result.commitmentIds.push(createdCommitment.id);
     }
 
-    // §5 action items — delete prior AI-generated items, insert fresh
-    // (manual items preserved by not touching rows where sourceText is null and createdAt predates analysis)
-    await tx.meetingActionItem.deleteMany({
-      where: { meetingId, sourceText: { not: null } },
+    // §5 action items — NON-DESTRUCTIVE reconciliation (R2 release-blocker
+    // remediation). The pre-remediation writer deleted EVERY AI-origin action
+    // item (`sourceText` non-null) and recreated fresh OPEN rows, silently
+    // destroying human lifecycle: a CLOSED/DEFERRED disposition, added notes,
+    // a raised priority, or a promotion into the Operations Register (whose
+    // TrackedItem.sourceMeetingActionItemId would be SetNull'd, orphaning the
+    // provenance and re-opening the duplicate-promotion guard).
+    //
+    // Now only PRISTINE machine proposals are eligible for replacement: an
+    // AI-origin row (source "meeting", sourceText present) that is still
+    // exactly as the writer created it — OPEN, never closed, no notes, default
+    // priority — AND has not been promoted. Every human-touched row is
+    // preserved byte-for-byte (id, status, disposition, notes, promotion FK).
+    // A re-extraction that reproduces a preserved item REUSES that row
+    // (matched by normalized description) so the register bridge relinks to it
+    // instead of creating a duplicate.
+    const existingItems = await tx.meetingActionItem.findMany({
+      where: { meetingId },
     });
+    const existingIds = existingItems.map((i) => i.id);
+    const promotedSourceIds = new Set<number>(
+      existingIds.length === 0
+        ? []
+        : (
+            await tx.trackedItem.findMany({
+              where: { sourceMeetingActionItemId: { in: existingIds } },
+              select: { sourceMeetingActionItemId: true },
+            })
+          )
+            .map((t) => t.sourceMeetingActionItemId)
+            .filter((v): v is number => v != null)
+    );
+
+    // A human edit through the action-item PATCH route (description, due date,
+    // assignee, …) bumps `updatedAt` without necessarily changing status,
+    // notes, or priority. A machine-created row has updatedAt == createdAt, so
+    // a meaningfully later updatedAt marks the row as human-edited too (the
+    // 1s tolerance absorbs create-time timestamp jitter).
+    const editedSinceCreate = (row: (typeof existingItems)[number]): boolean => {
+      const c = row.createdAt instanceof Date ? row.createdAt.getTime() : null;
+      const u = row.updatedAt instanceof Date ? row.updatedAt.getTime() : null;
+      return c != null && u != null && u - c > 1000;
+    };
+
+    const isReplaceable = (row: (typeof existingItems)[number]): boolean =>
+      row.source !== "manual" &&
+      row.sourceText != null &&
+      row.status === "OPEN" &&
+      row.closedAt == null &&
+      (row.notes == null || String(row.notes).trim() === "") &&
+      row.priority === "MEDIUM" &&
+      !editedSinceCreate(row) &&
+      !promotedSourceIds.has(row.id);
+
+    const replaceable = existingItems.filter(isReplaceable);
+    const preserved = existingItems.filter((r) => !isReplaceable(r));
+
+    if (replaceable.length > 0) {
+      await tx.meetingActionItem.deleteMany({
+        where: { id: { in: replaceable.map((r) => r.id) } },
+      });
+    }
+
+    // Index the surviving human-touched rows by normalized description so a
+    // reproduced item is matched (and reused) exactly once, in stable id
+    // order — never duplicated and never silently overwritten.
+    const preservedByText = new Map<string, number[]>();
+    for (const row of preserved) {
+      const key = normActionText(String(row.description));
+      const q = preservedByText.get(key) ?? [];
+      q.push(row.id);
+      preservedByText.set(key, q);
+    }
+    for (const q of preservedByText.values()) q.sort((a, b) => a - b);
+    const claimed = new Set<number>();
 
     for (const item of analysis.section5) {
+      const reuseId = preservedByText
+        .get(normActionText(item.task))
+        ?.find((rid) => !claimed.has(rid));
+      if (reuseId != null) {
+        // Reuse the preserved lifecycle row as-is — its human disposition,
+        // notes, priority, and promotion are authoritative and untouched.
+        claimed.add(reuseId);
+        result.actionItemIds.push(reuseId);
+        continue;
+      }
       // Resolve participant ID from name if possible
       const participant = await tx.meetingParticipant.findFirst({
         where: { meetingId, name: item.person },
@@ -588,6 +673,7 @@ export async function writeMeetingAnalysisTx(
         data: {
           bidId,
           meetingId,
+          source: "meeting",
           description: item.task,
           assignedToId: participant?.id ?? null,
           assignedToName: item.person,

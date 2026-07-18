@@ -17,7 +17,7 @@ vi.mock("@/lib/prisma", () => ({
 process.env.OBSERVABILITY_AUDIT_QUIET = "true";
 
 import type { MeetingAnalysis } from "@/lib/meeting-analysis";
-import { applyRun, discardRun, recordAnalysisRun } from "../extractionRuns";
+import { applyRun, computeReconcile, discardRun, recordAnalysisRun } from "../extractionRuns";
 
 const ACTOR = { name: "Josh", email: "josh@example.com" };
 
@@ -290,6 +290,81 @@ describe("applyRun — freeze + preservation discipline", () => {
     expect(alreadyApplied.ok).toBe(false);
     const crossBid = await applyRun(2, 5, 1, ACTOR);
     expect(crossBid).toMatchObject({ ok: false, error: "Not found" });
+  });
+});
+
+describe("computeReconcile — changed-wording is not double-classified (R2 remediation)", () => {
+  // A changed-wording draft (same entryType + same anchor segment) supersedes
+  // the prior PENDING entry and IS its single replacement. It must NOT ALSO be
+  // emitted as a CREATE — otherwise the same draft was counted twice and
+  // `toAdd` overstated the one row reconcile actually creates.
+  const existing = [
+    {
+      id: 1,
+      entryType: "DECISION",
+      rawSourceText: "old wording",
+      segmentId: 10,
+      reviewState: "PENDING",
+      origin: "ai_extraction",
+    },
+  ];
+  const draft = (over: Record<string, unknown> = {}) =>
+    ({
+      entryType: "DECISION",
+      rawSourceText: "new wording",
+      normalizedText: "new wording",
+      segmentId: 10,
+      startSec: null,
+      endSec: null,
+      sourceCitation: null,
+      ...over,
+    }) as unknown as Parameters<typeof computeReconcile>[1][number];
+
+  it("emits exactly one SUPERSEDE and NO CREATE for the same changed draft", () => {
+    const outcomes = computeReconcile(existing as never, [draft()]);
+    const forDraft0 = outcomes.filter((o) => o.draftIndex === 0);
+    expect(forDraft0.map((o) => o.outcome).sort()).toEqual(["supersede"]);
+    expect(outcomes.some((o) => o.outcome === "create")).toBe(false);
+  });
+
+  it("many-to-one merge: one draft supersedes several same-anchor entries, still one replacement", () => {
+    const many = [
+      { id: 1, entryType: "DECISION", rawSourceText: "a", segmentId: 10, reviewState: "PENDING", origin: "ai_extraction" },
+      { id: 2, entryType: "DECISION", rawSourceText: "b", segmentId: 10, reviewState: "PENDING", origin: "ai_extraction" },
+    ];
+    const outcomes = computeReconcile(many as never, [draft()]);
+    // one supersede + one merge, both pointing at the SINGLE draft; no create.
+    expect(outcomes.filter((o) => o.outcome === "supersede")).toHaveLength(1);
+    expect(outcomes.filter((o) => o.outcome === "merge")).toHaveLength(1);
+    expect(outcomes.every((o) => o.draftIndex === 0)).toBe(true);
+    expect(outcomes.some((o) => o.outcome === "create")).toBe(false);
+  });
+});
+
+describe("applyRun — atomic PREVIEWED claim closes the concurrency window (R2 remediation)", () => {
+  it("rejects an apply whose PREVIEWED read is stale (another request already claimed it)", async () => {
+    await recordAnalysisRun(1, 5, analysis, { actionItemIds: [101], commitmentIds: [], designChangeIds: [] }, ACTOR);
+    const rerun = await recordAnalysisRun(1, 5, changedAnalysis, null, ACTOR);
+    const runId = rerun.ok ? rerun.value.runId : -1;
+
+    // Simulate a concurrent winner having already flipped the run to APPLIED,
+    // while this loser's pre-transaction read still observed PREVIEWED.
+    await state.prisma.meetingExtractionRun.update({
+      where: { id: runId },
+      data: { status: "APPLIED" },
+    });
+    const realFindFirst = state.prisma.meetingExtractionRun.findFirst;
+    state.prisma.meetingExtractionRun.findFirst = async (args) => {
+      const row = await realFindFirst(args);
+      return row && row.id === runId ? { ...row, status: "PREVIEWED" } : row;
+    };
+
+    const before = state.prisma.meetingRegisterEntry.rows.map((r) => ({ ...r }));
+    await expect(applyRun(1, 5, runId, ACTOR)).rejects.toThrow(/no longer PREVIEWED/);
+    state.prisma.meetingExtractionRun.findFirst = realFindFirst;
+
+    // The loser wrote nothing — no supersession, no new entries.
+    expect(state.prisma.meetingRegisterEntry.rows).toEqual(before);
   });
 });
 

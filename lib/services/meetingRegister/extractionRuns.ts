@@ -157,6 +157,12 @@ export function computeReconcile(
     const hits = [...unmatchedExisting.values()]
       .filter((e) => e.entryType === d.entryType && e.segmentId === d.segmentId)
       .sort((a, b) => a.id - b.id);
+    if (hits.length === 0) return;
+    // This draft IS the replacement entry (created once in reconcile). Mark it
+    // matched so pass 3 does NOT also emit a CREATE for it — otherwise the same
+    // changed-wording draft was double-classified as both SUPERSEDE and CREATE
+    // and `toAdd` overcounted the single row reconcile actually creates.
+    draftMatched.add(i);
     hits.forEach((e, hitIndex) => {
       unmatchedExisting.delete(e.id);
       outcomes.push({
@@ -576,6 +582,18 @@ export async function applyRun(
 
   let envelope: AuditEnvelope | null = null;
   const applied = await prisma.$transaction(async (tx) => {
+    // Atomically CLAIM the PREVIEWED run inside the transaction before any
+    // writer work. The status read above happened outside the transaction, so
+    // two concurrent applies could both observe PREVIEWED; only the request
+    // whose conditional update flips exactly one row proceeds, the loser
+    // throws and rolls back. Keeps rerun apply idempotent under concurrency.
+    const claim = await tx.meetingExtractionRun.updateMany({
+      where: { id: run.id, status: "PREVIEWED" },
+      data: { status: "APPLIED", appliedBy, appliedAt: new Date() },
+    });
+    if (claim.count !== 1) {
+      throw new Error("Run is no longer PREVIEWED — concurrent apply lost the race");
+    }
     const writeResult = await writeMeetingAnalysisTx(tx, meetingId, bidId, analysis);
     const result = await reconcileRegisterTx(
       tx,
@@ -589,11 +607,8 @@ export async function applyRun(
     await tx.meetingExtractionRun.update({
       where: { id: run.id },
       data: {
-        status: "APPLIED",
         analysisJson: "{}", // clear the bulky payload once applied
         previewJson: JSON.stringify(result), // final outcomes incl. created ids
-        appliedBy,
-        appliedAt: new Date(),
       },
     });
     envelope = await writeRegisterAuditTx(tx, {
