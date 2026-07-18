@@ -1174,12 +1174,12 @@ model Meeting {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  bid          Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  actionItems  MeetingActionItem[]
-  participants MeetingParticipant[]
-  trackedItems TrackedItem[]
-  designIntentChanges DesignIntentChange[]
-  commitments         MeetingCommitment[]
+  bid                   Bid                           @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  actionItems           MeetingActionItem[]
+  participants          MeetingParticipant[]
+  trackedItems          TrackedItem[]
+  designIntentChanges   DesignIntentChange[]
+  commitments           MeetingCommitment[]
   transcriptSegments    MeetingTranscriptSegment[]
   transcriptCorrections MeetingTranscriptCorrection[]
   registerEntries       MeetingRegisterEntry[]
@@ -1194,23 +1194,34 @@ model Meeting {
 // (SPEAKER_A, SPEAKER_B) are resolved to real names by the user post-upload.
 // Optionally linked to a ProjectContact for cross-meeting context.
 model MeetingParticipant {
-  id               Int     @id @default(autoincrement())
-  meetingId        Int
-  name             String
-  role             String?
-  company          String?
-  speakerLabel     String? // "SPEAKER_A" / "ROOM_SPK_1" from diarization
-  speakerType      String? // "REMOTE" | "IN_ROOM" | "UNKNOWN"
-  confidence       Float? // 0.0–1.0 identity confidence from AI inference
-  isGcTeam         Boolean @default(false) // GC team member — drives §8 bold + filter
-  projectContactId Int?
+  id                      Int       @id @default(autoincrement())
+  meetingId               Int
+  name                    String
+  role                    String?
+  company                 String?
+  speakerLabel            String? // "SPEAKER_A" / "ROOM_SPK_1" from diarization
+  speakerType             String? // "REMOTE" | "IN_ROOM" | "UNKNOWN"
+  confidence              Float? // 0.0–1.0 identity confidence from AI inference
+  isGcTeam                Boolean   @default(false) // GC team member — drives §8 bold + filter
+  projectContactId        Int?
+  // Non-destructive speaker-merge disposition. A merged participant remains
+  // queryable as history but is omitted from the active roster. The target
+  // relation is restrictive so provenance cannot be erased by deleting the
+  // surviving participant.
+  isActive                Boolean   @default(true)
+  mergedIntoParticipantId Int?
+  mergedAt                DateTime?
+  mergedBy                String?
 
-  meeting        Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  projectContact ProjectContact?     @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
-  actionItems    MeetingActionItem[]
+  meeting            Meeting                    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  projectContact     ProjectContact?            @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
+  mergedInto         MeetingParticipant?        @relation("MeetingParticipantMerge", fields: [mergedIntoParticipantId], references: [id], onDelete: Restrict)
+  mergedParticipants MeetingParticipant[]       @relation("MeetingParticipantMerge")
+  actionItems        MeetingActionItem[]
   transcriptSegments MeetingTranscriptSegment[]
 
   @@index([meetingId])
+  @@index([meetingId, isActive])
 }
 
 // Action items extracted from meeting transcripts by Claude (and manually added).
@@ -1236,14 +1247,14 @@ model MeetingActionItem {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  bid         Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  meeting     Meeting?            @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  assignedTo  MeetingParticipant? @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  bid             Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meeting         Meeting?               @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignedTo      MeetingParticipant?    @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
   // Slice 1 OAC bridge: a promoted action item's TrackedItem (at most one —
   // TrackedItem.sourceMeetingActionItemId is unique). Promotion never edits
   // or deletes this row; it remains the source evidence.
-  trackedItem TrackedItem?
-  commitments MeetingCommitment[]
+  trackedItem     TrackedItem?
+  commitments     MeetingCommitment[]
   registerEntries MeetingRegisterEntry[]
 
   @@index([bidId])
@@ -4277,7 +4288,7 @@ model TrackedItemAttachment {
 }
 
 model DesignIntentChange {
-  id                  Int      @id @default(autoincrement())
+  id                  Int                    @id @default(autoincrement())
   meetingId           Int
   bidId               Int
   changeText          String
@@ -4286,21 +4297,21 @@ model DesignIntentChange {
   severity            String
   sourceQuote         String?
   speakerLabel        String?
-  state               String   @default("PROPOSED")
-  extractedAt         DateTime @default(now())
+  state               String                 @default("PROPOSED")
+  extractedAt         DateTime               @default(now())
   confirmedBy         String?
   dismissedReason     String?
   linkedTrackedItemId Int?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  meeting    Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  bid        Bid          @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  linkedItem TrackedItem? @relation(fields: [linkedTrackedItemId], references: [id], onDelete: SetNull)
-  registerEntries MeetingRegisterEntry[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  meeting             Meeting                @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid                 Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  linkedItem          TrackedItem?           @relation(fields: [linkedTrackedItemId], references: [id], onDelete: SetNull)
+  registerEntries     MeetingRegisterEntry[]
 }
 
 model MeetingCommitment {
-  id                 Int       @id @default(autoincrement())
+  id                 Int                    @id @default(autoincrement())
   meetingId          Int
   bidId              Int
   committedBy        String
@@ -4309,18 +4320,18 @@ model MeetingCommitment {
   duePhrase          String?
   dueDate            DateTime?
   sourceQuote        String?
-  status             String    @default("PROPOSED")
+  status             String                 @default("PROPOSED")
   confirmedBy        String?
   fulfilledBy        String?
   dismissedReason    String?
   linkedActionItemId Int?
-  extractedAt        DateTime  @default(now())
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  meeting          Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  bid              Bid          @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  linkedActionItem MeetingActionItem? @relation(fields: [linkedActionItemId], references: [id], onDelete: SetNull)
-  registerEntries  MeetingRegisterEntry[]
+  extractedAt        DateTime               @default(now())
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  meeting            Meeting                @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  bid                Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  linkedActionItem   MeetingActionItem?     @relation(fields: [linkedActionItemId], references: [id], onDelete: SetNull)
+  registerEntries    MeetingRegisterEntry[]
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -4342,7 +4353,7 @@ model MeetingCommitment {
 // deactivates the original row (retained forever, still citable) and
 // inserts replacements carrying splitFromSegmentId + fractional sortKey.
 model MeetingTranscriptSegment {
-  id                   Int     @id @default(autoincrement())
+  id                   Int      @id @default(autoincrement())
   meetingId            Int
   bidId                Int
   segmentIndex         Int // position in the original materialization order
@@ -4353,18 +4364,18 @@ model MeetingTranscriptSegment {
   originalText         String // frozen at materialization — never updated
   currentSpeakerLabel  String? // correction overlay; starts equal to original
   currentText          String // correction overlay; starts equal to original
-  isUnknownSpeaker     Boolean @default(false)
-  isActive             Boolean @default(true) // false only when superseded by a split
+  isUnknownSpeaker     Boolean  @default(false)
+  isActive             Boolean  @default(true) // false only when superseded by a split
   splitFromSegmentId   Int?
   participantId        Int? // resolved current speaker identity
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  meeting     Meeting                    @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  bid         Bid                        @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  participant MeetingParticipant?        @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  splitFrom   MeetingTranscriptSegment?  @relation("SegmentSplit", fields: [splitFromSegmentId], references: [id], onDelete: SetNull)
-  splitInto   MeetingTranscriptSegment[] @relation("SegmentSplit")
+  meeting         Meeting                    @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  bid             Bid                        @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  participant     MeetingParticipant?        @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  splitFrom       MeetingTranscriptSegment?  @relation("SegmentSplit", fields: [splitFromSegmentId], references: [id], onDelete: SetNull)
+  splitInto       MeetingTranscriptSegment[] @relation("SegmentSplit")
   registerEntries MeetingRegisterEntry[]
 
   @@index([meetingId, sortKey])
@@ -4396,8 +4407,8 @@ model MeetingTranscriptCorrection {
   correctedBy          String // session actor — REQUIRED; an authorless correction must be impossible
   createdAt            DateTime @default(now())
 
-  meeting Meeting                   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  bid     Bid                       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  bid     Bid     @relation(fields: [bidId], references: [id], onDelete: Restrict)
 
   @@index([meetingId, createdAt])
   @@index([bidId])
@@ -4460,23 +4471,23 @@ model MeetingRegisterEntry {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  meeting           Meeting                   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  bid               Bid                       @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  segment           MeetingTranscriptSegment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
-  extractionRun     MeetingExtractionRun?     @relation(fields: [extractionRunId], references: [id], onDelete: SetNull)
-  supersededByRun   MeetingExtractionRun?     @relation("RegisterEntrySupersededByRun", fields: [supersededByRunId], references: [id], onDelete: SetNull)
-  supersededByEntry MeetingRegisterEntry?     @relation("RegisterEntrySupersession", fields: [supersededByEntryId], references: [id], onDelete: SetNull)
-  supersededEntries MeetingRegisterEntry[]    @relation("RegisterEntrySupersession")
-  mergedIntoEntry   MeetingRegisterEntry?     @relation("RegisterEntryMerge", fields: [mergedIntoEntryId], references: [id], onDelete: SetNull)
-  mergedEntries     MeetingRegisterEntry[]    @relation("RegisterEntryMerge")
-  relatedPriorEntry MeetingRegisterEntry?     @relation("RegisterEntryContinuity", fields: [relatedPriorEntryId], references: [id], onDelete: SetNull)
-  relatedLaterEntries MeetingRegisterEntry[]  @relation("RegisterEntryContinuity")
-  linkedActionItem  MeetingActionItem?        @relation(fields: [linkedActionItemId], references: [id], onDelete: SetNull)
-  linkedCommitment  MeetingCommitment?        @relation(fields: [linkedCommitmentId], references: [id], onDelete: SetNull)
-  linkedDesignChange DesignIntentChange?      @relation(fields: [linkedDesignChangeId], references: [id], onDelete: SetNull)
-  linkedTrackedItem TrackedItem?              @relation("RegisterEntryOpsLink", fields: [linkedTrackedItemId], references: [id], onDelete: SetNull)
-  originatedItem    TrackedItem?              @relation("TrackedItemOriginatingRegisterEntry")
-  revisions         MeetingRegisterEntryRevision[]
+  meeting             Meeting                        @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  bid                 Bid                            @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  segment             MeetingTranscriptSegment?      @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  extractionRun       MeetingExtractionRun?          @relation(fields: [extractionRunId], references: [id], onDelete: SetNull)
+  supersededByRun     MeetingExtractionRun?          @relation("RegisterEntrySupersededByRun", fields: [supersededByRunId], references: [id], onDelete: SetNull)
+  supersededByEntry   MeetingRegisterEntry?          @relation("RegisterEntrySupersession", fields: [supersededByEntryId], references: [id], onDelete: SetNull)
+  supersededEntries   MeetingRegisterEntry[]         @relation("RegisterEntrySupersession")
+  mergedIntoEntry     MeetingRegisterEntry?          @relation("RegisterEntryMerge", fields: [mergedIntoEntryId], references: [id], onDelete: SetNull)
+  mergedEntries       MeetingRegisterEntry[]         @relation("RegisterEntryMerge")
+  relatedPriorEntry   MeetingRegisterEntry?          @relation("RegisterEntryContinuity", fields: [relatedPriorEntryId], references: [id], onDelete: SetNull)
+  relatedLaterEntries MeetingRegisterEntry[]         @relation("RegisterEntryContinuity")
+  linkedActionItem    MeetingActionItem?             @relation(fields: [linkedActionItemId], references: [id], onDelete: SetNull)
+  linkedCommitment    MeetingCommitment?             @relation(fields: [linkedCommitmentId], references: [id], onDelete: SetNull)
+  linkedDesignChange  DesignIntentChange?            @relation(fields: [linkedDesignChangeId], references: [id], onDelete: SetNull)
+  linkedTrackedItem   TrackedItem?                   @relation("RegisterEntryOpsLink", fields: [linkedTrackedItemId], references: [id], onDelete: SetNull)
+  originatedItem      TrackedItem?                   @relation("TrackedItemOriginatingRegisterEntry")
+  revisions           MeetingRegisterEntryRevision[]
 
   @@index([meetingId, entryType])
   @@index([meetingId, reviewState])
@@ -4502,8 +4513,8 @@ model MeetingRegisterEntryRevision {
   reason          String?
   createdAt       DateTime @default(now())
 
-  entry MeetingRegisterEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  bid   Bid                  @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  entry MeetingRegisterEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  bid   Bid                  @relation(fields: [bidId], references: [id], onDelete: Restrict)
 
   @@index([entryId, createdAt])
   @@index([bidId])
@@ -4539,8 +4550,8 @@ model MeetingExtractionRun {
   appliedBy       String?
   appliedAt       DateTime?
 
-  meeting           Meeting                @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  bid               Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meeting           Meeting                @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  bid               Bid                    @relation(fields: [bidId], references: [id], onDelete: Restrict)
   entries           MeetingRegisterEntry[]
   supersededEntries MeetingRegisterEntry[] @relation("RegisterEntrySupersededByRun")
 
@@ -4568,8 +4579,8 @@ model MeetingMinutesRevision {
   supersedesRevisionId Int?     @unique // self-FK, set-once, SetNull
   createdAt            DateTime @default(now())
 
-  meeting            Meeting                 @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  bid                Bid                     @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meeting            Meeting                 @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  bid                Bid                     @relation(fields: [bidId], references: [id], onDelete: Restrict)
   supersedesRevision MeetingMinutesRevision? @relation("MinutesSupersedes", fields: [supersedesRevisionId], references: [id], onDelete: SetNull)
   supersededBy       MeetingMinutesRevision? @relation("MinutesSupersedes")
 
