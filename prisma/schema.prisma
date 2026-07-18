@@ -85,6 +85,8 @@ model Trade {
   drawingSheets        DrawingSheet[]         @relation("DrawingSheetTrade")
   matchedDrawingSheets DrawingSheet[]         @relation("MatchedDrawingSheet")
   trackedItems         TrackedItem[]
+  leadTrackedItems     TrackedItem[]           @relation("TrackedItemLeadTrade")
+  responseAssignments TrackedItemTradeAssignment[]
 }
 
 model Bid {
@@ -176,6 +178,13 @@ model Bid {
   registerEntryRevisions    MeetingRegisterEntryRevision[]
   extractionRuns            MeetingExtractionRun[]
   minutesRevisions          MeetingMinutesRevision[]
+  reportObservations          ReportObservation[]
+  trackedItemTradeAssignments TrackedItemTradeAssignment[]
+  responsePackages            ResponsePackage[]
+  responsePackageItems        ResponsePackageItem[]
+  tradeResponseRevisions      TradeResponseRevision[]
+  tradeResponseAttachments    TradeResponseAttachment[]
+  responseAccessTokens        ResponseAccessToken[]
 }
 
 model BidSubmission {
@@ -303,6 +312,8 @@ model Subcontractor {
   estimateUploads    EstimateUpload[]
   buyoutItems        BuyoutItem[]
   submittalItems     SubmittalItem[]
+  responsibleTrackedItems TrackedItem[]   @relation("TrackedItemResponsibleContractor")
+  responsePackages        ResponsePackage[]
 }
 
 model SubcontractorTrade {
@@ -3999,6 +4010,10 @@ model TrackedItem {
   assigneeEmail    String?
   projectContactId Int?
   tradeId          Int?
+  leadTradeId      Int?
+  responsibleContractorId Int?
+  gcInternalResponsibility Boolean @default(false)
+  consultantDiscipline String?
   dueDate          DateTime?
   carriedFromDate  String? // ISO date — mirrors MeetingActionItem.carriedFromDate
 
@@ -4046,6 +4061,8 @@ model TrackedItem {
   bid                         Bid                     @relation(fields: [bidId], references: [id], onDelete: Cascade)
   projectContact              ProjectContact?         @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
   trade                       Trade?                  @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  leadTrade                   Trade?                  @relation("TrackedItemLeadTrade", fields: [leadTradeId], references: [id], onDelete: SetNull)
+  responsibleContractor      Subcontractor?          @relation("TrackedItemResponsibleContractor", fields: [responsibleContractorId], references: [id], onDelete: SetNull)
   sourceMeeting               Meeting?                @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
   sourceMeetingActionItem     MeetingActionItem?      @relation(fields: [sourceMeetingActionItemId], references: [id], onDelete: SetNull)
   sourceSpecSection           SpecSection?            @relation(fields: [sourceSpecSectionId], references: [id], onDelete: SetNull)
@@ -4058,10 +4075,15 @@ model TrackedItem {
   comments                    TrackedItemComment[]
   attachments                 TrackedItemAttachment[]
   linkedDesignChanges         DesignIntentChange[]
+  reportObservations          ReportObservation[]
+  tradeAssignments           TrackedItemTradeAssignment[]
+  responsePackageItems       ResponsePackageItem[]
 
   @@index([bidId])
   @@index([bidId, kind])
   @@index([bidId, status])
+  @@index([bidId, leadTradeId])
+  @@index([bidId, responsibleContractorId])
   @@index([dueDate])
 }
 
@@ -4113,6 +4135,7 @@ model FieldReport {
 
   bid          Bid           @relation(fields: [bidId], references: [id], onDelete: Cascade)
   trackedItems TrackedItem[]
+  observations ReportObservation[]
 
   @@index([bidId])
   @@index([bidId, reportDate])
@@ -4154,6 +4177,7 @@ model ConsultantReport {
   bid          Bid                        @relation(fields: [bidId], references: [id], onDelete: Cascade)
   revisions    ConsultantReportRevision[]
   observations ConsultantObservation[]
+  reportObservations ReportObservation[]
 
   @@index([bidId])
   @@index([bidId, status])
@@ -4285,6 +4309,162 @@ model TrackedItemAttachment {
   trackedItem TrackedItem @relation(fields: [trackedItemId], references: [id], onDelete: Cascade)
 
   @@index([trackedItemId])
+}
+
+// ── R2 Build 2 — Field Reports & Trade Response ───────────────────────────
+// Human-authored source observation. Verbatim source fields may be edited
+// only while disposition=OPEN; leaving OPEN freezes them permanently.
+model ReportObservation {
+  id                 Int       @id @default(autoincrement())
+  bidId              Int
+  sourceKind         String    // field_report | consultant_report | direct_entry
+  fieldReportId      Int?
+  consultantReportId Int?
+  observationText    String
+  sourceLocator      String?
+  observedAt         DateTime?
+  disposition        String    @default("OPEN")
+  dispositionBy      String?
+  dispositionAt      DateTime?
+  dispositionReason  String?
+  registerItemId     Int?
+  createdBy          String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  bid              Bid               @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  fieldReport      FieldReport?      @relation(fields: [fieldReportId], references: [id], onDelete: SetNull)
+  consultantReport ConsultantReport? @relation(fields: [consultantReportId], references: [id], onDelete: SetNull)
+  registerItem     TrackedItem?       @relation(fields: [registerItemId], references: [id], onDelete: SetNull)
+
+  @@index([bidId, disposition])
+  @@index([fieldReportId])
+  @@index([consultantReportId])
+  @@index([registerItemId])
+}
+
+model TrackedItemTradeAssignment {
+  id            Int    @id @default(autoincrement())
+  bidId         Int
+  trackedItemId Int
+  tradeId       Int
+  role          String @default("SUPPORTING") // LEAD | SUPPORTING
+
+  bid         Bid         @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  trackedItem TrackedItem @relation(fields: [trackedItemId], references: [id], onDelete: Cascade)
+  trade       Trade       @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@unique([trackedItemId, tradeId])
+  @@index([bidId, trackedItemId])
+}
+
+model ResponsePackage {
+  id              Int       @id @default(autoincrement())
+  bidId           Int
+  packageNumber   Int
+  title           String
+  contractorId    Int?
+  status          String    @default("DRAFT")
+  issuedAt        DateTime?
+  issuedBy        String?
+  responseDueDate DateTime?
+  manualChannel   String?   // EMAIL | PROCORE | OTHER; recorded alternative to portal token
+  voidedBy        String?
+  voidedAt        DateTime?
+  createdBy       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  bid        Bid            @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  contractor Subcontractor? @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+  items      ResponsePackageItem[]
+  tokens     ResponseAccessToken[]
+
+  @@unique([bidId, packageNumber])
+  @@index([bidId, status])
+  @@index([bidId, contractorId])
+}
+
+model ResponsePackageItem {
+  id            Int     @id @default(autoincrement())
+  packageId     Int
+  bidId         Int
+  trackedItemId Int
+  displayNumber String?
+
+  package     ResponsePackage       @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  bid         Bid                   @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  trackedItem TrackedItem           @relation(fields: [trackedItemId], references: [id], onDelete: Restrict)
+  responses   TradeResponseRevision[]
+
+  @@unique([packageId, trackedItemId])
+  @@index([bidId, packageId])
+  @@index([bidId, trackedItemId])
+}
+
+// Contractor-controlled response fields are immutable after create. GC review
+// fields may be set through the dedicated review service only.
+model TradeResponseRevision {
+  id                     Int       @id @default(autoincrement())
+  bidId                  Int
+  packageItemId          Int
+  revisionIndex          Int       @default(0)
+  responderName          String
+  responderCompany       String?
+  channel                String    @default("PORTAL")
+  responseType           String
+  responseText           String
+  proposedCompletionDate DateTime?
+  actualCompletionDate   DateTime?
+  submittedAt            DateTime  @default(now())
+  enteredBy              String?
+  gcReview               String    @default("PENDING")
+  gcReviewBy             String?
+  gcReviewAt             DateTime?
+  gcCommentary           String?
+
+  bid         Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  packageItem ResponsePackageItem @relation(fields: [packageItemId], references: [id], onDelete: Restrict)
+  attachments TradeResponseAttachment[]
+
+  @@unique([packageItemId, revisionIndex])
+  @@index([bidId, packageItemId])
+}
+
+model TradeResponseAttachment {
+  id                 Int      @id @default(autoincrement())
+  responseRevisionId Int
+  bidId              Int
+  storageKey         String
+  fileName           String
+  mimeType           String
+  byteSize           Int
+  createdAt          DateTime @default(now())
+
+  responseRevision TradeResponseRevision @relation(fields: [responseRevisionId], references: [id], onDelete: Restrict)
+  bid              Bid                   @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([bidId, responseRevisionId])
+  @@unique([responseRevisionId, storageKey])
+}
+
+model ResponseAccessToken {
+  id              String    @id @default(cuid())
+  bidId           Int
+  packageId       Int
+  tokenHash       String    @unique
+  contractorEmail String?
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  createdBy       String
+  createdAt       DateTime  @default(now())
+  lastUsedAt      DateTime?
+
+  bid     Bid             @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  package ResponsePackage @relation(fields: [packageId], references: [id], onDelete: Restrict)
+
+  @@index([bidId, packageId])
+  @@index([expiresAt])
 }
 
 model DesignIntentChange {

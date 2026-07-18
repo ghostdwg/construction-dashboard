@@ -1,6 +1,10 @@
 import '@/lib/env'
 import { PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
+import {
+  assertResponseAccessTokenPatch,
+  assertTradeResponseRevisionPatch,
+} from "@/lib/services/tradeResponse/immutability";
 
 // Phase 1B — ConsultantDispositionRecord is APPEND-ONLY at the client
 // level. Prisma 7 removed $use middleware; the query extension below is
@@ -37,6 +41,43 @@ function createPrisma() {
       meetingMinutesRevision: appendOnly(
         "MeetingMinutesRevision is immutable: an amendment is a new revision, never an edit"
       ),
+      tradeResponseRevision: {
+        async update({ args, query }) {
+          assertTradeResponseRevisionPatch(args.data as Record<string, unknown>);
+          return query(args);
+        },
+        updateMany: () => {
+          throw new Error("TradeResponseRevision response content is immutable: submit a new revision");
+        },
+        upsert: () => {
+          throw new Error("TradeResponseRevision response content is immutable: submit a new revision");
+        },
+        delete: () => {
+          throw new Error("TradeResponseRevision is append-only");
+        },
+        deleteMany: () => {
+          throw new Error("TradeResponseRevision is append-only");
+        },
+      },
+      responseAccessToken: {
+        async update({ args, query }) {
+          assertResponseAccessTokenPatch(args.data as Record<string, unknown>);
+          return query(args);
+        },
+        async updateMany({ args, query }) {
+          assertResponseAccessTokenPatch(args.data as Record<string, unknown>);
+          return query(args);
+        },
+        upsert: () => {
+          throw new Error("ResponseAccessToken credential scope is immutable: rotate or revoke the token");
+        },
+        delete: () => {
+          throw new Error("ResponseAccessToken history is retained; revoke the token");
+        },
+        deleteMany: () => {
+          throw new Error("ResponseAccessToken history is retained; revoke the token");
+        },
+      },
     },
   });
 }
