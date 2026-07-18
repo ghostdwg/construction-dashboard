@@ -178,6 +178,10 @@ const TABLE_NAMES = [
 ] as const;
 
 export function buildPrisma(): MockPrisma {
+  // SQLite serializes writers. Model that here so a losing concurrent
+  // transaction cannot restore its snapshot over a winner that already
+  // committed (the old unconstrained mock allowed exactly that false race).
+  let transactionTail: Promise<void> = Promise.resolve();
   const prisma = {
     meeting: makeTable(),
     meetingParticipant: makeTable({
@@ -230,6 +234,12 @@ export function buildPrisma(): MockPrisma {
     // (mutation + history + audit commit together or not at all) exercise
     // real transactional behavior against the fixture.
     $transaction: async (fn) => {
+      const previous = transactionTail;
+      let release!: () => void;
+      transactionTail = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
       const snapshots = new Map<string, Row[]>();
       for (const name of TABLE_NAMES) {
         snapshots.set(name, (prisma as Record<string, Table>)[name].rows.map((r) => ({ ...r })));
@@ -242,6 +252,8 @@ export function buildPrisma(): MockPrisma {
           table.rows.splice(0, table.rows.length, ...(snapshots.get(name) ?? []));
         }
         throw err;
+      } finally {
+        release();
       }
     },
   };

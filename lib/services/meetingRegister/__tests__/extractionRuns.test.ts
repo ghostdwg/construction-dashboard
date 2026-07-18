@@ -462,4 +462,53 @@ describe("discardRun", () => {
     // register untouched
     expect(state.prisma.meetingRegisterEntry.rows).toHaveLength(2);
   });
+
+  it("claims PREVIEWED atomically so concurrent double-discard has one winner", async () => {
+    await recordAnalysisRun(1, 5, analysis, ACTOR);
+    const rerun = await recordAnalysisRun(1, 5, changedAnalysis, ACTOR);
+    const runId = rerun.ok ? rerun.value.runId : -1;
+
+    const results = await Promise.all([
+      discardRun(1, 5, runId, ACTOR),
+      discardRun(1, 5, runId, ACTOR),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toHaveLength(1);
+    expect(state.prisma.meetingExtractionRun.rows[1]).toMatchObject({
+      status: "DISCARDED",
+      analysisJson: "{}",
+    });
+    expect(
+      state.prisma.auditEvent.rows.filter(
+        (row) => row.action === "extraction_run_discarded" && row.subjectId === String(runId),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("gives apply versus discard one terminal winner and one matching audit", async () => {
+    await recordAnalysisRun(1, 5, analysis, ACTOR);
+    const rerun = await recordAnalysisRun(1, 5, changedAnalysis, ACTOR);
+    const runId = rerun.ok ? rerun.value.runId : -1;
+
+    const results = await Promise.all([
+      applyRun(1, 5, runId, ACTOR),
+      discardRun(1, 5, runId, ACTOR),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toHaveLength(1);
+    const run = state.prisma.meetingExtractionRun.rows[1];
+    expect(["APPLIED", "DISCARDED"]).toContain(run.status);
+    expect(run.analysisJson).toBe("{}");
+    const terminalAudits = state.prisma.auditEvent.rows.filter(
+      (row) =>
+        row.subjectId === String(runId) &&
+        (row.action === "extraction_run_applied" || row.action === "extraction_run_discarded"),
+    );
+    expect(terminalAudits).toHaveLength(1);
+    expect(terminalAudits[0].action).toBe(
+      run.status === "APPLIED" ? "extraction_run_applied" : "extraction_run_discarded",
+    );
+  });
 });

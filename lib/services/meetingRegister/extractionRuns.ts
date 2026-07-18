@@ -669,20 +669,31 @@ export async function discardRun(
     return { ok: false, error: `Cannot discard a ${run.status} run` };
   }
   let envelope: AuditEnvelope | null = null;
-  await prisma.$transaction(async (tx) => {
-    await tx.meetingExtractionRun.update({
-      where: { id: run.id },
-      data: { status: "DISCARDED", analysisJson: "{}" },
+  try {
+    await prisma.$transaction(async (tx) => {
+      const claim = await tx.meetingExtractionRun.updateMany({
+        where: { id: run.id, meetingId, bidId, status: "PREVIEWED" },
+        data: { status: "DISCARDED" },
+      });
+      if (claim.count !== 1) throw new RunClaimError("Run is no longer PREVIEWED");
+
+      await tx.meetingExtractionRun.update({
+        where: { id: run.id },
+        data: { analysisJson: "{}" },
+      });
+      envelope = await writeRegisterAuditTx(tx, {
+        action: "extraction_run_discarded",
+        decision: "discarded",
+        subjectKind: "MeetingExtractionRun",
+        subjectId: run.id,
+        actor,
+        payload: { bidId, meetingId, extractionRunId: run.id },
+      });
     });
-    envelope = await writeRegisterAuditTx(tx, {
-      action: "extraction_run_discarded",
-      decision: "discarded",
-      subjectKind: "MeetingExtractionRun",
-      subjectId: run.id,
-      actor,
-      payload: { bidId, meetingId, extractionRunId: run.id },
-    });
-  });
+  } catch (error) {
+    if (error instanceof RunClaimError) return { ok: false, error: error.message };
+    throw error;
+  }
   emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: { runId: run.id } };
 }
