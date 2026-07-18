@@ -579,7 +579,10 @@ export async function writeMeetingAnalysisTx(
     // source links. Only genuinely new canonical items are inserted; an AI
     // rerun never deletes or rewrites an existing action-item row.
     const existingActionItems = await tx.meetingActionItem.findMany({
-      where: { meetingId, sourceText: { not: null } },
+      // Evidence text is optional in the frozen analysis contract. Include
+      // every meeting-owned row so an unquoted action can still retain its
+      // identity and human lifecycle state on a later extraction.
+      where: { meetingId },
       orderBy: { id: "asc" },
     });
     const reusedActionItemIds = new Set<number>();
@@ -616,6 +619,7 @@ export async function writeMeetingAnalysisTx(
           carriedFromDate: item.carriedFromDate,
           priority: "MEDIUM",
           status: "OPEN",
+          source: "meeting",
         },
       });
       result.actionItemIds.push(createdItem.id);

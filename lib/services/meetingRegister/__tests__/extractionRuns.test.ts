@@ -132,6 +132,27 @@ describe("recordAnalysisRun", () => {
     },
   );
 
+  it("preserves an unquoted action item across rerun and apply", async () => {
+    const unquotedAnalysis: MeetingAnalysis = {
+      ...analysis,
+      section5: [{ ...analysis.section5[0], evidenceText: null }],
+    };
+    await recordAnalysisRun(1, 5, unquotedAnalysis, ACTOR);
+    const actionId = state.prisma.meetingActionItem.rows[0].id as number;
+    await state.prisma.meetingActionItem.update({
+      where: { id: actionId },
+      data: { status: "CLOSED", notes: "confirmed without a quote" },
+    });
+    const before = { ...state.prisma.meetingActionItem.rows[0] };
+
+    const rerun = await recordAnalysisRun(1, 5, unquotedAnalysis, ACTOR);
+    const applied = await applyRun(1, 5, rerun.ok ? rerun.value.runId : -1, ACTOR);
+
+    expect(applied.ok).toBe(true);
+    expect(state.prisma.meetingActionItem.rows).toHaveLength(1);
+    expect(state.prisma.meetingActionItem.rows[0]).toEqual(before);
+  });
+
   it.each(["lifecycle", "register", "audit"])(
     "rolls initial analysis across every table back on %s failure",
     async (failure) => {
