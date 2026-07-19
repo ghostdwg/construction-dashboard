@@ -4,15 +4,28 @@ Branch: `gwx/r2-auth-regression-pack` · Base: `c1312a7` · Owner: Builder-2 lan
 (independent of the paused Codex SOL integration lane at
 `gwx-sol-r2-ledger-integration`).
 
+**Refreshed:** commit `59960cc` (`gwx/r2-auth-regression-pack-refresh`, on top
+of `29f141b`) replaced the two Area F assertions that pinned the former
+fail-open behavior of `acceptObservationAsNewItem` and
+`linkObservationToItem` with `REQUIRED FAIL-CLOSED` assertions matching the
+same in-transaction atomicity already proven for TrackedItem/FieldReport, and
+added a third, previously-uncovered assertion for `relinkObservation`. This
+matrix (`gwx/r2-auth-regression-coverage-refresh @ 59960cc`) reflects that
+refresh. Only `__tests__/r2-regression/auditFailure.test.ts` changed in the
+refresh commit — Areas A–E, G, H below are unchanged from the original pack.
+
 All tests live under `__tests__/r2-regression/`. Run: `npx vitest run
 __tests__/r2-regression/`. Every test uses in-memory mocked Prisma — no
 staging, no production, no live provider, no real DB.
 
 Status legend: **PASS** (proves correct behavior, currently true) ·
 **EXPECTED PRODUCT FAILURE** (proves a real, reproducible gap — pinned, not
-fixed here) · **INFRASTRUCTURE BLOCKER** (could not be exercised in this
-environment) · **UNKNOWN** (not implemented / not testable on this branch) ·
-**N/A** (functionality does not exist on this branch — see note).
+fixed here) · **REQUIRED FAIL-CLOSED (branch-local expected failure)** (asserts
+the target fail-closed contract; this test-only branch's own product code is
+deliberately unfixed, so the assertion fails here by design — see Area F) ·
+**INFRASTRUCTURE BLOCKER** (could not be exercised in this environment) ·
+**UNKNOWN** (not implemented / not testable on this branch) · **N/A**
+(functionality does not exist on this branch — see note).
 
 ## A. Manual Meeting Register provenance
 
@@ -103,25 +116,85 @@ header of `auditFailure.test.ts` for full citations):
   mutation's `$transaction` — fail-closed.
 - Meeting Register: `MeetingRegisterEntryRevision` (domain-specific) +
   `AuditEvent`, both written in the same transaction — fail-closed.
-- Consultant Report / Observation: legacy `emitAuditEvent()`/`audit()` path
-  — wrapped in try/catch, swallows failures — **fail-open**.
+- Consultant Report / Observation accept/link/relink: the mandatory
+  audit/history record is now **required** to commit atomically with the
+  product mutation — fail-closed is the target contract asserted by the three
+  `REQUIRED FAIL-CLOSED` rows below (refreshed by commit `59960cc`, replacing
+  the two rows that previously pinned fail-open behavior as an
+  `EXPECTED PRODUCT FAILURE`).
 
-| Risk | Service | Test file | Expected behavior | Actual | Status | Area | Rerun-safe? |
-|---|---|---|---|---|---|---|---|
-| Audit-store failure during TrackedItem create | `createTrackedItem` | `auditFailure.test.ts` | Throws, zero rows persist | Confirmed | PASS | `lib/services/trackedItems/index.ts` | Yes |
-| Update on nonexistent item emits an audit row anyway | `updateTrackedItem` | same | Zero audit rows | Zero | PASS | same | Yes |
-| Invalid patch (bad priority) emits an audit row anyway | same | same | Audit count unchanged | Unchanged | PASS | same | Yes |
-| Audit-store failure during FieldReport create | `createFieldReport` | same | Throws, zero rows persist | Confirmed | PASS | `lib/services/fieldReports/index.ts` | Yes |
-| Stdout telemetry failure un-persists an already-committed mutation | `createTrackedItem` | same | DB rows remain durable regardless of telemetry outcome | Rows present despite a thrown telemetry call | PASS | `lib/observability/audit.ts` | Yes |
-| **`acceptObservationAsNewItem` commits despite a broken audit store** | same | same | Ideally rolls back (parity with TrackedItem/FieldReport) | **Commits — TrackedItem created, observation state advanced, zero AuditEvent row** | **EXPECTED PRODUCT FAILURE** | `lib/services/consultantReports/observations.ts` + `index.ts`'s fail-open `audit()` | Yes — pins current behavior |
-| **`linkObservationToItem` commits despite a broken audit store** | same | same | Ideally rolls back | **Commits — link recorded, zero AuditEvent row** | **EXPECTED PRODUCT FAILURE** | same | Yes — pins current behavior |
+**Two environments, by design:**
+1. **This branch's own product code** (`lib/services/consultantReports/observations.ts`
+   on `gwx/r2-auth-regression-pack-refresh` / `gwx/r2-auth-regression-coverage-refresh`)
+   is **intentionally left unfixed** — mission scope for both the original
+   pack and the refresh was tests-only, no product-code changes. It still
+   routes accept/link/relink through the legacy `index.ts` `audit()` helper,
+   which wraps `emitAuditEvent()` in try/catch and swallows failures. The
+   three `REQUIRED FAIL-CLOSED` assertions therefore **fail on this branch by
+   design** — that failure is the expected mirror image of the finding they
+   replace, not a regression to fix here.
+2. **A disposable, uncommitted clone of the repaired SOL candidate**
+   (`gwx-sol-r2-ledger-integration @ 9b283b9`, built and torn down entirely
+   under `/tmp`, never touching the real SOL worktree) carries a fix: accept,
+   link, and relink run inside `prisma.$transaction(...)` and call
+   `writeConsultantAuditTx` (`lib/services/consultantReports/txAudit.ts`),
+   which does an unguarded `auditEvent.create` — a failure propagates and
+   Prisma rolls the whole transaction back, architecturally identical to the
+   TrackedItem/FieldReport pattern. Against that disposable candidate, all
+   three assertions pass. The SOL candidate itself remains **uncommitted,
+   unstaged, and blocked from commit approval** (see
+   `/tmp/gwx-r2-ledger-integration-repair/r2-targeted-blocker-repair-validation.md`)
+   — it is not committed, merged, approved, staged, or production-ready.
 
-**Product follow-up recommended** (not implemented here): migrate
+| Risk | Service | Test file | Expected behavior | Actual (this branch's own unfixed code) | Actual (disposable repaired SOL candidate) | Status | Area | Rerun-safe? |
+|---|---|---|---|---|---|---|---|---|
+| Audit-store failure during TrackedItem create | `createTrackedItem` | `auditFailure.test.ts` | Throws, zero rows persist | Confirmed | Confirmed | PASS | `lib/services/trackedItems/index.ts` | Yes |
+| Update on nonexistent item emits an audit row anyway | `updateTrackedItem` | same | Zero audit rows | Zero | Zero | PASS | same | Yes |
+| Invalid patch (bad priority) emits an audit row anyway | same | same | Audit count unchanged | Unchanged | Unchanged | PASS | same | Yes |
+| Audit-store failure during FieldReport create | `createFieldReport` | same | Throws, zero rows persist | Confirmed | Confirmed | PASS | `lib/services/fieldReports/index.ts` | Yes |
+| Stdout telemetry failure un-persists an already-committed mutation | `createTrackedItem` | same | DB rows remain durable regardless of telemetry outcome | Rows present despite a thrown telemetry call | Rows present despite a thrown telemetry call | PASS | `lib/observability/audit.ts` | Yes |
+| **`acceptObservationAsNewItem` rolls back entirely when AuditEvent writes are broken** | same | same | Rejects; zero TrackedItem row, observation stays `ENTERED`, zero AuditEvent row | **Fails — this branch's own code still commits fail-open** (expected, by design) | **Passes — rejects, zero TrackedItem row, `ENTERED`/`registerItemId: null` preserved, zero AuditEvent row** | **REQUIRED FAIL-CLOSED** (branch-local expected failure) | `lib/services/consultantReports/observations.ts` | Yes — assertion form is stable; only the branch under test differs |
+| **`linkObservationToItem` rolls back entirely when AuditEvent writes are broken** | same | same | Rejects; `ENTERED`/`registerItemId: null` preserved, zero AuditEvent row | **Fails — this branch's own code still commits fail-open** (expected, by design) | **Passes — rejects, prior state preserved, zero AuditEvent row** | **REQUIRED FAIL-CLOSED** (branch-local expected failure) | same | Yes |
+| **`relinkObservation` rolls back entirely when AuditEvent writes are broken (new — no prior dedicated coverage)** | same | same | Rejects; observation stays linked to the original item (no partial relink), no new AuditEvent row for the failed attempt | **Fails — this branch's own code still commits fail-open** (expected, by design) | **Passes — rejects, original link (item A) preserved, no new AuditEvent row** | **REQUIRED FAIL-CLOSED** (branch-local expected failure) | same | Yes |
+
+On this branch, running `npx vitest run __tests__/r2-regression/` produces
+**Test Files 1 failed \| 7 passed (8)**, **Tests 3 failed \| 65 passed (68)**
+— the 3 failures are exactly the 3 `REQUIRED FAIL-CLOSED` rows above, and are
+expected. Against the disposable repaired SOL candidate (full pack overlaid),
+the same run produces **Test Files 8 passed (8)**, **Tests 68 passed (68)**.
+
+**Product follow-up recommended** (not implemented on this test-only branch;
+already delivered on the disposable SOL candidate above, which is not yet
+committed anywhere): migrate
 `lib/services/consultantReports/observations.ts`'s state-changing mutations
 (accept/link/relink/dismiss/reinstate) to the same in-transaction
 `persistAuditEnvelope` pattern already proven in `trackedItems/index.ts` and
 `fieldReports/index.ts`. `setFormalResponse` in `formalResponse.ts` has the
 identical fail-open shape and should be covered by the same follow-up.
+
+### Builder-2 finding disposition
+
+- **Finding 1 — rerun durability, human-edited PENDING Meeting Register
+  entries not protected from supersession (Area C).** Not touched by this
+  refresh — the refresh's mission scope was limited to the two Consultant
+  Observation audit assertions plus adding relink coverage; Area C's own test
+  row is unchanged. Independent SOL-candidate validation reports this
+  **RESOLVED for supported application mutations**: revision-backed edits and
+  other durable operational evidence (non-machine/manual origin, tracked-item
+  link, prior/merge link, disposition evidence, creator evidence, promoted
+  state) survive preview and apply. That validation also states an
+  **unsupported direct database edit that writes no revision or other
+  durable evidence remains indistinguishable from a pristine machine
+  proposal** — this case is not, and must not be described as, protected.
+- **Finding 2 — `acceptObservationAsNewItem` audit fail-open.** **RESOLVED**
+  on the disposable repaired SOL candidate (transactional
+  `writeConsultantAuditTx`, confirmed by inspection and by the refreshed
+  assertion passing there). Not fixed on this test-only branch itself, by
+  design.
+- **Finding 3 — `linkObservationToItem` audit fail-open, including relink.**
+  **RESOLVED** on the disposable repaired SOL candidate for both link and
+  relink; both refreshed assertions pass there. Not fixed on this test-only
+  branch itself, by design.
 
 ## G. Duplicate promotion and provenance
 
@@ -156,26 +229,64 @@ anywhere in this pack.
 
 ## Summary
 
-- **PASS:** 65 of 67 new assertions' worth of behavior (grouped above by
-  risk row, not 1:1 with individual `it()` blocks — see the report for the
-  raw test/assertion count).
-- **EXPECTED PRODUCT FAILURE (pinned, not fixed):** 3 — human-edited PENDING
-  register entries not protected from rerun supersession; consultant
-  observation accept/link mutations are audit fail-open (2 mutations).
-- **INFRASTRUCTURE BLOCKER:** 1, resolved during this pass — a fresh
+As of the refresh (commit `59960cc`), the pack is **68** `it()` assertions
+across 8 files (was 67; the refresh replaced 2 Area F assertions with 3 —
+adding dedicated `relinkObservation` coverage that did not exist before). On
+this branch's own vitest run that is **65 raw-passing, 3 raw-failing (68
+total)** — matching the file-level result recorded in Area F. The categories
+below classify risk-row behavior (as in the original doc, not strictly 1:1
+with individual `it()` blocks, and not a strict partition of the 68); the
+Area C `EXPECTED PRODUCT FAILURE` row below is one of the 65 raw-passing
+tests (it pins current, undesired behavior with a currently-green assertion).
+None of Area F's 5 pre-existing PASS rows (TrackedItem/FieldReport/telemetry)
+changed in this refresh — only the two accept/link rows changed category
+(EXPECTED PRODUCT FAILURE → REQUIRED FAIL-CLOSED) and relink was added, so
+the PASS count is unchanged from the original doc.
+
+- **PASS (proves correct, desired behavior):** 65 risk rows (unchanged).
+- **REQUIRED FAIL-CLOSED, branch-local expected failure (Area F):** 3 —
+  `acceptObservationAsNewItem`, `linkObservationToItem`, and
+  `relinkObservation` audit-rollback assertions. These fail on this test-only
+  branch by design (its own `lib/services/consultantReports/observations.ts`
+  is deliberately unfixed) and are independently verified to **pass 3/3**
+  against a disposable, uncommitted clone of the repaired SOL candidate — see
+  Area F for the full disposition. This replaces the former
+  `EXPECTED PRODUCT FAILURE` entry for the same two mutations (accept/link),
+  which is superseded by the refresh.
+- **EXPECTED PRODUCT FAILURE (pinned, not fixed on this branch):** 1 —
+  human-edited PENDING register entries not protected from rerun supersession
+  (Area C). Unchanged by this refresh; see Builder-2 Finding 1 in Area F for
+  the SOL-candidate disposition of this same finding.
+- **INFRASTRUCTURE BLOCKER:** 1, resolved during the original pass — a fresh
   checkout's `node_modules`/generated Prisma client were absent
   (`npm install` + `npx prisma generate` fixed it; not a product defect, see
   the durable report).
 - **UNKNOWN / N/A:** 1 — Response Package tenant isolation, because the
   schema does not exist yet on this branch.
-- **PREEXISTING FAILURES:** 0 (once the Prisma client was generated, the
-  full pre-existing suite — 159 files / 1723 tests — passes cleanly).
+- **PREEXISTING FAILURES:** 0 (per the original delivery report, once the
+  Prisma client was generated, the full pre-existing suite — 159 files / 1723
+  tests — passed cleanly; not re-run as part of this refresh).
 
-Every PASS/EXPECTED-PRODUCT-FAILURE test in this pack uses only in-memory
-mocked Prisma and mocked auth/storage/provider seams — none of it depends on
-staging, production, or any branch-specific fixture beyond the R2 domain
-models already in `prisma/schema.prisma` at this branch's base commit. It is
-therefore safe to re-run unchanged against the eventual integrated branch,
-PROVIDED the integrated branch has not renamed/removed any of the imported
-service functions or route handlers listed above (a normal merge of
-already-reviewed, non-conflicting work should not do so).
+**Broader focused validation (disposable repaired SOL candidate only, not
+this branch):** with the refreshed pack overlaid, a combined focused run
+across `app/api/bids/[id]/consultant-reports`,
+`app/api/bids/[id]/tracked-items`, `lib/services/consultantReports`,
+`lib/services/trackedItems`, and `lib/services/fieldReports` reports
+**151/151 passing** (18 test files), including the SOL lane's own
+`observations.test.ts`, `spawn.test.ts`, and `linkObservation.test.ts`. This
+151/151 figure is a distinct scope from, and must not be merged with, the
+repair-validation report's separate "158/158" reconstructed-historical-scope
+figure (Meeting Register/upload/retention suites) — the two runs cover
+different file sets.
+
+Every PASS/EXPECTED-PRODUCT-FAILURE/REQUIRED-FAIL-CLOSED test in this pack
+uses only in-memory mocked Prisma and mocked auth/storage/provider seams —
+none of it depends on staging, production, or any branch-specific fixture
+beyond the R2 domain models already in `prisma/schema.prisma` at this
+branch's base commit. It is therefore safe to re-run unchanged against the
+eventual integrated branch, PROVIDED the integrated branch has not
+renamed/removed any of the imported service functions or route handlers
+listed above (a normal merge of already-reviewed, non-conflicting work should
+not do so). The disposable SOL candidate referenced throughout Area F remains
+**uncommitted, unstaged, and blocked from commit approval** as of the
+repair-validation report — nothing in this refresh changes that status.
