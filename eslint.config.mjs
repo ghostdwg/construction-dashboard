@@ -17,6 +17,10 @@ const eslintConfig = defineConfig([
     "sidecar_gpu/**",
     "gpu-service/**",
     "gpu_worker/**",
+    // R2 concurrency certification target — intentionally compiles/runs only
+    // against the disposable repaired candidate (fingerprint 1514fd2a…), never
+    // against this base tree, so it is excluded from base lint/typecheck.
+    "tests/certification/**",
   ]),
   {
     rules: {
