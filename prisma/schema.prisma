@@ -160,6 +160,7 @@ model Bid {
   meetingActionItems        MeetingActionItem[]
   decisions                 BidDecision[]
   procorePushes             ProcorePush[]
+  quickPushRuns             QuickPushRun[]
   rfiItems                  RfiItem[]
   backgroundJobs            BackgroundJob[]
   marketLeads               MarketLead[]
@@ -1318,6 +1319,29 @@ model ProcorePush {
 
   @@index([bidId])
   @@index([bidId, pushType])
+}
+
+// ── Tier F — Quick Push run state ────────────────────────────────────────────
+//
+// One row per Quick Push (award + 7-step Procore push) execution. status
+// tracks the run lifecycle; currentStep/stepResults record SSE-streamed
+// progress. Table is populated by the Quick Push flow; no other migration
+// alters it.
+
+model QuickPushRun {
+  id           Int       @id @default(autoincrement())
+  bidId        Int
+  status       String    @default("running")
+  currentStep  String?
+  stepResults  String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  error        String?
+
+  bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  @@index([bidId])
+  @@index([bidId, status])
 }
 
 // ── Tier F F3 — RFI items pulled from Procore ───────────────────────────────
@@ -4531,6 +4555,10 @@ model DesignIntentChange {
   bid                 Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
   linkedItem          TrackedItem?           @relation(fields: [linkedTrackedItemId], references: [id], onDelete: SetNull)
   registerEntries     MeetingRegisterEntry[]
+
+  @@index([bidId, state])
+  @@index([meetingId])
+  @@index([linkedTrackedItemId])
 }
 
 model MeetingCommitment {
@@ -4555,6 +4583,9 @@ model MeetingCommitment {
   bid                Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
   linkedActionItem   MeetingActionItem?     @relation(fields: [linkedActionItemId], references: [id], onDelete: SetNull)
   registerEntries    MeetingRegisterEntry[]
+
+  @@index([bidId, status, dueDate])
+  @@index([meetingId])
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
