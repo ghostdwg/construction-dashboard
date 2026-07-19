@@ -13,15 +13,31 @@
 //     domain-specific, append-only history table, written in the same
 //     transaction as AuditEvent (also fail-closed) — see
 //     lib/services/meetingRegister/{register,promotion,corrections}.ts.
-//   - Consultant Report / Observation: uses the LEGACY emitAuditEvent() /
-//     audit() path (lib/services/consultantReports/index.ts `audit()`),
-//     which wraps its call in try/catch and swallows any failure — FAIL
-//     OPEN. This is a real, reproducible asymmetry with the two fail-closed
-//     domains above, confirmed below.
+//   - Consultant Report / Observation accept/link/relink (state-changing
+//     mutations): the mandatory audit/history record is REQUIRED to commit
+//     atomically with the product mutation — a broken audit store must roll
+//     the whole mutation back — FAIL-CLOSED. This is the target contract;
+//     see the REQUIRED FAIL-CLOSED block below.
+//
+//     NOTE for whoever runs this pack against THIS branch's own
+//     lib/services/consultantReports/observations.ts: that code on this
+//     branch still routes accept/link/relink through the legacy
+//     lib/services/consultantReports/index.ts `audit()` helper, which wraps
+//     its call in try/catch and swallows failures (FAIL-OPEN) — the exact
+//     gap this pack originally exposed. The three assertions below will
+//     therefore FAIL against this branch's own unfixed product code; that is
+//     expected and is not a test bug. This is an independent, test-only
+//     branch (see CLAUDE.md/AGENTS.md scope) — it intentionally does not
+//     carry the product fix. These assertions exist to validate the
+//     REQUIRED contract against the repaired candidate that does carry the
+//     fix (in-transaction persistAuditEnvelope via a dedicated
+//     writeConsultantAuditTx helper, mirroring the trackedItems/fieldReports
+//     pattern). Do not weaken these assertions to make them pass on this
+//     branch — do not port the product fix into this test-only branch.
 //
 // Independent proofs (fresh fixtures, not copies of the existing
 // trackedItems.test.ts / fieldReports.test.ts atomicity tests) plus the
-// consultant-observation fail-open exposure the mission asked for.
+// consultant-observation fail-closed contract the mission asked for.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildPrisma, type MockPrisma } from "./support/mockPrisma";
@@ -37,7 +53,11 @@ process.env.OBSERVABILITY_AUDIT_QUIET = "true";
 
 import { createTrackedItem, updateTrackedItem } from "@/lib/services/trackedItems";
 import { createFieldReport } from "@/lib/services/fieldReports";
-import { acceptObservationAsNewItem, linkObservationToItem } from "@/lib/services/consultantReports/observations";
+import {
+  acceptObservationAsNewItem,
+  linkObservationToItem,
+  relinkObservation,
+} from "@/lib/services/consultantReports/observations";
 
 function breakAuditWrites() {
   const original = state.prisma.auditEvent.create;
@@ -120,42 +140,43 @@ describe("post-commit stdout telemetry is not part of the durability contract", 
   });
 });
 
-describe("EXPECTED PRODUCT FAILURE — ConsultantObservation mutations are audit FAIL-OPEN, unlike TrackedItem/FieldReport", () => {
-  // lib/services/consultantReports/index.ts `audit()` wraps emitAuditEvent()
-  // in try/catch and swallows any failure (a console.error only); the
-  // TrackedItem/observation-state mutation itself already committed via its
-  // own (audit-free) prisma call before `audit()` is even invoked. This is
-  // architecturally different from trackedItems/fieldReports, where the
-  // AuditEvent write is INSIDE the same $transaction as the mutation.
+describe("REQUIRED FAIL-CLOSED — ConsultantObservation accept/link/relink must roll back on audit failure, matching TrackedItem/FieldReport", () => {
+  // The repaired contract: accept-as-new-item, link, and relink each commit
+  // their product mutation and the mandatory AuditEvent/history record
+  // atomically (in-transaction, e.g. persistAuditEnvelope via a dedicated
+  // writeConsultantAuditTx-style helper) — the same fail-closed shape already
+  // proven above for TrackedItem/FieldReport. A broken audit store must
+  // reject the call and leave ZERO trace of the attempted mutation: no
+  // TrackedItem row, no observation state advance, no committed AuditEvent.
   //
-  // This test pins CURRENT behavior: the mutation SUCCEEDS even when the
-  // audit store is completely broken, silently losing the accountability
-  // trail. It is not a test-infrastructure bug and not a request to fix
-  // product code in this branch — it is the regression-pack's job to make
-  // this gap visible and durable across reruns.
-  it("acceptObservationAsNewItem COMMITS the new TrackedItem even when AuditEvent writes are broken (no rollback)", async () => {
+  // This inverts the pack's original pinned finding (accept/link previously
+  // committed fail-open through the legacy try/catch-wrapped `audit()`
+  // helper). See this file's header for why these assertions fail against
+  // this test-only branch's own unfixed product code, and pass against the
+  // repaired candidate.
+  it("acceptObservationAsNewItem rolls back entirely when AuditEvent writes are broken — zero TrackedItem row, observation state unchanged", async () => {
     const report = await state.prisma.consultantReport.create({ data: { bidId: BID_A, vendorName: "V", reportType: "OTHER_CONSULTANT_REPORT" } });
     const obs = await state.prisma.consultantObservation.create({
       data: { reportId: report.id, bidId: BID_A, observationText: "unauthorized deviation observed" },
     });
     const restore = breakAuditWrites();
 
-    const result = await acceptObservationAsNewItem(BID_A, report.id as number, obs.id as number, { title: "Fix deviation" }, ACTOR_A);
+    await expect(
+      acceptObservationAsNewItem(BID_A, report.id as number, obs.id as number, { title: "Fix deviation" }, ACTOR_A)
+    ).rejects.toThrow("simulated audit-store failure");
 
     restore();
 
-    // Contrast with TrackedItem/FieldReport (above): those REJECT (throw) and
-    // roll back to zero rows under the identical failure. This does not.
-    expect(result.ok).toBe(true);
-    expect(state.prisma.trackedItem.rows).toHaveLength(1);
-    expect(state.prisma.consultantObservation.rows[0].state).toBe("ACCEPTED_NEW_ITEM");
-    // And the accountability trail this mutation SHOULD have produced is
-    // simply absent — no AuditEvent row exists for an operational-register
-    // mutation that unambiguously happened.
+    // Contrast with the old fail-open behavior: no TrackedItem persists, and
+    // the observation never leaves ENTERED — the mutation and its
+    // accountability record commit together or not at all.
+    expect(state.prisma.trackedItem.rows).toHaveLength(0);
+    expect(state.prisma.consultantObservation.rows[0].state).toBe("ENTERED");
+    expect(state.prisma.consultantObservation.rows[0].registerItemId).toBeNull();
     expect(state.prisma.auditEvent.rows).toHaveLength(0);
   });
 
-  it("linkObservationToItem also COMMITS the link even when AuditEvent writes are broken (no rollback)", async () => {
+  it("linkObservationToItem rolls back entirely when AuditEvent writes are broken — link never recorded", async () => {
     const report = await state.prisma.consultantReport.create({ data: { bidId: BID_A, vendorName: "V", reportType: "OTHER_CONSULTANT_REPORT" } });
     const obs = await state.prisma.consultantObservation.create({
       data: { reportId: report.id, bidId: BID_A, observationText: "crack observed" },
@@ -163,13 +184,44 @@ describe("EXPECTED PRODUCT FAILURE — ConsultantObservation mutations are audit
     const item = await state.prisma.trackedItem.create({ data: { bidId: BID_A, kind: "JSO_ITEM", title: "Existing item" } });
     const restore = breakAuditWrites();
 
-    const result = await linkObservationToItem(BID_A, report.id as number, obs.id as number, item.id as number, ACTOR_A);
+    await expect(
+      linkObservationToItem(BID_A, report.id as number, obs.id as number, item.id as number, ACTOR_A)
+    ).rejects.toThrow("simulated audit-store failure");
 
     restore();
 
-    expect(result.ok).toBe(true);
-    expect(state.prisma.consultantObservation.rows[0].state).toBe("ACCEPTED_LINKED_ITEM");
-    expect(state.prisma.consultantObservation.rows[0].registerItemId).toBe(item.id);
+    expect(state.prisma.consultantObservation.rows[0].state).toBe("ENTERED");
+    expect(state.prisma.consultantObservation.rows[0].registerItemId).toBeNull();
     expect(state.prisma.auditEvent.rows).toHaveLength(0);
+  });
+
+  it("relinkObservation rolls back entirely when AuditEvent writes are broken — prior link untouched", async () => {
+    const report = await state.prisma.consultantReport.create({ data: { bidId: BID_A, vendorName: "V", reportType: "OTHER_CONSULTANT_REPORT" } });
+    const obs = await state.prisma.consultantObservation.create({
+      data: { reportId: report.id, bidId: BID_A, observationText: "crack observed" },
+    });
+    const itemA = await state.prisma.trackedItem.create({ data: { bidId: BID_A, kind: "JSO_ITEM", title: "First item" } });
+    const itemB = await state.prisma.trackedItem.create({ data: { bidId: BID_A, kind: "JSO_ITEM", title: "Second item" } });
+
+    // Establish the prior link with a healthy audit store first — only the
+    // relink attempt itself exercises the broken-audit path.
+    const linked = await linkObservationToItem(BID_A, report.id as number, obs.id as number, itemA.id as number, ACTOR_A);
+    expect(linked.ok).toBe(true);
+    const auditCountAfterLink = state.prisma.auditEvent.rows.length;
+
+    const restore = breakAuditWrites();
+
+    await expect(
+      relinkObservation(BID_A, report.id as number, obs.id as number, itemB.id as number, ACTOR_A)
+    ).rejects.toThrow("simulated audit-store failure");
+
+    restore();
+
+    // The relink correction must not partially apply: the observation stays
+    // linked to the FIRST item, and no new AuditEvent row was committed for
+    // the failed relink attempt.
+    expect(state.prisma.consultantObservation.rows[0].state).toBe("ACCEPTED_LINKED_ITEM");
+    expect(state.prisma.consultantObservation.rows[0].registerItemId).toBe(itemA.id);
+    expect(state.prisma.auditEvent.rows).toHaveLength(auditCountAfterLink);
   });
 });
