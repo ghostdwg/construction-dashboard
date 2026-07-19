@@ -33,11 +33,13 @@
  *      GWX_R2_EVIDENCE_OUT (write normalized evidence to this path).
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
-  mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync, writeFileSync, readFileSync,
+  copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
+  readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deterministicEvidence, sha256, scrub } from "./lib/normalize.mjs";
 
@@ -45,10 +47,10 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "../../..");
 const EXPECTED_FP = "1514fd2aecf99675d252089bce10b90af8a3b990742e4e5daf6d1f5e967e7760";
 const SOL = process.env.GWX_R2_SOL ?? "/opt/neuroglitch/worktrees/gwx-sol-r2-ledger-integration";
-const RUNS = Math.max(1, parseInt(process.env.GWX_R2_RUNS ?? "2", 10));
 const KEEP = process.env.GWX_R2_KEEP === "1";
 const EVIDENCE_OUT = process.env.GWX_R2_EVIDENCE_OUT ?? null;
 const CERT_REL = "tests/certification/r2-concurrency/realSqliteConcurrency.cert.test.ts";
+const WORKER_REL = "tests/certification/r2-concurrency/sqliteBarrierWorker.ts";
 
 const CASES = JSON.parse(readFileSync(join(SCRIPT_DIR, "cases.json"), "utf8")).cases;
 
@@ -56,20 +58,126 @@ function sh(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { encoding: "utf8", ...opts });
 }
 function log(...a) { console.log(...a); }
-function fatal(msg) { console.error("CERT-FATAL:", msg); process.exit(2); }
 
-function fingerprint(dir) {
-  return sh("bash", ["-c",
-    `git -C '${dir}' ls-files -s | LC_ALL=C sort | sha256sum | awk '{print $1}'`]).trim();
+class CertificationFailure extends Error {
+  constructor(message, exitCode = 2) {
+    super(message);
+    this.exitCode = exitCode;
+  }
 }
 
-const WORK = mkdtempSync(join(tmpdir(), "gwx-r2-concurrency-cert-"));
+function fatal(msg, exitCode = 2) {
+  throw new CertificationFailure(msg, exitCode);
+}
+
+function runCount(value) {
+  if (!/^[1-9]\d*$/.test(value)) {
+    fatal("GWX_R2_RUNS must be a strict positive integer");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    fatal("GWX_R2_RUNS must be a safe positive integer");
+  }
+  return parsed;
+}
+
+function fingerprint(dir) {
+  const manifest = sh("git", ["-C", dir, "ls-files", "-s"])
+    .split("\n")
+    .filter(Boolean)
+    .sort()
+    .join("\n") + "\n";
+  return createHash("sha256").update(manifest).digest("hex");
+}
+
+function suppliedCandidateManifest(dir) {
+  const root = realpathSync(dir);
+  const entries = [];
+
+  function visit(path, relPath) {
+    const stat = lstatSync(path);
+    const mode = (stat.mode & 0o7777).toString(8).padStart(4, "0");
+    if (stat.isDirectory()) {
+      entries.push(["directory", mode, relPath]);
+      for (const name of readdirSync(path).sort()) {
+        visit(join(path, name), relPath === "." ? name : join(relPath, name));
+      }
+    } else if (stat.isFile()) {
+      entries.push([
+        "file", mode, relPath,
+        createHash("sha256").update(readFileSync(path)).digest("hex"),
+      ]);
+    } else if (stat.isSymbolicLink()) {
+      entries.push(["symlink", mode, relPath, readlinkSync(path)]);
+    } else {
+      entries.push(["special", mode, relPath, stat.rdev]);
+    }
+  }
+
+  visit(root, ".");
+  const body = entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+  return {
+    realPath: root,
+    sha256: createHash("sha256").update(body).digest("hex"),
+  };
+}
+
+function isInside(root, target) {
+  const rel = relative(root, target);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+function evidenceWouldWriteInside(root, output) {
+  const outputPath = resolve(output);
+  if (isInside(root, outputPath)) return true;
+  try {
+    const resolvedTarget = existsSync(outputPath)
+      ? realpathSync(outputPath)
+      : join(realpathSync(dirname(outputPath)), basename(outputPath));
+    return isInside(root, resolvedTarget);
+  } catch {
+    return false;
+  }
+}
+
+let WORK = null;
+let sourceCandidate = null;
+let suppliedBaseline = null;
 let exitCode = 0;
+let allPassSummary = false;
+let deterministicSummary = false;
 try {
+  const RUNS = runCount(process.env.GWX_R2_RUNS ?? "2");
+  WORK = mkdtempSync(join(tmpdir(), "gwx-r2-concurrency-cert-"));
+
   // ── 1. candidate ─────────────────────────────────────────────────────────
-  let CAND = process.env.GWX_R2_CANDIDATE_DIR;
-  if (CAND) {
-    log(`[candidate] provided GWX_R2_CANDIDATE_DIR=${CAND}`);
+  const providedCandidate = process.env.GWX_R2_CANDIDATE_DIR;
+  let CAND;
+  if (providedCandidate) {
+    sourceCandidate = resolve(providedCandidate);
+    suppliedBaseline = suppliedCandidateManifest(sourceCandidate);
+    log(`[candidate] provided GWX_R2_CANDIDATE_DIR=${sourceCandidate}`);
+    log(`[candidate] supplied manifest before = ${suppliedBaseline.sha256}`);
+    if (EVIDENCE_OUT && evidenceWouldWriteInside(suppliedBaseline.realPath, EVIDENCE_OUT)) {
+      fatal("GWX_R2_EVIDENCE_OUT must not write inside the supplied candidate");
+    }
+    const sourceFp = fingerprint(sourceCandidate);
+    log(`[fingerprint] provided = ${sourceFp}`);
+    if (sourceFp !== EXPECTED_FP) {
+      fatal(
+        "EVIDENCE GAP: provided candidate fingerprint does not match the pinned R2 " +
+        "convergence target. Refusing to certify a non-exact candidate.",
+        3,
+      );
+    }
+    CAND = join(WORK, "candidate");
+    mkdirSync(CAND, { recursive: true });
+    sh("git", ["-C", sourceCandidate, "checkout-index", "--all", `--prefix=${CAND}/`]);
+    const afterSnapshot = suppliedCandidateManifest(sourceCandidate);
+    if (afterSnapshot.realPath !== suppliedBaseline.realPath ||
+        afterSnapshot.sha256 !== suppliedBaseline.sha256) {
+      fatal("supplied candidate changed while its private snapshot was materialized");
+    }
   } else {
     CAND = join(WORK, "candidate");
     log(`[candidate] reconstructing exact convergence candidate under ${CAND}`);
@@ -80,14 +188,15 @@ try {
   }
 
   // ── 2. fingerprint gate ──────────────────────────────────────────────────
-  const fp = fingerprint(CAND);
+  const fp = providedCandidate ? fingerprint(sourceCandidate) : fingerprint(CAND);
   log(`[fingerprint] tested   = ${fp}`);
   log(`[fingerprint] expected = ${EXPECTED_FP}`);
   if (fp !== EXPECTED_FP) {
-    console.error(
+    fatal(
       "EVIDENCE GAP: candidate fingerprint does not match the pinned R2 " +
-      "convergence target. Refusing to certify a non-exact candidate.");
-    process.exit(3);
+      "convergence target. Refusing to certify a non-exact candidate.",
+      3,
+    );
   }
   log("[fingerprint] MATCH");
 
@@ -131,8 +240,10 @@ try {
 
   // ── 5. overlay the committed cert test into the candidate ────────────────
   const certDst = join(CAND, CERT_REL);
+  const workerDst = join(CAND, WORKER_REL);
   mkdirSync(dirname(certDst), { recursive: true });
   copyFileSync(join(SCRIPT_DIR, "realSqliteConcurrency.cert.ts"), certDst);
+  copyFileSync(join(SCRIPT_DIR, "sqliteBarrierWorker.fixture"), workerDst);
 
   // ── 6. runs ──────────────────────────────────────────────────────────────
   const passHashes = [];
@@ -175,7 +286,8 @@ try {
     log(`RUN ${run} normalized-evidence sha256 = ${h}`);
   }
 
-  const deterministic = passHashes.every((h) => h === passHashes[0]);
+  const completedAllRuns = passHashes.length === RUNS && firstResults !== null;
+  const deterministic = completedAllRuns && passHashes.every((h) => h === passHashes[0]);
   log(`\n[determinism] ${passHashes.join(" ")} => ${deterministic ? "DETERMINISTIC" : "NONDETERMINISTIC"}`);
 
   if (EVIDENCE_OUT) {
@@ -193,10 +305,34 @@ try {
     log(`[evidence] ${EVIDENCE_OUT}`);
   }
 
-  exitCode = allPass && deterministic ? 0 : 1;
-  log(`\nCERT ${exitCode === 0 ? "PASS" : "FAIL"} (allPass=${allPass}, deterministic=${deterministic})`);
+  allPassSummary = allPass;
+  deterministicSummary = deterministic;
+  exitCode = allPass && completedAllRuns && deterministic ? 0 : 1;
+} catch (error) {
+  exitCode = error instanceof CertificationFailure ? error.exitCode : 2;
+  const message = error instanceof Error ? error.message : String(error);
+  console.error("CERT-FATAL:", message);
 } finally {
-  if (KEEP) log(`[cleanup] GWX_R2_KEEP=1 — retained ${WORK}`);
+  if (sourceCandidate && suppliedBaseline) {
+    try {
+      const suppliedAfter = suppliedCandidateManifest(sourceCandidate);
+      log(`[candidate] supplied manifest after  = ${suppliedAfter.sha256}`);
+      if (suppliedAfter.realPath !== suppliedBaseline.realPath ||
+          suppliedAfter.sha256 !== suppliedBaseline.sha256) {
+        exitCode = 2;
+        console.error("CERT-FATAL: supplied candidate path/content/mode manifest changed");
+      } else {
+        log("[candidate] supplied manifest MATCH (read-only)");
+      }
+    } catch (error) {
+      exitCode = 2;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("CERT-FATAL: unable to verify supplied candidate after run:", message);
+    }
+  }
+  if (!WORK) log("[cleanup] no disposable work tree was created");
+  else if (KEEP) log(`[cleanup] GWX_R2_KEEP=1 — retained ${WORK}`);
   else { rmSync(WORK, { recursive: true, force: true }); log(`[cleanup] removed ${WORK} (all databases deleted)`); }
 }
-process.exit(exitCode);
+log(`\nCERT ${exitCode === 0 ? "PASS" : "FAIL"} (allPass=${allPassSummary}, deterministic=${deterministicSummary})`);
+process.exitCode = exitCode;

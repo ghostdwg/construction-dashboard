@@ -22,8 +22,8 @@ it lives in the SOL working tree, folded into the convergence candidate. So:
   `.test.ts` file) → this repo's Vitest (`vitest run`) never collects it, and
   `tests/certification/**` is excluded from base `tsc`/ESLint.
 - The runner copies it INTO the reconstructed candidate as a `.cert.test.ts`
-  file, where the repaired code and a migrated SQLite database exist, and runs
-  it there.
+  file, adds the case-7 job-lock worker, and runs it where the repaired code and
+  a migrated SQLite database exist.
 
 This keeps the base branch green while certifying code that only exists in the
 candidate.
@@ -57,17 +57,26 @@ fatal setup error (`2`), or a candidate-fingerprint mismatch / evidence gap
 5. **Run each of the 11 cases in its own Vitest process** against a fresh copy
    of the migrated template — per-case isolation, matching the prior evidence,
    so a deliberately timed-out raw client cannot poison later connections.
-6. Repeat for `GWX_R2_RUNS` runs (default 2) and require byte-identical
-   normalized evidence.
-7. **Delete every database** and the whole `/tmp` working tree.
+6. Repeat for a strict positive-integer `GWX_R2_RUNS` (default 2), require at
+   least one complete run, and require byte-identical normalized evidence.
+7. **Delete every database, generated client, overlay, worker, and the whole
+   `/tmp` working tree** through structured failure handling.
+
+When `GWX_R2_CANDIDATE_DIR` is supplied, the runner hashes its complete
+path/content/mode manifest, verifies the pinned Git index fingerprint, and
+materializes that index with `git checkout-index` into a private runner-owned
+candidate. All dependency provisioning, generated clients, overlays, databases,
+caches, and evidence remain outside the supplied directory. The full manifest
+is compared after snapshot creation and again after execution; any change is a
+configuration failure.
 
 ### Environment overrides
 
 | Var | Default | Meaning |
 |---|---|---|
 | `GWX_R2_SOL` | the known SOL worktree path | repaired worktree read for assembly + node_modules |
-| `GWX_R2_CANDIDATE_DIR` | *(unset)* | skip assembly and use this pre-assembled candidate (still fingerprint-verified) |
-| `GWX_R2_RUNS` | `2` | number of full suite runs to compare for determinism |
+| `GWX_R2_CANDIDATE_DIR` | *(unset)* | verify a pre-assembled candidate, then certify a private `checkout-index` snapshot |
+| `GWX_R2_RUNS` | `2` | strict positive integer number of complete suite runs |
 | `GWX_R2_KEEP` | *(unset)* | `1` retains the `/tmp` working tree for debugging |
 | `GWX_R2_EVIDENCE_OUT` | *(unset)* | write the normalized evidence blob to this path |
 
@@ -84,10 +93,10 @@ evidence location — is in [`cases.json`](./cases.json). Summary:
 | 3 | lease ownership (concurrent CAS) | exactly one winner, one no-op loser, no torn state |
 | 4 | raw engine contention control | SQLITE_BUSY/timeout **or** wait-and-commit — no partial commit either way |
 | 5 | stale lease recovery | ownership lost before commit → `state-conflict`, pointer unchanged |
-| 6 | concurrent BackgroundJob claim | duplicate active slot rejected; slot reusable after failure |
-| 7 | duplicate-processing / idempotency | `failJob` under contention converges to a durable, idempotent failed row |
+| 6 | concurrent BackgroundJob claim | two armed reservations share a start barrier; exactly one wins, one loses uniqueness; slot is reusable after failure |
+| 7 | duplicate-processing / idempotency | child-held lock plus an observed retry timer proves real `failJob` retry entry and idempotent convergence |
 | 8 | media job idempotency | provider id reconciled + slot released after ownership loss |
-| 9 | attachment/blob-reference safety | real upload route → 503 before egress; prior referenced blob preserved |
+| 9 | attachment/blob-reference safety | real upload route → 503 before egress; prior blob survives; ordered started/failed audits and job-tracking payload persist |
 | 10 | analysis transaction conflict | real analyze route → 409 before provider egress; state unchanged |
 | 11 | terminal reconciliation | successful provider linkage preserves provider ids across running→failed |
 
@@ -99,3 +108,11 @@ and commits or hits `SQLITE_BUSY`) is genuinely engine-nondeterministic; the
 test asserts the invariant that holds in **both** branches (holder wins, no
 partial commit), and the volatile branch text is deliberately excluded from the
 hash.
+
+Cases 1, 3, 4, 6, and 7 execute live competing operations. Cases 2, 5, 8,
+9, 10, and 11 use deterministic durable-state handoffs and do not claim live
+overlap. Cases 1 and 4 resolve their in-process barrier only after lock
+acquisition; their timer releases an already-established contention window.
+Case 6 uses a shared start barrier after both contenders are armed. Case 7 uses
+child-process IPC and an observable fake-timer event barrier, so it fails if the
+product retry branch is removed.

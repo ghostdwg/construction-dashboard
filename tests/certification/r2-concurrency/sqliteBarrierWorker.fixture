@@ -1,0 +1,54 @@
+/**
+ * Child-process BackgroundJob lock holder for the R2 real-SQLite
+ * certification. IPC lets the test release a proven SQLite write lock only
+ * after failJob has observably entered its real retry/backoff branch.
+ */
+import { prisma } from "@/lib/prisma";
+
+const jobId = process.argv[2];
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!process.send || !databaseUrl || !jobId) {
+  throw new Error("sqliteBarrierWorker requires IPC, DATABASE_URL, and a job id");
+}
+
+function send(message: Record<string, unknown>) {
+  process.send?.(message);
+}
+
+function releaseBarrier(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    process.once("message", (message) => {
+      if (message !== "release") {
+        reject(new Error(`unexpected barrier message: ${String(message)}`));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function main() {
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.backgroundJob.update({
+        where: { id: jobId },
+        data: { errorMessage: "lock holder" },
+      });
+      send({ type: "locked" });
+      await releaseBarrier();
+    });
+    send({ type: "complete" });
+  } catch (error) {
+    send({
+      type: "error",
+      message: error instanceof Error ? error.stack ?? error.message : String(error),
+    });
+    process.exitCode = 1;
+  } finally {
+    await prisma.$disconnect();
+    process.disconnect();
+  }
+}
+
+void main();

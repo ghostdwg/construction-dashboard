@@ -15,20 +15,21 @@
  * actually exists, and runs each case in its own process against a fresh
  * file-backed SQLite database.
  *
- * The ONLY changes from the original are: (a) product imports rewritten from
- * package-relative paths to the `@/` alias so the file resolves from any
- * location inside the candidate, and (b) this header. The assertions, the
- * competing operations, the deterministic barriers, and every expected outcome
- * are byte-for-byte the proven behaviour.
+ * Product imports use the `@/` alias so the file resolves from any location
+ * inside the candidate. Plan A strengthens three proofs: simultaneous
+ * active-slot reservation, observable failJob retry entry, and ordered
+ * persisted upload audits. The other committed cases remain unchanged.
  *
  * Do not point this at a real DATABASE_URL. It only ever runs against a
  * disposable `file:` SQLite database created under /tmp by the runner.
  */
 import { promises as fs } from "node:fs";
-import { join } from "node:path";
+import { fork, type ChildProcess } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn(async () => null) }));
 vi.mock("@/lib/auth-helpers", () => ({
@@ -54,6 +55,7 @@ import { POST as analyzePOST } from "@/app/api/bids/[id]/meetings/[meetingId]/an
 
 const databaseUrl = process.env.DATABASE_URL!;
 const storageRoot = process.env.STORAGE_LOCAL_PATH!;
+const barrierWorkerPath = join(dirname(fileURLToPath(import.meta.url)), "sqliteBarrierWorker.ts");
 
 function client() {
   return new PrismaClient({ adapter: new PrismaLibSql({ url: databaseUrl }) });
@@ -66,6 +68,61 @@ function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((r) => { resolve = r; });
   return { promise, resolve };
+}
+
+const liveWorkers = new Set<ChildProcess>();
+
+async function startJobLockWorker(jobId: string) {
+  const child = fork(barrierWorkerPath, [jobId], {
+    cwd: process.cwd(),
+    env: process.env,
+    execArgv: ["--import", "tsx"],
+    silent: true,
+  });
+  liveWorkers.add(child);
+
+  let stderr = "";
+  child.stderr?.on("data", (chunk) => { stderr += String(chunk); });
+
+  let completeResolve!: () => void;
+  let completeReject!: (error: Error) => void;
+  const complete = new Promise<void>((resolve, reject) => {
+    completeResolve = resolve;
+    completeReject = reject;
+  });
+  void complete.catch(() => undefined);
+
+  const locked = new Promise<void>((resolve, reject) => {
+    let reached = false;
+    child.on("message", (message: unknown) => {
+      const event = message as { type?: string; message?: string };
+      if (event.type === "locked") {
+        reached = true;
+        resolve();
+      } else if (event.type === "complete") {
+        liveWorkers.delete(child);
+        completeResolve();
+      } else if (event.type === "error") {
+        const error = new Error(event.message ?? "job-lock worker failed");
+        if (!reached) reject(error);
+        completeReject(error);
+      }
+    });
+    child.once("exit", (code) => {
+      liveWorkers.delete(child);
+      if (code !== 0) {
+        const error = new Error(`job-lock worker exited ${code}: ${stderr}`);
+        if (!reached) reject(error);
+        completeReject(error);
+      }
+    });
+  });
+
+  await locked;
+  return {
+    release() { child.send("release"); },
+    complete,
+  };
 }
 
 async function captured<T>(promise: Promise<T>) {
@@ -118,6 +175,16 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  for (const child of liveWorkers) {
+    if (child.connected) child.send("release", () => undefined);
+    child.kill();
+  }
+  liveWorkers.clear();
 });
 
 afterAll(async () => {
@@ -286,29 +353,62 @@ describe("real SQLite source/history serialization", () => {
 describe("real SQLite BackgroundJob and runtime reconciliation", () => {
   it("enforces duplicate active-slot reservation and allows a new slot after failure", async () => {
     const { bidId } = await fixture();
-    const first = await createJob({ jobType: "meeting_transcription", bidId });
-    const duplicate = await captured(createJob({ jobType: "meeting_transcription", bidId }));
-    expect(duplicate.ok).toBe(false);
+    const start = deferred();
+    const bothArmed = deferred();
+    let armed = 0;
+    const reserve = async () => {
+      armed += 1;
+      if (armed === 2) bothArmed.resolve();
+      await start.promise;
+      return captured(createJob({ jobType: "meeting_transcription", bidId }));
+    };
+    const reservations = [reserve(), reserve()];
+    await bothArmed.promise;
+    expect(armed).toBe(2);
+    start.resolve();
+    const outcomes = await Promise.all(reservations);
+    const winners = outcomes.filter((outcome) => outcome.ok);
+    const losers = outcomes.filter((outcome) => !outcome.ok);
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    const first = winners[0].ok ? winners[0].value : null;
+    const loser = losers[0];
+    expect(first).not.toBeNull();
+    expect(loser.ok).toBe(false);
+    if (!loser.ok) {
+      const code = (loser.error as { code?: unknown } | null)?.code;
+      expect(code === "P2002" || /unique|active.?slot/i.test(loser.message)).toBe(true);
+    }
+    if (!first) throw new Error("active-slot reservation had no winner");
     await failJob(first.id, "synthetic failure");
     const retry = await createJob({ jobType: "meeting_transcription", bidId });
     expect(retry.id).not.toBe(first.id);
+    expect(await c.backgroundJob.findMany({
+      where: { bidId, jobType: "meeting_transcription" },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, status: true, activeSlot: true },
+    })).toEqual([
+      { id: first.id, status: "failed", activeSlot: null },
+      { id: retry.id, status: "queued", activeSlot: 1 },
+    ]);
   });
 
   it("injects failJob contention and proves durable idempotent slot release", async () => {
     const { bidId } = await fixture();
     const job = await createJob({ jobType: "meeting_transcription", bidId });
-    const locked = deferred();
-    const release = deferred();
-    const holder = a.$transaction(async (tx) => {
-      await tx.backgroundJob.update({ where: { id: job.id }, data: { errorMessage: "lock holder" } });
-      locked.resolve();
-      await release.promise;
-    });
-    await locked.promise;
+    const holder = await startJobLockWorker(job.id);
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
     const failed = captured(failJob(job.id, "injected failJob", "provider-injected"));
-    setTimeout(release.resolve, 150);
-    await Promise.all([captured(holder), failed]);
+
+    for (let turn = 0; turn < 100 && vi.getTimerCount() === 0; turn += 1) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    expect(vi.getTimerCount()).toBe(1);
+    holder.release();
+    await holder.complete;
+    await vi.runOnlyPendingTimersAsync();
     const outcome = await failed;
+    vi.useRealTimers();
     console.log("failJob contention outcome", outcome.ok ? "committed" : outcome.message);
     const row = await c.backgroundJob.findUnique({ where: { id: job.id } });
     expect(outcome.ok).toBe(true);
@@ -358,6 +458,30 @@ describe("real SQLite BackgroundJob and runtime reconciliation", () => {
     expect(await fs.readdir(join(storageRoot, `uploads/meetings/${meetingId}`))).toEqual([
       "old-referenced.wav",
     ]);
+    expect(await c.auditEvent.findMany({
+      where: { subjectKind: "Meeting", subjectId: String(meetingId) },
+      orderBy: { emittedAt: "asc" },
+      select: { action: true, decision: true, payloadJson: true },
+    })).toEqual([
+      expect.objectContaining({
+        action: "meeting.transcription_upload_started",
+        decision: "committed",
+      }),
+      expect.objectContaining({
+        action: "meeting.transcription_failed",
+        decision: "committed",
+        payloadJson: expect.stringContaining('"failureClass":"job-tracking"'),
+      }),
+    ]);
+    const failedAudit = await c.auditEvent.findFirstOrThrow({
+      where: {
+        subjectKind: "Meeting",
+        subjectId: String(meetingId),
+        action: "meeting.transcription_failed",
+      },
+      select: { payloadJson: true },
+    });
+    expect(failedAudit.payloadJson).toContain('"blobCleanupFailed":false');
   });
 
   it("analysis ownership failure returns 409 before provider egress on the real database", async () => {

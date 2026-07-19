@@ -21,9 +21,35 @@
 # CAND (output dir). Prints the computed fingerprint on the last line.
 set -euo pipefail
 
-SRC="${SRC:?SRC (repo with the assembly commits) required}"
-SOL="${SOL:?SOL (repaired worktree) required}"
-CAND="${CAND:?CAND (output candidate dir) required}"
+SRC="${SRC:-}"
+SOL="${SOL:-}"
+CAND="${CAND:-}"
+
+if [[ -z "$SRC" || -z "$SOL" || -z "$CAND" ]]; then
+  echo "SRC, SOL, and CAND are required" >&2
+  exit 2
+fi
+
+# This script deletes and recreates CAND. Accept only the exact disposable
+# child path created by certify.mjs: /tmp/gwx-r2-concurrency-cert-*/candidate.
+# Reject traversal and symlink aliases before the destructive operation.
+case "$CAND" in
+  /tmp/gwx-r2-concurrency-cert-*/candidate) ;;
+  *)
+    echo "Refusing unsafe CAND (must be /tmp/gwx-r2-concurrency-cert-*/candidate): $CAND" >&2
+    exit 2
+    ;;
+esac
+
+CAND_PARENT="${CAND%/candidate}"
+if [[ "$CAND_PARENT" == "/tmp/gwx-r2-concurrency-cert-" ||
+      "${CAND_PARENT#/tmp/}" == */* ||
+      "$CAND_PARENT" == "$CAND" || "$CAND_PARENT" == *//* || "$CAND_PARENT" == */./* ||
+      "$CAND_PARENT" == */../* || ! -d "$CAND_PARENT" || -L "$CAND_PARENT" ||
+      -L "$CAND" || "$(realpath -e -- "$CAND_PARENT")" != "$CAND_PARENT" ]]; then
+  echo "Refusing unsafe or aliased CAND: $CAND" >&2
+  exit 2
+fi
 
 BASE=9b283b97180578978f4240d3c77cedc8104be1ec
 SCHEMA_RECON=a9f51fca62e7be68a0af13e13067dd61f481a245
@@ -32,7 +58,7 @@ REGPACK=29f141bf169a6bda539857401e621d28d5911d2f
 REGREFRESH=59960cce769a2e7ddf2d692e42ebef909eec1396
 EXPECTED=1514fd2aecf99675d252089bce10b90af8a3b990742e4e5daf6d1f5e967e7760
 
-rm -rf "$CAND"
+rm -rf -- "$CAND"
 mkdir -p "$(dirname "$CAND")"
 
 git clone --quiet --shared "$SRC" "$CAND"
