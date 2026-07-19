@@ -53,9 +53,29 @@ const h = vi.hoisted(() => ({
   nextId: 1,
 }));
 
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: vi.fn(async () => undefined) }));
+vi.mock("@/lib/observability/audit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/observability/audit")>()),
+  emitAuditEvent: vi.fn(async () => undefined),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    $transaction: vi.fn(async (callback: (tx: unknown) => unknown) =>
+      callback({
+        trackedItem: {
+          create: async ({ data }: { data: Record<string, unknown> }) => {
+            if (h.trackedItems.some((i) => i.sourceMeetingActionItemId === data.sourceMeetingActionItemId && data.sourceMeetingActionItemId != null)) {
+              const err = new Error("UNIQUE constraint failed") as Error & { code: string };
+              err.code = "P2002";
+              throw err;
+            }
+            const row = { id: h.nextId++, ...data } as (typeof h.trackedItems)[number];
+            h.trackedItems.push(row);
+            return { id: row.id };
+          },
+        },
+        auditEvent: { create: async () => ({ id: h.nextId++ }) },
+      })
+    ),
     meetingActionItem: {
       findFirst: vi.fn(async ({ where }: { where: { id: number; bidId: number } }) =>
         h.meetingActionItems.find((m) => m.id === where.id && m.bidId === where.bidId) ?? null
