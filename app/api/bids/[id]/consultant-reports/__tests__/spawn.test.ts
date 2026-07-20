@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   currentUser: { id: "u1", role: "pm" } as { id: string; role: string } | null,
   authOk: true,
   nextId: 1,
+  auditFail: false,
 }));
 
 const auditMock = vi.hoisted(() =>
@@ -21,6 +22,14 @@ const auditMock = vi.hoisted(() =>
 );
 
 vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+vi.mock("@/lib/services/consultantReports/txAudit", () => ({
+  writeConsultantAuditTx: vi.fn(async (_tx, args) => {
+    if (h.auditFail) throw new Error("synthetic audit failure");
+    h.audits.push({ action: args.action, payload: args.payload });
+    return args;
+  }),
+  emitConsultantAuditPostCommit: vi.fn(),
+}));
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
@@ -52,6 +61,11 @@ vi.mock("@/lib/prisma", () => {
         Object.assign(row, data);
         return { ...row };
       }),
+      updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        const rows = h.observations.filter((o) => matches(o, where));
+        rows.forEach((row) => Object.assign(row, data));
+        return { count: rows.length };
+      }),
     },
     trackedItem: {
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
@@ -64,7 +78,21 @@ vi.mock("@/lib/prisma", () => {
         return { id: row.id };
       }),
     },
-    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const observations = h.observations.map((row) => ({ ...row }));
+      const items = h.items.map((row) => ({ ...row }));
+      const audits = h.audits.map((row) => ({ ...row }));
+      const nextId = h.nextId;
+      try {
+        return await fn(prisma);
+      } catch (error) {
+        h.observations.splice(0, h.observations.length, ...observations);
+        h.items.splice(0, h.items.length, ...items);
+        h.audits.splice(0, h.audits.length, ...audits);
+        h.nextId = nextId;
+        throw error;
+      }
+    }),
   };
   return { prisma };
 });
@@ -93,6 +121,7 @@ beforeEach(() => {
   h.currentUser = { id: "u1", role: "pm" };
   h.authOk = true;
   h.nextId = 1;
+  h.auditFail = false;
   h.observations.push({
     id: 100,
     reportId: 10,
@@ -141,6 +170,39 @@ describe("POST spawn", () => {
     expect(obs.registerItemId).toBe(500);
     expect(obs.spawnedItemId).toBeNull(); // linked ≠ spawned
     expect(obs.state).toBe("ACCEPTED_LINKED_ITEM");
+  });
+
+  test("link audit failure rolls back the observation mutation", async () => {
+    h.items.push({ id: 500, bidId: 1 });
+    h.auditFail = true;
+
+    await expect(
+      linkPOST(jsonReq({ reportId: 10, observationId: 100 }), pi("1", "500")),
+    ).rejects.toThrow("synthetic audit failure");
+
+    expect(h.observations[0]).toMatchObject({
+      state: "ENTERED",
+      registerItemId: null,
+      spawnedItemId: null,
+    });
+  });
+
+  test("relink audit failure rolls back to the prior linked item", async () => {
+    h.items.push({ id: 500, bidId: 1 }, { id: 501, bidId: 1 });
+    await linkPOST(jsonReq({ reportId: 10, observationId: 100 }), pi("1", "500"));
+    const auditCount = h.audits.length;
+    h.auditFail = true;
+
+    await expect(
+      linkPOST(jsonReq({ reportId: 10, observationId: 100 }), pi("1", "501")),
+    ).rejects.toThrow("synthetic audit failure");
+
+    expect(h.observations[0]).toMatchObject({
+      state: "ACCEPTED_LINKED_ITEM",
+      registerItemId: 500,
+      spawnedItemId: null,
+    });
+    expect(h.audits).toHaveLength(auditCount);
   });
 
   test("estimator → 403 zero mutation; unauthenticated → 401", async () => {

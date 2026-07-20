@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   audits: [] as Array<{ action: string; payload: Record<string, unknown> | undefined }>,
   nextId: 1,
   authOk: true,
+  auditFail: false,
 }));
 
 const auditMock = vi.hoisted(() =>
@@ -35,6 +36,14 @@ vi.mock("@/lib/auth-helpers", () => ({
 }));
 
 vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+vi.mock("@/lib/services/consultantReports/txAudit", () => ({
+  writeConsultantAuditTx: vi.fn(async (_tx, args) => {
+    if (h.auditFail) throw new Error("synthetic audit failure");
+    h.audits.push({ action: args.action, payload: args.payload });
+    return args;
+  }),
+  emitConsultantAuditPostCommit: vi.fn(),
+}));
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
@@ -86,6 +95,11 @@ vi.mock("@/lib/prisma", () => {
         Object.assign(row, data);
         return { ...row };
       }),
+      updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        const rows = h.observations.filter((o) => matches(o, where));
+        rows.forEach((row) => Object.assign(row, data));
+        return { count: rows.length };
+      }),
     },
     trackedItem: {
       findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
@@ -98,7 +112,21 @@ vi.mock("@/lib/prisma", () => {
         return { id: row.id };
       }),
     },
-    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const observations = h.observations.map((row) => ({ ...row }));
+      const items = h.items.map((row) => ({ ...row }));
+      const audits = h.audits.map((row) => ({ ...row }));
+      const nextId = h.nextId;
+      try {
+        return await fn(prisma);
+      } catch (error) {
+        h.observations.splice(0, h.observations.length, ...observations);
+        h.items.splice(0, h.items.length, ...items);
+        h.audits.splice(0, h.audits.length, ...audits);
+        h.nextId = nextId;
+        throw error;
+      }
+    }),
   };
   return { prisma };
 });
@@ -124,6 +152,7 @@ const jsonReq = (body: unknown, method = "POST") =>
 
 beforeEach(() => {
   h.authOk = true;
+  h.auditFail = false;
   h.reports.length = 0;
   h.observations.length = 0;
   h.items.length = 0;
@@ -283,6 +312,23 @@ describe("POST accept-new", () => {
     expect(res.status).toBe(404);
     expect(h.items).toHaveLength(0);
     expect(h.observations.find((o) => o.id === id)!.state).toBe("ENTERED");
+  });
+
+  test("mandatory audit failure rolls back item creation and observation acceptance", async () => {
+    const id = await seedObservation();
+    const auditCount = h.audits.length;
+    h.auditFail = true;
+
+    await expect(
+      acceptNewPOST(jsonReq({ title: "must roll back" }), po("1", "10", String(id))),
+    ).rejects.toThrow("synthetic audit failure");
+
+    expect(h.items).toHaveLength(0);
+    expect(h.observations.find((o) => o.id === id)).toMatchObject({
+      state: "ENTERED",
+      registerItemId: null,
+    });
+    expect(h.audits).toHaveLength(auditCount);
   });
 });
 

@@ -26,6 +26,10 @@ import { prisma } from "@/lib/prisma";
 import { TRACKED_ITEM_PRIORITIES, isTrackedItemKind } from "@/lib/services/trackedItems/fsm";
 import { TRACKED_ITEM_SOURCE_KIND } from "@/lib/services/trackedItems/sourceKinds";
 import { audit, actorLabel, type Actor, type ServiceResult } from "./index";
+import {
+  emitConsultantAuditPostCommit,
+  writeConsultantAuditTx,
+} from "./txAudit";
 
 export const OBSERVATION_STATES = [
   "ENTERED",
@@ -37,6 +41,12 @@ export type ObservationState = (typeof OBSERVATION_STATES)[number];
 
 const MAX_OBSERVATION_TEXT = 4000;
 const MAX_TITLE_LENGTH = 300;
+
+class ObservationOperationRejected extends Error {
+  constructor(readonly serviceError: string) {
+    super(serviceError);
+  }
+}
 
 /** Bid-scoped fetch — reportId AND bidId must both match. */
 async function findObservation(bidId: number, reportId: number, observationId: number) {
@@ -172,12 +182,6 @@ async function createItemFromObservation(
   actor: Actor,
   auditAction: "observation_accepted_new" | "observation_spawned_item"
 ): Promise<ServiceResult<{ observationId: number; trackedItemId: number }>> {
-  const obs = await findObservation(bidId, reportId, observationId);
-  if (!obs) return { ok: false, error: "Not found" };
-  if (obs.state !== "ENTERED") {
-    return { ok: false, error: `Cannot accept from state ${obs.state}` };
-  }
-
   const title = input.title?.trim();
   if (!title) return { ok: false, error: "title is required" };
   const kind = input.kind ?? "JSO_ITEM";
@@ -187,48 +191,79 @@ async function createItemFromObservation(
     return { ok: false, error: `Unknown priority: ${priority}` };
   }
 
-  const result = await prisma.$transaction(async (tx) => {
-    const item = await tx.trackedItem.create({
-      data: {
-        bidId,
-        kind,
-        title: title.slice(0, MAX_TITLE_LENGTH),
-        description: input.description?.trim() || null,
-        priority,
-        assigneeName: input.assigneeName?.trim() || null,
-        dueDate: input.dueDate ?? null,
-        // Canonical value (legacy rows carry "consultant_report" — readable
-        // forever, never rewritten; see lib/services/trackedItems/sourceKinds.ts).
-        sourceKind: TRACKED_ITEM_SOURCE_KIND.CONSULTANT_OBSERVATION,
-        sourceConsultantObservationId: observationId,
-        evidenceExcerpt: obs.observationText,
-        sourceLocator: obs.sourcePage,
-        // Human typed/confirmed this acceptance while reading the report.
-        extractionMethod: "manual",
-        citationVerified: false,
-      },
-      select: { id: true },
-    });
-    await tx.consultantObservation.update({
-      where: { id: observationId },
-      data: {
-        state: "ACCEPTED_NEW_ITEM",
-        registerItemId: item.id,
-        spawnedItemId: item.id,
-      },
-    });
-    return item;
-  });
+  try {
+    const committed = await prisma.$transaction(async (tx) => {
+      const claim = await tx.consultantObservation.updateMany({
+        where: { id: observationId, reportId, bidId, state: "ENTERED" },
+        data: { updatedAt: new Date() },
+      });
+      if (claim.count !== 1) {
+        const current = await tx.consultantObservation.findFirst({
+          where: { id: observationId, reportId, bidId },
+          select: { state: true },
+        });
+        return current
+          ? { ok: false as const, error: `Cannot accept from state ${current.state}` }
+          : { ok: false as const, error: "Not found" };
+      }
+      const obs = await tx.consultantObservation.findFirst({
+        where: { id: observationId, reportId, bidId },
+      });
+      if (!obs) throw new ObservationOperationRejected("Not found");
 
-  await audit(
-    auditAction,
-    bidId,
-    { kind: "ConsultantObservation", id: String(observationId) },
-    actor,
-    "accepted_new_item",
-    { reportId, trackedItemId: result.id, spawnedItemId: result.id, kind }
-  );
-  return { ok: true, value: { observationId, trackedItemId: result.id } };
+      const item = await tx.trackedItem.create({
+        data: {
+          bidId,
+          kind,
+          title: title.slice(0, MAX_TITLE_LENGTH),
+          description: input.description?.trim() || null,
+          priority,
+          assigneeName: input.assigneeName?.trim() || null,
+          dueDate: input.dueDate ?? null,
+          sourceKind: TRACKED_ITEM_SOURCE_KIND.CONSULTANT_OBSERVATION,
+          sourceConsultantObservationId: observationId,
+          evidenceExcerpt: obs.observationText,
+          sourceLocator: obs.sourcePage,
+          extractionMethod: "manual",
+          citationVerified: false,
+        },
+        select: { id: true },
+      });
+      await tx.consultantObservation.update({
+        where: { id: observationId },
+        data: {
+          state: "ACCEPTED_NEW_ITEM",
+          registerItemId: item.id,
+          spawnedItemId: item.id,
+        },
+      });
+      const envelope = await writeConsultantAuditTx(tx, {
+        action: auditAction,
+        bidId,
+        subjectId: observationId,
+        actor,
+        decision: "accepted_new_item",
+        payload: {
+          reportId,
+          trackedItemId: item.id,
+          spawnedItemId: item.id,
+          kind,
+        },
+      });
+      return { ok: true as const, item, envelope };
+    });
+    if (!committed.ok) return committed;
+    emitConsultantAuditPostCommit(committed.envelope);
+    return {
+      ok: true,
+      value: { observationId, trackedItemId: committed.item.id },
+    };
+  } catch (error) {
+    if (error instanceof ObservationOperationRejected) {
+      return { ok: false, error: error.serviceError };
+    }
+    throw error;
+  }
 }
 
 export async function acceptObservationAsNewItem(
@@ -257,13 +292,6 @@ export async function spawnItemFromObservation(
 
 // ── Link / relink to an EXISTING TrackedItem ─────────────────────────────────
 
-async function fetchSameBidItem(bidId: number, itemId: number) {
-  return prisma.trackedItem.findFirst({
-    where: { id: itemId, bidId },
-    select: { id: true, bidId: true },
-  });
-}
-
 export async function linkObservationToItem(
   bidId: number,
   reportId: number,
@@ -271,31 +299,58 @@ export async function linkObservationToItem(
   itemId: number,
   actor: Actor
 ): Promise<ServiceResult<{ observationId: number; trackedItemId: number }>> {
-  const obs = await findObservation(bidId, reportId, observationId);
-  if (!obs) return { ok: false, error: "Not found" };
-  if (obs.state !== "ENTERED") {
-    return { ok: false, error: `Cannot link from state ${obs.state}` };
+  try {
+    const committed = await prisma.$transaction(async (tx) => {
+      const claim = await tx.consultantObservation.updateMany({
+        where: { id: observationId, reportId, bidId, state: "ENTERED" },
+        data: { updatedAt: new Date() },
+      });
+      if (claim.count !== 1) {
+        const current = await tx.consultantObservation.findFirst({
+          where: { id: observationId, reportId, bidId },
+          select: { state: true },
+        });
+        return current
+          ? { ok: false as const, error: `Cannot link from state ${current.state}` }
+          : { ok: false as const, error: "Not found" };
+      }
+
+      const [obs, item] = await Promise.all([
+        tx.consultantObservation.findFirst({
+          where: { id: observationId, reportId, bidId },
+        }),
+        tx.trackedItem.findFirst({
+          where: { id: itemId, bidId },
+          select: { id: true, bidId: true },
+        }),
+      ]);
+      if (!obs || !item || obs.bidId !== item.bidId) {
+        throw new ObservationOperationRejected("Not found");
+      }
+
+      await tx.consultantObservation.update({
+        where: { id: observationId },
+        data: { state: "ACCEPTED_LINKED_ITEM", registerItemId: itemId },
+      });
+      const envelope = await writeConsultantAuditTx(tx, {
+        action: "observation_accepted_linked",
+        bidId,
+        subjectId: observationId,
+        actor,
+        decision: "linked",
+        payload: { reportId, trackedItemId: itemId },
+      });
+      return { ok: true as const, envelope };
+    });
+    if (!committed.ok) return committed;
+    emitConsultantAuditPostCommit(committed.envelope);
+    return { ok: true, value: { observationId, trackedItemId: itemId } };
+  } catch (error) {
+    if (error instanceof ObservationOperationRejected) {
+      return { ok: false, error: error.serviceError };
+    }
+    throw error;
   }
-
-  const item = await fetchSameBidItem(bidId, itemId);
-  if (!item) return { ok: false, error: "Not found" };
-  // Defense in depth — both rows were bid-scoped-fetched already; assert
-  // anyway (SQLite cannot express this constraint; see module header).
-  if (obs.bidId !== item.bidId) return { ok: false, error: "Not found" };
-
-  await prisma.consultantObservation.update({
-    where: { id: observationId },
-    data: { state: "ACCEPTED_LINKED_ITEM", registerItemId: itemId },
-  });
-  await audit(
-    "observation_accepted_linked",
-    bidId,
-    { kind: "ConsultantObservation", id: String(observationId) },
-    actor,
-    "linked",
-    { reportId, trackedItemId: itemId }
-  );
-  return { ok: true, value: { observationId, trackedItemId: itemId } };
 }
 
 export async function relinkObservation(
@@ -305,30 +360,57 @@ export async function relinkObservation(
   newItemId: number,
   actor: Actor
 ): Promise<ServiceResult<{ observationId: number; trackedItemId: number }>> {
-  const obs = await findObservation(bidId, reportId, observationId);
-  if (!obs) return { ok: false, error: "Not found" };
-  if (obs.state !== "ACCEPTED_LINKED_ITEM") {
-    return { ok: false, error: `Cannot relink from state ${obs.state}` };
+  try {
+    const committed = await prisma.$transaction(async (tx) => {
+      const [obs, item] = await Promise.all([
+        tx.consultantObservation.findFirst({
+          where: { id: observationId, reportId, bidId },
+        }),
+        tx.trackedItem.findFirst({
+          where: { id: newItemId, bidId },
+          select: { id: true, bidId: true },
+        }),
+      ]);
+      if (!obs || !item || obs.bidId !== item.bidId) {
+        throw new ObservationOperationRejected("Not found");
+      }
+      if (obs.state !== "ACCEPTED_LINKED_ITEM") {
+        return { ok: false as const, error: `Cannot relink from state ${obs.state}` };
+      }
+
+      const priorItemId = obs.registerItemId;
+      const claim = await tx.consultantObservation.updateMany({
+        where: {
+          id: observationId,
+          reportId,
+          bidId,
+          state: "ACCEPTED_LINKED_ITEM",
+          registerItemId: priorItemId,
+        },
+        data: { registerItemId: newItemId },
+      });
+      if (claim.count !== 1) {
+        return { ok: false as const, error: "Observation link changed concurrently; retry" };
+      }
+      const envelope = await writeConsultantAuditTx(tx, {
+        action: "observation_link_corrected",
+        bidId,
+        subjectId: observationId,
+        actor,
+        decision: "relinked",
+        payload: { reportId, priorTrackedItemId: priorItemId, trackedItemId: newItemId },
+      });
+      return { ok: true as const, envelope };
+    });
+    if (!committed.ok) return committed;
+    emitConsultantAuditPostCommit(committed.envelope);
+    return { ok: true, value: { observationId, trackedItemId: newItemId } };
+  } catch (error) {
+    if (error instanceof ObservationOperationRejected) {
+      return { ok: false, error: error.serviceError };
+    }
+    throw error;
   }
-
-  const item = await fetchSameBidItem(bidId, newItemId);
-  if (!item) return { ok: false, error: "Not found" };
-  if (obs.bidId !== item.bidId) return { ok: false, error: "Not found" };
-
-  const priorItemId = obs.registerItemId;
-  await prisma.consultantObservation.update({
-    where: { id: observationId },
-    data: { registerItemId: newItemId },
-  });
-  await audit(
-    "observation_link_corrected",
-    bidId,
-    { kind: "ConsultantObservation", id: String(observationId) },
-    actor,
-    "relinked",
-    { reportId, priorTrackedItemId: priorItemId, trackedItemId: newItemId }
-  );
-  return { ok: true, value: { observationId, trackedItemId: newItemId } };
 }
 
 // ── Dismiss / reinstate ──────────────────────────────────────────────────────

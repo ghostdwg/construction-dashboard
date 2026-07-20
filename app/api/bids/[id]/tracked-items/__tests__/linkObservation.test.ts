@@ -33,7 +33,11 @@ vi.mock("@/lib/auth-helpers", () => ({
   ),
 }));
 
-vi.mock("@/lib/observability/audit", () => ({ emitAuditEvent: auditMock }));
+vi.mock("@/lib/observability/audit", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/observability/audit")>()),
+  emitAuditEvent: auditMock,
+  emitAuditEnvelopeStdout: vi.fn(),
+}));
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => ({ user: { name: "Josh", email: "josh@example.test" } })),
 }));
@@ -41,27 +45,57 @@ vi.mock("@/lib/auth", () => ({
 const matches = (row: Row, where: Record<string, unknown>) =>
   Object.entries(where).every(([k, v]) => row[k] === v);
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    consultantObservation: {
-      findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        const found = h.observations.find((o) => matches(o, where));
-        return found ? { ...found } : null;
-      }),
-      update: vi.fn(async ({ where, data }: { where: { id: number }; data: Record<string, unknown> }) => {
-        const row = h.observations.find((o) => o.id === where.id)!;
-        Object.assign(row, data);
-        return { ...row };
+vi.mock("@/lib/prisma", () => {
+  const consultantObservation = {
+    findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+      const found = h.observations.find((o) => matches(o, where));
+      return found ? { ...found } : null;
+    }),
+    update: vi.fn(async ({ where, data }: { where: { id: number }; data: Record<string, unknown> }) => {
+      const row = h.observations.find((o) => o.id === where.id)!;
+      Object.assign(row, data);
+      return { ...row };
+    }),
+    updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      const rows = h.observations.filter((o) => matches(o, where));
+      rows.forEach((row) => Object.assign(row, data));
+      return { count: rows.length };
+    }),
+  };
+  const trackedItem = {
+    findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+      const found = h.items.find((i) => matches(i, where));
+      return found ? { ...found } : null;
+    }),
+  };
+  const auditEvent = {
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      h.audits.push({
+        action: String(data.action),
+        payload: data.payloadJson ? JSON.parse(String(data.payloadJson)) : undefined,
+      });
+      return { id: h.audits.length };
+    }),
+  };
+  return {
+    prisma: {
+      consultantObservation,
+      trackedItem,
+      auditEvent,
+      $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => {
+        const observationSnapshot = h.observations.map((row) => ({ ...row }));
+        const auditSnapshot = h.audits.map((row) => ({ ...row }));
+        try {
+          return await callback({ consultantObservation, trackedItem, auditEvent });
+        } catch (error) {
+          h.observations.splice(0, h.observations.length, ...observationSnapshot);
+          h.audits.splice(0, h.audits.length, ...auditSnapshot);
+          throw error;
+        }
       }),
     },
-    trackedItem: {
-      findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        const found = h.items.find((i) => matches(i, where));
-        return found ? { ...found } : null;
-      }),
-    },
-  },
-}));
+  };
+});
 
 import { POST as linkPOST } from "../[itemId]/link-observation/route";
 
