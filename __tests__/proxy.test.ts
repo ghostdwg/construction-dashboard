@@ -21,6 +21,18 @@ describe("proxy isPublicPath", async () => {
     expect(isPublicPath("/favicon.ico")).toBe(true);
   });
 
+  it("allows only the contractor response page and API path families", () => {
+    expect(isPublicPath("/external/response/token-1")).toBe(true);
+    expect(isPublicPath("/external/response/token-1/attachments/attachment-1/download")).toBe(true);
+    expect(isPublicPath("/api/external/response/token-1")).toBe(true);
+    expect(isPublicPath("/api/external/response/token-1/items/item-1/responses")).toBe(true);
+
+    expect(isPublicPath("/external/responses/token-1")).toBe(false);
+    expect(isPublicPath("/external/responsex/token-1")).toBe(false);
+    expect(isPublicPath("/api/external/responses/token-1")).toBe(false);
+    expect(isPublicPath("/api/external/responsex/token-1")).toBe(false);
+  });
+
   it("protects everything else", () => {
     expect(isPublicPath("/operations")).toBe(false);
     expect(isPublicPath("/bids")).toBe(false);

@@ -9,11 +9,15 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import bcrypt from "bcryptjs";
+import { createHash } from "node:crypto";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const E2E_DB_PATH = join(tmpdir(), "gwx-e2e-auth-nav", "e2e.db");
 export const E2E_USER_EMAIL = "e2e-operator@example.test";
 export const E2E_USER_PASSWORD = "e2e-test-password-123";
+export const E2E_VALID_RESPONSE_TOKEN = "e2e-valid-response-token";
+export const E2E_EXPIRED_RESPONSE_TOKEN = "e2e-expired-response-token";
+export const E2E_REVOKED_RESPONSE_TOKEN = "e2e-revoked-response-token";
 
 const migrationDirectory = join(repoRoot, "prisma", "migrations");
 
@@ -41,6 +45,50 @@ await client.execute({
         VALUES (?, 'E2E Operator', ?, ?, 'admin', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
   args: ["e2e-operator-user-1", E2E_USER_EMAIL, passwordHash],
 });
+
+await client.execute(
+  `INSERT INTO "TrackedItem" (
+     id, bidId, kind, title, status, priority, sourceKind, extractionMethod,
+     citationVerified, pmReviewRequired, gcInternalResponsibility, createdAt, updatedAt
+   ) VALUES (
+     9101, 1, 'FIELD_ITEM', 'Synthetic contractor response item', 'OPEN', 'MEDIUM',
+     'manual', 'manual', 0, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+   )`,
+);
+await client.execute(
+  `INSERT INTO "ResponsePackage" (
+     id, bidId, packageNumber, title, status, issuedAt, issuedBy, createdBy, createdAt, updatedAt
+   ) VALUES (
+     9201, 1, 1, 'Synthetic token-wall package', 'ISSUED', CURRENT_TIMESTAMP,
+     'E2E Operator', 'E2E Operator', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+   )`,
+);
+await client.execute(
+  `INSERT INTO "ResponsePackageItem" (id, packageId, bidId, trackedItemId, displayNumber)
+   VALUES (9301, 9201, 1, 9101, 'FR-001')`,
+);
+
+const tokenHash = (token) => createHash("sha256").update(token, "utf8").digest("hex");
+await client.batch([
+  {
+    sql: `INSERT INTO "ResponseAccessToken" (
+            id, bidId, packageId, tokenHash, expiresAt, revokedAt, createdBy, createdAt
+          ) VALUES (?, 1, 9201, ?, datetime('now', '+1 day'), NULL, 'E2E fixture', CURRENT_TIMESTAMP)`,
+    args: ["e2e-valid-response-access", tokenHash(E2E_VALID_RESPONSE_TOKEN)],
+  },
+  {
+    sql: `INSERT INTO "ResponseAccessToken" (
+            id, bidId, packageId, tokenHash, expiresAt, revokedAt, createdBy, createdAt
+          ) VALUES (?, 1, 9201, ?, datetime('now', '-1 day'), NULL, 'E2E fixture', CURRENT_TIMESTAMP)`,
+    args: ["e2e-expired-response-access", tokenHash(E2E_EXPIRED_RESPONSE_TOKEN)],
+  },
+  {
+    sql: `INSERT INTO "ResponseAccessToken" (
+            id, bidId, packageId, tokenHash, expiresAt, revokedAt, createdBy, createdAt
+          ) VALUES (?, 1, 9201, ?, datetime('now', '+1 day'), CURRENT_TIMESTAMP, 'E2E fixture', CURRENT_TIMESTAMP)`,
+    args: ["e2e-revoked-response-access", tokenHash(E2E_REVOKED_RESPONSE_TOKEN)],
+  },
+]);
 
 console.log(`[e2e-auth] synthetic fixture ready (${migrations.length} migrations)`);
 client.close();
