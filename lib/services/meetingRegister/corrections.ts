@@ -20,6 +20,10 @@ import type { AuditEnvelope } from "@/lib/observability/taxonomy";
 import { rebuildDisplayTranscript } from "./segments";
 import { emitRegisterAuditPostCommit, writeRegisterAuditTx } from "./txAudit";
 import {
+  historyMaterializationError,
+  withMeetingHistoryMaterialization,
+} from "./retention";
+import {
   type Actor,
   type CorrectionType,
   type ServiceResult,
@@ -134,7 +138,7 @@ async function commitCorrection(args: {
 }): Promise<OpResult> {
   const { bidId, meetingId, record, affected, correctedBy, reason, actor } = args;
   let envelope: AuditEnvelope | null = null;
-  const result = await prisma.$transaction(async (tx) => {
+  const committed = await withMeetingHistoryMaterialization(bidId, meetingId, async (tx) => {
     const affectedSegmentCount = await args.mutate(tx);
     const correction = await tx.meetingTranscriptCorrection.create({
       data: {
@@ -171,8 +175,14 @@ async function commitCorrection(args: {
     });
     return { correctionId: correction.id, affectedSegmentCount };
   });
+  if (!committed.ok) {
+    return {
+      ok: false,
+      error: historyMaterializationError(committed.reason),
+    };
+  }
   emitRegisterAuditPostCommit(envelope);
-  return { ok: true, value: { ...result, affected } };
+  return { ok: true, value: { ...committed.value, affected } };
 }
 
 export async function applyCorrection(

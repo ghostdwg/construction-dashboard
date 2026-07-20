@@ -13,6 +13,10 @@ import { prisma } from "@/lib/prisma";
 import type { AuditEnvelope } from "@/lib/observability/taxonomy";
 import { getCoverage } from "./register";
 import { emitRegisterAuditPostCommit, writeRegisterAuditTx } from "./txAudit";
+import {
+  historyMaterializationError,
+  withMeetingHistoryMaterialization,
+} from "./retention";
 import { SUPERSEDED_STATE, actorLabel, type Actor, type ServiceResult } from "./types";
 
 export async function listRevisions(bidId: number, meetingId: number) {
@@ -132,7 +136,7 @@ export async function publishMinutes(
   });
 
   let envelope: AuditEnvelope | null = null;
-  const revision = await prisma.$transaction(async (tx) => {
+  const committed = await withMeetingHistoryMaterialization(bidId, meetingId, async (tx) => {
     const created = await tx.meetingMinutesRevision.create({
       data: {
         meetingId,
@@ -167,6 +171,12 @@ export async function publishMinutes(
     });
     return created;
   });
+  if (!committed.ok) {
+    return {
+      ok: false,
+      error: historyMaterializationError(committed.reason),
+    };
+  }
   emitRegisterAuditPostCommit(envelope);
-  return { ok: true, value: { revisionId: revision.id, revisionIndex } };
+  return { ok: true, value: { revisionId: committed.value.id, revisionIndex } };
 }

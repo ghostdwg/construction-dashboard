@@ -42,6 +42,10 @@ import {
 import { emitRegisterAuditPostCommit, writeRegisterAuditTx } from "./txAudit";
 import { materializeSegmentsTx } from "./segments";
 import {
+  historyMaterializationError,
+  withMeetingHistoryMaterialization,
+} from "./retention";
+import {
   EXTRACTED_ORIGINS,
   SUPERSEDED_STATE,
   actorLabel,
@@ -445,7 +449,7 @@ export async function recordAnalysisRun(
   const appliedBy = actorLabel(actor) ?? "system";
   let envelope: AuditEnvelope | null = null;
 
-  const result = await prisma.$transaction(async (tx) => {
+  const committed = await withMeetingHistoryMaterialization(bidId, meetingId, async (tx) => {
     const meeting = await tx.meeting.findFirst({
       where: { id: meetingId, bidId },
       select: { id: true, analysisVersion: true },
@@ -538,6 +542,10 @@ export async function recordAnalysisRun(
     return { kind: "committed" as const, run: created, status: "PREVIEWED", preview };
   });
 
+  if (!committed.ok) {
+    return { ok: false, error: historyMaterializationError(committed.reason) };
+  }
+  const result = committed.value;
   if (result.kind === "not-found") return { ok: false, error: "Not found" };
   emitRegisterAuditPostCommit(envelope);
   return {
@@ -602,7 +610,10 @@ export async function applyRun(
   let envelope: AuditEnvelope | null = null;
   let applied: RunPreview;
   try {
-    applied = await prisma.$transaction(async (tx) => {
+    const committed = await withMeetingHistoryMaterialization(
+      bidId,
+      meetingId,
+      async (tx) => {
       // Claim first, scoped by tenant + lifecycle state. If another request
       // won the claim, no writer/reconcile/audit work is allowed to begin.
       const claim = await tx.meetingExtractionRun.updateMany({
@@ -646,7 +657,15 @@ export async function applyRun(
         },
       });
       return result;
-    });
+      },
+    );
+    if (!committed.ok) {
+      return {
+        ok: false,
+        error: historyMaterializationError(committed.reason),
+      };
+    }
+    applied = committed.value;
   } catch (error) {
     if (error instanceof RunClaimError) return { ok: false, error: error.message };
     throw error;

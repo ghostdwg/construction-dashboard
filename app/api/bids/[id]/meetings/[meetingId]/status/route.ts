@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
 import {
   FROZEN_TRANSCRIPT_CONFLICT,
+  MEETING_OWNERSHIP_CONTENTION_CONFLICT,
   meetingTranscriptMutationGate,
   withMutableMeetingTranscript,
 } from "@/lib/services/meetingRegister/retention";
@@ -69,12 +70,30 @@ async function finishTrackedJob(
   bidId: number,
   outcome: { status: "complete"; summary: string } | { status: "failed"; error: string }
 ) {
-  const job = await findJobByExternalId(externalJobId, bidId).catch(() => null);
-  if (!job) return;
-  if (outcome.status === "complete") {
-    await completeJob(job.id, { resultSummary: outcome.summary }).catch(() => {});
-  } else {
-    await failJob(job.id, outcome.error).catch(() => {});
+  try {
+    const job = await findJobByExternalId(externalJobId, bidId);
+    if (!job) return;
+    if (outcome.status === "complete") {
+      await completeJob(job.id, { resultSummary: outcome.summary });
+    } else {
+      await failJob(job.id, outcome.error);
+    }
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "BACKGROUND_JOB_RECONCILIATION_REQUIRED"
+    ) {
+      throw error;
+    }
+    throw Object.assign(
+      new Error(`BackgroundJob for provider job ${externalJobId} requires durable reconciliation`),
+      {
+        code: "BACKGROUND_JOB_RECONCILIATION_REQUIRED",
+        reconciliationCause: error,
+      }
+    );
   }
 }
 
@@ -117,9 +136,16 @@ async function authoritativeStatus(bidId: number, meetingId: number) {
   return Response.json({ status: current?.status ?? "FAILED" });
 }
 
-function transcriptConflictResponse(reason: "not-found" | "frozen") {
+function transcriptConflictResponse(reason: "not-found" | "frozen" | "contention") {
   return Response.json(
-    { error: reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
+    {
+      error:
+        reason === "not-found"
+          ? "Not found"
+          : reason === "contention"
+            ? MEETING_OWNERSHIP_CONTENTION_CONFLICT
+            : FROZEN_TRANSCRIPT_CONFLICT,
+    },
     { status: reason === "not-found" ? 404 : 409 }
   );
 }
@@ -411,6 +437,22 @@ export async function GET(
     });
     return Response.json({ status: nextStatus });
   } catch (err) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      err.code === "BACKGROUND_JOB_RECONCILIATION_REQUIRED"
+    ) {
+      console.error("[meeting-status] durable BackgroundJob reconciliation required", err);
+      return Response.json(
+        {
+          error: "Transcription result committed, but durable job reconciliation is required",
+          code: "BACKGROUND_JOB_RECONCILIATION_REQUIRED",
+          reconciliationRequired: true,
+        },
+        { status: 503 }
+      );
+    }
     return Response.json({ error: String(err) }, { status: 502 });
   }
 }

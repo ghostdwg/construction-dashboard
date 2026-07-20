@@ -11,6 +11,10 @@ import { prisma } from "@/lib/prisma";
 import type { AuditEnvelope } from "@/lib/observability/taxonomy";
 import { emitRegisterAuditPostCommit, writeRegisterAuditTx } from "./txAudit";
 import {
+  historyMaterializationError,
+  withMeetingHistoryMaterialization,
+} from "./retention";
+import {
   type Actor,
   type RegisterDisposition,
   type RegisterEntryType,
@@ -140,7 +144,7 @@ export async function createManualEntry(
       : null;
 
   let envelope: AuditEnvelope | null = null;
-  const entry = await prisma.$transaction(async (tx) => {
+  const committed = await withMeetingHistoryMaterialization(bidId, meetingId, async (tx) => {
     const created = await tx.meetingRegisterEntry.create({
       data: {
         meetingId,
@@ -195,8 +199,14 @@ export async function createManualEntry(
     });
     return created;
   });
+  if (!committed.ok) {
+    return {
+      ok: false,
+      error: historyMaterializationError(committed.reason),
+    };
+  }
   emitRegisterAuditPostCommit(envelope);
-  return { ok: true, value: { id: entry.id } };
+  return { ok: true, value: { id: committed.value.id } };
 }
 
 export type EditEntryInput = {

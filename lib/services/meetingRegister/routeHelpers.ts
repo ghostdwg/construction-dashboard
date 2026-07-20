@@ -8,6 +8,10 @@
 
 import { auth } from "@/lib/auth";
 import { requireBidAccess } from "@/lib/auth-helpers";
+import {
+  MEETING_OWNERSHIP_CONTENTION_CONFLICT,
+  SOURCE_MUTATION_IN_PROGRESS_CONFLICT,
+} from "./retention";
 import type { Actor } from "./types";
 
 export type MeetingRouteContext =
@@ -40,5 +44,8 @@ export async function meetingRouteContext(
 }
 
 export function serviceStatus(error: string): number {
-  return error === "Not found" ? 404 : 400;
+  if (error === "Not found") return 404;
+  if (error === SOURCE_MUTATION_IN_PROGRESS_CONFLICT) return 409;
+  if (error === MEETING_OWNERSHIP_CONTENTION_CONFLICT) return 409;
+  return 400;
 }

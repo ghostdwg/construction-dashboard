@@ -13,7 +13,9 @@ import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
 import {
   FROZEN_TRANSCRIPT_CONFLICT,
+  MEETING_OWNERSHIP_CONTENTION_CONFLICT,
   meetingTranscriptMutationGate,
+  withActiveMeetingTranscriptMutation,
   withMutableMeetingTranscript,
 } from "@/lib/services/meetingRegister/retention";
 import {
@@ -62,9 +64,60 @@ async function allocateAudioKey(
   throw new Error("Unable to allocate an unused meeting audio storage key");
 }
 
-async function bestEffortFailJob(jobId: string | null, message: string) {
-  if (!jobId) return;
-  await failJob(jobId, message).catch(() => {});
+async function reconcileFailedJob(
+  jobId: string,
+  message: string,
+  externalJobId?: string,
+): Promise<Response | null> {
+  try {
+    await (externalJobId
+      ? failJob(jobId, message, externalJobId)
+      : failJob(jobId, message));
+    return null;
+  } catch (error) {
+    console.error(
+      `[meeting-upload] BackgroundJob ${jobId} requires reconciliation:`,
+      error instanceof Error ? error.message : error,
+    );
+    return Response.json(
+      {
+        error: message,
+        reconciliationRequired: true,
+        backgroundJobId: jobId,
+      },
+      { status: 503 },
+    );
+  }
+}
+
+type BlobCompensation =
+  | { ok: true; deleted: boolean }
+  | { ok: false; error: unknown };
+
+async function compensateUnreferencedAudioBlob(
+  store: BlobStore,
+  meetingId: number,
+  storageKey: string,
+): Promise<BlobCompensation> {
+  try {
+    // The schema has no BackgroundJob→blob pointer. The Meeting pointer is
+    // therefore the durable reference boundary. Re-check it immediately
+    // before delete so compensation can never remove a prior/successful blob.
+    const referenced = await prisma.meeting.findFirst({
+      where: { id: meetingId, audioStorageKey: storageKey },
+      select: { audioStorageKey: true },
+    });
+    if (referenced?.audioStorageKey === storageKey) {
+      return { ok: true, deleted: false };
+    }
+    await store.delete(storageKey);
+    return { ok: true, deleted: true };
+  } catch (error) {
+    console.error(
+      "[meeting-upload] Unreferenced audio cleanup requires operator reconciliation",
+    );
+    return { ok: false, error };
+  }
 }
 
 const UPLOADABLE_STATUSES = ["PENDING", "FAILED"] as const;
@@ -85,9 +138,18 @@ function canUploadSource(meeting: {
   );
 }
 
-function transcriptConflictResponse(reason: "not-found" | "frozen") {
+function transcriptConflictResponse(
+  reason: "not-found" | "frozen" | "state-conflict" | "contention",
+) {
   return Response.json(
-    { error: reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
+    {
+      error:
+        reason === "not-found"
+          ? "Not found"
+          : reason === "contention"
+            ? MEETING_OWNERSHIP_CONTENTION_CONFLICT
+            : FROZEN_TRANSCRIPT_CONFLICT,
+    },
     { status: reason === "not-found" ? 404 : 409 }
   );
 }
@@ -125,6 +187,8 @@ export async function POST(
       reviewStatus: true,
       rawTranscript: true,
       analyzedAt: true,
+      audioFileName: true,
+      audioStorageKey: true,
     },
   });
   if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
@@ -146,9 +210,14 @@ export async function POST(
   const commitState = async (
     data: Prisma.MeetingUpdateInput,
     action: string,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
+    expectedStatus: "UPLOADING" | "TRANSCRIBING" = "UPLOADING",
   ) => {
-    const guarded = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
+    const guarded = await withActiveMeetingTranscriptMutation(
+      bidId,
+      mId,
+      expectedStatus,
+      async (tx) => {
       await tx.meeting.update({ where: { id: mId }, data });
       return writeRegisterAuditTx(tx, {
         action,
@@ -158,7 +227,8 @@ export async function POST(
         actor: access.user,
         payload: { bidId, ...payload },
       });
-    });
+      },
+    );
     if (guarded.ok) emitRegisterAuditPostCommit(guarded.value);
     return guarded;
   };
@@ -233,44 +303,86 @@ export async function POST(
     return Response.json({ error: "Audio storage failed" }, { status: 500 });
   }
 
-  const stored = await commitState(
-    { audioStorageKey: storageKey },
-    "meeting.transcription_audio_stored",
-    { audioBytes: audioBytes.length, contentType: audioFile.type || null }
-  ).catch(() => null);
-  if (!stored?.ok) {
-    try {
-      await store.delete(storageKey);
-    } catch {
-      console.error("[meeting-upload] Failed to compensate unreferenced audio blob");
-    }
-    if (stored && !stored.ok && stored.reason === "frozen") {
-      return transcriptConflictResponse(stored.reason);
-    }
-    // If the pointer write itself failed, record the attempt as FAILED through
-    // the same guarded/audited mutation path. An audit failure still fails
-    // closed: the status update rolls back and the compensated blob stays gone.
+  let backgroundJobId: string;
+  try {
+    backgroundJobId = (
+      await createJob({
+        jobType: "meeting_transcription",
+        bidId,
+        relatedId: String(mId),
+        inputSummary: `meeting ${mId} audio upload`,
+        triggerSource: "upload",
+      })
+    ).id;
+  } catch {
+    const cleanup = await compensateUnreferencedAudioBlob(store, mId, storageKey);
     const failed = await commitState(
-      { status: "FAILED" },
+      {
+        status: "FAILED",
+        audioFileName: meeting.audioFileName,
+      },
       "meeting.transcription_failed",
-      { failureClass: "audio-pointer" }
-    ).catch(() => null);
-    if (failed && !failed.ok) return transcriptConflictResponse(failed.reason);
+      { failureClass: "job-tracking", blobCleanupFailed: !cleanup.ok },
+    );
+    if (!failed.ok) return transcriptConflictResponse(failed.reason);
     return Response.json(
-      { error: "Unable to persist meeting audio reference" },
-      { status: 500 }
+      {
+        error: "Unable to reserve transcription tracking",
+        ...(!cleanup.ok ? { cleanupRequired: true } : {}),
+      },
+      { status: 503 },
     );
   }
 
-  const backgroundJobId = await createJob({
-    jobType: "meeting_transcription",
-    bidId,
-    relatedId: String(mId),
-    inputSummary: `meeting ${mId} audio upload`,
-    triggerSource: "upload",
-  })
-    .then((job) => job.id)
-    .catch(() => null);
+  let stored: Awaited<ReturnType<typeof commitState>> | null = null;
+  let pointerError: unknown = null;
+  try {
+    stored = await commitState(
+      { audioStorageKey: storageKey },
+      "meeting.transcription_audio_stored",
+      { audioBytes: audioBytes.length, contentType: audioFile.type || null },
+    );
+  } catch (error) {
+    pointerError = error;
+  }
+  if (!stored?.ok) {
+    const reconciliation = await reconcileFailedJob(
+      backgroundJobId,
+      "Unable to persist meeting audio reference",
+    );
+    const cleanup = await compensateUnreferencedAudioBlob(store, mId, storageKey);
+    if (stored && !stored.ok) {
+      if (reconciliation) return reconciliation;
+      if (!cleanup.ok) {
+        return Response.json(
+          { error: "Unable to persist meeting audio reference", cleanupRequired: true },
+          { status: 503 },
+        );
+      }
+      return transcriptConflictResponse(stored.reason);
+    }
+    const failed = await commitState(
+      {
+        status: "FAILED",
+        audioFileName: meeting.audioFileName,
+      },
+      "meeting.transcription_failed",
+      {
+        failureClass: "audio-pointer",
+        blobCleanupFailed: !cleanup.ok,
+        pointerErrorClass: pointerError instanceof Error ? pointerError.name : "unknown",
+      },
+    ).catch(() => null);
+    if (failed && !failed.ok) return transcriptConflictResponse(failed.reason);
+    if (reconciliation) return reconciliation;
+    return Response.json(
+      {
+        error: "Unable to persist meeting audio reference",
+        ...(!cleanup.ok ? { cleanupRequired: true } : {}),
+      },
+      { status: cleanup.ok ? 500 : 503 },
+    );
+  }
 
   const sidecarForm = new FormData();
   sidecarForm.append(
@@ -305,7 +417,11 @@ export async function POST(
           { providerStatus: res.status }
         );
         if (!pending.ok) return transcriptConflictResponse(pending.reason);
-        await bestEffortFailJob(backgroundJobId, "No transcription service configured");
+        const reconciliation = await reconcileFailedJob(
+          backgroundJobId,
+          "No transcription service configured",
+        );
+        if (reconciliation) return reconciliation;
         return Response.json({
           ok: false,
           manual: true,
@@ -319,7 +435,11 @@ export async function POST(
         { providerStatus: res.status }
       );
       if (!failed.ok) return transcriptConflictResponse(failed.reason);
-      await bestEffortFailJob(backgroundJobId, detail || "Sidecar error");
+      const reconciliation = await reconcileFailedJob(
+        backgroundJobId,
+        detail || "Sidecar error",
+      );
+      if (reconciliation) return reconciliation;
       return Response.json({ error: err.detail ?? "Sidecar error" }, { status: 502 });
     }
 
@@ -336,17 +456,42 @@ export async function POST(
       "meeting.transcription_started",
       { transcriptionSource: data.source }
     );
-    if (!armed.ok) return transcriptConflictResponse(armed.reason);
+    if (!armed.ok) {
+      // The provider has accepted work. Its API has no cancellation endpoint,
+      // so preserve the provider id on a terminal local job and release the
+      // active slot; never leave an untracked external id or queued job.
+      const reconciliation = await reconcileFailedJob(
+        backgroundJobId,
+        "Meeting source state changed before provider arming",
+        data.transcriptionJobId,
+      );
+      if (reconciliation) return reconciliation;
+      return transcriptConflictResponse(armed.reason);
+    }
 
-    if (backgroundJobId) {
+    {
       try {
         await startJob(backgroundJobId, data.transcriptionJobId);
       } catch {
-        // Do not leave a queued activeSlot stranded if external-id linkage
-        // fails after the authoritative Meeting transition succeeded.
-        await bestEffortFailJob(
+        const trackingFailed = await commitState(
+          { status: "FAILED" },
+          "meeting.transcription_failed",
+          { failureClass: "job-start-tracking", providerJobIdRecorded: true },
+          "TRANSCRIBING",
+        );
+        const reconciliation = await reconcileFailedJob(
           backgroundJobId,
-          "Unable to link transcription tracking job"
+          "Unable to link transcription tracking job",
+          data.transcriptionJobId,
+        );
+        if (reconciliation) return reconciliation;
+        if (!trackingFailed.ok) return transcriptConflictResponse(trackingFailed.reason);
+        return Response.json(
+          {
+            error: "Unable to link transcription tracking job",
+            providerJobId: data.transcriptionJobId,
+          },
+          { status: 503 },
         );
       }
     }
@@ -363,7 +508,11 @@ export async function POST(
       { failureClass: err instanceof Error ? err.name : "unknown" }
     );
     if (!failed.ok) return transcriptConflictResponse(failed.reason);
-    await bestEffortFailJob(backgroundJobId, "Sidecar request failed");
+    const reconciliation = await reconcileFailedJob(
+      backgroundJobId,
+      "Sidecar request failed",
+    );
+    if (reconciliation) return reconciliation;
     return Response.json({ error: String(err) }, { status: 502 });
   }
 }

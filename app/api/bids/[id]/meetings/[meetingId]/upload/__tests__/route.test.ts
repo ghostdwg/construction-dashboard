@@ -19,8 +19,12 @@ const state = vi.hoisted(() => ({
   storageFailure: false,
   createJobFailure: false,
   startJobFailure: false,
+  failJobFailure: false,
   pointerPersistenceFailure: false,
   deleteFailure: false,
+  durableHistory: [] as Buffer[],
+  activeMutationCalls: 0,
+  loseActiveMutationAt: null as number | null,
 }));
 
 const mocks = vi.hoisted(() => ({
@@ -44,10 +48,15 @@ vi.mock("@/lib/auth-helpers", () => ({
 vi.mock("@/lib/services/meetingRegister/retention", () => ({
   FROZEN_TRANSCRIPT_CONFLICT: "frozen transcript",
   meetingTranscriptMutationGate: vi.fn(async () =>
-    state.meeting ? { ok: true } : { ok: false, reason: "not-found" }
+    !state.meeting
+      ? { ok: false, reason: "not-found" }
+      : state.durableHistory.length > 0
+        ? { ok: false, reason: "frozen" }
+        : { ok: true }
   ),
   withMutableMeetingTranscript: vi.fn(async (_bidId, _meetingId, mutate) => {
     if (!state.meeting) return { ok: false, reason: "not-found" };
+    if (state.durableHistory.length > 0) return { ok: false, reason: "frozen" };
     return {
       ok: true,
       value: await mutate({
@@ -57,6 +66,23 @@ vi.mock("@/lib/services/meetingRegister/retention", () => ({
           updateMany: mocks.updateMany,
         },
       }),
+    };
+  }),
+  withActiveMeetingTranscriptMutation: vi.fn(async (_bidId, _meetingId, expectedStatus, mutate) => {
+    state.activeMutationCalls += 1;
+    if (!state.meeting) return { ok: false, reason: "not-found" };
+    if (
+      state.meeting.status !== expectedStatus ||
+      state.activeMutationCalls === state.loseActiveMutationAt
+    ) {
+      if (state.activeMutationCalls === state.loseActiveMutationAt) {
+        state.meeting.status = "READY";
+      }
+      return { ok: false, reason: "state-conflict" };
+    }
+    return {
+      ok: true,
+      value: await mutate({ meeting: { findFirst: mocks.findFirst, update: mocks.update } }),
     };
   }),
 }));
@@ -134,6 +160,15 @@ function sidecarResponse(
   });
 }
 
+function attemptDurableHistory(bytes = "synthetic immutable history") {
+  if (!state.meeting) return false;
+  if (["UPLOADING", "TRANSCRIBING"].includes(state.meeting.status)) return false;
+  state.durableHistory.push(Buffer.from(bytes));
+  return true;
+}
+
+const historyBytes = () => state.durableHistory.map((row) => row.toString("hex"));
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("APP_ENV", "local");
@@ -144,8 +179,12 @@ beforeEach(() => {
   state.storageFailure = false;
   state.createJobFailure = false;
   state.startJobFailure = false;
+  state.failJobFailure = false;
   state.pointerPersistenceFailure = false;
   state.deleteFailure = false;
+  state.durableHistory = [];
+  state.activeMutationCalls = 0;
+  state.loseActiveMutationAt = null;
   state.meeting = {
     id: 9,
     bidId: 1,
@@ -224,7 +263,9 @@ beforeEach(() => {
   mocks.startJob.mockImplementation(async () => {
     if (state.startJobFailure) throw new Error("job update unavailable");
   });
-  mocks.failJob.mockResolvedValue(undefined);
+  mocks.failJob.mockImplementation(async () => {
+    if (state.failJobFailure) throw new Error("durable reconciliation unavailable");
+  });
   vi.stubGlobal("fetch", vi.fn(async () => sidecarResponse()));
 });
 
@@ -367,7 +408,11 @@ describe("durable immutable audio", () => {
     expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
     expect(state.meeting?.audioStorageKey).toBe(priorKey);
     expect(state.meeting?.status).toBe("FAILED");
-    expect(mocks.createJob).not.toHaveBeenCalled();
+    expect(mocks.createJob).toHaveBeenCalledOnce();
+    expect(mocks.failJob).toHaveBeenCalledWith(
+      "bg-1",
+      "Unable to persist meeting audio reference",
+    );
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -381,15 +426,16 @@ describe("durable immutable audio", () => {
 
     const response = await POST(uploadRequest("confidential-name.wav"), routeParams);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(503);
     expect(errorSpy).toHaveBeenCalledWith(
-      "[meeting-upload] Failed to compensate unreferenced audio blob"
+      "[meeting-upload] Unreferenced audio cleanup requires operator reconciliation"
     );
+    expect(await response.json()).toMatchObject({ cleanupRequired: true });
     expect(errorSpy.mock.calls.flat().join(" ")).not.toContain("confidential-name");
     expect(errorSpy.mock.calls.flat().join(" ")).not.toContain("synthetic audio");
     expect(state.meeting?.audioStorageKey).toBe(priorKey);
     expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
-    expect(mocks.createJob).not.toHaveBeenCalled();
+    expect(mocks.createJob).toHaveBeenCalledOnce();
     expect(fetch).not.toHaveBeenCalled();
   });
 });
@@ -495,27 +541,54 @@ describe("duplicate guards and BackgroundJob consistency", () => {
     expect(mocks.failJob).toHaveBeenCalledWith("bg-1", "Sidecar request failed");
   });
 
-  it("does not corrupt successful meeting state when job creation fails", async () => {
+  it("fails before provider egress when durable job tracking cannot be reserved", async () => {
     state.createJobFailure = true;
 
     const response = await POST(uploadRequest(), routeParams);
 
-    expect(response.status).toBe(200);
-    expect(state.meeting?.status).toBe("TRANSCRIBING");
-    expect(state.meeting?.transcriptionJobId).toBe("WHISPERX:worker-1");
+    expect(response.status).toBe(503);
+    expect(state.meeting?.status).toBe("FAILED");
+    expect(state.meeting?.transcriptionJobId).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
     expect(mocks.startJob).not.toHaveBeenCalled();
   });
 
-  it("does not corrupt successful meeting state when job start tracking fails", async () => {
+  it("fails closed and preserves the provider id when job start tracking fails", async () => {
     state.startJobFailure = true;
 
     const response = await POST(uploadRequest(), routeParams);
 
-    expect(response.status).toBe(200);
-    expect(state.meeting?.status).toBe("TRANSCRIBING");
+    expect(response.status).toBe(503);
+    expect(state.meeting?.status).toBe("FAILED");
+    expect(state.meeting?.transcriptionJobId).toBe("WHISPERX:worker-1");
     expect(mocks.failJob).toHaveBeenCalledWith(
       "bg-1",
-      "Unable to link transcription tracking job"
+      "Unable to link transcription tracking job",
+      "WHISPERX:worker-1",
+    );
+  });
+
+  it("surfaces reconciliation-required when durable slot release fails", async () => {
+    state.failJobFailure = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        sidecarResponse({ detail: "synthetic provider failure" }, 500),
+      ),
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await POST(uploadRequest(), routeParams);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      reconciliationRequired: true,
+      backgroundJobId: "bg-1",
+      error: "synthetic provider failure",
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("BackgroundJob bg-1 requires reconciliation"),
+      expect.any(String),
     );
   });
 
@@ -530,5 +603,111 @@ describe("duplicate guards and BackgroundJob consistency", () => {
     expect(formDataSpy).not.toHaveBeenCalled();
     expect(mocks.blobPut).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("serialized source mutation and durable-history materialization", () => {
+  it("lets history win before the source claim without parsing bytes or stranding UPLOADING", async () => {
+    const request = uploadRequest();
+    const originalFormData = request.formData.bind(request);
+    let winnerBytes: string[] = [];
+    vi.spyOn(request, "formData").mockImplementation(async () => {
+      expect(attemptDurableHistory("manual register bytes")).toBe(true);
+      winnerBytes = historyBytes();
+      return originalFormData();
+    });
+
+    const response = await POST(request, routeParams);
+
+    expect(response.status).toBe(409);
+    expect(state.meeting?.status).toBe("PENDING");
+    expect(winnerBytes).toHaveLength(1);
+    expect(historyBytes()).toEqual(winnerBytes);
+    expect(mocks.blobPut).not.toHaveBeenCalled();
+    expect(mocks.createJob).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks a pre-pointer history writer and permits retry after source completion", async () => {
+    const before = historyBytes();
+    let blocked = false;
+    const originalPut = mocks.blobPut.getMockImplementation()!;
+    mocks.blobPut.mockImplementationOnce(async (...args) => {
+      blocked = !attemptDurableHistory("pre-pointer writer");
+      return originalPut(...args);
+    });
+
+    const response = await POST(uploadRequest(), routeParams);
+
+    expect(response.status).toBe(200);
+    expect(blocked).toBe(true);
+    expect(historyBytes()).toEqual(before);
+    expect(state.meeting?.status).toBe("TRANSCRIBING");
+    state.meeting!.status = "READY";
+    expect(attemptDurableHistory("pre-pointer writer retry")).toBe(true);
+  });
+
+  it("blocks a post-pointer/pre-provider writer without stranding the blob or queued slot", async () => {
+    const before = historyBytes();
+    let blocked = false;
+    const originalCreateJob = mocks.createJob.getMockImplementation()!;
+    mocks.createJob.mockImplementationOnce(async (...args) => {
+      blocked = !attemptDurableHistory("post-pointer writer");
+      return originalCreateJob(...args);
+    });
+
+    const response = await POST(uploadRequest(), routeParams);
+
+    expect(response.status).toBe(200);
+    expect(blocked).toBe(true);
+    expect(historyBytes()).toEqual(before);
+    expect(state.meeting?.audioStorageKey).toMatch(/^uploads\/meetings\/9\//);
+    expect(mocks.startJob).toHaveBeenCalledWith("bg-1", "WHISPERX:worker-1");
+    expect(mocks.failJob).not.toHaveBeenCalled();
+  });
+
+  it("blocks a post-provider/pre-arm writer and tracks the accepted provider id", async () => {
+    const before = historyBytes();
+    let blocked = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const response = sidecarResponse();
+        const body = await response.json();
+        return {
+          ok: true,
+          status: 200,
+          json: vi.fn(async () => {
+            blocked = !attemptDurableHistory("post-provider writer");
+            return body;
+          }),
+        } as unknown as Response;
+      }),
+    );
+
+    const response = await POST(uploadRequest(), routeParams);
+
+    expect(response.status).toBe(200);
+    expect(blocked).toBe(true);
+    expect(historyBytes()).toEqual(before);
+    expect(state.meeting?.status).toBe("TRANSCRIBING");
+    expect(state.meeting?.transcriptionJobId).toBe("WHISPERX:worker-1");
+    expect(mocks.startJob).toHaveBeenCalledWith("bg-1", "WHISPERX:worker-1");
+  });
+
+  it("records and fails a provider id if ownership is lost before arming", async () => {
+    // pointer commit is active mutation #1; provider arm is #2.
+    state.loseActiveMutationAt = 2;
+
+    const response = await POST(uploadRequest(), routeParams);
+
+    expect(response.status).toBe(409);
+    expect(state.meeting?.status).toBe("READY");
+    expect(mocks.failJob).toHaveBeenCalledWith(
+      "bg-1",
+      "Meeting source state changed before provider arming",
+      "WHISPERX:worker-1",
+    );
+    expect(mocks.startJob).not.toHaveBeenCalled();
   });
 });

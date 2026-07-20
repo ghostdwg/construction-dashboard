@@ -27,7 +27,9 @@ import { meetingRouteContext } from "@/lib/services/meetingRegister/routeHelpers
 import { recordAnalysisRun } from "@/lib/services/meetingRegister/extractionRuns";
 import {
   FROZEN_TRANSCRIPT_CONFLICT,
+  SOURCE_MUTATION_IN_PROGRESS_CONFLICT,
   meetingTranscriptMutationGate,
+  withMeetingHistoryMaterialization,
 } from "@/lib/services/meetingRegister/retention";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
@@ -124,7 +126,33 @@ export async function POST(
       ? priorOpenItemsRaw
       : `${priorOpenItemsRaw}\nOutstanding commitments from prior meetings:\n${outstandingCommitments}`;
 
-  await prisma.meeting.update({ where: { id: mId }, data: { status: "ANALYZING" } });
+  // Serialize the analysis/history writer against the upload source owner
+  // before provider egress. If upload owns UPLOADING/TRANSCRIBING, this
+  // request loses with a retryable 409 and performs no Sidecar work.
+  const analysisClaim = await withMeetingHistoryMaterialization(
+    bidId,
+    mId,
+    async (tx) =>
+      tx.meeting.updateMany({
+        where: {
+          id: mId,
+          bidId,
+          status: { not: "ANALYZING" },
+        },
+        data: { status: "ANALYZING" },
+      }),
+  );
+  if (!analysisClaim.ok || analysisClaim.value.count !== 1) {
+    const error = analysisClaim.ok
+      ? SOURCE_MUTATION_IN_PROGRESS_CONFLICT
+      : analysisClaim.reason === "not-found"
+        ? "Not found"
+        : SOURCE_MUTATION_IN_PROGRESS_CONFLICT;
+    return Response.json(
+      { error },
+      { status: error === "Not found" ? 404 : 409 },
+    );
+  }
 
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -206,7 +234,18 @@ export async function POST(
     // subsequent analysis lands as a PREVIEWED run for human apply/discard
     // so corrections' downstream effects are previewed, never auto-applied.
     const run = await recordAnalysisRun(bidId, mId, analysis, actor);
-    if (!run.ok) throw new Error(run.error);
+    if (!run.ok) {
+      await prisma.meeting.updateMany({
+        where: { id: mId, bidId, status: "ANALYZING" },
+        data: { status: "READY" },
+      });
+      return Response.json(
+        { error: run.error },
+        {
+          status: run.error === SOURCE_MUTATION_IN_PROGRESS_CONFLICT ? 409 : 500,
+        },
+      );
+    }
     const runId = run.value.runId;
     const runStatus = run.value.status;
 
@@ -229,7 +268,10 @@ export async function POST(
       commitmentsFound: analysis.section10.length,
     });
   } catch (err) {
-    await prisma.meeting.update({ where: { id: mId }, data: { status: "READY" } });
+    await prisma.meeting.updateMany({
+      where: { id: mId, bidId, status: "ANALYZING" },
+      data: { status: "READY" },
+    });
     const message = err instanceof Error ? err.message : String(err);
     console.error("[POST /analyze] error:", err);
     return Response.json({ error: message }, { status: 500 });

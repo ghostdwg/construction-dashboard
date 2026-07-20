@@ -11,6 +11,10 @@
 // no-op. Nothing here ever writes Meeting.rawTranscript.
 
 import { prisma } from "@/lib/prisma";
+import {
+  historyMaterializationError,
+  meetingHistoryMaterializationGate,
+} from "./retention";
 import type { ServiceResult } from "./types";
 
 type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
@@ -112,6 +116,13 @@ export async function materializeSegmentsTx(
   bidId: number,
   meetingId: number,
 ): Promise<ServiceResult<{ created: number; existing: number }>> {
+  const historyGate = await meetingHistoryMaterializationGate(db, meetingId, bidId);
+  if (!historyGate.ok) {
+    return {
+      ok: false,
+      error: historyMaterializationError(historyGate.reason),
+    };
+  }
   const meeting = await db.meeting.findFirst({
     where: { id: meetingId, bidId },
     select: { id: true, rawTranscript: true, transcript: true },

@@ -9,6 +9,38 @@
 
 import { prisma } from "@/lib/prisma";
 
+const JOB_RECONCILIATION_ATTEMPTS = 4;
+const JOB_RECONCILIATION_BACKOFF_MS = 100;
+
+export class BackgroundJobReconciliationError extends Error {
+  readonly code = "BACKGROUND_JOB_RECONCILIATION_REQUIRED";
+
+  constructor(
+    readonly jobId: string,
+    readonly originalFailureMessage: string,
+    readonly reconciliationCause: unknown,
+  ) {
+    super(`BackgroundJob ${jobId} requires durable reconciliation`);
+    this.name = "BackgroundJobReconciliationError";
+  }
+}
+
+function isRetryableJobContention(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (candidate.code === "P1008" || candidate.code === "P2034") return true;
+  return (
+    typeof candidate.message === "string" &&
+    /SQLITE_BUSY|database is locked|database table is locked/i.test(candidate.message)
+  );
+}
+
+async function jobContentionBackoff(attempt: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, JOB_RECONCILIATION_BACKOFF_MS * attempt);
+  });
+}
+
 export type JobType =
   | "spec_analysis"
   | "drawing_analysis"
@@ -76,16 +108,52 @@ export async function completeJob(
   });
 }
 
-export async function failJob(id: string, errorMessage: string) {
-  return prisma.backgroundJob.update({
-    where: { id },
-    data: {
-      status: "failed",
-      completedAt: new Date(),
-      errorMessage,
-      activeSlot: null, // release the unique slot so future jobs can run
-    },
-  });
+export async function failJob(id: string, errorMessage: string, externalJobId?: string) {
+  let lastContention: unknown = null;
+  for (let attempt = 1; attempt <= JOB_RECONCILIATION_ATTEMPTS; attempt += 1) {
+    try {
+      const released = await prisma.backgroundJob.updateMany({
+        where: { id, status: { in: ["queued", "running", "failed"] } },
+        data: {
+          status: "failed",
+          completedAt: new Date(),
+          errorMessage,
+          ...(externalJobId ? { externalJobId } : {}),
+          activeSlot: null,
+        },
+      });
+      if (released.count === 1) {
+        // Return the durable row for callers/tests that need to prove provider
+        // id + slot reconciliation. Repeating failJob is safe and converges
+        // on the same terminal state.
+        return prisma.backgroundJob.findUnique({ where: { id } });
+      }
+
+      const current = await prisma.backgroundJob.findUnique({ where: { id } });
+      if (!current) {
+        throw new BackgroundJobReconciliationError(
+          id,
+          errorMessage,
+          new Error("BackgroundJob not found during failure reconciliation"),
+        );
+      }
+      if (current.status === "failed" && current.activeSlot === null) return current;
+      throw new BackgroundJobReconciliationError(
+        id,
+        errorMessage,
+        new Error(`Refusing to rewrite terminal BackgroundJob status ${current.status}`),
+      );
+    } catch (error) {
+      if (error instanceof BackgroundJobReconciliationError) throw error;
+      if (!isRetryableJobContention(error)) throw error;
+      lastContention = error;
+      if (attempt < JOB_RECONCILIATION_ATTEMPTS) {
+        await jobContentionBackoff(attempt);
+      }
+    }
+  }
+
+  throw new BackgroundJobReconciliationError(id, errorMessage, lastContention);
 }
 
 // ── Read path ──────────────────────────────────────────────────────────────

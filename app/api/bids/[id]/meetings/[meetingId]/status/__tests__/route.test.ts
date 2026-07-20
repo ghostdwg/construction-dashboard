@@ -292,6 +292,30 @@ describe("meeting and BackgroundJob terminal state", () => {
     );
   });
 
+  it("surfaces durable failure-reconciliation loss instead of reporting false success", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({ status: "error", error: "provider failed" })
+      )
+    );
+    mocks.failJob.mockRejectedValueOnce(
+      Object.assign(new Error("job cleanup exhausted"), {
+        code: "BACKGROUND_JOB_RECONCILIATION_REQUIRED",
+      })
+    );
+
+    const result = await GET(new Request("http://local/status"), routeParams);
+
+    expect(result.status).toBe(503);
+    expect(await result.json()).toEqual({
+      error: "Transcription result committed, but durable job reconciliation is required",
+      code: "BACKGROUND_JOB_RECONCILIATION_REQUIRED",
+      reconciliationRequired: true,
+    });
+    expect(state.meeting?.status).toBe("FAILED");
+  });
+
   it("allows one concurrent completion winner and preserves its source/participants/job outcome", async () => {
     let releaseFirst!: () => void;
     const firstBlocked = new Promise<void>((resolve) => {
@@ -472,7 +496,7 @@ describe("meeting and BackgroundJob terminal state", () => {
     expect(mocks.completeJob).toHaveBeenCalledOnce();
   });
 
-  it("does not corrupt completed meeting state when job lookup fails", async () => {
+  it("preserves completed meeting state but reports reconciliation when job lookup fails", async () => {
     state.jobLookupFailure = true;
     vi.stubGlobal(
       "fetch",
@@ -489,7 +513,12 @@ describe("meeting and BackgroundJob terminal state", () => {
 
     const result = await GET(new Request("http://local/status"), routeParams);
 
-    expect(result.status).toBe(200);
+    expect(result.status).toBe(503);
+    expect(await result.json()).toEqual({
+      error: "Transcription result committed, but durable job reconciliation is required",
+      code: "BACKGROUND_JOB_RECONCILIATION_REQUIRED",
+      reconciliationRequired: true,
+    });
     expect(state.meeting?.status).toBe("READY");
   });
 
