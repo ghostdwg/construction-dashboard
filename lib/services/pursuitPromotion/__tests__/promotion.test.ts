@@ -312,6 +312,85 @@ describe("duplicate protection", () => {
     expect(store.bids.size).toBe(1);
     expect(store.timeline.size).toBe(1);
   });
+
+  test("N simultaneous lead promotions yield exactly one pursuit", async () => {
+    seedLead();
+
+    // All five start before any commits — a genuine thundering herd, not a
+    // sequence of retries. Exactly one may create; the rest must reuse.
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => promoteToPursuit(ESTIMATOR, "LEAD", "lead_1"))
+    );
+
+    expect(results.every((r) => r.ok)).toBe(true);
+    const created = results.filter((r) => r.ok && !r.reused);
+    expect(created).toHaveLength(1);
+
+    const ids = new Set(results.map((r) => (r.ok ? r.bidId : -1)));
+    expect(ids.size).toBe(1);
+    expect(store.bids.size).toBe(1);
+    expect(store.leads.get("lead_1")!.promotedToBidId).toBe([...ids][0]);
+  });
+
+  test("N simultaneous project promotions yield exactly one pursuit", async () => {
+    seedProject();
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => promoteToPursuit(ADMIN, "PROJECT", "proj_1"))
+    );
+
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(results.filter((r) => r.ok && !r.reused)).toHaveLength(1);
+    expect(store.bids.size).toBe(1);
+    expect(store.timeline.size).toBe(1);
+  });
+
+  test("a lead and a project promoted together stay independent", async () => {
+    seedLead();
+    seedProject();
+
+    const [lead, project] = await Promise.all([
+      promoteToPursuit(ESTIMATOR, "LEAD", "lead_1"),
+      promoteToPursuit(ESTIMATOR, "PROJECT", "proj_1"),
+    ]);
+
+    if (!lead.ok || !project.ok) throw new Error("expected both to succeed");
+    expect(lead.bidId).not.toBe(project.bidId);
+    expect(store.bids.size).toBe(2);
+  });
+
+  test("the guard survives a losing attempt and still reuses afterwards", async () => {
+    seedLead();
+
+    store.beforeLeadSwap = () => {
+      store.beforeLeadSwap = null;
+      commitExternally(store, () => {
+        store.bids.set(9003, {
+          id: 9003,
+          projectName: "Riverside Medical Office",
+          location: null,
+          buildingType: null,
+          approxSqft: null,
+          status: "draft",
+          workflowType: "BID",
+          createdById: "u_est",
+        });
+        const lead = store.leads.get("lead_1")!;
+        lead.promotedToBidId = 9003;
+        lead.status = "PROMOTED";
+      });
+    };
+
+    const lost = await promoteToPursuit(ESTIMATOR, "LEAD", "lead_1");
+    const after = await promoteToPursuit(ESTIMATOR, "LEAD", "lead_1");
+
+    if (!lost.ok || !after.ok) throw new Error("expected both to resolve");
+    expect(lost.bidId).toBe(9003);
+    expect(after.bidId).toBe(9003);
+    expect(after.reused).toBe(true);
+    expect(store.bids.size).toBe(1);
+  });
+
 });
 
 // ── Refusals ──────────────────────────────────────────────────────────────────

@@ -190,6 +190,14 @@ function pick<T extends object>(row: T, select?: Record<string, boolean>): Parti
 
 /** Builds the client surface the promotion service touches. */
 export function buildPrismaMock(store: Store) {
+  // SQLite/libsql admits ONE write transaction at a time. Modelling that is
+  // what makes the thundering-herd tests meaningful: without serialization,
+  // five overlapping transactions would each snapshot a pre-commit store and
+  // roll each other's committed work back — a state the real engine cannot
+  // produce. Reads outside a transaction stay concurrent, so every caller
+  // still races into the guard.
+  let writeQueue: Promise<unknown> = Promise.resolve();
+
   const client = {
     marketLead: {
       findUnique: async ({
@@ -353,17 +361,24 @@ export function buildPrismaMock(store: Store) {
           })),
     },
 
-    /** Snapshot / rollback — the whole point of this fake. */
+    /** Serialized snapshot / rollback — the whole point of this fake. */
     $transaction: async <T,>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
-      const snap = snapshot(store);
-      try {
-        return await fn(client);
-      } catch (err) {
-        restore(store, snap);
-        // Another session's committed work survives our abort.
-        for (const replay of store.externalCommits) replay();
-        throw err;
-      }
+      const run = writeQueue.then(async () => {
+        // Snapshot AFTER acquiring the write slot, so it includes everything
+        // previously committed — exactly what a serialized engine gives us.
+        const snap = snapshot(store);
+        try {
+          return await fn(client);
+        } catch (err) {
+          restore(store, snap);
+          // Another session's committed work survives our abort.
+          for (const replay of store.externalCommits) replay();
+          throw err;
+        }
+      });
+      // Keep the queue alive regardless of this transaction's outcome.
+      writeQueue = run.catch(() => undefined);
+      return run as Promise<T>;
     },
   };
 

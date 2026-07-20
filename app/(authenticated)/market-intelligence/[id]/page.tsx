@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import PromoteToPursuit from "../PromoteToPursuit";
+import PromotionSummary from "../PromotionSummary";
 import { previewPromotion } from "@/lib/services/pursuitPromotion";
 import { resolvePromotionActor } from "@/lib/services/pursuitPromotion/actor";
 
@@ -95,6 +96,15 @@ export default async function LeadDetailPage({
             initialBidId={promotion.existingBidId}
             promotedOutOfScope={promotion.promotedOutOfScope}
           />
+          {promotion.existingBidId != null && (
+            <div className="mt-3">
+              <PromotionSummary
+                sourceKind="LEAD"
+                sourceId={lead.id}
+                bidId={promotion.existingBidId}
+              />
+            </div>
+          )}
         </Section>
       )}
 

@@ -18,6 +18,7 @@ import { ProbabilitySparkline } from "../ProbabilitySparkline";
 import ProjectActions from "../ProjectActions";
 import SignalDetach from "../SignalDetach";
 import PromoteToPursuit from "../../PromoteToPursuit";
+import PromotionSummary from "../../PromotionSummary";
 import { previewPromotion } from "@/lib/services/pursuitPromotion";
 import { resolvePromotionActor } from "@/lib/services/pursuitPromotion/actor";
 
@@ -175,6 +176,15 @@ export default async function ProjectProfilePage({ params }: PageProps) {
             initialBidId={promotion.existingBidId}
             promotedOutOfScope={promotion.promotedOutOfScope}
           />
+          {promotion.existingBidId != null && (
+            <div className="mt-3">
+              <PromotionSummary
+                sourceKind="PROJECT"
+                sourceId={project.id}
+                bidId={promotion.existingBidId}
+              />
+            </div>
+          )}
         </Section>
       )}
 
