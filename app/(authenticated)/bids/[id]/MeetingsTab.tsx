@@ -17,6 +17,7 @@ import MeetingCommitments from "./MeetingCommitments";
 import MeetingRegisterPanel from "./MeetingRegisterPanel";
 import MeetingMinutesPanel from "./MeetingMinutesPanel";
 import TranscriptReviewPanel from "./TranscriptReviewPanel";
+import { isMeetingUploadStale } from "./meetingUploadStaleness";
 import {
   Mic,
   Plus,
@@ -156,6 +157,7 @@ type MeetingDetail = {
   reviewStatus: string;
   uploadedAt: string | null;
   analyzedAt: string | null;
+  updatedAt: string;
   participants: Participant[];
   actionItems: ActionItem[];
 };
@@ -1341,9 +1343,7 @@ function MeetingDetailPanel({
     <div className="space-y-4">
       {/* ── Status banner for in-progress states ── */}
       {isActive(detail.status as MeetingStatus) && (() => {
-        const uploadStale = detail.status === "UPLOADING" && detail.uploadedAt
-          ? Date.now() - new Date(detail.uploadedAt).getTime() > 5 * 60 * 1000
-          : false;
+        const uploadStale = isMeetingUploadStale(detail);
 
         if (uploadStale) {
           return (
