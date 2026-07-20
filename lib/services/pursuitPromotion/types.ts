@@ -31,7 +31,7 @@ export type PromotionErrorCode =
 export type PromotionActor = {
   id: string;
   email?: string | null;
-  role: string;
+  role: string | null;
 };
 
 /** Fields a promotion will write onto the new draft Bid. Allowlist — never a spread. */

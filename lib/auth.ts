@@ -80,7 +80,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // On initial sign-in, user object is available — persist id + role to JWT
       if (user) {
         token.id = user.id;
-        token.role = (user as { role?: string }).role ?? "estimator";
+        token.role = (user as { role?: unknown }).role;
       }
       return token;
     },
@@ -88,7 +88,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Expose id + role on the client-side session object
       if (session.user) {
         session.user.id = token.id as string;
-        (session.user as { role?: string }).role = token.role as string;
+        (session.user as { role?: unknown }).role = token.role;
       }
       return session;
     },

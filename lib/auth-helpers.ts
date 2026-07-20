@@ -19,11 +19,21 @@ export const ROLES = {
 
 export type AppRole = (typeof ROLES)[keyof typeof ROLES];
 
+/** Normalize only explicit, recognized application roles. */
+export function normalizeAppRole(role: unknown): AppRole | null {
+  if (typeof role !== "string") return null;
+
+  const normalized = role.trim().toLowerCase();
+  return (Object.values(ROLES) as string[]).includes(normalized)
+    ? (normalized as AppRole)
+    : null;
+}
+
 // ── Current user ───────────────────────────────────────────────────────────
 
 export type AppUser = {
   id:   string;
-  role: AppRole;
+  role: AppRole | null;
 };
 
 /**
@@ -40,11 +50,11 @@ export async function getUser(): Promise<AppUser | null> {
   if (!session?.user) return null;
 
   const id   = (session.user as { id?: string }).id;
-  const role = (session.user as { role?: string }).role ?? ROLES.ESTIMATOR;
+  const role = normalizeAppRole((session.user as { role?: unknown }).role);
 
   if (!id) return null;
 
-  return { id, role: role as AppRole };
+  return { id, role };
 }
 
 /**

@@ -115,7 +115,7 @@ export function isProjectPromotable(project: {
  * estimator only. A PM owns awarded construction work and has no business
  * opening new pursuits. Mirrors canAccessPhase(user, "BID", "draft").
  */
-export function canPromote(actor: { role: string }): boolean {
+export function canPromote(actor: { role: unknown }): boolean {
   return actor.role === ROLES.ADMIN || actor.role === ROLES.ESTIMATOR;
 }
 

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 type SessionUser = {
   id: string;
-  role: string;
+  role?: unknown;
   email: string;
 };
 
@@ -51,6 +51,12 @@ function malformedRequest(): Request {
   });
 }
 
+function expectNoWrites() {
+  expect(h.create).not.toHaveBeenCalled();
+  expect(h.processNewMarketLead).not.toHaveBeenCalled();
+  expect(h.fireAndForgetIngest).not.toHaveBeenCalled();
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.AUTH_DISABLED = "false";
@@ -69,36 +75,76 @@ beforeEach(() => {
 describe("POST /api/market-intelligence/leads — authentication and authorization", () => {
   test("anonymous requests return 401 before any MarketLead write", async () => {
     h.session.current = null;
+    const req = malformedRequest();
+    const parse = vi.spyOn(req, "json");
 
-    const response = await route.POST(request({ title: "Private lead" }));
+    const response = await route.POST(req);
 
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "Authentication required" });
-    expect(h.create).not.toHaveBeenCalled();
-    expect(h.processNewMarketLead).not.toHaveBeenCalled();
-    expect(h.fireAndForgetIngest).not.toHaveBeenCalled();
+    expect(parse).not.toHaveBeenCalled();
+    expectNoWrites();
   });
 
-  test("malformed JSON is authenticated before it is parsed", async () => {
-    h.session.current = null;
+  test.each([
+    ["a missing role", { id: "user_missing", email: "missing@example.com" }],
+    [
+      "an undefined role",
+      { id: "user_undefined", role: undefined, email: "undefined@example.com" },
+    ],
+    ["a null role", { id: "user_null", role: null, email: "null@example.com" }],
+    ["an empty role", { id: "user_empty", role: "", email: "empty@example.com" }],
+    [
+      "a whitespace-only role",
+      { id: "user_space", role: "   ", email: "space@example.com" },
+    ],
+    [
+      "an unknown role",
+      { id: "user_unknown", role: "superuser", email: "unknown@example.com" },
+    ],
+    [
+      "an object role",
+      { id: "user_object", role: { name: "admin" }, email: "object@example.com" },
+    ],
+    ["an array role", { id: "user_array", role: ["admin"], email: "array@example.com" }],
+    ["a numeric role", { id: "user_number", role: 1, email: "number@example.com" }],
+    ["the PM role", { id: "user_pm", role: "pm", email: "pm@example.com" }],
+    [
+      "a project manager label",
+      {
+        id: "user_project_manager",
+        role: "project manager",
+        email: "project-manager@example.com",
+      },
+    ],
+  ] satisfies Array<[string, SessionUser]>)(
+    "authenticated session with %s returns 403 before parsing or writing",
+    async (_label, user) => {
+      h.session.current = { user };
+      const req = malformedRequest();
+      const parse = vi.spyOn(req, "json");
 
-    const response = await route.POST(malformedRequest());
+      const response = await route.POST(req);
 
-    expect(response.status).toBe(401);
-    expect(h.create).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: "Forbidden" });
+      expect(parse).not.toHaveBeenCalled();
+      expectNoWrites();
+    }
+  );
 
-  test("authenticated PMs return 403 before parsing or writing", async () => {
+  test("a caller-supplied admin role cannot override the session role", async () => {
     h.session.current = {
       user: { id: "user_pm", role: "pm", email: "pm@example.com" },
     };
+    const req = request({ title: "Private lead", role: "admin" });
+    const parse = vi.spyOn(req, "json");
 
-    const response = await route.POST(malformedRequest());
+    const response = await route.POST(req);
 
     expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ error: "Forbidden" });
-    expect(h.create).not.toHaveBeenCalled();
-    expect(h.processNewMarketLead).not.toHaveBeenCalled();
+    expect(parse).not.toHaveBeenCalled();
+    expectNoWrites();
   });
 });
 
@@ -125,6 +171,28 @@ describe("POST /api/market-intelligence/leads — authorized creation", () => {
         notes: null,
       },
     });
+  });
+
+  test("an admin can create a manual lead", async () => {
+    h.session.current = {
+      user: { id: "user_admin", role: "admin", email: "admin@example.com" },
+    };
+
+    const response = await route.POST(request({ title: "Admin lead" }));
+
+    expect(response.status).toBe(201);
+    expect(h.create).toHaveBeenCalledOnce();
+  });
+
+  test("recognized authorized roles follow case and whitespace normalization", async () => {
+    h.session.current = {
+      user: { id: "user_normalized", role: "  EsTiMaToR  ", email: "normalized@example.com" },
+    };
+
+    const response = await route.POST(request({ title: "Normalized role lead" }));
+
+    expect(response.status).toBe(201);
+    expect(h.create).toHaveBeenCalledOnce();
   });
 
   test("actor identity is derived from the session and protected fields are ignored", async () => {
