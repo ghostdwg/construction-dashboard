@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import PromoteToPursuit from "../PromoteToPursuit";
+import { previewPromotion } from "@/lib/services/pursuitPromotion";
+import { resolvePromotionActor } from "@/lib/services/pursuitPromotion/actor";
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
@@ -36,6 +39,13 @@ export default async function LeadDetailPage({
     },
   });
   if (!lead) notFound();
+
+  // Promotion eligibility is resolved server-side so the control renders in the
+  // right state on first paint, before any client fetch.
+  const promotionActor = await resolvePromotionActor();
+  const promotion = promotionActor
+    ? await previewPromotion(promotionActor, "LEAD", lead.id)
+    : null;
 
   const insights = parseInsights(lead.aiInsights);
   const statusColor =
@@ -74,6 +84,19 @@ export default async function LeadDetailPage({
           )}
         </div>
       </header>
+
+      {promotion && (
+        <Section title="Pursuit">
+          <PromoteToPursuit
+            sourceKind="LEAD"
+            sourceId={lead.id}
+            initialEligible={promotion.eligible}
+            initialReason={promotion.reason}
+            initialBidId={promotion.existingBidId}
+            promotedOutOfScope={promotion.promotedOutOfScope}
+          />
+        </Section>
+      )}
 
       <Section title="At a glance">
         <Grid>

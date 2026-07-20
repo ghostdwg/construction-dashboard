@@ -17,6 +17,7 @@ import ComplianceWidget from "./ComplianceWidget";
 import SubmissionPanel from "./SubmissionPanel";
 import EditableDueDate from "./EditableDueDate";
 import JobIntakePanel from "./JobIntakePanel";
+import PursuitOriginCard from "./PursuitOriginCard";
 import ProjectContactsPanel from "./ProjectContactsPanel";
 import HandoffTab from "./HandoffTab";
 import SubmittalsTab from "./SubmittalsTab";
@@ -267,6 +268,9 @@ export default async function BidDetailPage({
 
               {/* Status timeline */}
               <BidStatusTimeline status={bid.status} />
+
+              {/* Market Intelligence provenance — renders only for promoted pursuits */}
+              <PursuitOriginCard bidId={bid.id} />
 
               {/* Quick stats bar */}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

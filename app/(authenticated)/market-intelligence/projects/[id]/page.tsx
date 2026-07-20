@@ -17,6 +17,9 @@ import {
 import { ProbabilitySparkline } from "../ProbabilitySparkline";
 import ProjectActions from "../ProjectActions";
 import SignalDetach from "../SignalDetach";
+import PromoteToPursuit from "../../PromoteToPursuit";
+import { previewPromotion } from "@/lib/services/pursuitPromotion";
+import { resolvePromotionActor } from "@/lib/services/pursuitPromotion/actor";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -51,6 +54,12 @@ export default async function ProjectProfilePage({ params }: PageProps) {
     },
   });
   if (!project) notFound();
+
+  // Server-resolved so the promotion control paints in the correct state.
+  const promotionActor = await resolvePromotionActor();
+  const promotion = promotionActor
+    ? await previewPromotion(promotionActor, "PROJECT", project.id)
+    : null;
 
   const [signals, entities, parcels, snapshots, timeline] = await Promise.all([
     prisma.projectSignal.findMany({
@@ -155,6 +164,19 @@ export default async function ProjectProfilePage({ params }: PageProps) {
           lifecycleState={project.lifecycleState}
         />
       </Section>
+
+      {promotion && (
+        <Section title="Pursuit">
+          <PromoteToPursuit
+            sourceKind="PROJECT"
+            sourceId={project.id}
+            initialEligible={promotion.eligible}
+            initialReason={promotion.reason}
+            initialBidId={promotion.existingBidId}
+            promotedOutOfScope={promotion.promotedOutOfScope}
+          />
+        </Section>
+      )}
 
       {/* Why does the system believe this? — explainability panel */}
       <Section title="Why does the system believe this is one project?">

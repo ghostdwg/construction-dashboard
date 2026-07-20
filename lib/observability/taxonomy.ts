@@ -54,6 +54,7 @@ export const AUDIT_CATEGORIES = [
   "ai_prompt_scan",           // P2-A0 — shadow, non-blocking heuristic prompt scan (gateway.ts)
   "register_action",          // OPS1 tracked-item register: status transitions, close/waive, attachment upload, OAC promotion (human-only actions)
   "consultant_report",        // OPS3 Phase 1A — consultant report/revision/observation lifecycle + formal-response edits (human-only actions)
+  "pursuit_promotion",        // MI→Pursuit — operator promotes a MarketLead/Project into a draft Bid (human-only, irreversible link)
 ] as const;
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 
@@ -175,6 +176,7 @@ export const DB_PERSISTED_CATEGORIES = new Set<AuditCategory>([
   "system_health",
   "register_action",           // OPS1 — operator-consequential register mutations persist forever
   "consultant_report",         // OPS3 Phase 1A — every consultant-report mutation is operator-driven; persists forever
+  "pursuit_promotion",         // MI→Pursuit — the lifecycle link between wings; must be reconstructable forever
 ]);
 
 export function shouldPersistToDb(category: AuditCategory): boolean {
