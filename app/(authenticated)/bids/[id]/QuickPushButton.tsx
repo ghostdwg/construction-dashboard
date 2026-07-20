@@ -160,7 +160,8 @@ export default function QuickPushButton({ bidId }: { bidId: number }) {
   }, [bidId]);
 
   useEffect(() => {
-    loadStatus();
+    const request = setTimeout(() => void loadStatus(), 0);
+    return () => clearTimeout(request);
   }, [loadStatus]);
 
   const runPush = useCallback(async () => {

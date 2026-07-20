@@ -51,9 +51,7 @@ function Stat({ label, value, sub, tone }: StatProps) {
 }
 
 export default async function ActivationSummary() {
-  // eslint-disable-next-line react-hooks/purity
   const now = new Date();
-  // eslint-disable-next-line react-hooks/purity
   const oneDayAgo = new Date(now.getTime() - 86_400_000);
 
   const [activeCount, staleCount, operatorReviewCount, dueCount, scrapedRows, suppressedCount] = await Promise.all([

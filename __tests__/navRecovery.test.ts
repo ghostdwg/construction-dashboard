@@ -10,8 +10,11 @@ import { describe, expect, it } from "vitest";
 // mobile, including the per-bid phase/sub-tab nav in ProjectContextBar.tsx, even
 // with the drawer fully off-canvas.
 
-describe("app/layout.tsx main content area", () => {
-  const layout = readFileSync(join(__dirname, "..", "app", "layout.tsx"), "utf8");
+describe("app/(authenticated)/layout.tsx main content area", () => {
+  const layout = readFileSync(
+    join(__dirname, "..", "app", "(authenticated)", "layout.tsx"),
+    "utf8",
+  );
 
   it("does not re-apply --sidebar-width as a marginLeft on <main>", () => {
     // AppSidebar's <aside> is a real flex sibling at desktop widths and
@@ -30,7 +33,9 @@ describe("app/layout.tsx main content area", () => {
   });
 
   it("constrains the application shell to the viewport and scrolls main independently", () => {
-    expect(layout).toMatch(/<body[\s\S]*className="[^"]*h-dvh[^"]*overflow-hidden/);
+    expect(layout).toMatch(
+      /<div[\s\S]*className="[^"]*gwx-app-body[^"]*h-dvh[^"]*overflow-hidden/,
+    );
     expect(layout).toMatch(/<main className="[^"]*overflow-y-auto[^"]*"/);
     expect(layout).toMatch(/<main className="[^"]*overflow-x-hidden[^"]*"/);
   });
@@ -105,12 +110,14 @@ describe("app/components/AppSidebar.tsx mobile hamburger", () => {
 
 describe("authenticated Operations route", () => {
   const operationsPage = readFileSync(
-    join(__dirname, "..", "app", "operations", "page.tsx"),
+    join(__dirname, "..", "app", "(authenticated)", "operations", "page.tsx"),
     "utf8",
   );
 
   it("reuses the existing cross-project dashboard at a descriptive route", () => {
-    expect(operationsPage).toMatch(/export \{ default \} from "\.\.\/page"/);
+    expect(operationsPage).toMatch(
+      /export \{ default \} from "\.\.\/\.\.\/OperationsDashboardPage"/,
+    );
     expect(operationsPage).toMatch(/title:\s*"Operations \| GroundworX"/);
   });
 });

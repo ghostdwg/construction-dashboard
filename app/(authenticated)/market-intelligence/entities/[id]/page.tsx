@@ -167,7 +167,7 @@ export default async function EntityProfilePage({ params }: PageProps) {
       {/* Aliases */}
       <Section title={`Aliases (${entity.aliases.length})`}>
         {entity.aliases.length === 0 ? (
-          <div className="opacity-50 text-[12px]">No aliases recorded yet. Operator can add via "Add alias" above.</div>
+          <div className="opacity-50 text-[12px]">No aliases recorded yet. Operator can add via &quot;Add alias&quot; above.</div>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {entity.aliases.map((a) => (

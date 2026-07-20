@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { TierBadge } from "@/app/subcontractors/[id]/SubIntelligencePanel";
+import { TierBadge } from "@/app/(authenticated)/subcontractors/[id]/SubIntelligencePanel";
 import EstimateIntelligenceCard from "./EstimateIntelligenceCard";
 import BidSpreadPanel from "./BidSpreadPanel";
 

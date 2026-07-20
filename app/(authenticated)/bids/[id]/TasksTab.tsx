@@ -31,11 +31,6 @@ const STATUS: Record<string, { color: string; bg: string; border: string; label:
   DEFERRED:    { color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.08)", label: "DEFER" },
 };
 
-function fmtDate(s: string | null): string {
-  if (!s) return "—";
-  return new Date(s).toLocaleDateString();
-}
-
 function fmtDue(s: string | null): { label: string; tone: "ok" | "soon" | "overdue" | "none" } {
   if (!s) return { label: "—", tone: "none" };
   const due = new Date(s);
@@ -74,7 +69,10 @@ export default function TasksTab({ bidId }: { bidId: number }) {
     setLoading(false);
   }, [bidId, filter]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const request = setTimeout(() => void load(), 0);
+    return () => clearTimeout(request);
+  }, [load]);
 
   async function createTask() {
     if (!desc.trim()) return;

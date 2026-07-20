@@ -62,7 +62,7 @@ export default async function ReviewQueuePage() {
           Review queue
         </h1>
         <p className="text-[12px] opacity-70" style={{ color: "var(--text-soft)" }}>
-          Items the resolver couldn't decide on, and structural inconsistencies the
+          Items the resolver couldn&apos;t decide on, and structural inconsistencies the
           collision detectors flagged. Click any entity to inspect and act.
         </p>
         <div className="flex flex-wrap items-center gap-3 font-mono text-[10px] uppercase tracking-[0.07em]">

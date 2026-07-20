@@ -67,12 +67,6 @@ function FieldRow({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setDisplay(initialDisplay);
-    setHasValue(initialHasValue);
-    setSource(initialSource);
-  }, [initialDisplay, initialHasValue, initialSource]);
-
   async function save() {
     setSaving(true);
     setError(null);
@@ -254,6 +248,7 @@ export default function InfrastructureSettingsCard() {
 
         <div className="rounded-md border border-zinc-200 dark:border-zinc-700 p-4 space-y-4">
           <FieldRow
+            key={`WHISPERX_URL:${whisperxUrl?.displayValue ?? ""}:${whisperxUrl?.source ?? "missing"}`}
             label={whisperxUrl?.label ?? "GPU Worker URL"}
             description={whisperxUrl?.description ?? ""}
             settingKey="WHISPERX_URL"
@@ -265,6 +260,7 @@ export default function InfrastructureSettingsCard() {
             isSecret={false}
           />
           <FieldRow
+            key={`WHISPERX_API_KEY:${whisperxKey?.hasValue ?? false}:${whisperxKey?.source ?? "missing"}`}
             label={whisperxKey?.label ?? "GPU Worker API Key"}
             description={whisperxKey?.description ?? ""}
             settingKey="WHISPERX_API_KEY"
@@ -290,6 +286,7 @@ export default function InfrastructureSettingsCard() {
 
         <div className="rounded-md border border-zinc-200 dark:border-zinc-700 p-4 space-y-4">
           <FieldRow
+            key={`SIDECAR_URL:${sidecarUrl?.displayValue ?? ""}:${sidecarUrl?.source ?? "missing"}`}
             label={sidecarUrl?.label ?? "Python Sidecar URL"}
             description={sidecarUrl?.description ?? ""}
             settingKey="SIDECAR_URL"
@@ -301,6 +298,7 @@ export default function InfrastructureSettingsCard() {
             isSecret={false}
           />
           <FieldRow
+            key={`SIDECAR_API_KEY:${sidecarKey?.hasValue ?? false}:${sidecarKey?.source ?? "missing"}`}
             label={sidecarKey?.label ?? "Sidecar API Key"}
             description={sidecarKey?.description ?? ""}
             settingKey="SIDECAR_API_KEY"
@@ -345,6 +343,7 @@ export default function InfrastructureSettingsCard() {
 
         <div className="rounded-md border border-zinc-200 dark:border-zinc-700 p-4">
           <FieldRow
+            key={`APP_URL:${appUrl?.displayValue ?? ""}:${appUrl?.source ?? "missing"}`}
             label={appUrl?.label ?? "App Public URL"}
             description={appUrl?.description ?? ""}
             settingKey="APP_URL"

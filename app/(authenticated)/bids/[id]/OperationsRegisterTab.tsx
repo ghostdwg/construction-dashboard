@@ -215,8 +215,8 @@ export default function OperationsRegisterTab({ bidId }: { bidId: number }) {
           </svg>
           <p className="empty-state-title">No Register Items yet</p>
           <p className="empty-state-body">
-            No Register Items yet. Create one manually with "New Register Item…" or promote a meeting action item
-            using "Promote from meeting…" above.
+            No Register Items yet. Create one manually with &quot;New Register Item…&quot; or promote a meeting action item
+            using &quot;Promote from meeting…&quot; above.
           </p>
         </div>
       )}
@@ -476,7 +476,7 @@ function ItemDetail({
             {item.citationVerified ? ", verified" : ", unverified"}
             {item.sourceLocator ? ` · ${item.sourceLocator}` : ""}):
           </p>
-          <p className="mt-1 italic text-zinc-700 dark:text-zinc-300">"{item.evidenceExcerpt}"</p>
+          <p className="mt-1 italic text-zinc-700 dark:text-zinc-300">&quot;{item.evidenceExcerpt}&quot;</p>
           {isMeetingSourceKind(item.sourceKind) && (
             <p className="mt-1 text-zinc-400 dark:text-zinc-500">
               Speaker attributions in meeting evidence are draft labels, not verified identity.

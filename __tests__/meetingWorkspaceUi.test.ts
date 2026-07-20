@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 // the correction-op vocabulary — so a refactor that silently drops one is
 // caught without booting Playwright.
 
-const bidDir = join(__dirname, "..", "app", "bids", "[id]");
+const bidDir = join(__dirname, "..", "app", "(authenticated)", "bids", "[id]");
 
 describe("MeetingsTab.tsx meeting workspace section tabs", () => {
   const tab = readFileSync(join(bidDir, "MeetingsTab.tsx"), "utf8");

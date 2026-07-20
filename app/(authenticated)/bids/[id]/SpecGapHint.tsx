@@ -18,13 +18,14 @@ export default function SpecGapHint({ bidId, title }: { bidId: number; title: st
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (title.trim().length < 3) {
-      setSections([]);
-      setTotal(0);
-      setOpen(false);
-      return;
-    }
+    const hasSearchTerm = title.trim().length >= 3;
     const tid = setTimeout(() => {
+      if (!hasSearchTerm) {
+        setSections([]);
+        setTotal(0);
+        setOpen(false);
+        return;
+      }
       void fetch(
         `/api/bids/${bidId}/spec-gaps/related?q=${encodeURIComponent(title)}&limit=5`
       )
@@ -35,7 +36,7 @@ export default function SpecGapHint({ bidId, title }: { bidId: number; title: st
           setTotal(json.total);
         })
         .catch(() => {});
-    }, 400);
+    }, hasSearchTerm ? 400 : 0);
     return () => clearTimeout(tid);
   }, [bidId, title]);
 

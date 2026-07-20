@@ -313,7 +313,7 @@ function MergePanel({
         style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--line)", color: "var(--text)" }}
       />
       <div className="text-[11px] opacity-60">
-        Find the target's ID from its profile URL (/market-intelligence/projects/[id]).
+        Find the target&apos;s ID from its profile URL (/market-intelligence/projects/[id]).
       </div>
       <div className="flex items-center gap-2">
         <Button label="Preview merge" tone="neutral" disabled={busy || !target} onClick={preview} busy={busy && !plan} />

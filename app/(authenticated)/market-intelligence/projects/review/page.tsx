@@ -139,7 +139,7 @@ export default async function ProjectReviewPage() {
           Project review queue
         </h1>
         <p className="text-[12px] opacity-70" style={{ color: "var(--text-soft)" }}>
-          Aggregates the resolver couldn't decide on, structural collisions, and stalled
+          Aggregates the resolver couldn&apos;t decide on, structural collisions, and stalled
           activity. Click any project to inspect and act.
         </p>
         <div className="flex flex-wrap items-center gap-3 font-mono text-[10px] uppercase tracking-[0.07em]">
@@ -227,7 +227,7 @@ export default async function ProjectReviewPage() {
           <>
             <div className="opacity-60 text-[11px] mb-2">
               Detached signals are preserved as soft-deleted rows. Operator can reattach them
-              to a different project via the source project's profile.
+              to a different project via the source project&apos;s profile.
             </div>
             <ProjectList projects={projectsWithDetached} extraInfo={(p) => `${detachedCountByProject.get(p.id) ?? 0} detached`} />
           </>

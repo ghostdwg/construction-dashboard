@@ -175,12 +175,6 @@ function ActionButton({
   );
 }
 
-interface MergeCandidate {
-  id: string;
-  canonicalName: string;
-  entityType: string;
-}
-
 function MergePanel({
   entityId,
   canonicalName,
@@ -262,7 +256,7 @@ function MergePanel({
         style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--line)", color: "var(--text)" }}
       />
       <div className="text-[11px] opacity-60">
-        Find the target ID from another entity's profile URL (/market-intelligence/entities/[id]).
+        Find the target ID from another entity&apos;s profile URL (/market-intelligence/entities/[id]).
       </div>
       <div className="flex items-center gap-2">
         <ActionButton label="Preview merge" tone="neutral" disabled={busy || !target} onClick={dryRun} busy={busy && !plan} />

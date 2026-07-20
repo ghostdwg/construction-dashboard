@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { TierBadge } from "@/app/subcontractors/[id]/SubIntelligencePanel";
+import { TierBadge } from "@/app/(authenticated)/subcontractors/[id]/SubIntelligencePanel";
 import RfqSendModal, { type RfqSendCandidate } from "./RfqSendModal";
 
 // ── Types ──────────────────────────────────────────────────────────────────

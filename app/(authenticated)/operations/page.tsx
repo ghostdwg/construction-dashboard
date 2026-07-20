@@ -7,4 +7,4 @@ export const metadata: Metadata = {
   title: "Operations | GroundworX",
 };
 
-export { default } from "../page";
+export { default } from "../../OperationsDashboardPage";

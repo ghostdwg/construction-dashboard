@@ -212,6 +212,11 @@ export default async function BidDetailPage({
     } catch { /* malformed JSON — degrade gracefully */ }
   }
 
+  // Server-render snapshot: all due-date cards in this response share one
+  // clock value instead of sampling time independently during JSX render.
+  // eslint-disable-next-line react-hooks/purity
+  const overviewNow = Date.now();
+
   return (
     <div className="flex flex-col min-h-full">
       <ProjectContextBar
@@ -284,9 +289,9 @@ export default async function BidDetailPage({
                   {
                     label: "Days Until Due",
                     value: bid.dueDate
-                      ? Math.max(0, Math.ceil((bid.dueDate.getTime() - Date.now()) / 86_400_000))
+                      ? Math.max(0, Math.ceil((bid.dueDate.getTime() - overviewNow) / 86_400_000))
                       : "—",
-                    accent: bid.dueDate && (bid.dueDate.getTime() - Date.now()) < 7 * 86_400_000
+                    accent: bid.dueDate && (bid.dueDate.getTime() - overviewNow) < 7 * 86_400_000
                       ? "var(--color-danger)"
                       : "var(--color-text-dim)",
                   },

@@ -402,7 +402,8 @@ function ReportDetail({
   // Live linked-item status: a fresh fetch on every expand/refocus — never a
   // stale cache.
   useEffect(() => {
-    void refresh();
+    const request = setTimeout(() => void refresh(), 0);
+    return () => clearTimeout(request);
   }, [refresh]);
 
   if (!detail) {
