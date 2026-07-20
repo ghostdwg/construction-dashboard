@@ -12,6 +12,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
 import { Prisma } from "@prisma/client";
+import path from "node:path";
 import {
   deleteMeetingWithoutHistory,
   DURABLE_HISTORY_CONFLICT,
@@ -22,6 +23,7 @@ import {
   emitRegisterAuditPostCommit,
   writeRegisterAuditTx,
 } from "@/lib/services/meetingRegister/txAudit";
+import { deleteMeetingStorageIfUnreferenced } from "@/lib/services/storage/referenceSafety";
 
 const VALID_TYPES = new Set([
   "GENERAL", "OAC", "SUBCONTRACTOR", "PRECONSTRUCTION", "SAFETY", "KICKOFF",
@@ -288,6 +290,22 @@ export async function DELETE(
     const result = await deleteMeetingWithoutHistory(bidId, mId);
     if (!result.ok) {
       return Response.json({ error: result.error }, { status: result.status });
+    }
+    const mediaRef =
+      result.audioStorageKey ??
+      (result.audioFileName
+        ? path.join(
+            process.cwd(),
+            "uploads",
+            "meetings",
+            String(mId),
+            result.audioFileName,
+          )
+        : null);
+    if (mediaRef) {
+      await deleteMeetingStorageIfUnreferenced(mediaRef, bidId, mId).catch((err) => {
+        console.error("[meetings/delete] unreferenced media cleanup failed:", err);
+      });
     }
     return Response.json({ ok: true });
   } catch (error) {

@@ -49,9 +49,13 @@ vi.mock("@/lib/prisma", () => ({
       ),
     },
     addendumUpload: {
-      findUnique: vi.fn(async () => db.record),
+      findFirst: vi.fn(async () => db.record),
+      findMany: vi.fn(async () =>
+        db.record ? [{ bidId: db.record.bidId, storageKey: db.record.storageKey }] : [],
+      ),
       delete: vi.fn(async ({ where }: { where: { id: number } }) => {
         db.deletedId = where.id;
+        db.record = null;
         return { id: where.id };
       }),
     },
@@ -62,6 +66,10 @@ vi.mock("@/lib/prisma", () => ({
       }),
     },
   },
+}));
+
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({ ok: true, user: { id: "u1", role: "admin" } })),
 }));
 
 const triggerBriefRefreshMock = vi.fn(async () => undefined);

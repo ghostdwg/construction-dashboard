@@ -6,7 +6,7 @@
 //
 // Policy:
 //   - Content-Type passes through ONLY for the MIME types our upload
-//     allowlists ever accepted (jpeg/png/webp/pdf); anything else — or a
+//     allowlists accept (document/photo plus meeting audio/video); anything else — or a
 //     missing stored type — serves as application/octet-stream so a
 //     mislabeled blob can never be sniffed into an active content type.
 //   - Content-Disposition is always `attachment` (V0 is download/open —
@@ -20,6 +20,16 @@ const SERVABLE_MIME = new Set([
   "image/png",
   "image/webp",
   "application/pdf",
+  "audio/aac",
+  "audio/flac",
+  "audio/mp4",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "audio/webm",
+  "audio/x-wav",
+  "video/mp4",
+  "video/webm",
 ]);
 
 export function servableContentType(storedMime: string | null | undefined): string {

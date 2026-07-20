@@ -44,6 +44,12 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ isAdminAuthorized: h.isAdminAuthorized }));
 vi.mock("@/lib/env", () => ({ env: h.appEnv }));
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({ ok: true, user: { id: "u1", role: "admin" } })),
+}));
+vi.mock("@/lib/services/storage/referenceSafety", () => ({
+  deleteDrawingStorageIfUnreferenced: vi.fn(async () => true),
+}));
 
 type DrawingUploadRow = {
   id: number;
@@ -77,8 +83,8 @@ function resetDb() {
 const aiUsageLogCreateMock = vi.fn(async () => ({ id: "fake" }));
 const backgroundJobCreateMock = vi.fn(async () => ({ id: "fake" }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const client = {
     appSetting: {
       findUnique: vi.fn(async () =>
         h.adminAutomation.value === null
@@ -96,6 +102,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(async () => [{ tradeId: 10 }]),
     },
     drawingUpload: {
+      findMany: vi.fn(async () => []),
       deleteMany: vi.fn(async () => ({ count: 0 })),
       create: vi.fn(async ({ data }: { data: Omit<DrawingUploadRow, "id"> }) => {
         db.uploadCounter += 1;
@@ -120,8 +127,14 @@ vi.mock("@/lib/prisma", () => ({
     // assert these specific write paths were never reached transitively.
     aiUsageLog: { create: aiUsageLogCreateMock },
     backgroundJob: { create: backgroundJobCreateMock },
-  },
-}));
+  };
+  return {
+    prisma: {
+      ...client,
+      $transaction: vi.fn(async (callback: (tx: typeof client) => unknown) => callback(client)),
+    },
+  };
+});
 
 // ── AI/provider side-effect mocks — the exact fire-and-forget calls this
 // feature must be able to suppress ─────────────────────────────────────────
@@ -244,7 +257,11 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
     expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
     // Normal upload persistence still happens — only the two automation
     // calls are gated.
-    expect(blobPutMock).toHaveBeenCalledWith("uploads/drawings/1/drawing.pdf", expect.any(Buffer));
+    expect(blobPutMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^plan-room\/jobs\/1\/drawings\/[0-9a-f-]{36}\/drawing\.pdf$/),
+      expect.any(Buffer),
+      { contentType: "application/pdf" },
+    );
   });
 
   // ── Test 1c — NEW: master automation flag explicitly "false" behaves the
@@ -421,7 +438,11 @@ describe("POST /api/bids/[id]/drawings/upload — storage-only smoke suppression
     // Normal upload persistence + parse still happened exactly as a
     // non-suppressed run would — suppression only touches the two
     // automation calls, nothing else about the upload flow.
-    expect(blobPutMock).toHaveBeenCalledWith("uploads/drawings/1/drawing.pdf", expect.any(Buffer));
+    expect(blobPutMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^plan-room\/jobs\/1\/drawings\/[0-9a-f-]{36}\/drawing\.pdf$/),
+      expect.any(Buffer),
+      { contentType: "application/pdf" },
+    );
     expect(db.sheets.length).toBeGreaterThan(0);
     expect(json.coveredCount).toBeGreaterThan(0);
   });

@@ -28,6 +28,9 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/services/settings/appSettingsService", () => ({ getSetting: h.getSetting }));
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({ ok: true, user: { id: "u1", role: "admin" } })),
+}));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     drawingUpload: {

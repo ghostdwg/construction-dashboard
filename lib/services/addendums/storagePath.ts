@@ -2,10 +2,10 @@
 // factory in lib/services/storage/legacyPathCompat.ts. See that module's
 // header for the full four-shape breakdown.
 //
-// `AddendumUpload.storageKey` (new nullable column, added by this work) is
-// scoped by a single bidId segment — the production shape is
-// `uploads/addendums/{bidId}/{safeBlobFileName(...)}`. The legacy
-// pre-BlobStore root is `process.cwd()/uploads/addendums`.
+// New writes use
+// `plan-room/jobs/{bidId}/addenda/{immutableId}/{safeBlobFileName(...)}`.
+// Relative `uploads/addendums/{bidId}/...`, storage-root absolute paths, and
+// scoped cwd paths remain readable for existing/backfilled rows.
 //
 // Unlike Spec Books/Drawings/Estimates, Addendums never had a filePath/
 // storageKey column before this change at all — every existing row's
@@ -24,6 +24,10 @@ const ADDENDUMS_SEGMENTS = ["uploads", "addendums"];
 const compat = createLegacyPathCompat({
   legacyCwdSegments: ADDENDUMS_SEGMENTS,
   legacyStorageRootSegments: ADDENDUMS_SEGMENTS,
+  allowedKeyPrefixes: ([bidId]) => [
+    ["plan-room", "jobs", bidId, "addenda"],
+    ["uploads", "addendums", bidId],
+  ],
 });
 
 export function classifyAddendumStoragePath(ref: string, bidId: number) {
@@ -46,7 +50,10 @@ export function deleteAddendumStoragePath(ref: string, bidId: number) {
   return compat.deletePath(ref, [bidId]);
 }
 
-/** Canonical BlobStore key for a new addendum upload — matches production's namespace. */
-export function addendumStorageKey(bidId: number, safeFileName: string): string {
-  return `uploads/addendums/${bidId}/${safeFileName}`;
+/** Canonical collision-safe BlobStore key for a new addendum upload. */
+export function addendumStorageKey(bidId: number, immutableId: string, safeFileName: string): string {
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(immutableId)) {
+    throw new Error("immutable addendum file id is invalid");
+  }
+  return `plan-room/jobs/${bidId}/addenda/${immutableId}/${safeFileName}`;
 }

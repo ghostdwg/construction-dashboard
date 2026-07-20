@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 // POST /api/bids/[id]/drawings/rematch
 // Re-applies three-state logic to all existing DrawingSheet records.
@@ -10,6 +11,9 @@ export async function POST(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const drawingUpload = await prisma.drawingUpload.findFirst({
     where: { bidId },

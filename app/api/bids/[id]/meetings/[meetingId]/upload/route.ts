@@ -27,7 +27,11 @@ import {
   safeBlobFileName,
   type BlobStore,
 } from "@/lib/storage/blobStore";
-import { meetingAudioStorageKey } from "@/lib/services/meetings/storagePath";
+import {
+  meetingAudioStorageKey,
+  validateMeetingMediaUpload,
+} from "@/lib/services/meetings/storagePath";
+import { deleteMeetingStorageIfUnreferenced } from "@/lib/services/storage/referenceSafety";
 import {
   createJob,
   failJob,
@@ -51,13 +55,16 @@ function sidecarHeaders(): Record<string, string> {
 
 async function allocateAudioKey(
   store: BlobStore,
+  bidId: number,
   meetingId: number,
   safeFileName: string
 ): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const key = meetingAudioStorageKey(
+      bidId,
       meetingId,
-      `${randomUUID()}-${safeFileName}`
+      randomUUID(),
+      safeFileName,
     );
     if (!(await store.exists(key))) return key;
   }
@@ -95,23 +102,18 @@ type BlobCompensation =
   | { ok: false; error: unknown };
 
 async function compensateUnreferencedAudioBlob(
-  store: BlobStore,
+  _store: BlobStore,
+  bidId: number,
   meetingId: number,
   storageKey: string,
 ): Promise<BlobCompensation> {
   try {
-    // The schema has no BackgroundJob→blob pointer. The Meeting pointer is
-    // therefore the durable reference boundary. Re-check it immediately
-    // before delete so compensation can never remove a prior/successful blob.
-    const referenced = await prisma.meeting.findFirst({
-      where: { id: meetingId, audioStorageKey: storageKey },
-      select: { audioStorageKey: true },
-    });
-    if (referenced?.audioStorageKey === storageKey) {
-      return { ok: true, deleted: false };
-    }
-    await store.delete(storageKey);
-    return { ok: true, deleted: true };
+    const deleted = await deleteMeetingStorageIfUnreferenced(
+      storageKey,
+      bidId,
+      meetingId,
+    );
+    return { ok: true, deleted };
   } catch (error) {
     console.error(
       "[meeting-upload] Unreferenced audio cleanup requires operator reconciliation",
@@ -193,6 +195,9 @@ export async function POST(
   });
   if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
 
+  const previousAudioFileName = meeting.audioFileName;
+  const previousAudioStorageKey = meeting.audioStorageKey;
+
   if (!canUploadSource(meeting)) {
     return Response.json(
       { error: "Meeting source is not eligible for upload" },
@@ -201,9 +206,18 @@ export async function POST(
   }
 
   const formData = await request.formData();
-  const audioFile = formData.get("audio") as File | null;
-  if (!audioFile)
+  const audioFile = formData.get("audio");
+  if (!(audioFile instanceof File))
     return Response.json({ error: "audio file is required" }, { status: 400 });
+
+  const validation = validateMeetingMediaUpload({
+    fileName: audioFile.name,
+    mimeType: audioFile.type,
+    byteSize: audioFile.size,
+  });
+  if (!validation.ok) {
+    return Response.json({ error: validation.error }, { status: 400 });
+  }
 
   const safeFileName = safeBlobFileName(audioFile.name);
 
@@ -291,7 +305,7 @@ export async function POST(
   let storageKey: string;
   try {
     store = getBlobStore();
-    storageKey = await allocateAudioKey(store, mId, safeFileName);
+    storageKey = await allocateAudioKey(store, bidId, mId, safeFileName);
     await store.put(storageKey, audioBytes, { contentType: audioFile.type });
   } catch {
     const failed = await commitState(
@@ -315,11 +329,11 @@ export async function POST(
       })
     ).id;
   } catch {
-    const cleanup = await compensateUnreferencedAudioBlob(store, mId, storageKey);
+    const cleanup = await compensateUnreferencedAudioBlob(store, bidId, mId, storageKey);
     const failed = await commitState(
       {
         status: "FAILED",
-        audioFileName: meeting.audioFileName,
+        audioFileName: previousAudioFileName,
       },
       "meeting.transcription_failed",
       { failureClass: "job-tracking", blobCleanupFailed: !cleanup.ok },
@@ -350,7 +364,7 @@ export async function POST(
       backgroundJobId,
       "Unable to persist meeting audio reference",
     );
-    const cleanup = await compensateUnreferencedAudioBlob(store, mId, storageKey);
+    const cleanup = await compensateUnreferencedAudioBlob(store, bidId, mId, storageKey);
     if (stored && !stored.ok) {
       if (reconciliation) return reconciliation;
       if (!cleanup.ok) {
@@ -364,7 +378,7 @@ export async function POST(
     const failed = await commitState(
       {
         status: "FAILED",
-        audioFileName: meeting.audioFileName,
+        audioFileName: previousAudioFileName,
       },
       "meeting.transcription_failed",
       {
@@ -382,6 +396,16 @@ export async function POST(
       },
       { status: cleanup.ok ? 500 : 503 },
     );
+  }
+
+  if (previousAudioStorageKey && previousAudioStorageKey !== storageKey) {
+    await deleteMeetingStorageIfUnreferenced(
+      previousAudioStorageKey,
+      bidId,
+      mId,
+    ).catch((err) => {
+      console.error("[meeting-upload] superseded audio cleanup failed:", err);
+    });
   }
 
   const sidecarForm = new FormData();

@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
-import { readFile } from "fs/promises";
 import { join } from "path";
 import { readMeetingStorageBuffer } from "@/lib/services/meetings/storagePath";
 import type { Prisma } from "@prisma/client";
@@ -113,10 +112,12 @@ export async function POST(
   let audioBytes: Buffer;
   try {
     if (meeting.audioStorageKey) {
-      audioBytes = await readMeetingStorageBuffer(meeting.audioStorageKey, mId);
+      audioBytes = await readMeetingStorageBuffer(meeting.audioStorageKey, bidId, mId);
     } else {
-      audioBytes = await readFile(
-        join(process.cwd(), "uploads", "meetings", String(mId), meeting.audioFileName ?? "")
+      audioBytes = await readMeetingStorageBuffer(
+        join(process.cwd(), "uploads", "meetings", String(mId), meeting.audioFileName ?? ""),
+        bidId,
+        mId,
       );
     }
   } catch {

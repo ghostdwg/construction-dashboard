@@ -39,12 +39,20 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     drawingUpload: {
       findFirst: vi.fn(async () => db.upload),
+      findMany: vi.fn(async () =>
+        db.upload ? [{ bidId: db.upload.bidId, filePath: db.upload.filePath }] : [],
+      ),
       delete: vi.fn(async ({ where }: { where: { id: number } }) => {
         db.deletedId = where.id;
+        db.upload = null;
         return { id: where.id };
       }),
     },
   },
+}));
+
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({ ok: true, user: { id: "u1", role: "admin" } })),
 }));
 
 const fsUnlinkMock = vi.fn(async () => undefined);

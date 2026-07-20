@@ -8,10 +8,16 @@
 //   1. Store VTT text in meeting.vttContent
 //   2. Send audio to sidecar → GPU worker (WhisperX async job)
 
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
-import { meetingAudioStorageKey } from "@/lib/services/meetings/storagePath";
+import {
+  MEETING_VTT_MAX_BYTES,
+  meetingAudioStorageKey,
+  validateMeetingMediaUpload,
+} from "@/lib/services/meetings/storagePath";
+import { deleteMeetingStorageIfUnreferenced } from "@/lib/services/storage/referenceSafety";
 import {
   FROZEN_TRANSCRIPT_CONFLICT,
   meetingTranscriptMutationGate,
@@ -46,16 +52,33 @@ export async function POST(
 
   const meeting = await prisma.meeting.findFirst({
     where: { id: mId, bidId },
-    select: { id: true, status: true },
+    select: {
+      id: true,
+      status: true,
+      audioFileName: true,
+      audioStorageKey: true,
+    },
   });
   if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
+  const previousAudioStorageKey = meeting.audioStorageKey;
 
   const formData = await request.formData();
-  const vttFile   = formData.get("vtt")   as File | null;
-  const audioFile = formData.get("audio") as File | null;
+  const vttFile = formData.get("vtt");
+  const audioFile = formData.get("audio");
 
-  if (!vttFile)   return Response.json({ error: "vtt file is required"   }, { status: 400 });
-  if (!audioFile) return Response.json({ error: "audio file is required" }, { status: 400 });
+  if (!(vttFile instanceof File)) return Response.json({ error: "vtt file is required" }, { status: 400 });
+  if (!(audioFile instanceof File)) return Response.json({ error: "audio file is required" }, { status: 400 });
+  if (vttFile.size <= 0 || vttFile.size > MEETING_VTT_MAX_BYTES) {
+    return Response.json({ error: "vtt file is empty or too large" }, { status: 400 });
+  }
+  const mediaValidation = validateMeetingMediaUpload({
+    fileName: audioFile.name,
+    mimeType: audioFile.type,
+    byteSize: audioFile.size,
+  });
+  if (!mediaValidation.ok) {
+    return Response.json({ error: mediaValidation.error }, { status: 400 });
+  }
 
   const vttText = await vttFile.text();
   if (!vttText.includes("WEBVTT"))
@@ -68,10 +91,17 @@ export async function POST(
   // pre-existing naming-convention reconstruction (used for historic rows
   // with no audioStorageKey) always agree on the on-disk filename.
   const safeAudioName = safeBlobFileName(audioFile.name);
-  const storedAudioKey = meetingAudioStorageKey(mId, safeAudioName);
+  const storedAudioKey = meetingAudioStorageKey(
+    bidId,
+    mId,
+    randomUUID(),
+    safeAudioName,
+  );
   const blobStore = getBlobStore();
   try {
-    await blobStore.put(storedAudioKey, Buffer.from(await audioFile.arrayBuffer()));
+    await blobStore.put(storedAudioKey, Buffer.from(await audioFile.arrayBuffer()), {
+      contentType: audioFile.type || "application/octet-stream",
+    });
   } catch {
     const failed = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
       await tx.meeting.update({ where: { id: mId }, data: { status: "FAILED" } });
@@ -98,8 +128,12 @@ export async function POST(
 
   try {
     const armed = await withMutableMeetingTranscript(bidId, mId, async (tx) => {
-      await tx.meeting.update({
-        where: { id: mId },
+      const claim = await tx.meeting.updateMany({
+        where: {
+          id: mId,
+          bidId,
+          audioStorageKey: previousAudioStorageKey,
+        },
         data: {
           status: "AWAITING_SOURCE_MAP",
           processingMode: "HYBRID",
@@ -110,7 +144,8 @@ export async function POST(
           uploadedAt: new Date(),
         },
       });
-      return writeRegisterAuditTx(tx, {
+      if (claim.count !== 1) return { claimed: false as const, audit: null };
+      const audit = await writeRegisterAuditTx(tx, {
         action: "meeting.hybrid_upload_started",
         decision: "committed",
         subjectKind: "Meeting",
@@ -123,18 +158,33 @@ export async function POST(
           sourceCount: speakerLabels.length,
         },
       });
+      return { claimed: true as const, audit };
     });
     if (!armed.ok) {
-      await blobStore.delete(storedAudioKey).catch(() => undefined);
+      await deleteMeetingStorageIfUnreferenced(storedAudioKey, bidId, mId).catch(() => undefined);
       return Response.json(
         { error: armed.reason === "not-found" ? "Not found" : FROZEN_TRANSCRIPT_CONFLICT },
         { status: armed.reason === "not-found" ? 404 : 409 },
       );
     }
-    emitRegisterAuditPostCommit(armed.value);
+    if (!armed.value.claimed) {
+      await deleteMeetingStorageIfUnreferenced(storedAudioKey, bidId, mId).catch(() => undefined);
+      return Response.json({ error: "Meeting media changed concurrently" }, { status: 409 });
+    }
+    emitRegisterAuditPostCommit(armed.value.audit);
   } catch (error) {
-    await blobStore.delete(storedAudioKey).catch(() => undefined);
+    await deleteMeetingStorageIfUnreferenced(storedAudioKey, bidId, mId).catch(() => undefined);
     throw error;
+  }
+
+  if (previousAudioStorageKey && previousAudioStorageKey !== storedAudioKey) {
+    await deleteMeetingStorageIfUnreferenced(
+      previousAudioStorageKey,
+      bidId,
+      mId,
+    ).catch((err) => {
+      console.error("[meeting-upload-hybrid] superseded audio cleanup failed:", err);
+    });
   }
 
 

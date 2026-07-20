@@ -93,9 +93,17 @@ vi.mock("@/lib/storage/blobStore", () => ({
 }));
 
 vi.mock("@/lib/services/meetings/storagePath", () => ({
-  meetingAudioStorageKey: (meetingId: number, name: string) =>
-    `uploads/meetings/${meetingId}/${name}`,
+  MEETING_VTT_MAX_BYTES: 10 * 1024 * 1024,
+  meetingAudioStorageKey: (bidId: number, meetingId: number, immutableId: string, name: string) =>
+    `plan-room/jobs/${bidId}/meetings/${meetingId}/${immutableId}/${name}`,
+  validateMeetingMediaUpload: () => ({ ok: true }),
   readMeetingStorageBuffer: external.readMeetingStorageBuffer,
+}));
+vi.mock("@/lib/services/storage/referenceSafety", () => ({
+  deleteMeetingStorageIfUnreferenced: vi.fn(async (key: string) => {
+    await external.blobDelete(key);
+    return true;
+  }),
 }));
 
 vi.mock("@/lib/prisma", () => {
@@ -253,6 +261,21 @@ describe("durable-history delete gates", () => {
     const response = await deleteMeeting(new Request("http://local.test"), meetingParams);
     expect(response.status).toBe(200);
     expect(state.tables.meeting).toEqual([]);
+  });
+
+  it("retires unreferenced durable meeting media only after deletion commits", async () => {
+    const key = "plan-room/jobs/1/meetings/2/immutable/meeting.wav";
+    Object.assign(state.tables.meeting[0], {
+      audioFileName: "meeting.wav",
+      audioStorageKey: key,
+    });
+    external.blobData.set(key, Buffer.from("meeting audio"));
+
+    const response = await deleteMeeting(new Request("http://local.test"), meetingParams);
+
+    expect(response.status).toBe(200);
+    expect(state.tables.meeting).toEqual([]);
+    expect(external.blobData.has(key)).toBe(false);
   });
 });
 

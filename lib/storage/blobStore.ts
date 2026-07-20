@@ -7,7 +7,7 @@
  * Path conventions (from docs/architecture/STORAGE.md):
  *   market/docs/{sourceId}/{YYYY}/{MM}/{docId}.{ext}
  *   plan-room/jobs/{jobId}/{kind}/{file}
- *   meetings/{meetingId}/{file}
+ *   plan-room/jobs/{jobId}/meetings/{meetingId}/{file}
  *
  * Keys are forward-slash separated relative paths. The store enforces no
  * leading slash, no path traversal (..), no absolute paths.
@@ -21,12 +21,14 @@ export type PutResult = {
   size: number;
   sha256: string;
   storedAt: string;       // ISO timestamp
+  contentType?: string;
 };
 
 export type Stat = {
   size: number;
   sha256: string;
   modifiedAt: Date;
+  contentType?: string;
 };
 
 export interface BlobStore {
@@ -42,11 +44,29 @@ export interface BlobStore {
   delete(key: string): Promise<void>;
 }
 
-function assertSafeKey(key: string): void {
+export class BlobNotFoundError extends Error {
+  readonly code = "BLOB_NOT_FOUND";
+
+  constructor(readonly key: string) {
+    super(`Blob not found: ${key}`);
+    this.name = "BlobNotFoundError";
+  }
+}
+
+/** Validate and return the one canonical representation accepted by stores. */
+export function normalizeBlobKey(key: string): string {
   if (!key || typeof key !== "string") throw new Error("BlobStore: empty key");
   if (key.startsWith("/") || key.startsWith("\\")) throw new Error("BlobStore: absolute path not allowed");
-  if (/(^|\/)\.\.(\/|$)/.test(key)) throw new Error("BlobStore: path traversal not allowed");
+  if (key.includes("\\")) throw new Error("BlobStore: backslash separators not allowed");
+  if (key.includes("\0")) throw new Error("BlobStore: null byte not allowed");
+  if (/(^|\/)\.\.($|\/)/.test(key)) throw new Error("BlobStore: path traversal not allowed");
+  if (/(^|\/)\.($|\/)/.test(key)) throw new Error("BlobStore: dot path segments not allowed");
   if (key.length > 1024) throw new Error("BlobStore: key too long");
+  const normalized = path.posix.normalize(key);
+  if (normalized !== key || key.includes("//") || key.endsWith("/")) {
+    throw new Error("BlobStore: key must be normalized");
+  }
+  return normalized;
 }
 
 function sha256(buf: Buffer): string {
@@ -86,31 +106,74 @@ export class LocalBlobStore implements BlobStore {
   }
 
   private resolve(key: string): string {
-    assertSafeKey(key);
-    return path.join(this.root, key);
+    return path.join(this.root, normalizeBlobKey(key));
   }
 
-  async put(key: string, data: Buffer): Promise<PutResult> {
+  private metadataPath(key: string): string {
+    const digest = crypto.createHash("sha256").update(normalizeBlobKey(key)).digest("hex");
+    return path.join(this.root, ".blob-metadata", `${digest}.json`);
+  }
+
+  async put(key: string, data: Buffer, opts?: { contentType?: string }): Promise<PutResult> {
     const full = this.resolve(key);
     await fs.mkdir(path.dirname(full), { recursive: true });
     await fs.writeFile(full, data);
-    return {
+    const result: PutResult = {
       size: data.length,
       sha256: sha256(data),
       storedAt: new Date().toISOString(),
+      ...(opts?.contentType ? { contentType: opts.contentType } : {}),
     };
+    const metadataPath = this.metadataPath(key);
+    await fs.mkdir(path.dirname(metadataPath), { recursive: true });
+    await fs.writeFile(
+      metadataPath,
+      JSON.stringify({ key: normalizeBlobKey(key), ...result }),
+      "utf8",
+    );
+    return result;
   }
 
   async get(key: string): Promise<Buffer> {
-    return fs.readFile(this.resolve(key));
+    try {
+      return await fs.readFile(this.resolve(key));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new BlobNotFoundError(normalizeBlobKey(key));
+      }
+      throw err;
+    }
   }
 
   async stat(key: string): Promise<Stat | null> {
     try {
       const full = this.resolve(key);
       const st = await fs.stat(full);
-      const buf = await fs.readFile(full);
-      return { size: st.size, sha256: sha256(buf), modifiedAt: st.mtime };
+      let storedSha256: string | undefined;
+      let contentType: string | undefined;
+      try {
+        const metadata = JSON.parse(
+          await fs.readFile(this.metadataPath(key), "utf8"),
+        ) as { contentType?: unknown; sha256?: unknown; size?: unknown };
+        if (typeof metadata.contentType === "string") contentType = metadata.contentType;
+        if (
+          typeof metadata.sha256 === "string" &&
+          metadata.sha256.length === 64 &&
+          metadata.size === st.size
+        ) {
+          storedSha256 = metadata.sha256;
+        }
+      } catch (metadataError) {
+        if ((metadataError as NodeJS.ErrnoException).code !== "ENOENT" && !(metadataError instanceof SyntaxError)) {
+          throw metadataError;
+        }
+      }
+      return {
+        size: st.size,
+        sha256: storedSha256 ?? sha256(await fs.readFile(full)),
+        modifiedAt: st.mtime,
+        ...(contentType ? { contentType } : {}),
+      };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw err;
@@ -121,14 +184,20 @@ export class LocalBlobStore implements BlobStore {
     try {
       await fs.access(this.resolve(key));
       return true;
-    } catch {
-      return false;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw err;
     }
   }
 
   async delete(key: string): Promise<void> {
     try {
       await fs.unlink(this.resolve(key));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+    try {
+      await fs.unlink(this.metadataPath(key));
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
@@ -157,6 +226,11 @@ export function getBlobStore(): BlobStore {
     return _store;
   }
   throw new Error(`Unsupported STORAGE_BACKEND: ${backend}`);
+}
+
+/** Test/runtime-verification hook: simulate a fresh application process. */
+export function resetBlobStoreSingleton(): void {
+  _store = null;
 }
 
 /**

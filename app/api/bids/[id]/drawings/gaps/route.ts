@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 // GET /api/bids/[id]/drawings/gaps
 // Returns ALL drawing uploads for this bid (fullset or per-discipline) and
@@ -13,6 +14,9 @@ export async function GET(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const drawingUploads = await prisma.drawingUpload.findMany({
     where: { bidId },

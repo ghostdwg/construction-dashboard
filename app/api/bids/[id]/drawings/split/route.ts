@@ -2,6 +2,8 @@
 // Proxies the uploaded PDF to the sidecar /parse/drawings/split endpoint
 // for discipline detection. Returns the split analysis for user confirmation.
 
+import { requireBidAccess } from "@/lib/auth-helpers";
+
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY || "";
 
@@ -12,6 +14,9 @@ export async function POST(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let formData: FormData;
   try {

@@ -119,8 +119,17 @@ vi.mock("@/lib/storage/blobStore", () => ({
 }));
 
 vi.mock("@/lib/services/meetings/storagePath", () => ({
-  meetingAudioStorageKey: (meetingId: number, fileName: string) =>
-    `uploads/meetings/${meetingId}/${fileName}`,
+  meetingAudioStorageKey: (bidId: number, meetingId: number, immutableId: string, fileName: string) =>
+    `plan-room/jobs/${bidId}/meetings/${meetingId}/${immutableId}/${fileName}`,
+  validateMeetingMediaUpload: () => ({ ok: true }),
+}));
+
+vi.mock("@/lib/services/storage/referenceSafety", () => ({
+  deleteMeetingStorageIfUnreferenced: vi.fn(async (key: string) => {
+    if (state.meeting?.audioStorageKey === key) return false;
+    await mocks.blobDelete(key);
+    return true;
+  }),
 }));
 
 vi.mock("@/lib/services/jobs/backgroundJobService", () => ({
@@ -330,7 +339,7 @@ describe("durable immutable audio", () => {
     expect(mocks.blobPut).toHaveBeenCalledOnce();
     const storageKey = mocks.blobPut.mock.calls[0][0] as string;
     expect(storageKey).toMatch(
-      /^uploads\/meetings\/9\/[0-9a-f-]{36}-OAC _4\.wav$/
+      /^plan-room\/jobs\/1\/meetings\/9\/[0-9a-f-]{36}\/OAC _4\.wav$/
     );
     expect(state.meeting?.audioStorageKey).toBe(storageKey);
     expect(state.meeting?.audioFileName).toBe("OAC _4.wav");
@@ -340,7 +349,7 @@ describe("durable immutable audio", () => {
     );
   });
 
-  it("FAILED retry allocates a different key and never overwrites prior audio", async () => {
+  it("FAILED retry allocates a different key and retires the unreferenced prior audio", async () => {
     const priorKey = "uploads/meetings/9/prior-recording.wav";
     state.meeting!.status = "FAILED";
     state.meeting!.audioStorageKey = priorKey;
@@ -350,8 +359,8 @@ describe("durable immutable audio", () => {
 
     expect(response.status).toBe(200);
     expect(state.meeting?.audioStorageKey).not.toBe(priorKey);
-    expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
-    expect(state.blobs.size).toBe(2);
+    expect(state.blobs.has(priorKey)).toBe(false);
+    expect(state.blobs.size).toBe(1);
   });
 
   it("manual mode retains durable audio and returns PENDING", async () => {
@@ -371,7 +380,7 @@ describe("durable immutable audio", () => {
     expect(response.status).toBe(200);
     expect(payload.manual).toBe(true);
     expect(state.meeting?.status).toBe("PENDING");
-    expect(state.meeting?.audioStorageKey).toMatch(/^uploads\/meetings\/9\//);
+    expect(state.meeting?.audioStorageKey).toMatch(/^plan-room\/jobs\/1\/meetings\/9\//);
     expect(mocks.failJob).toHaveBeenCalledWith(
       "bg-1",
       "No transcription service configured"
@@ -661,7 +670,7 @@ describe("serialized source mutation and durable-history materialization", () =>
     expect(response.status).toBe(200);
     expect(blocked).toBe(true);
     expect(historyBytes()).toEqual(before);
-    expect(state.meeting?.audioStorageKey).toMatch(/^uploads\/meetings\/9\//);
+    expect(state.meeting?.audioStorageKey).toMatch(/^plan-room\/jobs\/1\/meetings\/9\//);
     expect(mocks.startJob).toHaveBeenCalledWith("bg-1", "WHISPERX:worker-1");
     expect(mocks.failJob).not.toHaveBeenCalled();
   });

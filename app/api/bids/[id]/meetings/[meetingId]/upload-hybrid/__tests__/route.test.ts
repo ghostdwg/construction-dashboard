@@ -56,14 +56,22 @@ vi.mock("@/lib/services/meetingRegister/retention", () => ({
     ok: true,
     value: await mutate({
       meeting: {
-        update: async ({ data }: { data: Partial<MeetingRow> }) => {
+        updateMany: async ({ data }: { data: Partial<MeetingRow> }) => {
           db.updates.push(data);
           if (db.meeting) Object.assign(db.meeting, data);
-          return db.meeting;
+          return { count: db.meeting ? 1 : 0 };
         },
       },
     }),
   })),
+}));
+
+vi.mock("@/lib/services/storage/referenceSafety", () => ({
+  deleteMeetingStorageIfUnreferenced: vi.fn(async (key: string) => {
+    if (db.meeting?.audioStorageKey === key) return false;
+    blobData.delete(key);
+    return true;
+  }),
 }));
 
 vi.mock("@/lib/services/meetingRegister/txAudit", () => ({
@@ -118,10 +126,16 @@ describe("POST /api/bids/[id]/meetings/[meetingId]/upload-hybrid", () => {
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
-    expect(blobPutMock).toHaveBeenCalledWith("uploads/meetings/9/Meeting Recording _1.wav", expect.any(Buffer));
+    expect(blobPutMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^plan-room\/jobs\/1\/meetings\/9\/[0-9a-f-]{36}\/Meeting Recording _1\.wav$/),
+      expect.any(Buffer),
+      { contentType: "audio/wav" },
+    );
 
     const finalUpdate = db.updates[db.updates.length - 1];
-    expect(finalUpdate.audioStorageKey).toBe("uploads/meetings/9/Meeting Recording _1.wav");
+    expect(finalUpdate.audioStorageKey).toMatch(
+      /^plan-room\/jobs\/1\/meetings\/9\/[0-9a-f-]{36}\/Meeting Recording _1\.wav$/,
+    );
     expect(finalUpdate.audioStorageKey!.startsWith("/")).toBe(false);
     // audioFileName stores the same sanitized name, so historic-row fallback
     // reconstruction and the new key always agree on the on-disk filename.

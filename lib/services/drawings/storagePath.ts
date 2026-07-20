@@ -4,9 +4,11 @@
 // legacy-storage-root / invalid) and why this is a fresh instantiation
 // rather than a shared classifier with Spec Books or the other domains.
 //
-// `DrawingUpload.filePath` is scoped by a single bidId segment — the
-// production shape is `uploads/drawings/{bidId}/{safeBlobFileName(...)}`.
-// The legacy pre-BlobStore root is `process.cwd()/uploads/drawings`.
+// New writes use
+// `plan-room/jobs/{bidId}/drawings/{immutableId}/{safeBlobFileName(...)}`.
+// Relative `uploads/drawings/{bidId}/...`, storage-root absolute paths, and
+// the scoped pre-BlobStore `process.cwd()/uploads/drawings/{bidId}/...`
+// remain readable for existing rows only.
 //
 // Every exported function below takes `bidId: number` (not the generic
 // `scope` array the underlying factory uses) — this domain only ever needs
@@ -22,6 +24,10 @@ const DRAWINGS_SEGMENTS = ["uploads", "drawings"];
 const compat = createLegacyPathCompat({
   legacyCwdSegments: DRAWINGS_SEGMENTS,
   legacyStorageRootSegments: DRAWINGS_SEGMENTS,
+  allowedKeyPrefixes: ([bidId]) => [
+    ["plan-room", "jobs", bidId, "drawings"],
+    ["uploads", "drawings", bidId],
+  ],
 });
 
 export function classifyDrawingStoragePath(ref: string, bidId: number) {
@@ -44,7 +50,10 @@ export function deleteDrawingStoragePath(ref: string, bidId: number) {
   return compat.deletePath(ref, [bidId]);
 }
 
-/** Canonical BlobStore key for a new drawing upload — matches production's namespace. */
-export function drawingStorageKey(bidId: number, safeFileName: string): string {
-  return `uploads/drawings/${bidId}/${safeFileName}`;
+/** Canonical collision-safe BlobStore key for a new drawing upload. */
+export function drawingStorageKey(bidId: number, immutableId: string, safeFileName: string): string {
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(immutableId)) {
+    throw new Error("immutable drawing file id is invalid");
+  }
+  return `plan-room/jobs/${bidId}/drawings/${immutableId}/${safeFileName}`;
 }

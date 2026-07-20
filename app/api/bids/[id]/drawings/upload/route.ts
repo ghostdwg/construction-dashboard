@@ -1,5 +1,7 @@
 import path from "path";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import {
   parseDrawingSheets,
   firstSheetByDiscipline,
@@ -10,6 +12,7 @@ import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation"
 import { documentAutomationStatus } from "@/lib/services/settings/documentAutomation";
 import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
 import { drawingStorageKey } from "@/lib/services/drawings/storagePath";
+import { deleteDrawingStorageIfUnreferenced } from "@/lib/services/storage/referenceSafety";
 import { env } from "@/lib/env";
 // isAdminAuthorized (lib/auth.ts) is imported dynamically below, only inside
 // the storage-smoke gate branch — this route is on the hot path for every
@@ -88,6 +91,76 @@ const DISCIPLINE_TO_PREFIX: Record<string, string[]> = {
   FULLSET: ["A", "S", "M", "P", "E", "C", "FP"],
 };
 
+type PreparedSheet = {
+  sheetNumber: string;
+  sheetTitle: string | null;
+  discipline: string;
+  tradeId: number | null;
+  matchedTradeId: number | null;
+};
+
+async function prepareDrawing(
+  buffer: Buffer,
+  fileName: string,
+  discipline: Discipline,
+  bidId: number,
+) {
+  const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+  const pdfDoc = await loadingTask.promise;
+  let rawText = "";
+  for (let i = 1; i <= pdfDoc.numPages; i += 1) {
+    const page = await pdfDoc.getPage(i);
+    const content = await page.getTextContent();
+    rawText +=
+      content.items
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((item: any) => ("str" in item ? item.str : ""))
+        .join(" ") + "\n";
+  }
+
+  const sheets = parseDrawingSheets(rawText);
+  const firstSheet = firstSheetByDiscipline(sheets);
+  const relevantPrefixes = DISCIPLINE_TO_PREFIX[discipline] ?? [];
+  const discovered =
+    discipline === "FULLSET"
+      ? Array.from(firstSheet.keys())
+      : Array.from(firstSheet.keys()).filter((value) => relevantPrefixes.includes(value));
+  const rowDisciplines =
+    discovered.length === 0 && discipline !== "FULLSET"
+      ? relevantPrefixes
+      : discovered;
+
+  const [allTrades, bidTrades] = await Promise.all([
+    prisma.trade.findMany({ select: { id: true, name: true } }),
+    prisma.bidTrade.findMany({ where: { bidId }, select: { tradeId: true } }),
+  ]);
+  const bidTradeIds = new Set(bidTrades.map((bidTrade) => bidTrade.tradeId));
+  const tradeByName = new Map(allTrades.map((trade) => [trade.name, trade.id]));
+  const rows: PreparedSheet[] = [];
+
+  for (const prefix of rowDisciplines) {
+    for (const tradeName of DISCIPLINE_TRADE_NAMES[prefix] ?? []) {
+      const tradeId = tradeByName.get(tradeName) ?? null;
+      if (tradeId === null) continue;
+      rows.push({
+        sheetNumber: firstSheet.get(prefix) ?? `${prefix}-*`,
+        sheetTitle: firstSheet.has(prefix) ? null : fileName.replace(/\.pdf$/i, ""),
+        discipline: prefix,
+        tradeId: bidTradeIds.has(tradeId) ? tradeId : null,
+        matchedTradeId: bidTradeIds.has(tradeId) ? null : tradeId,
+      });
+    }
+  }
+
+  return {
+    rows,
+    disciplineCount: rowDisciplines.length,
+    sheetCount: sheets.length,
+    coveredCount: rows.filter((row) => row.tradeId !== null).length,
+    missingCount: rows.filter((row) => row.matchedTradeId !== null).length,
+  };
+}
+
 // POST /api/bids/[id]/drawings/upload
 // Accepts a drawing PDF with optional discipline tag.
 // ?discipline=ARCH uploads as architectural sheets.
@@ -100,6 +173,9 @@ export async function POST(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   // ── Storage-only smoke gate — see module doc above for the full 4-condition
   // contract. Checked FIRST, before any read/write below, because any request
@@ -137,9 +213,6 @@ export async function POST(
     suppressAutomationForStorageSmoke = true;
   }
 
-  const bid = await prisma.bid.findUnique({ where: { id: bidId } });
-  if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
-
   // Parse discipline from query string
   const url = new URL(request.url);
   const rawDiscipline = (url.searchParams.get("discipline") ?? "FULLSET").toUpperCase();
@@ -168,223 +241,98 @@ export async function POST(
     return Response.json({ error: "Only PDF files are accepted" }, { status: 400 });
   }
 
-  // Persist durably through BlobStore under a relative key matching
-  // production's namespace convention (uploads/drawings/{bidId}/{safe name})
-  // — never an absolute path. Only a relative BlobStore key is ever stored
-  // in DrawingUpload.filePath going forward; resolving it back to a real
-  // local absolute path (for the sidecar analyze handoff) happens later, at
-  // that trusted boundary, via lib/services/drawings/storagePath.ts.
   const buffer = Buffer.from(await file.arrayBuffer());
-  const storedKey = drawingStorageKey(bidId, safeBlobFileName(file.name));
-  await getBlobStore().put(storedKey, buffer);
-  const filePath = storedKey;
-
-  // Delete existing upload for this discipline only (sheets cascade)
-  // If uploading FULLSET, also delete all per-discipline uploads (replacing everything)
-  // If uploading a discipline, also delete any FULLSET upload (switching modes)
-  if (discipline === "FULLSET") {
-    await prisma.drawingUpload.deleteMany({ where: { bidId } });
-  } else {
-    await prisma.drawingUpload.deleteMany({
-      where: { bidId, discipline: { in: [discipline, "FULLSET"] } },
-    });
-  }
-
-  const drawingUpload = await prisma.drawingUpload.create({
-    data: { bidId, fileName: file.name, filePath, status: "processing", discipline },
-  });
-
+  let prepared: Awaited<ReturnType<typeof prepareDrawing>>;
   try {
-    // Extract text with pdfjs-dist
-    const loadingTask = getDocument({ data: new Uint8Array(buffer) });
-    const pdfDoc = await loadingTask.promise;
-    let rawText = "";
-    for (let i = 1; i <= pdfDoc.numPages; i++) {
-      const page = await pdfDoc.getPage(i);
-      const content = await page.getTextContent();
-      rawText +=
-        content.items
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .map((item: any) => ("str" in item ? item.str : ""))
-          .join(" ") + "\n";
-    }
-
-    const sheets = parseDrawingSheets(rawText);
-    const firstSheet = firstSheetByDiscipline(sheets);
-
-    // For per-discipline uploads, use the known discipline prefix mapping
-    // For fullset, use all discovered disciplines
-    const relevantPrefixes = DISCIPLINE_TO_PREFIX[discipline] ?? [];
-    const disciplines =
-      discipline === "FULLSET"
-        ? Array.from(firstSheet.keys())
-        : Array.from(firstSheet.keys()).filter((d) => relevantPrefixes.includes(d));
-
-    // If no disciplines found via parsing, create a single entry for the uploaded discipline
-    // This handles PDFs where text extraction can't find sheet numbers
-    if (disciplines.length === 0 && discipline !== "FULLSET") {
-      const allTrades = await prisma.trade.findMany({ select: { id: true, name: true } });
-      const bidTrades = await prisma.bidTrade.findMany({ where: { bidId }, select: { tradeId: true } });
-      const bidTradeIds = new Set(bidTrades.map((bt) => bt.tradeId));
-      const tradeByName = new Map(allTrades.map((t) => [t.name, t.id]));
-
-      // Map discipline to trades using the parser's mapping
-      const prefixes = DISCIPLINE_TO_PREFIX[discipline] ?? [];
-      const rows: Array<{
-        drawingUploadId: number;
-        sheetNumber: string;
-        sheetTitle: string | null;
-        discipline: string;
-        tradeId: number | null;
-        matchedTradeId: number | null;
-      }> = [];
-
-      for (const prefix of prefixes) {
-        const tradeNames = DISCIPLINE_TRADE_NAMES[prefix] ?? [];
-        for (const name of tradeNames) {
-          const tradeId = tradeByName.get(name) ?? null;
-          if (tradeId === null) continue;
-          rows.push({
-            drawingUploadId: drawingUpload.id,
-            sheetNumber: `${prefix}-*`,
-            sheetTitle: file.name.replace(/\.pdf$/i, ""),
-            discipline: prefix,
-            tradeId: bidTradeIds.has(tradeId) ? tradeId : null,
-            matchedTradeId: bidTradeIds.has(tradeId) ? null : tradeId,
-          });
-        }
-      }
-
-      if (rows.length > 0) {
-        await prisma.drawingSheet.createMany({ data: rows });
-      }
-
-      await prisma.drawingUpload.update({
-        where: { id: drawingUpload.id },
-        data: { status: "ready" },
-      });
-
-      const coveredCount = rows.filter((r) => r.tradeId !== null).length;
-      const missingCount = rows.filter((r) => r.matchedTradeId !== null).length;
-
-      // The 4-condition storage-smoke gate at the top of this handler already
-      // decided suppression (or rejected the request outright, before any
-      // persistence, if the marker was present but any condition failed) — by
-      // the time execution reaches here, either no marker was sent, or all
-      // four conditions held. Nothing to re-check. Storage-smoke suppression
-      // takes precedence over the Admin setting — see the gate doc above.
-      const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" | "hard_disabled" =
-        suppressAutomationForStorageSmoke
-          ? "suppressed_for_storage_smoke"
-          : await documentAutomationStatus();
-
-      if (automationStatus === "triggered") {
-        generateBidIntelligence(bidId).catch((err) =>
-          console.error("[drawings/upload] background intelligence generation failed:", err)
-        );
-        triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
-          console.error("[drawings/upload] background brief refresh failed:", err)
-        );
-      }
-
-      return Response.json(
-        {
-          id: drawingUpload.id,
-          discipline,
-          disciplineCount: prefixes.length,
-          sheetCount: 0,
-          coveredCount,
-          missingCount,
-          automationStatus,
-        },
-        { status: 201 }
-      );
-    }
-
-    // Standard path: parse found sheets
-    const [allTrades, bidTrades] = await Promise.all([
-      prisma.trade.findMany({ select: { id: true, name: true } }),
-      prisma.bidTrade.findMany({ where: { bidId }, select: { tradeId: true } }),
-    ]);
-    const bidTradeIds = new Set(bidTrades.map((bt) => bt.tradeId));
-    const tradeByName = new Map(allTrades.map((t) => [t.name, t.id]));
-
-    type SheetData = {
-      drawingUploadId: number;
-      sheetNumber: string;
-      sheetTitle: string | null;
-      discipline: string;
-      tradeId: number | null;
-      matchedTradeId: number | null;
-    };
-
-    const rows: SheetData[] = [];
-    for (const disc of disciplines) {
-      const tradeNames = DISCIPLINE_TRADE_NAMES[disc] ?? [];
-      const repSheet = firstSheet.get(disc)!;
-
-      for (const name of tradeNames) {
-        const tradeId = tradeByName.get(name) ?? null;
-        if (tradeId === null) continue;
-
-        rows.push({
-          drawingUploadId: drawingUpload.id,
-          sheetNumber: repSheet,
-          sheetTitle: null,
-          discipline: disc,
-          tradeId: bidTradeIds.has(tradeId) ? tradeId : null,
-          matchedTradeId: bidTradeIds.has(tradeId) ? null : tradeId,
-        });
-      }
-    }
-
-    if (rows.length > 0) {
-      await prisma.drawingSheet.createMany({ data: rows });
-    }
-
-    const updated = await prisma.drawingUpload.update({
-      where: { id: drawingUpload.id },
-      data: { status: "ready" },
-    });
-
-    const coveredCount = rows.filter((r) => r.tradeId !== null).length;
-    const missingCount = rows.filter((r) => r.matchedTradeId !== null).length;
-
-    // Same suppression contract as the early-return branch above — see the
-    // module doc and the gate at the top of this handler.
-    const automationStatus: "triggered" | "suppressed_for_storage_smoke" | "disabled" | "hard_disabled" =
-      suppressAutomationForStorageSmoke
-        ? "suppressed_for_storage_smoke"
-        : await documentAutomationStatus();
-
-    if (automationStatus === "triggered") {
-      generateBidIntelligence(bidId).catch((err) =>
-        console.error("[drawings/upload] background intelligence generation failed:", err)
-      );
-      triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
-        console.error("[drawings/upload] background brief refresh failed:", err)
-      );
-    }
-
-    return Response.json(
-      {
-        id: updated.id,
-        discipline,
-        disciplineCount: disciplines.length,
-        sheetCount: sheets.length,
-        coveredCount,
-        missingCount,
-        automationStatus,
-      },
-      { status: 201 }
-    );
+    prepared = await prepareDrawing(buffer, file.name, discipline, bidId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[POST /api/bids/:id/drawings/upload] parse error:", err);
-    await prisma.drawingUpload.update({
-      where: { id: drawingUpload.id },
-      data: { status: "error" },
-    });
     return Response.json({ error: message }, { status: 422 });
   }
+
+  const store = getBlobStore();
+  const storedKey = drawingStorageKey(bidId, randomUUID(), safeBlobFileName(file.name));
+  try {
+    await store.put(storedKey, buffer, { contentType: "application/pdf" });
+  } catch (err) {
+    console.error("[drawings/upload] blob write failed:", err);
+    return Response.json({ error: "Storage write failed — file not saved" }, { status: 500 });
+  }
+
+  const replacementWhere =
+    discipline === "FULLSET"
+      ? { bidId }
+      : { bidId, discipline: { in: [discipline, "FULLSET"] } };
+  let committed: { id: number; superseded: Array<{ filePath: string }> };
+  try {
+    committed = await prisma.$transaction(async (tx) => {
+      const superseded = await tx.drawingUpload.findMany({
+        where: replacementWhere,
+        select: { filePath: true },
+      });
+      const created = await tx.drawingUpload.create({
+        data: {
+          bidId,
+          fileName: file.name,
+          filePath: storedKey,
+          status: "ready",
+          discipline,
+        },
+      });
+      if (prepared.rows.length > 0) {
+        await tx.drawingSheet.createMany({
+          data: prepared.rows.map((row) => ({ ...row, drawingUploadId: created.id })),
+        });
+      }
+      await tx.drawingUpload.deleteMany({
+        where: { ...replacementWhere, id: { not: created.id } },
+      });
+      return { id: created.id, superseded };
+    });
+  } catch (err) {
+    await deleteDrawingStorageIfUnreferenced(storedKey, bidId).catch(() => undefined);
+    console.error("[drawings/upload] database replacement failed:", err);
+    return Response.json(
+      { error: "Drawing could not be recorded — upload rolled back" },
+      { status: 500 },
+    );
+  }
+
+  await Promise.all(
+    Array.from(new Set(committed.superseded.map((row) => row.filePath))).map((oldRef) =>
+      deleteDrawingStorageIfUnreferenced(oldRef, bidId).catch((err) =>
+        console.error("[drawings/upload] superseded blob cleanup failed:", err),
+      ),
+    ),
+  );
+
+  const automationStatus:
+    | "triggered"
+    | "suppressed_for_storage_smoke"
+    | "disabled"
+    | "hard_disabled" = suppressAutomationForStorageSmoke
+    ? "suppressed_for_storage_smoke"
+    : await documentAutomationStatus();
+  if (automationStatus === "triggered") {
+    generateBidIntelligence(bidId).catch((err) =>
+      console.error("[drawings/upload] background intelligence generation failed:", err),
+    );
+    triggerBriefRefresh(bidId, { triggerSource: "upload" }).catch((err) =>
+      console.error("[drawings/upload] background brief refresh failed:", err),
+    );
+  }
+
+  return Response.json(
+    {
+      id: committed.id,
+      discipline,
+      disciplineCount: prepared.disciplineCount,
+      sheetCount: prepared.sheetCount,
+      coveredCount: prepared.coveredCount,
+      missingCount: prepared.missingCount,
+      automationStatus,
+    },
+    { status: 201 },
+  );
 }

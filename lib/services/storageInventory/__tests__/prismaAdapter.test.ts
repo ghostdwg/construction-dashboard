@@ -130,11 +130,11 @@ describe("findRows — correct model/field mapping (all 6 pairs)", () => {
   });
 
   test("Meeting: audioStorageKey -> value, scoped by the row's own id (inventory-only)", async () => {
-    h.meetingFindMany.mockResolvedValue([{ id: 701, audioStorageKey: "uploads/meetings/701/audio.mp3" }]);
+    h.meetingFindMany.mockResolvedValue([{ id: 701, bidId: 505, audioStorageKey: "uploads/meetings/701/audio.mp3" }]);
     const adapter = createPrismaStorageInventoryAdapter();
     const rows = await adapter.findRows("Meeting");
-    expect(rows).toEqual([{ id: 701, value: "uploads/meetings/701/audio.mp3" }]);
-    expect(h.meetingFindMany).toHaveBeenCalledWith({ select: { id: true, audioStorageKey: true } });
+    expect(rows).toEqual([{ id: 701, bidId: 505, value: "uploads/meetings/701/audio.mp3" }]);
+    expect(h.meetingFindMany).toHaveBeenCalledWith({ select: { id: true, bidId: true, audioStorageKey: true } });
   });
 });
 

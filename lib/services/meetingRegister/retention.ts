@@ -14,7 +14,7 @@ const SQLITE_CONTENTION_ATTEMPTS = 4;
 const SQLITE_CONTENTION_BACKOFF_MS = 100;
 
 type DeleteResult =
-  | { ok: true }
+  | { ok: true; audioStorageKey?: string | null; audioFileName?: string | null }
   | { ok: false; status: 404 | 409; error: string };
 
 type DurableHistoryDb = Pick<
@@ -284,14 +284,18 @@ export async function deleteMeetingWithoutHistory(
   return prisma.$transaction(async (tx) => {
     const meeting = await tx.meeting.findFirst({
       where: { id: meetingId, bidId },
-      select: { id: true },
+      select: { id: true, audioStorageKey: true, audioFileName: true },
     });
     if (!meeting) return { ok: false, status: 404, error: "Not found" };
     if (await meetingHasDurableHistory(tx, meetingId, bidId)) {
       return { ok: false, status: 409, error: DURABLE_HISTORY_CONFLICT };
     }
     await tx.meeting.delete({ where: { id: meetingId } });
-    return { ok: true };
+    return {
+      ok: true,
+      audioStorageKey: meeting.audioStorageKey,
+      audioFileName: meeting.audioFileName,
+    };
   });
 }
 

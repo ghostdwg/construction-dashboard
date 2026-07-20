@@ -43,6 +43,9 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ isAdminAuthorized: h.isAdminAuthorized }));
 vi.mock("@/lib/env", () => ({ env: h.appEnv }));
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({ ok: true, user: { id: "u1", role: "admin" } })),
+}));
 
 type AddendumRow = { id: number; bidId: number; storageKey: string | null };
 
@@ -70,7 +73,7 @@ vi.mock("@/lib/prisma", () => ({
       ),
     },
     addendumUpload: {
-      findUnique: findUniqueMock,
+      findFirst: findUniqueMock,
       delete: vi.fn(async ({ where }: { where: { id: number } }) => {
         db.deletedId = where.id;
         return { id: where.id };
@@ -91,8 +94,8 @@ vi.mock("@/lib/services/jobs/briefRefreshAutomation", () => ({
 }));
 
 const deleteAddendumStoragePathMock = vi.fn(async () => undefined);
-vi.mock("@/lib/services/addendums/storagePath", () => ({
-  deleteAddendumStoragePath: deleteAddendumStoragePathMock,
+vi.mock("@/lib/services/storage/referenceSafety", () => ({
+  deleteAddendumStorageIfUnreferenced: deleteAddendumStoragePathMock,
 }));
 
 function deleteRequest(headers?: Record<string, string>) {

@@ -36,6 +36,9 @@ vi.mock("@/lib/prisma", () => ({
     bid: { findUnique: h.bidFindUnique },
   },
 }));
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({ ok: true, user: { id: "u1", role: "admin" } })),
+}));
 vi.mock("@/lib/services/ai/gateway", () => ({ createMessage: h.createMessage }));
 vi.mock("@/lib/services/ai/assembleAddendumDeltaPrompt", () => ({
   assembleAddendumDeltaPrompt: h.assemblePrompt,

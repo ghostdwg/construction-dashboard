@@ -70,12 +70,12 @@ export function buildFixtureData(): Record<ModelName, StorageInventoryRow[]> {
       { id: 46, bidId: 504, value: null },
     ],
     Meeting: [
-      { id: 701, value: "uploads/meetings/701/audio.mp3" }, // canonical — scope is the row's OWN id
-      { id: 702, value: legacyCwd("uploads", "meetings", "702", "audio.mp3") }, // legacy-cwd
-      { id: 703, value: legacyRoot("uploads", "meetings", "703", "audio.mp3") }, // legacy-storage-root (reported, NOT convertible)
-      { id: 704, value: legacyRoot("uploads", "meetings", "999", "audio.mp3") }, // invalid (mismatched meetingId scope)
-      { id: 705, value: null },
-      { id: 706, value: null },
+      { id: 701, bidId: 505, value: "uploads/meetings/701/audio.mp3" },
+      { id: 702, bidId: 505, value: legacyCwd("uploads", "meetings", "702", "audio.mp3") },
+      { id: 703, bidId: 505, value: legacyRoot("uploads", "meetings", "703", "audio.mp3") },
+      { id: 704, bidId: 505, value: legacyRoot("uploads", "meetings", "999", "audio.mp3") },
+      { id: 705, bidId: 505, value: null },
+      { id: 706, bidId: 505, value: null },
     ],
   };
 }

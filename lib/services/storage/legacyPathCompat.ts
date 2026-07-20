@@ -90,6 +90,15 @@ export type LegacyPathCompatConfig = {
    * match, and a future domain might genuinely differ.
    */
   legacyStorageRootSegments: string[];
+  /**
+   * Optional strict key allowlist. Each returned value is a complete,
+   * scope-aware prefix; a stored key must contain at least one filename
+   * segment after it. When omitted, legacy callers retain the original
+   * accept-any-safe-relative-key behavior.
+   */
+  allowedKeyPrefixes?: (scope: ScopeSegment[]) => ScopeSegment[][];
+  /** Map the public scope to the segments used below legacyCwdSegments. */
+  legacyCwdScope?: (scope: ScopeSegment[]) => ScopeSegment[];
 };
 
 export type LegacyPathCompat = {
@@ -143,12 +152,8 @@ function deriveStorageRootRelativeKey(p: string): string | null {
 // the storage root that names a different record (wrong bidId, wrong
 // subcontractorId, ...), or a different top-level namespace entirely, or has
 // no further segments beyond the scope, is rejected here.
-function matchesProductionShape(
-  relKey: string,
-  scope: ScopeSegment[],
-  rootSegments: string[]
-): boolean {
-  const expected = [...rootSegments, ...scope.map(String)];
+function matchesPrefix(relKey: string, expectedInput: ScopeSegment[]): boolean {
+  const expected = expectedInput.map(String);
   const segments = relKey.split("/");
   if (segments.length <= expected.length) return false;
   for (let i = 0; i < expected.length; i++) {
@@ -167,27 +172,45 @@ function matchesProductionShape(
 export function createLegacyPathCompat(config: LegacyPathCompatConfig): LegacyPathCompat {
   const legacyCwdRoot = path.join(process.cwd(), ...config.legacyCwdSegments);
 
-  function isLegacyCwdPath(p: string): boolean {
+  function isLegacyCwdPath(p: string, scope: ScopeSegment[]): boolean {
+    if (!path.isAbsolute(p)) return false;
+    if (!config.allowedKeyPrefixes && !config.legacyCwdScope) {
+      return p === legacyCwdRoot || p.startsWith(legacyCwdRoot + path.sep);
+    }
+    const expectedScope = (config.legacyCwdScope?.(scope) ?? scope).map(String);
+    const rel = path.relative(legacyCwdRoot, path.resolve(p));
+    if (!rel || rel === "." || rel.startsWith("..") || path.isAbsolute(rel)) return false;
+    const segments = rel.split(path.sep);
     return (
-      path.isAbsolute(p) &&
-      (p === legacyCwdRoot || p.startsWith(legacyCwdRoot + path.sep))
+      segments.length > expectedScope.length &&
+      expectedScope.every((segment, index) => segments[index] === segment) &&
+      segments.slice(expectedScope.length).every(Boolean)
     );
+  }
+
+  function allowedPrefixes(scope: ScopeSegment[]): ScopeSegment[][] {
+    return config.allowedKeyPrefixes?.(scope) ?? [
+      [...config.legacyStorageRootSegments, ...scope],
+    ];
   }
 
   function classify(ref: string, scope: ScopeSegment[]): ClassifyResult {
     if (looksMalformedOrUnsafe(ref)) return { kind: "invalid" };
 
     if (!path.isAbsolute(ref)) {
-      // A relative value that passed the malformed/unsafe check above is a
-      // canonical BlobStore key candidate — final validation happens where
-      // BlobStore itself enforces it (assertSafeKey).
+      if (
+        config.allowedKeyPrefixes &&
+        !allowedPrefixes(scope).some((prefix) => matchesPrefix(ref, prefix))
+      ) {
+        return { kind: "invalid" };
+      }
       return { kind: "canonical", canonicalKey: ref };
     }
 
-    if (isLegacyCwdPath(ref)) return { kind: "legacy-cwd" };
+    if (isLegacyCwdPath(ref, scope)) return { kind: "legacy-cwd" };
 
     const relKey = deriveStorageRootRelativeKey(ref);
-    if (relKey && matchesProductionShape(relKey, scope, config.legacyStorageRootSegments)) {
+    if (relKey && allowedPrefixes(scope).some((prefix) => matchesPrefix(relKey, prefix))) {
       return { kind: "legacy-storage-root", canonicalKey: relKey };
     }
 

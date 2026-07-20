@@ -30,7 +30,7 @@
 // Never operates against staging or production — this is a local fresh-DB gate.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,7 +38,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const MIGRATIONS_DIR = join(ROOT, "prisma", "migrations");
-const SCHEMA_PATH = join(ROOT, "prisma", "schema.prisma");
 const DB_PATH = process.env.REPLAY_DB_PATH ?? "/tmp/replay-validation.db";
 const DATABASE_URL = `file:${DB_PATH}`;
 
@@ -132,15 +131,22 @@ if (deploy.status !== 0) {
   console.error(deploy.stderr);
   fail(`prisma migrate deploy exited with code ${deploy.status}`, 3);
 }
-// Count successfully applied (Prisma prints "✔ … migrated").
-const appliedMatches = (deploy.stdout.match(/Applying migration|migration\.sql/g) ?? []);
 log(`migrate deploy succeeded (${migrations.length} migrations applied)`);
 
 // ── Step 2: drift check ──────────────────────────────────────────────────────
 log("step 2: prisma migrate diff (migrations vs schema)");
 const diff = spawnSync(
   process.platform === "win32" ? "npx.cmd" : "npx",
-  ["prisma", "migrate", "diff", "--from-migrations", "prisma/migrations", "--to-schema", "prisma/schema.prisma"],
+  [
+    "prisma",
+    "migrate",
+    "diff",
+    "--from-migrations",
+    "prisma/migrations",
+    "--to-schema",
+    "prisma/schema.prisma",
+    "--exit-code",
+  ],
   {
     cwd: ROOT,
     env: { ...process.env, DATABASE_URL },
@@ -149,18 +155,21 @@ const diff = spawnSync(
     shell: process.platform === "win32",
   }
 );
-if (diff.status !== 0) {
-  console.error(diff.stdout);
-  console.error(diff.stderr);
-  fail(`prisma migrate diff exited with code ${diff.status}`, 1);
-}
-const diffOut = diff.stdout.trim();
-if (!diffOut.includes("No difference detected.")) {
+const diffOut = `${diff.stdout ?? ""}\n${diff.stderr ?? ""}`.trim();
+if (diff.status === 2) {
   console.error("\n--- drift output ---");
   console.error(diffOut);
   console.error("--- end ---\n");
   fail("schema and migration set disagree — see drift output above", 2);
 }
+if (diff.status !== 0) {
+  console.error(diff.stdout);
+  console.error(diff.stderr);
+  fail(`prisma migrate diff exited with code ${diff.status}`, 1);
+}
+// Prisma's `--exit-code` contract is authoritative: 0 means empty diff, 2
+// means drift. Recent CLI versions may emit the human-readable confirmation
+// on stderr rather than stdout, so do not infer drift from one stream alone.
 log("drift check passed: no difference detected");
 
 // ── Step 3: prisma generate ──────────────────────────────────────────────────

@@ -69,9 +69,7 @@ export function classifyInventoryRow(model: ModelName, row: StorageInventoryRow)
       result = classifyAddendumStoragePath(value, requireBidId(model, row));
       break;
     case "Meeting":
-      // Scoped by the MEETING id itself, not a bidId — see
-      // lib/services/meetings/storagePath.ts's module header.
-      result = classifyMeetingStoragePath(value, row.id);
+      result = classifyMeetingStoragePath(value, requireBidId(model, row), row.id);
       break;
     default: {
       const _exhaustive: never = model;

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { createMessage } from "@/lib/services/ai/gateway";
 import { assembleAddendumDeltaPrompt } from "@/lib/services/ai/assembleAddendumDeltaPrompt";
 import { getMaxTokens } from "@/lib/services/ai/aiTokenConfig";
@@ -126,6 +127,9 @@ export async function POST(
   if (isNaN(bidId) || isNaN(aId)) {
     return Response.json({ error: "Invalid id" }, { status: 400 });
   }
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   // 1 — Load addendum, verify it belongs to this bid
   const addendum = await prisma.addendumUpload.findUnique({

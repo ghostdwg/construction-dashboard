@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
 import { documentAutomationStatus } from "@/lib/services/settings/documentAutomation";
-import { deleteAddendumStoragePath } from "@/lib/services/addendums/storagePath";
+import { readAddendumStorageBuffer } from "@/lib/services/addendums/storagePath";
+import { deleteAddendumStorageIfUnreferenced } from "@/lib/services/storage/referenceSafety";
+import { privateDownloadHeaders } from "@/lib/services/storage/downloadHeaders";
 import { env } from "@/lib/env";
 // isAdminAuthorized (lib/auth.ts) is imported dynamically below, only inside
 // the storage-smoke gate branch — lib/auth.ts pulls in the full next-auth
@@ -47,6 +50,44 @@ import { env } from "@/lib/env";
 // line) — it is read once into a boolean and discarded.
 const STORAGE_SMOKE_HEADER = "x-addendums-storage-smoke";
 
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string; addendumId: string }> },
+) {
+  const { id, addendumId } = await params;
+  const bidId = parseInt(id, 10);
+  const aId = parseInt(addendumId, 10);
+  if (isNaN(bidId) || isNaN(aId)) {
+    return Response.json({ error: "Invalid id" }, { status: 400 });
+  }
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
+  const record = await prisma.addendumUpload.findFirst({
+    where: { id: aId, bidId },
+    select: { fileName: true, storageKey: true },
+  });
+  if (!record) return Response.json({ error: "Not found" }, { status: 404 });
+  if (!record.storageKey) {
+    return Response.json({ error: "File is missing from storage" }, { status: 404 });
+  }
+
+  let buffer: Buffer;
+  try {
+    buffer = await readAddendumStorageBuffer(record.storageKey, bidId);
+  } catch {
+    return Response.json({ error: "File is missing from storage" }, { status: 404 });
+  }
+  return new Response(new Uint8Array(buffer), {
+    headers: privateDownloadHeaders({
+      mimeType: "application/pdf",
+      fileName: record.fileName,
+      byteSize: buffer.byteLength,
+    }),
+  });
+}
+
 // ── Master document-automation gate (Q03.2b: Admin-controlled) — IDENTICAL
 // semantics to the specbook/drawings upload routes (see those modules'
 // docs): gated by the GLOBAL persisted Admin setting via
@@ -79,6 +120,9 @@ export async function DELETE(
     return Response.json({ error: "Invalid id" }, { status: 400 });
   }
 
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   // ── Storage-only smoke gate — see module doc above for the full
   // 4-condition contract. Checked FIRST, before any read/write below.
   // Cheapest, non-auth checks first, so the default (no marker header)
@@ -109,11 +153,11 @@ export async function DELETE(
     suppressAutomationForStorageSmoke = true;
   }
 
-  const record = await prisma.addendumUpload.findUnique({
-    where: { id: aId },
-    select: { id: true, bidId: true, storageKey: true },
+  const record = await prisma.addendumUpload.findFirst({
+    where: { id: aId, bidId },
+    select: { id: true, storageKey: true },
   });
-  if (!record || record.bidId !== bidId) {
+  if (!record) {
     return Response.json({ error: "Addendum not found" }, { status: 404 });
   }
 
@@ -122,7 +166,9 @@ export async function DELETE(
   // Clean up the durable blob (best-effort — a missing/invalid/null key is
   // a no-op, never an error that blocks the delete).
   if (record.storageKey) {
-    await deleteAddendumStoragePath(record.storageKey, bidId).catch(() => {});
+    await deleteAddendumStorageIfUnreferenced(record.storageKey, bidId).catch((err) => {
+      console.error("[addendums/delete] unreferenced blob cleanup failed:", err);
+    });
   }
 
   // Mark brief stale and regenerate

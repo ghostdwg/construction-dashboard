@@ -11,7 +11,14 @@ import fsSync from "fs";
 import os from "os";
 import path from "path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { LocalBlobStore, localPathForKey, safeBlobFileName } from "../blobStore";
+import {
+  BlobNotFoundError,
+  LocalBlobStore,
+  getBlobStore,
+  localPathForKey,
+  resetBlobStoreSingleton,
+  safeBlobFileName,
+} from "../blobStore";
 
 let storageRoot: string;
 
@@ -40,6 +47,42 @@ describe("LocalBlobStore.localPath", () => {
   test("rejects a leading-slash key (absolute-looking key is not a valid key)", () => {
     const store = new LocalBlobStore(storageRoot);
     expect(() => store.localPath("/etc/passwd")).toThrow(/absolute path not allowed/i);
+  });
+});
+
+describe("LocalBlobStore durable metadata and recreation", () => {
+  test("preserves content type and size across store instances", async () => {
+    const key = "plan-room/jobs/8/drawings/immutable/plan.pdf";
+    const first = new LocalBlobStore(storageRoot);
+    await first.put(key, Buffer.from("durable bytes"), { contentType: "application/pdf" });
+
+    const recreated = new LocalBlobStore(storageRoot);
+    await expect(recreated.get(key)).resolves.toEqual(Buffer.from("durable bytes"));
+    await expect(recreated.stat(key)).resolves.toMatchObject({
+      size: 13,
+      contentType: "application/pdf",
+    });
+  });
+
+  test("survives singleton reset simulating application-container recreation", async () => {
+    const key = "plan-room/jobs/8/addenda/immutable/addendum.pdf";
+    await getBlobStore().put(key, Buffer.from("after restart"), {
+      contentType: "application/pdf",
+    });
+    resetBlobStoreSingleton();
+    await expect(getBlobStore().get(key)).resolves.toEqual(Buffer.from("after restart"));
+  });
+
+  test("missing get has a stable not-found error type", async () => {
+    await expect(
+      new LocalBlobStore(storageRoot).get("plan-room/jobs/8/drawings/missing/file.pdf"),
+    ).rejects.toBeInstanceOf(BlobNotFoundError);
+  });
+
+  test("rejects non-normalized and backslash-separated keys", () => {
+    const store = new LocalBlobStore(storageRoot);
+    expect(() => store.localPath("plan-room//jobs/8/file.pdf")).toThrow(/normalized/i);
+    expect(() => store.localPath("plan-room\\jobs\\8\\file.pdf")).toThrow(/backslash/i);
   });
 });
 

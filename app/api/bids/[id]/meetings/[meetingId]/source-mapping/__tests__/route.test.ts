@@ -84,7 +84,10 @@ vi.mock("fs/promises", () => ({
   readFile: fsReadFileMock,
 }));
 
-const readMeetingStorageBufferMock = vi.fn(async () => Buffer.from("durable blobstore audio bytes"));
+const readMeetingStorageBufferMock = vi.fn(
+  async (_ref: string, _bidId: number, _meetingId: number) =>
+    Buffer.from("durable blobstore audio bytes"),
+);
 vi.mock("@/lib/services/meetings/storagePath", () => ({
   readMeetingStorageBuffer: readMeetingStorageBufferMock,
 }));
@@ -127,11 +130,11 @@ describe("POST /api/bids/[id]/meetings/[meetingId]/source-mapping", () => {
     const res = await POST(makeRequest(), routeParams);
     expect(res.status).toBe(200);
 
-    expect(readMeetingStorageBufferMock).toHaveBeenCalledWith("uploads/meetings/9/recording.wav", 9);
+    expect(readMeetingStorageBufferMock).toHaveBeenCalledWith("uploads/meetings/9/recording.wav", 1, 9);
     expect(fsReadFileMock).not.toHaveBeenCalled();
   });
 
-  test("historic row with audioStorageKey === null falls back to the pre-existing naming-convention fs.readFile reconstruction", async () => {
+  test("historic row with audioStorageKey === null uses the scoped compatibility reader", async () => {
     db.meeting = {
       id: 9,
       bidId: 1,
@@ -146,13 +149,15 @@ describe("POST /api/bids/[id]/meetings/[meetingId]/source-mapping", () => {
     const res = await POST(makeRequest(), routeParams);
     expect(res.status).toBe(200);
 
-    expect(fsReadFileMock).toHaveBeenCalledTimes(1);
-    const [passedPath] = fsReadFileMock.mock.calls[0];
+    expect(fsReadFileMock).not.toHaveBeenCalled();
+    expect(readMeetingStorageBufferMock).toHaveBeenCalledTimes(1);
+    const [passedPath, passedBidId, passedMeetingId] = readMeetingStorageBufferMock.mock.calls[0];
     expect(passedPath).toContain("uploads");
     expect(passedPath).toContain("meetings");
     expect(passedPath).toContain("9");
     expect(passedPath).toContain("legacy-recording.wav");
-    expect(readMeetingStorageBufferMock).not.toHaveBeenCalled();
+    expect(passedBidId).toBe(1);
+    expect(passedMeetingId).toBe(9);
   });
 
   test("a failed read (BlobStore path) marks the meeting FAILED and returns 500 without calling the sidecar", async () => {

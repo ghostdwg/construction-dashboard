@@ -1,7 +1,10 @@
 import path from "path";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
 import { addendumStorageKey } from "@/lib/services/addendums/storagePath";
+import { deleteAddendumStorageIfUnreferenced } from "@/lib/services/storage/referenceSafety";
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -18,8 +21,8 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
-  const bid = await prisma.bid.findUnique({ where: { id: bidId }, select: { id: true } });
-  if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   let formData: FormData;
   try {
@@ -44,40 +47,21 @@ export async function POST(
     addendumDateRaw && String(addendumDateRaw).trim()
       ? new Date(String(addendumDateRaw))
       : null;
+  if (addendumDate && isNaN(addendumDate.getTime())) {
+    return Response.json({ error: "addendumDate must be a valid date" }, { status: 400 });
+  }
 
   const ext = path.extname(file.name).toLowerCase();
   if (file.type !== "application/pdf" && ext !== ".pdf") {
     return Response.json({ error: "Only PDF files are accepted" }, { status: 400 });
   }
 
-  // Persist durably through BlobStore under a relative key matching
-  // production's namespace convention (uploads/addendums/{bidId}/{safe
-  // name}) — never an absolute path. AddendumUpload had no filePath/
-  // storageKey column at all before this work; the new `storageKey` column
-  // stores ONLY this relative key going forward (see
-  // lib/services/addendums/storagePath.ts's module doc).
   const buffer = Buffer.from(await file.arrayBuffer());
-  const storageKey = addendumStorageKey(bidId, safeBlobFileName(file.name));
-  await getBlobStore().put(storageKey, buffer);
-
-  // Create record as processing
-  const record = await prisma.addendumUpload.create({
-    data: {
-      bidId,
-      addendumNumber,
-      addendumDate,
-      fileName: file.name,
-      storageKey,
-      status: "processing",
-    },
-  });
-
+  let extractedText = "";
   try {
-    // Extract text with pdfjs-dist
     const loadingTask = getDocument({ data: new Uint8Array(buffer) });
     const pdfDoc = await loadingTask.promise;
-    let extractedText = "";
-    for (let i = 1; i <= pdfDoc.numPages; i++) {
+    for (let i = 1; i <= pdfDoc.numPages; i += 1) {
       const page = await pdfDoc.getPage(i);
       const content = await page.getTextContent();
       extractedText +=
@@ -87,33 +71,82 @@ export async function POST(
           .join(" ") + "\n";
     }
 
-    await prisma.addendumUpload.update({
-      where: { id: record.id },
-      data: { status: "ready", extractedText: extractedText.trim() },
-    });
-
-    // Mark existing brief as stale — delta processing is the explicit next step
-    await prisma.bidIntelligenceBrief.updateMany({
-      where: { bidId },
-      data: { isStale: true },
-    });
-
-    return Response.json(
-      {
-        id: record.id,
-        addendumNumber,
-        fileName: file.name,
-        status: "ready",
-      },
-      { status: 201 }
-    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[POST /api/bids/:id/addendums/upload] parse error:", err);
-    await prisma.addendumUpload.update({
-      where: { id: record.id },
-      data: { status: "error" },
-    });
     return Response.json({ error: message }, { status: 422 });
   }
+
+  const storageKey = addendumStorageKey(
+    bidId,
+    randomUUID(),
+    safeBlobFileName(file.name),
+  );
+  const store = getBlobStore();
+  try {
+    await store.put(storageKey, buffer, { contentType: "application/pdf" });
+  } catch (err) {
+    console.error("[addendums/upload] blob write failed:", err);
+    return Response.json({ error: "Storage write failed — file not saved" }, { status: 500 });
+  }
+
+  let committed: { id: number; superseded: Array<{ storageKey: string | null }> };
+  try {
+    committed = await prisma.$transaction(async (tx) => {
+      const superseded = await tx.addendumUpload.findMany({
+        where: { bidId, addendumNumber },
+        select: { storageKey: true },
+      });
+      const created = await tx.addendumUpload.create({
+        data: {
+          bidId,
+          addendumNumber,
+          addendumDate,
+          fileName: file.name,
+          storageKey,
+          status: "ready",
+          extractedText: extractedText.trim(),
+        },
+      });
+      await tx.addendumUpload.deleteMany({
+        where: { bidId, addendumNumber, id: { not: created.id } },
+      });
+      await tx.bidIntelligenceBrief.updateMany({
+        where: { bidId },
+        data: { isStale: true },
+      });
+      return { id: created.id, superseded };
+    });
+  } catch (err) {
+    await deleteAddendumStorageIfUnreferenced(storageKey, bidId).catch(() => undefined);
+    console.error("[addendums/upload] database replacement failed:", err);
+    return Response.json(
+      { error: "Addendum could not be recorded — upload rolled back" },
+      { status: 500 },
+    );
+  }
+
+  await Promise.all(
+    Array.from(
+      new Set(
+        committed.superseded
+          .map((row) => row.storageKey)
+          .filter((value): value is string => value !== null),
+      ),
+    ).map((oldRef) =>
+      deleteAddendumStorageIfUnreferenced(oldRef, bidId).catch((err) =>
+        console.error("[addendums/upload] superseded blob cleanup failed:", err),
+      ),
+    ),
+  );
+
+  return Response.json(
+    {
+      id: committed.id,
+      addendumNumber,
+      fileName: file.name,
+      status: "ready",
+    },
+    { status: 201 },
+  );
 }

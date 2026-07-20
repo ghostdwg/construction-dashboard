@@ -83,13 +83,10 @@ async function findRowsForModel(model: ModelName): Promise<StorageInventoryRow[]
       return rows.map((r) => ({ id: r.id, bidId: r.bidId, value: r.storageKey }));
     }
     case "Meeting": {
-      // Scoped by the row's own id, not a bidId — see
-      // lib/services/meetings/storagePath.ts's module header and
-      // classify.ts's handling of this model.
       const rows = await prisma.meeting.findMany({
-        select: { id: true, audioStorageKey: true },
+        select: { id: true, bidId: true, audioStorageKey: true },
       });
-      return rows.map((r) => ({ id: r.id, value: r.audioStorageKey }));
+      return rows.map((r) => ({ id: r.id, bidId: r.bidId, value: r.audioStorageKey }));
     }
     default: {
       const _exhaustive: never = model;

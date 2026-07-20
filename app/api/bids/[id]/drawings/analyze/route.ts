@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { getSetting } from "@/lib/services/settings/appSettingsService";
 import { resolveDrawingLocalPath } from "@/lib/services/drawings/storagePath";
 
@@ -16,6 +17,9 @@ export async function POST(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const body = await request.json() as { tier?: number; model?: string; uploadId?: number };
   const { tier, model, uploadId } = body;
@@ -124,6 +128,9 @@ export async function GET(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const upload = await prisma.drawingUpload.findFirst({
     where: { bidId },
