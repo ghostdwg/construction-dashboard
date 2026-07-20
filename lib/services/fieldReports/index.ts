@@ -132,44 +132,87 @@ export async function updateFieldReport(
   return { ok: true, value: { id: fieldReportId } };
 }
 
-/** Bid-scoped existence probe — the upload route enforces tenancy BEFORE any
- *  blob byte is written (Slice 1 ordering contract). */
-export async function fieldReportExists(bidId: number, fieldReportId: number): Promise<boolean> {
+export const FIELD_REPORT_FILE_REFERENCED_ERROR =
+  "Field report evidence is referenced and cannot be replaced";
+export const FIELD_REPORT_FILE_CONCURRENT_ERROR =
+  "Field report file changed during upload; retry against the current file";
+
+export type FieldReportFileMutationState = {
+  expectedStorageKey: string | null;
+};
+
+/**
+ * Bid-scoped preflight used before multipart parsing or blob writes. This is
+ * deliberately repeated transactionally by recordReportFile: the preflight
+ * avoids needless byte work, while the compare-and-swap is authoritative.
+ * Both Build 1 tracked-item citations and Build 2 observations freeze the
+ * pointer because either can carry a durable locator into these bytes.
+ */
+export async function getFieldReportFileMutationState(
+  bidId: number,
+  fieldReportId: number,
+): Promise<ServiceResult<FieldReportFileMutationState>> {
   const report = await prisma.fieldReport.findFirst({
     where: { id: fieldReportId, bidId },
-    select: { id: true },
+    select: {
+      sourceFileStorageKey: true,
+      _count: { select: { observations: true, trackedItems: true } },
+    },
   });
-  return report !== null;
+  if (!report) return { ok: false, error: "Not found" };
+  if (report._count.observations > 0 || report._count.trackedItems > 0) {
+    return { ok: false, error: FIELD_REPORT_FILE_REFERENCED_ERROR };
+  }
+  return {
+    ok: true,
+    value: { expectedStorageKey: report.sourceFileStorageKey },
+  };
 }
 
 export interface ReportFileMetaInput {
   storageKey: string;
+  expectedStorageKey: string | null;
   fileName: string;
   mimeType: string;
   byteSize: number;
 }
 
 /** Record the uploaded source file's metadata — called ONLY after the blob
- *  write succeeded (Slice 1 ordering contract; the route cleans up the blob
- *  if this fails). Re-uploading replaces the metadata; the previous blob (if
- *  any, under a different safe filename) is reported back for the route to
- *  clean up. */
+ * write succeeded. The pointer update is a bid-scoped compare-and-swap which
+ * succeeds only while no durable citation exists. Metadata, provenance, and
+ * mandatory audit commit together. On any non-success the caller may delete
+ * only meta.storageKey, which is not referenced by database state. */
 export async function recordReportFile(
   bidId: number,
   fieldReportId: number,
   meta: ReportFileMetaInput,
   actor: Actor = null
 ): Promise<ServiceResult<{ id: number; previousStorageKey: string | null }>> {
-  const report = await prisma.fieldReport.findFirst({
-    where: { id: fieldReportId, bidId },
-    select: { id: true, sourceFileStorageKey: true },
-  });
-  if (!report) return { ok: false, error: "Not found" };
-
   let envelope: AuditEnvelope | null = null;
-  await prisma.$transaction(async (tx) => {
-    await tx.fieldReport.update({
-      where: { id: fieldReportId },
+  const committed = await prisma.$transaction(async (tx) => {
+    const report = await tx.fieldReport.findFirst({
+      where: { id: fieldReportId, bidId },
+      select: {
+        sourceFileStorageKey: true,
+        _count: { select: { observations: true, trackedItems: true } },
+      },
+    });
+    if (!report) return { ok: false as const, error: "Not found" };
+    if (report._count.observations > 0 || report._count.trackedItems > 0) {
+      return { ok: false as const, error: FIELD_REPORT_FILE_REFERENCED_ERROR };
+    }
+    if (report.sourceFileStorageKey !== meta.expectedStorageKey) {
+      return { ok: false as const, error: FIELD_REPORT_FILE_CONCURRENT_ERROR };
+    }
+
+    const claimed = await tx.fieldReport.updateMany({
+      where: {
+        id: fieldReportId,
+        bidId,
+        sourceFileStorageKey: meta.expectedStorageKey,
+        observations: { none: {} },
+        trackedItems: { none: {} },
+      },
       data: {
         sourceFileStorageKey: meta.storageKey,
         originalFileName: meta.fileName,
@@ -177,20 +220,48 @@ export async function recordReportFile(
         byteSize: meta.byteSize,
       },
     });
+    if (claimed.count !== 1) {
+      const current = await tx.fieldReport.findFirst({
+        where: { id: fieldReportId, bidId },
+        select: {
+          sourceFileStorageKey: true,
+          _count: { select: { observations: true, trackedItems: true } },
+        },
+      });
+      if (!current) return { ok: false as const, error: "Not found" };
+      if (current._count.observations > 0 || current._count.trackedItems > 0) {
+        return { ok: false as const, error: FIELD_REPORT_FILE_REFERENCED_ERROR };
+      }
+      return { ok: false as const, error: FIELD_REPORT_FILE_CONCURRENT_ERROR };
+    }
+
     envelope = await auditFieldReportTx(
       tx,
       "field_report_file_recorded",
       bidId,
       fieldReportId,
       actor,
-      { mimeType: meta.mimeType, byteSize: meta.byteSize },
+      {
+        mimeType: meta.mimeType,
+        byteSize: meta.byteSize,
+        fileName: meta.fileName,
+        previousStorageKey: report.sourceFileStorageKey,
+        storageKey: meta.storageKey,
+        replacement: report.sourceFileStorageKey !== null,
+      },
     );
+    return {
+      ok: true as const,
+      value: {
+        id: fieldReportId,
+        previousStorageKey:
+          report.sourceFileStorageKey !== meta.storageKey
+            ? report.sourceFileStorageKey
+            : null,
+      },
+    };
   });
+  if (!committed.ok) return committed;
   emitOperationsAuditPostCommit(envelope);
-
-  const previous =
-    report.sourceFileStorageKey && report.sourceFileStorageKey !== meta.storageKey
-      ? report.sourceFileStorageKey
-      : null;
-  return { ok: true, value: { id: fieldReportId, previousStorageKey: previous } };
+  return committed;
 }

@@ -2,25 +2,34 @@
 //
 // POST …/field-reports/[fieldReportId]/upload   multipart: file (required)
 //
-// Slice 1 ordering contract, verbatim: (1) bid/report tenancy BEFORE any
-// byte is written; (2) blob put, guarded — storage failure returns 500 and
-// records NO metadata; (3) metadata only after the blob landed; (4) blob is
-// best-effort deleted if the metadata write fails. Re-upload replaces the
-// report's file metadata and cleans up the previous blob when its key
-// differs. MIME allowlist pdf/jpeg/png/webp; 25 MiB cap; NO OCR, NO AI
+// Ordering contract: (1) authorization and bid/report/reference preflight
+// before body or blob work; (2) blob put, guarded; (3) transactionally claim
+// the exact preflight pointer while there are still no durable references,
+// record metadata/provenance, and audit; (4) compensate only the newly
+// written unreferenced blob on a lost claim; (5) retire the old blob only
+// after a successful claim proves it was unreferenced. MIME allowlist
+// pdf/jpeg/png/webp; 25 MiB cap; NO OCR, NO AI
 // extraction, NO auto-created items — parseStatus stays UNPARSED.
 
 import { getBlobStore } from "@/lib/storage/blobStore";
 import { randomUUID } from "node:crypto";
 import { requireBidAccess } from "@/lib/auth-helpers";
 import {
-  fieldReportExists,
+  FIELD_REPORT_FILE_CONCURRENT_ERROR,
+  FIELD_REPORT_FILE_REFERENCED_ERROR,
+  getFieldReportFileMutationState,
   recordReportFile,
 } from "@/lib/services/fieldReports";
 import {
   fieldReportStorageKey,
   validateFieldReportUpload,
 } from "@/lib/services/fieldReports/storagePath";
+
+function mutationErrorStatus(error: string): number {
+  if (error === "Not found") return 404;
+  if (error === FIELD_REPORT_FILE_REFERENCED_ERROR || error === FIELD_REPORT_FILE_CONCURRENT_ERROR) return 409;
+  return 400;
+}
 
 export async function POST(
   request: Request,
@@ -34,6 +43,13 @@ export async function POST(
 
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
+
+  // Bid tenancy and the evidence freeze precede body parsing and byte work.
+  // recordReportFile repeats both checks in its authoritative transaction.
+  const mutationState = await getFieldReportFileMutationState(bidId, rid);
+  if (!mutationState.ok) {
+    return Response.json({ error: mutationState.error }, { status: mutationErrorStatus(mutationState.error) });
+  }
 
   let form: FormData;
   try {
@@ -54,10 +70,6 @@ export async function POST(
     byteSize: buffer.byteLength,
   });
   if (!validation.ok) return Response.json({ error: validation.error }, { status: 400 });
-
-  // (1) tenancy before bytes — a blob can never land for another bid's report.
-  const exists = await fieldReportExists(bidId, rid);
-  if (!exists) return Response.json({ error: "Not found" }, { status: 404 });
 
   const storageKey = fieldReportStorageKey(
     bidId,
@@ -83,6 +95,7 @@ export async function POST(
   try {
     result = await recordReportFile(bidId, rid, {
       storageKey,
+      expectedStorageKey: mutationState.value.expectedStorageKey,
       fileName: validation.safeFileName,
       mimeType: file.type,
       byteSize: buffer.byteLength,
@@ -103,7 +116,7 @@ export async function POST(
   }
   if (!result.ok) {
     await store.delete(storageKey).catch(() => {});
-    const status = result.error === "Not found" ? 404 : 400;
+    const status = mutationErrorStatus(result.error);
     return Response.json({ error: result.error }, { status });
   }
 
@@ -111,7 +124,8 @@ export async function POST(
   if (result.value.previousStorageKey) {
     await store.delete(result.value.previousStorageKey).catch((err) => {
       console.error(
-        "[field-reports] superseded blob cleanup failed (metadata already points at the new file):",
+        "[field-reports] unreferenced superseded blob cleanup failed " +
+          "(metadata already points at the new file):",
         result.value.previousStorageKey,
         err
       );
