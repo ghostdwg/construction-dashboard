@@ -93,12 +93,46 @@ type ExistingEntry = {
   id: number;
   entryType: string;
   rawSourceText: string;
+  normalizedText?: string;
   segmentId: number | null;
   reviewState: string;
   origin: string;
+  revisionCount?: number;
+  linkedTrackedItemId?: number | null;
+  relatedPriorEntryId?: number | null;
+  mergedIntoEntryId?: number | null;
+  dispositionReason?: string | null;
+  dispositionBy?: string | null;
+  dispositionAt?: Date | null;
+  createdBy?: string | null;
 };
 
 const normText = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/**
+ * No new schema flag is needed to distinguish a pristine proposal from an
+ * operational row. Revision history is the primary durable signal. The
+ * remaining checks cover legacy/manual rows and externally seeded fixtures
+ * where a human change predates revision enforcement.
+ *
+ * Limitation: a historical direct database edit that changed none of these
+ * durable fields and wrote no revision is indistinguishable from a pristine
+ * proposal. Supported application mutations always append a revision.
+ */
+function isOperationallyChanged(entry: ExistingEntry): boolean {
+  return (
+    entry.reviewState !== "PENDING" ||
+    !(EXTRACTED_ORIGINS as readonly string[]).includes(entry.origin) ||
+    (entry.revisionCount ?? 0) > 0 ||
+    entry.linkedTrackedItemId != null ||
+    entry.relatedPriorEntryId != null ||
+    entry.mergedIntoEntryId != null ||
+    entry.dispositionReason != null ||
+    entry.dispositionBy != null ||
+    entry.dispositionAt != null ||
+    entry.createdBy != null
+  );
+}
 
 /**
  * Deterministic reconcile of the new drafts against the existing register.
@@ -120,11 +154,12 @@ export function computeReconcile(
     .filter(
       (e) =>
         (EXTRACTED_ORIGINS as readonly string[]).includes(e.origin) &&
-        e.reviewState === "PENDING"
+        e.reviewState === "PENDING" &&
+        !isOperationallyChanged(e)
     )
     .sort((a, b) => a.id - b.id);
   for (const e of existing) {
-    if (e.reviewState !== "PENDING" && e.reviewState !== SUPERSEDED_STATE) {
+    if (e.reviewState !== SUPERSEDED_STATE && isOperationallyChanged(e)) {
       outcomes.push({ outcome: "preserve", entryId: e.id, entryType: e.entryType });
     }
   }
@@ -244,16 +279,25 @@ async function loadReconcileInputs(
   analysis: MeetingAnalysis,
   writeResult: WriteMeetingAnalysisResult
 ): Promise<{ existing: ExistingEntry[]; drafts: AnchoredDraft[] }> {
-  const [existing, segments] = await Promise.all([
+  const [existingRows, segments] = await Promise.all([
     db.meetingRegisterEntry.findMany({
       where: { meetingId, bidId },
       select: {
         id: true,
         entryType: true,
         rawSourceText: true,
+        normalizedText: true,
         segmentId: true,
         reviewState: true,
         origin: true,
+        linkedTrackedItemId: true,
+        relatedPriorEntryId: true,
+        mergedIntoEntryId: true,
+        dispositionReason: true,
+        dispositionBy: true,
+        dispositionAt: true,
+        createdBy: true,
+        _count: { select: { revisions: true } },
       },
       orderBy: { id: "asc" },
     }),
@@ -272,6 +316,13 @@ async function loadReconcileInputs(
     buildRegisterDrafts(analysis, writeResult),
     segments
   );
+  const existing = existingRows.map((entry) => ({
+    ...entry,
+    revisionCount:
+      "_count" in entry
+        ? ((entry._count as { revisions?: number } | undefined)?.revisions ?? 0)
+        : 0,
+  }));
   return { existing, drafts };
 }
 

@@ -227,6 +227,20 @@ export function buildPrisma(): MockPrisma {
     submittalItem: makeTable(),
     auditEvent: makeTable(),
   } as Omit<MockPrisma, "$transaction">;
+  const findRegisterEntries = prisma.meetingRegisterEntry.findMany;
+  prisma.meetingRegisterEntry.findMany = async (args = {}) => {
+    const rows = await findRegisterEntries(args);
+    const select = args.select as Record<string, unknown> | undefined;
+    if (!select || !("_count" in select)) return rows;
+    return rows.map((row) => ({
+      ...row,
+      _count: {
+        revisions: prisma.meetingRegisterEntryRevision.rows.filter(
+          (revision) => revision.entryId === row.id,
+        ).length,
+      },
+    }));
+  };
   return {
     ...prisma,
     // Interactive transaction WITH rollback: all table rows are snapshotted

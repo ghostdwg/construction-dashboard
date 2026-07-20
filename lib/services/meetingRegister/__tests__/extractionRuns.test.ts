@@ -109,6 +109,45 @@ describe("recordAnalysisRun", () => {
     expect(outcomes.map((o) => o.outcome).sort()).toEqual(["create", "supersede", "unchanged"]);
   });
 
+  it("preserves a revision-backed human edit through preview and apply while creating the new proposal", async () => {
+    await recordAnalysisRun(1, 5, analysis, {
+      actionItemIds: [101], commitmentIds: [], designChangeIds: [],
+    }, ACTOR);
+    const decision = state.prisma.meetingRegisterEntry.rows.find(
+      (row) => row.entryType === "DECISION",
+    )!;
+    await state.prisma.meetingRegisterEntry.update({
+      where: { id: decision.id as number },
+      data: { normalizedText: "Human-corrected decision wording" },
+    });
+    await state.prisma.meetingRegisterEntryRevision.create({
+      data: {
+        entryId: decision.id,
+        bidId: 1,
+        changeType: "EDIT",
+        actor: ACTOR.email,
+      },
+    });
+
+    const rerun = await recordAnalysisRun(1, 5, changedAnalysis, null, ACTOR);
+    expect(rerun.ok && rerun.value.preview).toMatchObject({
+      toAdd: 1,
+      toSupersede: 0,
+      preservedDispositioned: 1,
+    });
+    const applied = await applyRun(1, 5, rerun.ok ? rerun.value.runId : -1, ACTOR);
+
+    expect(applied.ok).toBe(true);
+    expect(state.prisma.meetingRegisterEntry.rows.find((row) => row.id === decision.id)).toMatchObject({
+      reviewState: "PENDING",
+      normalizedText: "Human-corrected decision wording",
+      supersededByRunId: null,
+    });
+    expect(state.prisma.meetingRegisterEntry.rows).toContainEqual(
+      expect.objectContaining({ rawSourceText: "Decision B", reviewState: "PENDING" }),
+    );
+  });
+
   it.each(["OPEN", "CLOSED", "DEFERRED"])(
     "preserves %s action-item identity, lifecycle, and promotion source links",
     async (status) => {
@@ -447,6 +486,28 @@ describe("same-anchor reconcile accounting", () => {
     );
     expect(outcomes.map((outcome) => outcome.outcome)).toEqual(["supersede", "merge"]);
     expect(summarizeOutcomes(outcomes)).toMatchObject({ toAdd: 1, toSupersede: 2, merged: 1 });
+  });
+
+  it.each([
+    { label: "revision-backed human edit", revisionCount: 1 },
+    { label: "Operations Register link", linkedTrackedItemId: 900 },
+    { label: "manual provenance", origin: "manual" },
+  ])("preserves a PENDING $label instead of superseding it", (change) => {
+    const existing = {
+      id: 1,
+      entryType: "DECISION",
+      rawSourceText: "Machine wording",
+      normalizedText: "Machine wording",
+      segmentId: 77,
+      reviewState: "PENDING",
+      origin: "ai_extraction",
+      ...change,
+    };
+    const outcomes = computeReconcile([existing], [draft("Replacement wording")]);
+    expect(outcomes).toEqual([
+      { outcome: "preserve", entryId: 1, entryType: "DECISION" },
+      { outcome: "create", draftIndex: 0, entryType: "DECISION" },
+    ]);
   });
 });
 
