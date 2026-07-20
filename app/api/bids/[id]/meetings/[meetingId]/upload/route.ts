@@ -191,12 +191,16 @@ export async function POST(
       analyzedAt: true,
       audioFileName: true,
       audioStorageKey: true,
+      uploadedAt: true,
     },
   });
   if (!meeting) return Response.json({ error: "Not found" }, { status: 404 });
 
-  const previousAudioFileName = meeting.audioFileName;
-  const previousAudioStorageKey = meeting.audioStorageKey;
+  const previousMedia = {
+    audioFileName: meeting.audioFileName,
+    audioStorageKey: meeting.audioStorageKey,
+    uploadedAt: meeting.uploadedAt,
+  };
 
   if (!canUploadSource(meeting)) {
     return Response.json(
@@ -205,7 +209,12 @@ export async function POST(
     );
   }
 
-  const formData = await request.formData();
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    return Response.json({ error: "Unable to read audio upload" }, { status: 400 });
+  }
   const audioFile = formData.get("audio");
   if (!(audioFile instanceof File))
     return Response.json({ error: "audio file is required" }, { status: 400 });
@@ -220,6 +229,7 @@ export async function POST(
   }
 
   const safeFileName = safeBlobFileName(audioFile.name);
+  const contentType = audioFile.type || "application/octet-stream";
 
   const commitState = async (
     data: Prisma.MeetingUpdateInput,
@@ -259,11 +269,10 @@ export async function POST(
         rawTranscript: null,
         analyzedAt: null,
       },
-      data: {
-        status: "UPLOADING",
-        audioFileName: safeFileName,
-        uploadedAt: new Date(),
-      },
+      // Claim lifecycle ownership without publishing any incoming media
+      // metadata. The prior key, filename, and timestamp remain authoritative
+      // until the new blob exists and the guarded pointer transaction commits.
+      data: { status: "UPLOADING" },
     });
     if (claim.count !== 1) return { claimed: false as const, audit: null };
     const audit = await writeRegisterAuditTx(tx, {
@@ -272,11 +281,9 @@ export async function POST(
       subjectKind: "Meeting",
       subjectId: mId,
       actor: access.user,
-      payload: {
-        bidId,
-        audioBytes: audioFile.size,
-        contentType: audioFile.type || null,
-      },
+      // Attempt lifecycle only. Media metadata is published by the later
+      // pointer transaction after the BlobStore write succeeds.
+      payload: { bidId },
     });
     return { claimed: true as const, audit };
   });
@@ -306,7 +313,7 @@ export async function POST(
   try {
     store = getBlobStore();
     storageKey = await allocateAudioKey(store, bidId, mId, safeFileName);
-    await store.put(storageKey, audioBytes, { contentType: audioFile.type });
+    await store.put(storageKey, audioBytes, { contentType });
   } catch {
     const failed = await commitState(
       { status: "FAILED" },
@@ -331,10 +338,7 @@ export async function POST(
   } catch {
     const cleanup = await compensateUnreferencedAudioBlob(store, bidId, mId, storageKey);
     const failed = await commitState(
-      {
-        status: "FAILED",
-        audioFileName: previousAudioFileName,
-      },
+      { status: "FAILED" },
       "meeting.transcription_failed",
       { failureClass: "job-tracking", blobCleanupFailed: !cleanup.ok },
     );
@@ -352,9 +356,13 @@ export async function POST(
   let pointerError: unknown = null;
   try {
     stored = await commitState(
-      { audioStorageKey: storageKey },
+      {
+        audioStorageKey: storageKey,
+        audioFileName: safeFileName,
+        uploadedAt: new Date(),
+      },
       "meeting.transcription_audio_stored",
-      { audioBytes: audioBytes.length, contentType: audioFile.type || null },
+      { audioBytes: audioBytes.length, contentType },
     );
   } catch (error) {
     pointerError = error;
@@ -376,10 +384,7 @@ export async function POST(
       return transcriptConflictResponse(stored.reason);
     }
     const failed = await commitState(
-      {
-        status: "FAILED",
-        audioFileName: previousAudioFileName,
-      },
+      { status: "FAILED" },
       "meeting.transcription_failed",
       {
         failureClass: "audio-pointer",
@@ -398,9 +403,12 @@ export async function POST(
     );
   }
 
-  if (previousAudioStorageKey && previousAudioStorageKey !== storageKey) {
+  if (
+    previousMedia.audioStorageKey &&
+    previousMedia.audioStorageKey !== storageKey
+  ) {
     await deleteMeetingStorageIfUnreferenced(
-      previousAudioStorageKey,
+      previousMedia.audioStorageKey,
       bidId,
       mId,
     ).catch((err) => {
@@ -412,7 +420,7 @@ export async function POST(
   sidecarForm.append(
     "audio",
     new File([Uint8Array.from(audioBytes)], safeFileName, {
-      type: audioFile.type,
+      type: contentType,
     })
   );
   const inRoomCount = await prisma.meetingParticipant.count({

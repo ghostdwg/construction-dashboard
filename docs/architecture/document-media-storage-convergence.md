@@ -32,7 +32,7 @@ All listed routes enforce `requireBidAccess` before body parsing or storage acce
 
 ## Replacement and deletion contract
 
-Replacement bytes are written under a new UUID key before the database pointer changes. Drawing/addendum record replacement occurs in one database transaction; meeting source changes reuse the transcript mutation ownership and audit transaction. If metadata persistence fails, only the newly written blob is eligible for compensation, after a fresh durable-reference scan. Superseded blobs are retired after commit and only when no drawing, addendum, or meeting record references the same underlying object.
+Replacement bytes are written under a new UUID key before the database pointer changes. Drawing/addendum record replacement occurs in one database transaction; meeting source changes reuse the transcript mutation ownership and audit transaction. For standard meeting uploads, the lifecycle claim does not change the existing key, filename, or upload timestamp and does not publish incoming media details. BlobStore writes the content type with the new object; the later pointer transaction publishes the new key, filename, timestamp, and matching content-type audit metadata together. If metadata persistence fails, only the newly written blob is eligible for compensation, after a fresh durable-reference scan. Superseded blobs are retired after commit and only when no drawing, addendum, or meeting record references the same underlying object.
 
 ## Read-only acceptance verification
 

@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
     status: string;
     audioFileName: string | null;
     audioStorageKey: string | null;
+    uploadedAt: Date | null;
     transcriptionJobId: string | null;
     transcriptionSource: string | null;
     reviewStatus: string;
@@ -16,7 +17,9 @@ const state = vi.hoisted(() => ({
   },
   prismaCalls: 0,
   blobs: new Map<string, Buffer>(),
+  blobContentTypes: new Map<string, string>(),
   storageFailure: false,
+  validationFailure: false,
   createJobFailure: false,
   startJobFailure: false,
   failJobFailure: false,
@@ -39,6 +42,7 @@ const mocks = vi.hoisted(() => ({
   createJob: vi.fn(),
   startJob: vi.fn(),
   failJob: vi.fn(),
+  writeRegisterAuditTx: vi.fn(),
 }));
 
 vi.mock("@/lib/auth-helpers", () => ({
@@ -57,16 +61,22 @@ vi.mock("@/lib/services/meetingRegister/retention", () => ({
   withMutableMeetingTranscript: vi.fn(async (_bidId, _meetingId, mutate) => {
     if (!state.meeting) return { ok: false, reason: "not-found" };
     if (state.durableHistory.length > 0) return { ok: false, reason: "frozen" };
-    return {
-      ok: true,
-      value: await mutate({
-        meeting: {
-          findFirst: mocks.findFirst,
-          update: mocks.update,
-          updateMany: mocks.updateMany,
-        },
-      }),
-    };
+    const snapshot = structuredClone(state.meeting);
+    try {
+      return {
+        ok: true,
+        value: await mutate({
+          meeting: {
+            findFirst: mocks.findFirst,
+            update: mocks.update,
+            updateMany: mocks.updateMany,
+          },
+        }),
+      };
+    } catch (error) {
+      state.meeting = snapshot;
+      throw error;
+    }
   }),
   withActiveMeetingTranscriptMutation: vi.fn(async (_bidId, _meetingId, expectedStatus, mutate) => {
     state.activeMutationCalls += 1;
@@ -80,15 +90,23 @@ vi.mock("@/lib/services/meetingRegister/retention", () => ({
       }
       return { ok: false, reason: "state-conflict" };
     }
-    return {
-      ok: true,
-      value: await mutate({ meeting: { findFirst: mocks.findFirst, update: mocks.update } }),
-    };
+    const snapshot = structuredClone(state.meeting);
+    try {
+      return {
+        ok: true,
+        value: await mutate({
+          meeting: { findFirst: mocks.findFirst, update: mocks.update },
+        }),
+      };
+    } catch (error) {
+      state.meeting = snapshot;
+      throw error;
+    }
   }),
 }));
 
 vi.mock("@/lib/services/meetingRegister/txAudit", () => ({
-  writeRegisterAuditTx: vi.fn(async (_tx, args) => args),
+  writeRegisterAuditTx: mocks.writeRegisterAuditTx,
   emitRegisterAuditPostCommit: vi.fn(),
 }));
 
@@ -121,7 +139,10 @@ vi.mock("@/lib/storage/blobStore", () => ({
 vi.mock("@/lib/services/meetings/storagePath", () => ({
   meetingAudioStorageKey: (bidId: number, meetingId: number, immutableId: string, fileName: string) =>
     `plan-room/jobs/${bidId}/meetings/${meetingId}/${immutableId}/${fileName}`,
-  validateMeetingMediaUpload: () => ({ ok: true }),
+  validateMeetingMediaUpload: () =>
+    state.validationFailure
+      ? { ok: false, error: "synthetic invalid media" }
+      : { ok: true },
 }));
 
 vi.mock("@/lib/services/storage/referenceSafety", () => ({
@@ -178,6 +199,14 @@ function attemptDurableHistory(bytes = "synthetic immutable history") {
 
 const historyBytes = () => state.durableHistory.map((row) => row.toString("hex"));
 
+function mediaMetadata() {
+  return {
+    audioStorageKey: state.meeting?.audioStorageKey ?? null,
+    audioFileName: state.meeting?.audioFileName ?? null,
+    uploadedAt: state.meeting?.uploadedAt?.toISOString() ?? null,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("APP_ENV", "local");
@@ -185,7 +214,9 @@ beforeEach(() => {
   state.denied = false;
   state.prismaCalls = 0;
   state.blobs.clear();
+  state.blobContentTypes.clear();
   state.storageFailure = false;
+  state.validationFailure = false;
   state.createJobFailure = false;
   state.startJobFailure = false;
   state.failJobFailure = false;
@@ -200,6 +231,7 @@ beforeEach(() => {
     status: "PENDING",
     audioFileName: null,
     audioStorageKey: null,
+    uploadedAt: null,
     transcriptionJobId: null,
     transcriptionSource: null,
     reviewStatus: "DRAFT",
@@ -222,9 +254,6 @@ beforeEach(() => {
   mocks.update.mockImplementation(
     async ({ data }: { data: Record<string, unknown> }) => {
       state.prismaCalls += 1;
-      if (data.audioStorageKey && state.pointerPersistenceFailure) {
-        throw new Error("pointer persistence unavailable");
-      }
       if (state.meeting) Object.assign(state.meeting, data);
       return state.meeting;
     }
@@ -252,9 +281,14 @@ beforeEach(() => {
   mocks.blobExists.mockImplementation(async (key: string) =>
     state.blobs.has(key)
   );
-  mocks.blobPut.mockImplementation(async (key: string, bytes: Buffer) => {
+  mocks.blobPut.mockImplementation(async (
+    key: string,
+    bytes: Buffer,
+    options?: { contentType?: string },
+  ) => {
     if (state.storageFailure) throw new Error("storage unavailable");
     state.blobs.set(key, bytes);
+    if (options?.contentType) state.blobContentTypes.set(key, options.contentType);
     return {
       size: bytes.length,
       sha256: "synthetic-sha",
@@ -264,6 +298,7 @@ beforeEach(() => {
   mocks.blobDelete.mockImplementation(async (key: string) => {
     if (state.deleteFailure) throw new Error("synthetic delete failure");
     state.blobs.delete(key);
+    state.blobContentTypes.delete(key);
   });
   mocks.createJob.mockImplementation(async () => {
     if (state.createJobFailure) throw new Error("job table unavailable");
@@ -274,6 +309,15 @@ beforeEach(() => {
   });
   mocks.failJob.mockImplementation(async () => {
     if (state.failJobFailure) throw new Error("durable reconciliation unavailable");
+  });
+  mocks.writeRegisterAuditTx.mockImplementation(async (_tx, args) => {
+    if (
+      state.pointerPersistenceFailure &&
+      args.action === "meeting.transcription_audio_stored"
+    ) {
+      throw new Error("pointer transaction unavailable");
+    }
+    return args;
   });
   vi.stubGlobal("fetch", vi.fn(async () => sidecarResponse()));
 });
@@ -332,7 +376,7 @@ describe("authorization and service-auth ordering", () => {
 });
 
 describe("durable immutable audio", () => {
-  it("stores bytes and persists a relative server-generated key before Sidecar submission", async () => {
+  it("atomically publishes a successful initial upload with durable content-type metadata", async () => {
     const response = await POST(uploadRequest("../../OAC #4.wav"), routeParams);
 
     expect(response.status).toBe(200);
@@ -343,24 +387,114 @@ describe("durable immutable audio", () => {
     );
     expect(state.meeting?.audioStorageKey).toBe(storageKey);
     expect(state.meeting?.audioFileName).toBe("OAC _4.wav");
+    expect(state.meeting?.uploadedAt).toBeInstanceOf(Date);
     expect(state.blobs.get(storageKey)?.toString()).toBe("synthetic audio");
+    expect(state.blobContentTypes.get(storageKey)).toBe("audio/wav");
+    const pointerUpdate = mocks.update.mock.calls.find(
+      ([args]) => args.data.audioStorageKey === storageKey,
+    )?.[0];
+    expect(pointerUpdate?.data).toEqual({
+      audioStorageKey: storageKey,
+      audioFileName: "OAC _4.wav",
+      uploadedAt: expect.any(Date),
+    });
+    const startedAudit = mocks.writeRegisterAuditTx.mock.calls.find(
+      ([, args]) => args.action === "meeting.transcription_upload_started",
+    )?.[1];
+    expect(startedAudit?.payload).toEqual({ bidId: 1 });
+    expect(mocks.writeRegisterAuditTx).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: "meeting.transcription_audio_stored",
+        payload: expect.objectContaining({ contentType: "audio/wav" }),
+      }),
+    );
     expect(mocks.blobPut.mock.invocationCallOrder[0]).toBeLessThan(
       (fetch as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
     );
   });
 
-  it("FAILED retry allocates a different key and retires the unreferenced prior audio", async () => {
+  it("successfully replaces all media metadata together, then retires the prior blob", async () => {
     const priorKey = "uploads/meetings/9/prior-recording.wav";
+    const priorUploadedAt = new Date("2026-07-01T12:00:00.000Z");
     state.meeting!.status = "FAILED";
     state.meeting!.audioStorageKey = priorKey;
+    state.meeting!.audioFileName = "prior-recording.wav";
+    state.meeting!.uploadedAt = priorUploadedAt;
     state.blobs.set(priorKey, Buffer.from("prior immutable bytes"));
 
-    const response = await POST(uploadRequest("meeting.wav"), routeParams);
+    const response = await POST(uploadRequest("replacement.wav"), routeParams);
 
     expect(response.status).toBe(200);
-    expect(state.meeting?.audioStorageKey).not.toBe(priorKey);
+    const replacementKey = state.meeting?.audioStorageKey;
+    expect(replacementKey).not.toBe(priorKey);
+    expect(state.meeting?.audioFileName).toBe("replacement.wav");
+    expect(state.meeting?.uploadedAt).toBeInstanceOf(Date);
+    expect(state.meeting?.uploadedAt).not.toEqual(priorUploadedAt);
     expect(state.blobs.has(priorKey)).toBe(false);
+    expect(state.blobs.get(replacementKey!)?.toString()).toBe("synthetic audio");
     expect(state.blobs.size).toBe(1);
+    const pointerUpdateIndex = mocks.update.mock.calls.findIndex(
+      ([args]) => args.data.audioStorageKey === replacementKey,
+    );
+    expect(pointerUpdateIndex).toBeGreaterThanOrEqual(0);
+    expect(mocks.update.mock.invocationCallOrder[pointerUpdateIndex]).toBeLessThan(
+      mocks.blobDelete.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("request parsing failure preserves the complete prior media metadata", async () => {
+    const priorUploadedAt = new Date("2026-07-02T12:00:00.000Z");
+    state.meeting!.audioStorageKey = "uploads/meetings/9/prior.wav";
+    state.meeting!.audioFileName = "prior.wav";
+    state.meeting!.uploadedAt = priorUploadedAt;
+    const before = mediaMetadata();
+    const request = uploadRequest("replacement.wav");
+    vi.spyOn(request, "formData").mockRejectedValue(new Error("synthetic request read failure"));
+
+    const response = await POST(request, routeParams);
+
+    expect(response.status).toBe(400);
+    expect(mediaMetadata()).toEqual(before);
+    expect(state.meeting?.status).toBe("PENDING");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.blobPut).not.toHaveBeenCalled();
+  });
+
+  it("audio byte-read failure may mark FAILED but preserves prior key, filename, and timestamp", async () => {
+    state.meeting!.audioStorageKey = "uploads/meetings/9/prior.wav";
+    state.meeting!.audioFileName = "prior.wav";
+    state.meeting!.uploadedAt = new Date("2026-07-03T12:00:00.000Z");
+    const before = mediaMetadata();
+    const request = uploadRequest("replacement.wav");
+    const form = await request.formData();
+    const audio = form.get("audio") as File;
+    vi.spyOn(audio, "arrayBuffer").mockRejectedValue(new Error("synthetic audio read failure"));
+    vi.spyOn(request, "formData").mockResolvedValue(form);
+
+    const response = await POST(request, routeParams);
+
+    expect(response.status).toBe(400);
+    expect(state.meeting?.status).toBe("FAILED");
+    expect(mediaMetadata()).toEqual(before);
+    expect(mocks.blobPut).not.toHaveBeenCalled();
+    expect(mocks.createJob).not.toHaveBeenCalled();
+  });
+
+  it("validation failure preserves prior media metadata without claiming the meeting", async () => {
+    state.meeting!.audioStorageKey = "uploads/meetings/9/prior.wav";
+    state.meeting!.audioFileName = "prior.wav";
+    state.meeting!.uploadedAt = new Date("2026-07-04T12:00:00.000Z");
+    state.validationFailure = true;
+    const before = mediaMetadata();
+
+    const response = await POST(uploadRequest("replacement.exe"), routeParams);
+
+    expect(response.status).toBe(400);
+    expect(mediaMetadata()).toEqual(before);
+    expect(state.meeting?.status).toBe("PENDING");
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.blobPut).not.toHaveBeenCalled();
   });
 
   it("manual mode retains durable audio and returns PENDING", async () => {
@@ -387,24 +521,51 @@ describe("durable immutable audio", () => {
     );
   });
 
-  it("storage failure marks FAILED and performs no job or provider work", async () => {
+  it("BlobStore put failure preserves prior media metadata while marking FAILED", async () => {
+    const priorKey = "uploads/meetings/9/prior-storage.wav";
+    state.meeting!.audioStorageKey = priorKey;
+    state.meeting!.audioFileName = "prior-storage.wav";
+    state.meeting!.uploadedAt = new Date("2026-07-05T12:00:00.000Z");
+    state.blobs.set(priorKey, Buffer.from("prior immutable bytes"));
+    const before = mediaMetadata();
+    state.storageFailure = true;
+
+    const response = await POST(uploadRequest("replacement.wav"), routeParams);
+
+    expect(response.status).toBe(500);
+    expect(state.meeting?.status).toBe("FAILED");
+    expect(mediaMetadata()).toEqual(before);
+    expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
+    expect(mocks.createJob).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("initial-upload failure leaves every media pointer field unset", async () => {
     state.storageFailure = true;
 
     const response = await POST(uploadRequest(), routeParams);
 
     expect(response.status).toBe(500);
     expect(state.meeting?.status).toBe("FAILED");
-    expect(mocks.createJob).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(mediaMetadata()).toEqual({
+      audioStorageKey: null,
+      audioFileName: null,
+      uploadedAt: null,
+    });
+    expect(state.blobs.size).toBe(0);
   });
 
-  it("compensates only the new blob when pointer persistence fails", async () => {
+  it("rolls back a failed pointer transaction, compensates only the new blob, and protects the prior blob", async () => {
     const priorKey = "uploads/meetings/9/prior-failed-attempt.wav";
+    const priorUploadedAt = new Date("2026-07-06T12:00:00.000Z");
     state.meeting!.audioStorageKey = priorKey;
+    state.meeting!.audioFileName = "prior-failed-attempt.wav";
+    state.meeting!.uploadedAt = priorUploadedAt;
     state.blobs.set(priorKey, Buffer.from("prior immutable bytes"));
+    const before = mediaMetadata();
     state.pointerPersistenceFailure = true;
 
-    const response = await POST(uploadRequest(), routeParams);
+    const response = await POST(uploadRequest("uncommitted-replacement.wav"), routeParams);
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({
@@ -415,7 +576,7 @@ describe("durable immutable audio", () => {
     expect(deletedKey).not.toBe(priorKey);
     expect(state.blobs.has(deletedKey)).toBe(false);
     expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
-    expect(state.meeting?.audioStorageKey).toBe(priorKey);
+    expect(mediaMetadata()).toEqual(before);
     expect(state.meeting?.status).toBe("FAILED");
     expect(mocks.createJob).toHaveBeenCalledOnce();
     expect(mocks.failJob).toHaveBeenCalledWith(
@@ -428,7 +589,10 @@ describe("durable immutable audio", () => {
   it("emits generic telemetry if new-blob compensation fails", async () => {
     const priorKey = "uploads/meetings/9/prior-failed-attempt.wav";
     state.meeting!.audioStorageKey = priorKey;
+    state.meeting!.audioFileName = "prior-failed-attempt.wav";
+    state.meeting!.uploadedAt = new Date("2026-07-07T12:00:00.000Z");
     state.blobs.set(priorKey, Buffer.from("prior immutable bytes"));
+    const before = mediaMetadata();
     state.pointerPersistenceFailure = true;
     state.deleteFailure = true;
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -442,9 +606,73 @@ describe("durable immutable audio", () => {
     expect(await response.json()).toMatchObject({ cleanupRequired: true });
     expect(errorSpy.mock.calls.flat().join(" ")).not.toContain("confidential-name");
     expect(errorSpy.mock.calls.flat().join(" ")).not.toContain("synthetic audio");
-    expect(state.meeting?.audioStorageKey).toBe(priorKey);
+    expect(mediaMetadata()).toEqual(before);
     expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
     expect(mocks.createJob).toHaveBeenCalledOnce();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("a FAILED record never pairs the old storage key with the rejected replacement metadata", async () => {
+    state.meeting!.status = "FAILED";
+    state.meeting!.audioStorageKey = "uploads/meetings/9/authoritative.wav";
+    state.meeting!.audioFileName = "authoritative.wav";
+    state.meeting!.uploadedAt = new Date("2026-07-08T12:00:00.000Z");
+    const before = mediaMetadata();
+    state.storageFailure = true;
+
+    const response = await POST(uploadRequest("never-stored.wav"), routeParams);
+
+    expect(response.status).toBe(500);
+    expect(state.meeting?.status).toBe("FAILED");
+    expect(mediaMetadata()).toEqual(before);
+    expect(state.meeting?.audioFileName).not.toBe("never-stored.wav");
+  });
+
+  it("a retry after pointer rollback remains safe and replaces only on the successful attempt", async () => {
+    const priorKey = "uploads/meetings/9/retry-source.wav";
+    state.meeting!.status = "FAILED";
+    state.meeting!.audioStorageKey = priorKey;
+    state.meeting!.audioFileName = "retry-source.wav";
+    state.meeting!.uploadedAt = new Date("2026-07-09T12:00:00.000Z");
+    state.blobs.set(priorKey, Buffer.from("prior immutable bytes"));
+    const before = mediaMetadata();
+    state.pointerPersistenceFailure = true;
+
+    const failedResponse = await POST(uploadRequest("attempt-one.wav"), routeParams);
+
+    expect(failedResponse.status).toBe(500);
+    expect(mediaMetadata()).toEqual(before);
+    expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
+    expect([...state.blobs.keys()]).toEqual([priorKey]);
+
+    state.pointerPersistenceFailure = false;
+    const successfulResponse = await POST(uploadRequest("attempt-two.wav"), routeParams);
+
+    expect(successfulResponse.status).toBe(200);
+    expect(state.meeting?.audioStorageKey).not.toBe(priorKey);
+    expect(state.meeting?.audioFileName).toBe("attempt-two.wav");
+    expect(state.meeting?.uploadedAt).toBeInstanceOf(Date);
+    expect(state.blobs.has(priorKey)).toBe(false);
+    expect([...state.blobs.keys()]).toEqual([state.meeting!.audioStorageKey!]);
+  });
+
+  it("pointer-commit contention preserves prior metadata and compensates without deleting prior audio", async () => {
+    const priorKey = "uploads/meetings/9/contended-source.wav";
+    state.meeting!.audioStorageKey = priorKey;
+    state.meeting!.audioFileName = "contended-source.wav";
+    state.meeting!.uploadedAt = new Date("2026-07-10T12:00:00.000Z");
+    state.blobs.set(priorKey, Buffer.from("prior immutable bytes"));
+    const before = mediaMetadata();
+    state.loseActiveMutationAt = 1;
+
+    const response = await POST(uploadRequest("losing-attempt.wav"), routeParams);
+
+    expect(response.status).toBe(409);
+    expect(mediaMetadata()).toEqual(before);
+    expect(state.blobs.get(priorKey)?.toString()).toBe("prior immutable bytes");
+    expect([...state.blobs.keys()]).toEqual([priorKey]);
+    expect(mocks.blobDelete).toHaveBeenCalledOnce();
+    expect(mocks.blobDelete).not.toHaveBeenCalledWith(priorKey);
     expect(fetch).not.toHaveBeenCalled();
   });
 });
