@@ -98,6 +98,28 @@ describe("POST /api/market-intelligence/leads — authentication and authorizati
       "a whitespace-only role",
       { id: "user_space", role: "   ", email: "space@example.com" },
     ],
+    ["Admin casing", { id: "user_Admin", role: "Admin", email: "Admin@example.com" }],
+    ["ADMIN casing", { id: "user_ADMIN", role: "ADMIN", email: "ADMIN@example.com" }],
+    [
+      "Estimator casing",
+      { id: "user_Estimator", role: "Estimator", email: "Estimator@example.com" },
+    ],
+    [
+      "mixed estimator casing",
+      { id: "user_mixed", role: "EsTiMaToR", email: "mixed@example.com" },
+    ],
+    [
+      "leading whitespace",
+      { id: "user_leading", role: " admin", email: "leading@example.com" },
+    ],
+    [
+      "trailing whitespace",
+      { id: "user_trailing", role: "admin ", email: "trailing@example.com" },
+    ],
+    [
+      "surrounding whitespace",
+      { id: "user_surrounding", role: " estimator ", email: "surrounding@example.com" },
+    ],
     [
       "an unknown role",
       { id: "user_unknown", role: "superuser", email: "unknown@example.com" },
@@ -108,6 +130,7 @@ describe("POST /api/market-intelligence/leads — authentication and authorizati
     ],
     ["an array role", { id: "user_array", role: ["admin"], email: "array@example.com" }],
     ["a numeric role", { id: "user_number", role: 1, email: "number@example.com" }],
+    ["a boolean role", { id: "user_boolean", role: true, email: "boolean@example.com" }],
     ["the PM role", { id: "user_pm", role: "pm", email: "pm@example.com" }],
     [
       "a project manager label",
@@ -184,20 +207,10 @@ describe("POST /api/market-intelligence/leads — authorized creation", () => {
     expect(h.create).toHaveBeenCalledOnce();
   });
 
-  test("recognized authorized roles follow case and whitespace normalization", async () => {
-    h.session.current = {
-      user: { id: "user_normalized", role: "  EsTiMaToR  ", email: "normalized@example.com" },
-    };
-
-    const response = await route.POST(request({ title: "Normalized role lead" }));
-
-    expect(response.status).toBe(201);
-    expect(h.create).toHaveBeenCalledOnce();
-  });
-
   test("actor identity is derived from the session and protected fields are ignored", async () => {
     await route.POST(request({
       title: "Legitimate lead",
+      role: "admin",
       actor: { userId: "spoofed_actor", email: "spoofed@example.com" },
       createdById: "spoofed_creator",
       promotedToBidId: 991,
@@ -214,6 +227,7 @@ describe("POST /api/market-intelligence/leads — authorized creation", () => {
 
     const createData = h.create.mock.calls[0][0].data;
     expect(createData).not.toHaveProperty("actor");
+    expect(createData).not.toHaveProperty("role");
     expect(createData).not.toHaveProperty("createdById");
     expect(createData).not.toHaveProperty("promotedToBidId");
     expect(createData).not.toHaveProperty("promotedAt");

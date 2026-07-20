@@ -19,13 +19,12 @@ export const ROLES = {
 
 export type AppRole = (typeof ROLES)[keyof typeof ROLES];
 
-/** Normalize only explicit, recognized application roles. */
+/** Resolve only exact canonical application roles. Malformed values fail closed. */
 export function normalizeAppRole(role: unknown): AppRole | null {
   if (typeof role !== "string") return null;
 
-  const normalized = role.trim().toLowerCase();
-  return (Object.values(ROLES) as string[]).includes(normalized)
-    ? (normalized as AppRole)
+  return (Object.values(ROLES) as string[]).includes(role)
+    ? (role as AppRole)
     : null;
 }
 
