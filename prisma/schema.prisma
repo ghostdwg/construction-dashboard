@@ -179,6 +179,9 @@ model Bid {
   registerEntryRevisions    MeetingRegisterEntryRevision[]
   extractionRuns            MeetingExtractionRun[]
   minutesRevisions          MeetingMinutesRevision[]
+  meetingIntelligenceArtifacts  MeetingIntelligenceArtifact[]
+  meetingIntelligenceSegments   MeetingIntelligenceSegment[]
+  meetingIntelligenceCandidates MeetingIntelligenceCandidate[]
   reportObservations          ReportObservation[]
   trackedItemTradeAssignments TrackedItemTradeAssignment[]
   responsePackages            ResponsePackage[]
@@ -1198,6 +1201,9 @@ model Meeting {
   registerEntries       MeetingRegisterEntry[]
   extractionRuns        MeetingExtractionRun[]
   minutesRevisions      MeetingMinutesRevision[]
+  intelligenceArtifacts  MeetingIntelligenceArtifact[]
+  intelligenceSegments   MeetingIntelligenceSegment[]
+  intelligenceCandidates MeetingIntelligenceCandidate[]
 
   @@index([bidId])
   @@index([bidId, meetingDate])
@@ -1257,6 +1263,8 @@ model MeetingActionItem {
   carriedFromDate String? // ISO date of meeting where this first appeared
   closedAt        DateTime?
   notes           String?
+  // Meeting Intelligence v1 publication provenance and duplicate guard.
+  sourceMeetingIntelligenceCandidateId Int?      @unique
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -1269,11 +1277,130 @@ model MeetingActionItem {
   trackedItem     TrackedItem?
   commitments     MeetingCommitment[]
   registerEntries MeetingRegisterEntry[]
+  sourceMeetingIntelligenceCandidate MeetingIntelligenceCandidate? @relation("MeetingIntelligencePublishedAction", fields: [sourceMeetingIntelligenceCandidateId], references: [id], onDelete: SetNull)
 
   @@index([bidId])
   @@index([meetingId])
   @@index([status])
   @@index([source])
+}
+
+// ── Meeting Intelligence v1 — local-only review ledger ────────────────────
+//
+// This foundation is deliberately provider-free. Uploaded media is referenced
+// for readiness and provenance, while transcript/candidate creation is limited
+// to the deterministic local development processor in
+// lib/services/meetingIntelligence. No audio, transcript, or project data is
+// sent to an external AI service.
+//
+// state values:
+//   QUEUED | PROCESSING | READY_FOR_REVIEW | PUBLISHED | FAILED | CANCELED
+// NOT_STARTED is the computed state when no artifact exists for a meeting.
+model MeetingIntelligenceArtifact {
+  id                   Int       @id @default(autoincrement())
+  meetingId            Int
+  bidId                Int
+  state                String    @default("QUEUED")
+  mediaReference       String
+  sourceReference      String    @unique
+  sourceKind           String    @default("DETERMINISTIC_LOCAL_DEV")
+  sourceMetadataJson   String    @default("{}")
+  transcriptText       String?
+  transcriptConfidence Float?
+  errorCode            String?
+  errorMessage         String?
+  queuedBy             String
+  queuedAt             DateTime  @default(now())
+  startedAt            DateTime?
+  completedAt          DateTime?
+  publishedAt          DateTime?
+  canceledAt           DateTime?
+  // Active artifacts hold 1. Terminal artifacts release to null so a later
+  // local run can be queued while all prior artifacts remain durable history.
+  activeSlot           Int?      @default(1)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  meeting    Meeting                        @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  bid        Bid                            @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  segments   MeetingIntelligenceSegment[]
+  candidates MeetingIntelligenceCandidate[]
+
+  @@unique([meetingId, activeSlot])
+  @@index([bidId, createdAt])
+  @@index([meetingId, createdAt])
+  @@index([state])
+}
+
+// original* fields are frozen processor output. current* fields are the
+// explicit later-correction path for speaker attribution and wording.
+model MeetingIntelligenceSegment {
+  id                   Int       @id @default(autoincrement())
+  artifactId           Int
+  meetingId            Int
+  bidId                Int
+  segmentIndex         Int
+  startSec             Float?
+  endSec               Float?
+  originalSpeakerLabel String    @default("UNKNOWN_SPEAKER")
+  currentSpeakerLabel  String    @default("UNKNOWN_SPEAKER")
+  originalText         String
+  currentText          String
+  confidence           Float?
+  correctedBy          String?
+  correctedAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  artifact   MeetingIntelligenceArtifact    @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  meeting    Meeting                        @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  bid        Bid                            @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  candidates MeetingIntelligenceCandidate[]
+
+  @@unique([artifactId, segmentIndex])
+  @@index([meetingId, segmentIndex])
+  @@index([bidId])
+}
+
+// candidateType values:
+//   ACTION_ITEM | DECISION | ISSUE | RFI_OR_CLARIFICATION |
+//   OWNER_COMMITMENT | CONTRACTOR_COMMITMENT | DUE_DATE | RISK |
+//   CLOSEOUT_ITEM | WARRANTY_ITEM | SPEC_REFERENCE
+// reviewState values: DRAFT | ACCEPTED | REJECTED | EDITED | PUBLISHED
+model MeetingIntelligenceCandidate {
+  id                 Int       @id @default(autoincrement())
+  artifactId         Int
+  meetingId          Int
+  bidId              Int
+  segmentId          Int?
+  candidateType      String
+  rawText            String
+  draftText          String
+  evidenceExcerpt    String
+  speakerLabel       String
+  startSec           Float?
+  endSec             Float?
+  confidence         Float?
+  sourceMetadataJson String    @default("{}")
+  dueDate            DateTime?
+  reviewState        String    @default("DRAFT")
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  publishedBy        String?
+  publishedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  artifact            MeetingIntelligenceArtifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  meeting             Meeting                     @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  bid                 Bid                         @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  segment             MeetingIntelligenceSegment? @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  publishedActionItem MeetingActionItem?          @relation("MeetingIntelligencePublishedAction")
+
+  @@index([artifactId, reviewState])
+  @@index([meetingId, reviewState])
+  @@index([bidId])
+  @@index([candidateType])
 }
 
 model BidDecision {

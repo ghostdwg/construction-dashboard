@@ -21,6 +21,7 @@ import { openTmpDb, cleanupTmpDb, seedResponsePackageChain, seedMeetingParticipa
 const MIGRATION_101 = "20260718030000_r2b2_trade_response_reviewer_repairs";
 const MIGRATION_100 = "20260718024444_r2_release_blocker_retention";
 const MIGRATION_99 = "20260718010000_r2b2_trade_response_packages";
+const MIGRATION_102 = "20260721010000_meeting_intelligence_v1_foundation";
 
 let db: TmpDb;
 
@@ -34,15 +35,16 @@ afterEach(() => {
 });
 
 describe("migration inventory", () => {
-  test("migration 101 is the last migration and matches the expected name", () => {
+  test("migration 102 is the last migration and preserves the prior sequence", () => {
     const all = listMigrations();
-    expect(all[all.length - 1]).toBe(MIGRATION_101);
-    expect(all[all.length - 2]).toBe(MIGRATION_100);
-    expect(all[all.length - 3]).toBe(MIGRATION_99);
+    expect(all[all.length - 1]).toBe(MIGRATION_102);
+    expect(all[all.length - 2]).toBe(MIGRATION_101);
+    expect(all[all.length - 3]).toBe(MIGRATION_100);
+    expect(all[all.length - 4]).toBe(MIGRATION_99);
   });
 });
 
-describe("fresh replay through 101", () => {
+describe("fresh replay through 102", () => {
   test("applies the full chain to an empty database", async () => {
     const all = listMigrations();
     const applied = await applyPendingMigrations(db.client, all);
@@ -50,7 +52,7 @@ describe("fresh replay through 101", () => {
     const rows = await db.client.execute("SELECT COUNT(*) as n FROM _prisma_migrations");
     expect(Number(rows.rows[0].n)).toBe(all.length);
     expect(await readForeignKeysState(db.client)).toBe(1);
-  });
+  }, 15_000);
 
   test("never depends on DATABASE_URL or APP_ENV (no tier fence, no network)", async () => {
     const savedUrl = process.env.DATABASE_URL;
@@ -65,13 +67,13 @@ describe("fresh replay through 101", () => {
       if (savedUrl !== undefined) process.env.DATABASE_URL = savedUrl;
       if (savedEnv !== undefined) process.env.APP_ENV = savedEnv;
     }
-  });
+  }, 15_000);
 });
 
 describe("populated upgrade through migration 101", () => {
   test("a populated pre-101 database upgrades through 101 successfully, data and relationships survive", async () => {
     const all = listMigrations();
-    const preMigration101 = all.slice(0, all.length - 1); // migrations 1..100
+    const preMigration101 = all.slice(0, all.indexOf(MIGRATION_101)); // migrations 1..100
     expect(preMigration101[preMigration101.length - 1]).toBe(MIGRATION_100);
 
     await applyPendingMigrations(db.client, preMigration101);

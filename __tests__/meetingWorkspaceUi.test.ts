@@ -14,10 +14,11 @@ const bidDir = join(__dirname, "..", "app", "(authenticated)", "bids", "[id]");
 describe("MeetingsTab.tsx meeting workspace section tabs", () => {
   const tab = readFileSync(join(bidDir, "MeetingsTab.tsx"), "utf8");
 
-  it("renders the five section tabs including register and minutes", () => {
+  it("renders the six section tabs including the local review ledger, register, and minutes", () => {
     expect(tab).toMatch(
-      /\(\["transcript", "analysis", "register", "minutes", "items"\] as const\)/
+      /\(\["transcript", "analysis", "intelligence", "register", "minutes", "items"\] as const\)/
     );
+    expect(tab).toMatch(/\{s === "intelligence" && "Review Ledger"\}/);
     expect(tab).toMatch(/\{s === "register" && "Register"\}/);
     expect(tab).toMatch(/\{s === "minutes" && "Minutes"\}/);
   });

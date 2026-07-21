@@ -145,6 +145,9 @@ export type MockPrisma = {
   meetingRegisterEntryRevision: Table;
   meetingExtractionRun: Table;
   meetingMinutesRevision: Table;
+  meetingIntelligenceArtifact: Table;
+  meetingIntelligenceSegment: Table;
+  meetingIntelligenceCandidate: Table;
   meetingActionItem: Table;
   meetingCommitment: Table;
   designIntentChange: Table;
@@ -166,6 +169,9 @@ const TABLE_NAMES = [
   "meetingRegisterEntryRevision",
   "meetingExtractionRun",
   "meetingMinutesRevision",
+  "meetingIntelligenceArtifact",
+  "meetingIntelligenceSegment",
+  "meetingIntelligenceCandidate",
   "meetingActionItem",
   "meetingCommitment",
   "designIntentChange",
@@ -217,7 +223,16 @@ export function buildPrisma(): MockPrisma {
     meetingRegisterEntryRevision: makeTable(),
     meetingExtractionRun: makeTable(),
     meetingMinutesRevision: makeTable({ unique: [["meetingId", "revisionIndex"]] }),
-    meetingActionItem: makeTable(),
+    meetingIntelligenceArtifact: makeTable({
+      unique: [["sourceReference"], ["meetingId", "activeSlot"]],
+      defaults: { state: "QUEUED", activeSlot: 1 },
+    }),
+    meetingIntelligenceSegment: makeTable({
+      unique: [["artifactId", "segmentIndex"]],
+      defaults: { currentSpeakerLabel: "UNKNOWN_SPEAKER" },
+    }),
+    meetingIntelligenceCandidate: makeTable({ defaults: { reviewState: "DRAFT" } }),
+    meetingActionItem: makeTable({ unique: [["sourceMeetingIntelligenceCandidateId"]] }),
     meetingCommitment: makeTable(),
     designIntentChange: makeTable(),
     trackedItem: makeTable({ unique: [["sourceMeetingRegisterEntryId"]] }),

@@ -28,7 +28,10 @@ export type RegisterAuditArgs = {
     | "MeetingExtractionRun"
     | "MeetingMinutesRevision"
     | "Meeting"
-    | "MeetingParticipant";
+    | "MeetingParticipant"
+    | "MeetingIntelligenceArtifact"
+    | "MeetingIntelligenceCandidate"
+    | "MeetingIntelligenceSegment";
   subjectId: number;
   actor: Actor | null;
   /** ids/counts/labels only — never transcript or entry text */

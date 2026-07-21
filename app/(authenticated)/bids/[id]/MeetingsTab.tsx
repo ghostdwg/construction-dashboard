@@ -16,6 +16,7 @@ import MeetingDesignLog from "./MeetingDesignLog";
 import MeetingCommitments from "./MeetingCommitments";
 import MeetingRegisterPanel from "./MeetingRegisterPanel";
 import MeetingMinutesPanel from "./MeetingMinutesPanel";
+import MeetingIntelligencePanel from "./MeetingIntelligencePanel";
 import TranscriptReviewPanel from "./TranscriptReviewPanel";
 import { isMeetingUploadStale } from "./meetingUploadStaleness";
 import {
@@ -1187,7 +1188,7 @@ function MeetingDetailPanel({
   onReload: () => void;
 }) {
   const [activeSection, setActiveSection] = useState<
-    "transcript" | "analysis" | "register" | "minutes" | "items"
+    "transcript" | "analysis" | "intelligence" | "register" | "minutes" | "items"
   >(detail.status === "READY" && detail.summary ? "analysis" : "transcript");
   // R2-B1 — register→transcript timestamp navigation target.
   const [focusSegmentId, setFocusSegmentId] = useState<number | null>(null);
@@ -1383,7 +1384,7 @@ function MeetingDetailPanel({
 
       {/* ── Section tabs ── */}
       <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-700">
-        {(["transcript", "analysis", "register", "minutes", "items"] as const).map((s) => (
+        {(["transcript", "analysis", "intelligence", "register", "minutes", "items"] as const).map((s) => (
           <button
             key={s}
             onClick={() => setActiveSection(s)}
@@ -1395,6 +1396,7 @@ function MeetingDetailPanel({
           >
             {s === "transcript" && "Transcript"}
             {s === "analysis" && "Analysis"}
+            {s === "intelligence" && "Review Ledger"}
             {s === "register" && "Register"}
             {s === "minutes" && "Minutes"}
             {s === "items" && `Action Items (${detail.actionItems.length})`}
@@ -1886,6 +1888,15 @@ function MeetingDetailPanel({
             analyzedAt={detail.analyzedAt}
           />
         </div>
+      )}
+
+      {/* ── R2-B1: Meeting Register ── */}
+      {activeSection === "intelligence" && (
+        <MeetingIntelligencePanel
+          bidId={bidId}
+          meetingId={detail.id}
+          onPublished={onReload}
+        />
       )}
 
       {/* ── R2-B1: Meeting Register ── */}
