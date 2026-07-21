@@ -27,6 +27,17 @@ function parseInsights(raw: string | null): Insights | null {
   try { return JSON.parse(raw) as Insights; } catch { return null; }
 }
 
+// Evidence-first, human-readable candidate lifecycle labels.
+const STATUS_LABEL: Record<string, string> = {
+  NEW:       "Awaiting review",
+  REVIEWING: "In review",
+  QUALIFIED: "Qualified",
+  PURSUING:  "Pursuing",
+  PROMOTED:  "Promoted",
+  ARCHIVED:  "Archived",
+  DISMISSED: "Dismissed",
+};
+
 export default async function LeadDetailPage({
   params,
 }: {
@@ -37,6 +48,13 @@ export default async function LeadDetailPage({
     where: { id },
     include: {
       sourceDoc: { select: { id: true, title: true, documentDate: true, docUrl: true } },
+      signals: {
+        orderBy: [{ aiRelevanceScore: "desc" }, { createdAt: "desc" }],
+        select: {
+          id: true, headline: true, signalType: true, signalSubtype: true,
+          aiRelevanceScore: true, sourceDate: true, sourceUrl: true, createdAt: true,
+        },
+      },
     },
   });
   if (!lead) notFound();
@@ -49,6 +67,11 @@ export default async function LeadDetailPage({
     : null;
 
   const insights = parseInsights(lead.aiInsights);
+  // Evidence-first: an emerging project is only trustworthy insofar as it is
+  // backed by detected signals or a source document. Surface that honestly.
+  const hasEvidence =
+    lead.signals.length > 0 || lead.sourceDoc != null || lead.sourceUrl != null;
+  const statusLabel = STATUS_LABEL[lead.status] ?? lead.status;
   const statusColor =
     lead.status === "PROMOTED" ? "var(--signal)"
     : lead.status === "ARCHIVED" || lead.status === "DISMISSED" ? "var(--text-dim)"
@@ -64,12 +87,15 @@ export default async function LeadDetailPage({
       </div>
 
       <header className="flex flex-col gap-2">
+        <p className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: "var(--text-dim)" }}>
+          emerging project · detected candidate
+        </p>
         <h1 className="text-xl font-[700]" style={{ color: "var(--text)" }}>{lead.title}</h1>
         <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] uppercase tracking-[0.07em]">
           <span
             className="px-2 py-1 rounded-full"
             style={{ color: statusColor, border: `1px solid ${statusColor}`, background: "rgba(255,255,255,0.02)" }}
-          >{lead.status}</span>
+          >{statusLabel}</span>
           <span className="px-2 py-1 rounded-full opacity-80" style={{ border: "1px solid var(--line)" }}>
             confidence {lead.confidence}
           </span>
@@ -85,6 +111,18 @@ export default async function LeadDetailPage({
           )}
         </div>
       </header>
+
+      {!hasEvidence && (
+        <div
+          role="note"
+          className="rounded px-3 py-2 text-[12px]"
+          style={{ border: "1px solid rgba(245,166,35,0.35)", background: "var(--amber-dim)", color: "#ffcc72" }}
+        >
+          Insufficient evidence — this candidate has no supporting signals and no
+          source document attached. Treat it as unverified until evidence is
+          ingested.
+        </div>
+      )}
 
       {promotion && (
         <Section title="Pursuit">
@@ -117,6 +155,47 @@ export default async function LeadDetailPage({
           <Field label="Detected"     value={fmtDateTime(lead.detectedAt)} />
           <Field label="Source"       value={lead.source ?? "—"} />
         </Grid>
+      </Section>
+
+      <Section title={`Supporting signals${lead.signals.length ? ` · ${lead.signals.length}` : ""}`}>
+        {lead.signals.length === 0 ? (
+          <p className="text-sm opacity-60">
+            No supporting signals are attached to this candidate yet — its
+            evidence base is incomplete.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-[var(--line)]">
+            {lead.signals.map((s) => (
+              <li key={s.id} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-[500] truncate" style={{ color: "var(--text)" }}>{s.headline}</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.06em]" style={{ color: "var(--text-dim)" }}>
+                    {s.signalType}{s.signalSubtype ? ` · ${s.signalSubtype.replace(/_/g, " ")}` : ""}
+                    {s.sourceDate ? ` · ${fmtDate(s.sourceDate)}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {s.aiRelevanceScore != null && (
+                    <span className="font-mono text-[10px]" style={{ color: "var(--text-soft)" }}>
+                      score {s.aiRelevanceScore}
+                    </span>
+                  )}
+                  {s.sourceUrl && (
+                    <a
+                      href={s.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono text-[10px] hover:underline"
+                      style={{ color: "var(--signal)" }}
+                    >
+                      source ↗
+                    </a>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </Section>
 
       {lead.aiSummary && (

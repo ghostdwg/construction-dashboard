@@ -95,7 +95,7 @@ export default async function SourceDocViewerPage({
 
       <div className="grid grid-cols-4 gap-3">
         <Stat label="Signals"        value={doc.signals.length} />
-        <Stat label="Leads"          value={doc.leads.length} />
+        <Stat label="Candidates"     value={doc.leads.length} />
         <Stat label="Chars scanned"  value={doc.charCount.toLocaleString()} />
         <Stat label="Scan cost"      value={`$${doc.costUsd.toFixed(4)}`} />
       </div>
@@ -105,10 +105,10 @@ export default async function SourceDocViewerPage({
         {doc.error && <span style={{ color: "var(--red)" }}> · ERROR: {doc.error}</span>}
       </p>
 
-      {/* Leads from this doc */}
-      <Section title="Leads called out from this document">
+      {/* Emerging projects from this doc */}
+      <Section title="Emerging projects detected in this document">
         {doc.leads.length === 0 ? (
-          <Empty text="No leads were generated from this document." />
+          <Empty text="No emerging projects were detected in this document." />
         ) : (
           <div className="flex flex-col">
             {doc.leads.map((l) => (

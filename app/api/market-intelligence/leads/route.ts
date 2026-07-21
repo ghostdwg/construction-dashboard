@@ -1,86 +1,39 @@
-import { prisma } from "@/lib/prisma";
-import { canPromote } from "@/lib/services/pursuitPromotion";
-import { resolvePromotionActor } from "@/lib/services/pursuitPromotion/actor";
-import {
-  fireAndForgetIngest,
-  processNewMarketLead,
-} from "@/lib/services/liveIngestion";
+// ──────────────────────────────────────────────────────────────────────────────
+//  app/api/market-intelligence/leads/route.ts
+//
+//  RETIRED — generic browser creation of Market Intelligence candidates.
+//
+//  Market Intelligence is evidence-first: every Emerging Project must originate
+//  from ingested evidence (a signal or source document with provenance), never
+//  from a hand-typed browser form. The legitimate ingestion pipeline
+//  (lib/services/marketIntelligence/scrapeOneSource.ts) writes candidate rows
+//  and bridges them into liveIngestion.processNewMarketLead() DIRECTLY — it does
+//  not, and never did, call this HTTP route. The only caller this endpoint ever
+//  had was the removed "New Lead" button, so the generic manual-write POST is
+//  gone rather than kept alive as a dead, evidence-free creation path.
+//
+//  Manual opportunities belong in Pursuits, not here: create them through the
+//  existing Pursuit Intake / New Bid flow (/bids/new → POST /api/bids).
+//
+//  The route stays fail-closed. Manual creation is answered with 405 Method Not
+//  Allowed and performs no write — authenticated and anonymous callers alike.
+//  It deliberately exposes no GET/list verb, so the module stays POST-only and
+//  the retired POST cannot be used to manufacture intelligence candidates.
+// ──────────────────────────────────────────────────────────────────────────────
 
-export async function POST(request: Request) {
-  const actor = await resolvePromotionActor();
-  if (!actor) {
-    return Response.json({ error: "Authentication required" }, { status: 401 });
-  }
-  if (!canPromote(actor)) {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
-  }
+const RETIRED_MESSAGE =
+  "Manual Market Intelligence creation is retired. Emerging Projects are derived " +
+  "from ingested evidence, not entered by hand. Create a manual opportunity as a " +
+  "Pursuit via /bids/new instead.";
 
-  const body = await request.json().catch(() => null);
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return Response.json({ error: "Invalid request body" }, { status: 400 });
-  }
-  const {
-    title,
-    leadType,
-    location,
-    jurisdiction,
-    projectType,
-    estimatedValue,
-    source,
-    sourceUrl,
-    notes,
-  } = body;
-
-  if (!title || typeof title !== "string" || !title.trim()) {
-    return Response.json({ error: "title is required" }, { status: 400 });
-  }
-
-  const textFields = [
-    leadType,
-    location,
-    jurisdiction,
-    projectType,
-    source,
-    sourceUrl,
-    notes,
-  ];
-  if (textFields.some((value) => value != null && typeof value !== "string")) {
-    return Response.json({ error: "Text fields must be strings" }, { status: 400 });
-  }
-
-  const valueNum =
-    estimatedValue === "" || estimatedValue == null
-      ? null
-      : Number(estimatedValue);
-  if (valueNum !== null && !Number.isFinite(valueNum)) {
-    return Response.json({ error: "estimatedValue must be numeric" }, { status: 400 });
-  }
-
-  const lead = await prisma.marketLead.create({
-    data: {
-      title: title.trim(),
-      leadType: typeof leadType === "string" && leadType ? leadType : "MANUAL",
-      source: typeof source === "string" ? source.trim() || null : null,
-      sourceUrl: typeof sourceUrl === "string" ? sourceUrl.trim() || null : null,
-      location: typeof location === "string" ? location.trim() || null : null,
-      jurisdiction: typeof jurisdiction === "string" ? jurisdiction.trim() || null : null,
-      projectType: typeof projectType === "string" ? projectType.trim() || null : null,
-      estimatedValue: valueNum,
-      notes: typeof notes === "string" ? notes.trim() || null : null,
-    },
-  });
-
-  // Phase MI-5 — live emergence ingestion. Route the freshly-created lead
-  // through the resolver + project aggregator. Fire-and-forget: the lead
-  // creation isn't gated on emergence processing, and any failure is
-  // surfaced to logs (the MI-6 PR2 backfill picks up missed signals
-  // idempotently).
-  fireAndForgetIngest(
-    processNewMarketLead(lead.id, {
-      actor: { userId: actor.id, email: actor.email ?? null },
-    }),
-    `processNewMarketLead(${lead.id})`
+/**
+ * Manual browser creation is retired. Return 405 without touching the database,
+ * the ingestion pipeline, or the request body — nothing here can create a
+ * MarketLead.
+ */
+export function POST(): Response {
+  return Response.json(
+    { error: "Method Not Allowed", detail: RETIRED_MESSAGE },
+    { status: 405, headers: { Allow: "" } }
   );
-
-  return Response.json(lead, { status: 201 });
 }

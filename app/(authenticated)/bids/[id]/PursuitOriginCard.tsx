@@ -25,7 +25,9 @@ export default async function PursuitOriginCard({ bidId }: { bidId: number }) {
 
   const sourceHref = marketSourceHref(origin.sourceKind, origin.sourceId);
 
-  const kindLabel = origin.sourceKind === "LEAD" ? "Market lead" : "Market project";
+  // Both promotion sources are intelligence-derived emerging projects; the
+  // pursuit shows its Market Intelligence origin, not a CRM "lead".
+  const kindLabel = "Market Intelligence — Emerging project";
 
   return (
     <section

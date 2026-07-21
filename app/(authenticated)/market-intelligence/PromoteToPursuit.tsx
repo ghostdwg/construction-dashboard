@@ -181,7 +181,7 @@ export default function PromoteToPursuit({
     return (
       <Panel tone="signal" role="status">
         <p className="text-sm" style={{ color: "var(--text)" }}>
-          Pursuit created from this {sourceKind === "LEAD" ? "lead" : "project"}.
+          Pursuit created from this emerging project.
         </p>
         <PursuitLink bidId={initialBidId} />
       </Panel>
@@ -315,7 +315,7 @@ function ineligibleMessage(reason: string | null, kind: SourceKind): string {
       return "Promoting to a pursuit requires the estimator or admin role.";
     case "ineligible_status":
       return kind === "LEAD"
-        ? "Archived and dismissed leads cannot be promoted."
+        ? "Archived and dismissed emerging projects cannot be promoted."
         : "Rejected, merged, abandoned and completed projects cannot be promoted.";
     case "not_found":
       return "This source is no longer available.";

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import NewLeadButton from "./NewLeadButton";
+import IntelligenceNav from "./IntelligenceNav";
 import ScanPanel from "./ScanPanel";
 import SourcesPanel from "./SourcesPanel";
 import DiscoverPanel from "./DiscoverPanel";
@@ -10,12 +10,13 @@ import RunnerSummary from "./RunnerSummary";
 // ── Status + type chip maps ──────────────────────────────────────────────────
 
 const LEAD_STATUS: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  NEW:       { label: "NEW",       color: "var(--text-soft)",  bg: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.12)"  },
-  REVIEWING: { label: "REVIEWING", color: "#ffcc72",           bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.2)"   },
-  QUALIFIED: { label: "QUALIFIED", color: "#b8ceff",           bg: "rgba(126,167,255,0.1)",  border: "rgba(126,167,255,0.2)"  },
-  PURSUING:  { label: "PURSUING",  color: "#2D7BFF",           bg: "var(--signal-dim)",      border: "rgba(45,123,255,0.15)"  },
-  ARCHIVED:  { label: "ARCHIVED",  color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.07)" },
-  DISMISSED: { label: "DISMISSED", color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.07)" },
+  NEW:       { label: "AWAITING REVIEW", color: "var(--text-soft)", bg: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.12)"  },
+  REVIEWING: { label: "IN REVIEW",  color: "#ffcc72",           bg: "var(--amber-dim)",       border: "rgba(245,166,35,0.2)"   },
+  QUALIFIED: { label: "QUALIFIED",  color: "#b8ceff",           bg: "rgba(126,167,255,0.1)",  border: "rgba(126,167,255,0.2)"  },
+  PURSUING:  { label: "PURSUING",   color: "#2D7BFF",           bg: "var(--signal-dim)",      border: "rgba(45,123,255,0.15)"  },
+  PROMOTED:  { label: "PROMOTED",   color: "var(--signal)",     bg: "var(--signal-dim)",      border: "rgba(45,123,255,0.25)"  },
+  ARCHIVED:  { label: "ARCHIVED",   color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.07)" },
+  DISMISSED: { label: "DISMISSED",  color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.07)" },
 };
 
 const LEAD_TYPE_LABEL: Record<string, string> = {
@@ -147,6 +148,9 @@ export default async function MarketIntelligencePage() {
 
   return (
     <div>
+      {/* ── Intelligence sub-navigation (product IA) ─────────────────────── */}
+      <IntelligenceNav />
+
       {/* ── Page header ─────────────────────────────────────────────────── */}
       <div className="flex items-end justify-between px-6 py-[22px] border-b border-[var(--line)]">
         <div>
@@ -157,41 +161,18 @@ export default async function MarketIntelligencePage() {
             Market Intelligence
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-soft)" }}>
-            Signal ingestion · permit feeds · relationship intel · pursuit pipeline
+            Detected signals · emerging projects · relationship intel · evidence-backed pursuits
           </p>
         </div>
         <div className="flex items-center gap-2 relative">
-          <Link
-            href="/market-intelligence/entities"
-            className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.07em] rounded-md hover:opacity-100 opacity-90"
-            style={{
-              border: "1px solid var(--line)",
-              color: "var(--text-soft)",
-              background: "rgba(255,255,255,0.02)",
-            }}
-          >
-            Entities →
-          </Link>
-          <Link
-            href="/market-intelligence/projects"
-            className="px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.07em] rounded-md hover:opacity-100 opacity-90"
-            style={{
-              border: "1px solid var(--line)",
-              color: "var(--text-soft)",
-              background: "rgba(255,255,255,0.02)",
-            }}
-          >
-            Projects →
-          </Link>
           <ScanPanel />
-          <NewLeadButton />
         </div>
       </div>
 
       {/* ── Metric cards ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-4 gap-3 p-6 pb-0">
-        <MetricCard accent="blue"   label="New Signals 24H"   value={newSignalCount} sub="unreviewed signals" />
-        <MetricCard accent="signal" label="Active Pipeline"   value={totalLeads}     sub="leads in review" />
+        <MetricCard accent="blue"   label="New Signals 24H"   value={newSignalCount} sub="detected, unreviewed" />
+        <MetricCard accent="signal" label="Emerging Projects" value={totalLeads}     sub="candidates in review" />
         <MetricCard accent="blue"   label="Qualified"         value={qualifiedCount} sub="ready to evaluate" />
         <MetricCard accent="signal" label="In Pursuit"        value={pursuingCount}  sub="promoted to active" />
       </div>
@@ -213,7 +194,8 @@ export default async function MarketIntelligencePage() {
 
           {/* Signal Queue */}
           <div
-            className="border border-[var(--line)] rounded-[var(--radius)] overflow-hidden"
+            id="signal-queue"
+            className="border border-[var(--line)] rounded-[var(--radius)] overflow-hidden scroll-mt-6"
             style={{ background: "linear-gradient(180deg,rgba(17,21,28,0.96),rgba(12,15,21,0.98))", boxShadow: "var(--shadow)" }}
           >
             <PanelHead title="Unassigned Signals" count={unassignedSignals.length} />
@@ -221,7 +203,7 @@ export default async function MarketIntelligencePage() {
               <div className="px-4 py-10 text-center">
                 <p className="text-sm font-[500]" style={{ color: "var(--signal-soft)" }}>Signal queue clear</p>
                 <p className="text-[11px] mt-1" style={{ color: "var(--text-dim)" }}>
-                  Signals appear here when scrapers run or when you add one manually.
+                  Detected signals land here as sources are ingested. Nothing is unassigned right now.
                 </p>
               </div>
             ) : (
@@ -320,12 +302,13 @@ export default async function MarketIntelligencePage() {
             )}
           </div>
 
-          {/* Lead Pipeline */}
+          {/* Emerging Projects */}
           <div
-            className="border border-[var(--line)] rounded-[var(--radius)] overflow-hidden"
+            id="emerging-projects"
+            className="border border-[var(--line)] rounded-[var(--radius)] overflow-hidden scroll-mt-6"
             style={{ background: "linear-gradient(180deg,rgba(17,21,28,0.96),rgba(12,15,21,0.98))", boxShadow: "var(--shadow)" }}
           >
-            <PanelHead title="Lead Pipeline" count={activeLeads.length} />
+            <PanelHead title="Emerging Projects" count={activeLeads.length} />
             {activeLeads.length === 0 ? (
               <div className="empty-state">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -336,9 +319,12 @@ export default async function MarketIntelligencePage() {
                   <line x1="11" y1="8" x2="11" y2="14" />
                   <line x1="8" y1="11" x2="14" y2="11" />
                 </svg>
-                <p className="empty-state-title">No leads found</p>
+                <p className="empty-state-title">No emerging projects detected</p>
                 <p className="empty-state-body">
-                  Add a lead manually or run a market scraper to populate the pipeline.
+                  Emerging projects surface automatically as ingested signals and
+                  source documents accumulate into evidence. If this stays empty,
+                  source coverage may not be configured yet — review Ingestion
+                  Sources below.
                 </p>
               </div>
             ) : (
