@@ -10,6 +10,16 @@ vi.mock("@/lib/prisma", () => ({
     return state.prisma;
   },
 }));
+vi.mock("@/lib/storage/blobStore", () => ({
+  getBlobStore: () => ({
+    stat: vi.fn(async () => ({
+      size: 5,
+      sha256: "a".repeat(64),
+      modifiedAt: new Date(),
+      contentType: "audio/wav",
+    })),
+  }),
+}));
 process.env.OBSERVABILITY_AUDIT_QUIET = "true";
 
 import {
@@ -78,6 +88,15 @@ describe("queue and deterministic artifact creation", () => {
       queuedBy: "reviewer@example.com",
     });
     expect(String(state.prisma.meetingIntelligenceArtifact.rows[0].sourceReference)).toMatch(/^local-mi-/);
+    expect(state.prisma.meetingIntelligenceWorkerJob.rows).toHaveLength(1);
+    expect(state.prisma.meetingIntelligenceWorkerJob.rows[0]).toMatchObject({
+      artifactId: 1,
+      meetingId: 5,
+      bidId: 1,
+      status: "QUEUED",
+      sourceMediaChecksum: "a".repeat(64),
+      maxAttempts: 3,
+    });
   });
 
   it("materializes transcript segments, evidence candidates, and speaker labels", async () => {

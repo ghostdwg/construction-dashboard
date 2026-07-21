@@ -41,7 +41,8 @@
     "backfill:project-graph:rollback": "tsx scripts/rollback-project-backfill.ts",
     "storage:inventory": "tsx scripts/storage-inventory-backfill.ts",
     "storage:inventory:reverse": "tsx scripts/storage-inventory-backfill.ts --reverse",
-    "storage:verify-convergence": "tsx scripts/verify-storage-convergence.ts"
+    "storage:verify-convergence": "tsx scripts/verify-storage-convergence.ts",
+    "worker:meeting-stub": "tsx scripts/meeting-intelligence-stub-worker.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

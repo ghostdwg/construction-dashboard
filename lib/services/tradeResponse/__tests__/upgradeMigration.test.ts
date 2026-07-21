@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 const REPAIR_MIGRATION = "20260718030000_r2b2_trade_response_reviewer_repairs";
 const BASE_RETENTION_MIGRATION = "20260718024444_r2_release_blocker_retention";
 const MEETING_INTELLIGENCE_MIGRATION = "20260721010000_meeting_intelligence_v1_foundation";
+const MEETING_INTELLIGENCE_WORKER_MIGRATION = "20260721020000_meeting_intelligence_v2_local_worker";
 const LEGACY_REVIEWED_AT = "2026-07-17T18:30:00.000Z";
 const LEGACY_COMMENTARY = "Pre-repair detailed reviewer commentary";
 const LEGACY_REVIEWER = "legacy-gc-reviewer";
@@ -35,11 +36,12 @@ async function applyPreIntegrationMigrations(databaseUrl: string): Promise<void>
         entry.isDirectory() &&
         entry.name !== BASE_RETENTION_MIGRATION &&
         entry.name !== REPAIR_MIGRATION &&
-        entry.name !== MEETING_INTELLIGENCE_MIGRATION
+        entry.name !== MEETING_INTELLIGENCE_MIGRATION &&
+        entry.name !== MEETING_INTELLIGENCE_WORKER_MIGRATION
     )
     .map((entry) => entry.name)
     .sort();
-  // Seed the true 99-migration predecessor state, then let Prisma apply both
+  // Seed the true 99-migration predecessor state, then let Prisma apply all
   // accepted forward migrations in their integrated order. This proves the
   // base-retention table rebuild does not erase trade review evidence before
   // the trade repair backfills it.
@@ -119,15 +121,16 @@ afterAll(async () => {
   if (testDir) await rm(testDir, { recursive: true, force: true });
 });
 
-describe.sequential("R2 Build 2 integrated 99-to-102 migration", () => {
+describe.sequential("R2 Build 2 integrated 99-to-103 migration", () => {
   test("backfills legacy review evidence and links the next correction", async () => {
     const applied = await db.$queryRawUnsafe<Array<{ migration_name: string }>>(
       'SELECT "migration_name" FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL ORDER BY "migration_name"'
     );
-    expect(applied).toHaveLength(102);
-    expect(applied.at(-1)?.migration_name).toBe(MEETING_INTELLIGENCE_MIGRATION);
-    expect(applied.at(-2)?.migration_name).toBe(REPAIR_MIGRATION);
-    expect(applied.at(-3)?.migration_name).toBe(BASE_RETENTION_MIGRATION);
+    expect(applied).toHaveLength(103);
+    expect(applied.at(-1)?.migration_name).toBe(MEETING_INTELLIGENCE_WORKER_MIGRATION);
+    expect(applied.at(-2)?.migration_name).toBe(MEETING_INTELLIGENCE_MIGRATION);
+    expect(applied.at(-3)?.migration_name).toBe(REPAIR_MIGRATION);
+    expect(applied.at(-4)?.migration_name).toBe(BASE_RETENTION_MIGRATION);
 
     const before = await db.tradeResponseReviewDecision.findMany({ orderBy: { id: "asc" } });
     expect(before).toHaveLength(1);

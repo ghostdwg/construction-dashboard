@@ -22,6 +22,7 @@ const MIGRATION_101 = "20260718030000_r2b2_trade_response_reviewer_repairs";
 const MIGRATION_100 = "20260718024444_r2_release_blocker_retention";
 const MIGRATION_99 = "20260718010000_r2b2_trade_response_packages";
 const MIGRATION_102 = "20260721010000_meeting_intelligence_v1_foundation";
+const MIGRATION_103 = "20260721020000_meeting_intelligence_v2_local_worker";
 
 let db: TmpDb;
 
@@ -35,16 +36,17 @@ afterEach(() => {
 });
 
 describe("migration inventory", () => {
-  test("migration 102 is the last migration and preserves the prior sequence", () => {
+  test("migration 103 is the last migration and preserves the prior sequence", () => {
     const all = listMigrations();
-    expect(all[all.length - 1]).toBe(MIGRATION_102);
-    expect(all[all.length - 2]).toBe(MIGRATION_101);
-    expect(all[all.length - 3]).toBe(MIGRATION_100);
-    expect(all[all.length - 4]).toBe(MIGRATION_99);
+    expect(all[all.length - 1]).toBe(MIGRATION_103);
+    expect(all[all.length - 2]).toBe(MIGRATION_102);
+    expect(all[all.length - 3]).toBe(MIGRATION_101);
+    expect(all[all.length - 4]).toBe(MIGRATION_100);
+    expect(all[all.length - 5]).toBe(MIGRATION_99);
   });
 });
 
-describe("fresh replay through 102", () => {
+describe("fresh replay through 103", () => {
   test("applies the full chain to an empty database", async () => {
     const all = listMigrations();
     const applied = await applyPendingMigrations(db.client, all);
@@ -52,6 +54,21 @@ describe("fresh replay through 102", () => {
     const rows = await db.client.execute("SELECT COUNT(*) as n FROM _prisma_migrations");
     expect(Number(rows.rows[0].n)).toBe(all.length);
     expect(await readForeignKeysState(db.client)).toBe(1);
+    const workerTable = await db.client.execute(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'MeetingIntelligenceWorkerJob'`,
+    );
+    expect(workerTable.rows).toHaveLength(1);
+    const indexes = await db.client.execute(
+      `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'MeetingIntelligenceWorkerJob'`,
+    );
+    expect(indexes.rows.map((row) => row.name)).toEqual(
+      expect.arrayContaining([
+        "MeetingIntelligenceWorkerJob_idempotencyKey_key",
+        "MeetingIntelligenceWorkerJob_resultChecksum_key",
+        "MeetingIntelligenceWorkerJob_artifactId_activeSlot_key",
+        "MeetingIntelligenceWorkerJob_status_leaseExpiresAt_idx",
+      ]),
+    );
   }, 15_000);
 
   test("never depends on DATABASE_URL or APP_ENV (no tier fence, no network)", async () => {

@@ -45,6 +45,20 @@ type IntelligenceResponse = {
   transcriptStatus: string;
   confidentiality: "LOCAL_ONLY";
   processorKind: "DETERMINISTIC_LOCAL_DEV";
+  workerJob: {
+    id: number;
+    status: string;
+    attempt: number;
+    maxAttempts: number;
+    workerId: string | null;
+    progressStage: string | null;
+    progressPercent: number | null;
+    leasedAt: string | null;
+    leaseExpiresAt: string | null;
+    lastHeartbeatAt: string | null;
+    errorCode: string | null;
+    errorMessage: string | null;
+  } | null;
   artifact: IntelligenceArtifact | null;
 };
 
@@ -85,6 +99,12 @@ export default function MeetingIntelligencePanel({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!data || !["QUEUED", "PROCESSING"].includes(data.state)) return;
+    const timer = window.setInterval(() => void load(), 5_000);
+    return () => window.clearInterval(timer);
+  }, [data, load]);
+
   async function post(path: string, body?: unknown) {
     setBusy(true);
     setError(null);
@@ -116,9 +136,10 @@ export default function MeetingIntelligencePanel({
           <LockKeyhole className="h-3.5 w-3.5" /> Local Only confidentiality boundary
         </p>
         <p className="mt-1">
-          This v1 panel never sends audio, transcripts, or project data to external AI.
-          Its processor accepts explicit fixture text for deterministic development only;
-          it does not transcribe or understand the uploaded recording.
+          Audio, transcripts, and project data stay inside the application and its private
+          local-worker boundary. The durable queue calls no external AI service. The optional
+          fixture processor below remains deterministic development tooling and does not
+          transcribe or understand the uploaded recording.
         </p>
       </div>
 
@@ -160,6 +181,11 @@ export default function MeetingIntelligencePanel({
 
           {data.artifact?.state === "QUEUED" && (
             <div className="space-y-2 rounded border border-zinc-200 p-3 dark:border-zinc-700">
+              {data.workerJob?.status === "QUEUED" && (
+                <p className="rounded border border-sky-200 bg-sky-50 p-2 text-[11px] text-sky-800 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-300">
+                  Waiting for a private local worker to poll the durable queue. The worker may be offline or busy.
+                </p>
+              )}
               <div>
                 <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
                   Deterministic/dev fixture input
@@ -196,17 +222,46 @@ export default function MeetingIntelligencePanel({
           )}
 
           {data.artifact?.state === "PROCESSING" && (
-            <p className="flex items-center gap-2 text-xs text-violet-700 dark:text-violet-300">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Deterministic local processing is in progress.
-            </p>
+            <div className="space-y-2 rounded border border-violet-200 p-3 text-xs text-violet-800 dark:border-violet-900 dark:text-violet-300">
+              <p className="flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {data.workerJob?.status === "QUEUED"
+                  ? "Waiting for the next bounded private-worker attempt. The worker may be offline or busy."
+                  : "Private local-worker processing is in progress."}
+              </p>
+              {data.workerJob && (
+                <p>
+                  Stage: {(data.workerJob.progressStage ?? "claimed").replaceAll("_", " ")}
+                  {data.workerJob.progressPercent != null ? ` · ${data.workerJob.progressPercent}%` : ""}
+                  {` · attempt ${data.workerJob.attempt} of ${data.workerJob.maxAttempts}`}
+                </p>
+              )}
+              <button
+                onClick={() => void post("cancel", { artifactId: data.artifact!.id })}
+                disabled={busy}
+                className="w-fit rounded border border-violet-300 px-2 py-1 disabled:opacity-40 dark:border-violet-800"
+              >
+                Cancel processing
+              </button>
+            </div>
           )}
 
           {data.artifact?.state === "FAILED" && (
-            <p className="flex items-start gap-2 rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              Processing failed{data.artifact.errorMessage ? `: ${data.artifact.errorMessage}` : "."}
-              No candidate was published.
-            </p>
+            <div className="space-y-2 rounded border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+              <p className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                Processing failed{data.workerJob?.errorMessage || data.artifact.errorMessage
+                  ? `: ${data.workerJob?.errorMessage ?? data.artifact.errorMessage}`
+                  : "."} No candidate was published.
+              </p>
+              <button
+                onClick={() => void post("retry", { artifactId: data.artifact!.id })}
+                disabled={busy || !data.sourceMediaAvailable}
+                className="rounded border border-red-300 px-2 py-1 disabled:opacity-40 dark:border-red-800"
+              >
+                Retry on private worker
+              </button>
+            </div>
           )}
 
           {(data.artifact?.segments.length ?? 0) > 0 && (
@@ -227,7 +282,7 @@ export default function MeetingIntelligencePanel({
                   Reviewable task ledger ({data.artifact.candidates.length})
                 </h4>
                 {data.artifact.candidates.length === 0 && (
-                  <p className="text-xs text-zinc-500">No explicitly tagged candidates were found.</p>
+                  <p className="text-xs text-zinc-500">No deterministic structural candidates were found.</p>
                 )}
               </div>
               {data.artifact.candidates.map((candidate) => (

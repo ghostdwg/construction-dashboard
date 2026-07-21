@@ -17,13 +17,28 @@ export function matches(row: Row, where: Where | undefined): boolean {
     }
     const value = row[key];
     if (cond !== null && typeof cond === "object" && !(cond instanceof Date)) {
-      const c = cond as { in?: unknown[]; not?: unknown; gt?: unknown; notIn?: unknown[] };
+      const c = cond as {
+        in?: unknown[];
+        not?: unknown;
+        gt?: unknown;
+        lte?: unknown;
+        notIn?: unknown[];
+      };
       if ("in" in c && !(c.in as unknown[]).includes(value)) return false;
       if ("notIn" in c && (c.notIn as unknown[]).includes(value)) return false;
       if ("not" in c) {
         if (c.not === null ? value === null : value === c.not) return false;
       }
-      if ("gt" in c && !(typeof value === "number" && value > (c.gt as number))) return false;
+      if ("gt" in c) {
+        const left = value instanceof Date ? value.getTime() : value;
+        const right = c.gt instanceof Date ? c.gt.getTime() : c.gt;
+        if (!(typeof left === "number" && typeof right === "number" && left > right)) return false;
+      }
+      if ("lte" in c) {
+        const left = value instanceof Date ? value.getTime() : value;
+        const right = c.lte instanceof Date ? c.lte.getTime() : c.lte;
+        if (!(typeof left === "number" && typeof right === "number" && left <= right)) return false;
+      }
     } else if (cond instanceof Date) {
       if (!(value instanceof Date) || value.getTime() !== cond.getTime()) return false;
     } else if (value !== cond) {
@@ -148,6 +163,7 @@ export type MockPrisma = {
   meetingIntelligenceArtifact: Table;
   meetingIntelligenceSegment: Table;
   meetingIntelligenceCandidate: Table;
+  meetingIntelligenceWorkerJob: Table;
   meetingActionItem: Table;
   meetingCommitment: Table;
   designIntentChange: Table;
@@ -172,6 +188,7 @@ const TABLE_NAMES = [
   "meetingIntelligenceArtifact",
   "meetingIntelligenceSegment",
   "meetingIntelligenceCandidate",
+  "meetingIntelligenceWorkerJob",
   "meetingActionItem",
   "meetingCommitment",
   "designIntentChange",
@@ -232,6 +249,16 @@ export function buildPrisma(): MockPrisma {
       defaults: { currentSpeakerLabel: "UNKNOWN_SPEAKER" },
     }),
     meetingIntelligenceCandidate: makeTable({ defaults: { reviewState: "DRAFT" } }),
+    meetingIntelligenceWorkerJob: makeTable({
+      unique: [["idempotencyKey"], ["resultChecksum"], ["artifactId", "activeSlot"]],
+      defaults: {
+        status: "QUEUED",
+        attempt: 1,
+        maxAttempts: 3,
+        activeSlot: 1,
+        cancellationRequestedAt: null,
+      },
+    }),
     meetingActionItem: makeTable({ unique: [["sourceMeetingIntelligenceCandidateId"]] }),
     meetingCommitment: makeTable(),
     designIntentChange: makeTable(),

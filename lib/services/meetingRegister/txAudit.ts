@@ -16,7 +16,7 @@ import {
   persistAuditEnvelope,
   type AuditEventWriter,
 } from "@/lib/observability/audit";
-import type { AuditEnvelope } from "@/lib/observability/taxonomy";
+import type { ActorKind, AuditEnvelope } from "@/lib/observability/taxonomy";
 import { actorLabel, type Actor } from "./types";
 
 export type RegisterAuditArgs = {
@@ -31,9 +31,11 @@ export type RegisterAuditArgs = {
     | "MeetingParticipant"
     | "MeetingIntelligenceArtifact"
     | "MeetingIntelligenceCandidate"
-    | "MeetingIntelligenceSegment";
+    | "MeetingIntelligenceSegment"
+    | "MeetingIntelligenceWorkerJob";
   subjectId: number;
   actor: Actor | null;
+  actorKind?: ActorKind;
   /** ids/counts/labels only — never transcript or entry text */
   payload: Record<string, unknown>;
 };
@@ -55,7 +57,7 @@ export async function writeRegisterAuditTx(
     decision: args.decision,
     subject: { kind: args.subjectKind, id: String(args.subjectId) },
     actor: {
-      kind: "operator",
+      kind: args.actorKind ?? "operator",
       userId: args.actor?.id ?? null,
       email: args.actor?.email ?? null,
     },

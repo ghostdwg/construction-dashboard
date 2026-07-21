@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-describe("Meeting Intelligence v1 UI boundary", () => {
+describe("Meeting Intelligence local-worker UI boundary", () => {
   const panel = readFileSync(
     join(
       process.cwd(),
@@ -19,8 +19,8 @@ describe("Meeting Intelligence v1 UI boundary", () => {
     expect(workspace).toContain("<MeetingIntelligencePanel");
     expect(workspace).toContain("Review Ledger");
     expect(panel).toContain("Local Only confidentiality boundary");
-    expect(panel).toContain("never sends audio, transcripts, or project data to external AI");
-    expect(panel).toContain("deterministic development only");
+    expect(panel).toContain("durable queue calls no external AI service");
+    expect(panel).toContain("deterministic development tooling");
   });
 
   it("renders honest media, not-processed, failure, review, and publish states", () => {
@@ -29,5 +29,9 @@ describe("Meeting Intelligence v1 UI boundary", () => {
     expect(panel).toContain("Processing failed");
     expect(panel).toContain("Reviewable task ledger");
     expect(panel).toContain("Publish to Action Items");
+    expect(panel).toContain("Waiting for a private local worker");
+    expect(panel).toContain("Stage:");
+    expect(panel).toContain("Cancel processing");
+    expect(panel).toContain("Retry on private worker");
   });
 });

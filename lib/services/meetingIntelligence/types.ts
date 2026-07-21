@@ -42,7 +42,30 @@ export type MeetingIntelligenceReviewState =
 export const UNKNOWN_SPEAKER = "UNKNOWN_SPEAKER" as const;
 export const LOCAL_PROCESSOR_KIND = "DETERMINISTIC_LOCAL_DEV" as const;
 export const LOCAL_PROCESSOR_VERSION = "meeting-intelligence-fixture-v1" as const;
+export const LOCAL_WORKER_PROCESSOR_KIND = "PRIVATE_LOCAL_WORKER" as const;
+export const HEURISTIC_EXTRACTOR_VERSION = "meeting-structure-heuristics-v1" as const;
 export const LOCAL_ONLY_CONFIDENTIALITY = "LOCAL_ONLY" as const;
+
+export const MEETING_INTELLIGENCE_WORKER_JOB_STATUSES = [
+  "QUEUED",
+  "CLAIMED",
+  "RUNNING",
+  "SUCCEEDED",
+  "FAILED",
+  "CANCELED",
+  "STALE",
+] as const;
+
+export const MEETING_INTELLIGENCE_PROGRESS_STAGES = [
+  "media_fetch",
+  "normalize",
+  "transcribe",
+  "diarize",
+  "persist",
+] as const;
+
+export type MeetingIntelligenceProgressStage =
+  (typeof MEETING_INTELLIGENCE_PROGRESS_STAGES)[number];
 
 export type MeetingIntelligenceResult<T> =
   | { ok: true; value: T }

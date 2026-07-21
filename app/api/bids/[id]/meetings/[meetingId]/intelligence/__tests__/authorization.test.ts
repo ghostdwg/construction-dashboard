@@ -33,10 +33,17 @@ vi.mock("@/lib/services/meetingIntelligence/service", () => {
     correctMeetingIntelligenceSpeaker: called,
   };
 });
+vi.mock("@/lib/services/meetingIntelligence/workerJobService", () => ({
+  retryMeetingIntelligence: vi.fn(async () => {
+    state.serviceCalls += 1;
+    return { ok: true, value: {} };
+  }),
+}));
 
 import { POST as queuePOST } from "../queue/route";
 import { POST as processPOST } from "../process/route";
 import { POST as cancelPOST } from "../cancel/route";
+import { POST as retryPOST } from "../retry/route";
 import { PATCH as reviewPATCH } from "../candidates/[candidateId]/route";
 import { POST as publishPOST } from "../candidates/[candidateId]/publish/route";
 import { PATCH as speakerPATCH } from "../segments/[segmentId]/route";
@@ -63,6 +70,7 @@ describe("Meeting Intelligence mutation authorization", () => {
     ["queue", () => queuePOST(request(), params())],
     ["process", () => processPOST(request({ artifactId: 1, fixtureText: "secret" }), params())],
     ["cancel", () => cancelPOST(request({ artifactId: 1 }), params())],
+    ["retry", () => retryPOST(request({ artifactId: 1 }), params())],
     [
       "review",
       () => reviewPATCH(request({ action: "ACCEPT" }), params({ candidateId: "1" })),

@@ -182,6 +182,7 @@ model Bid {
   meetingIntelligenceArtifacts  MeetingIntelligenceArtifact[]
   meetingIntelligenceSegments   MeetingIntelligenceSegment[]
   meetingIntelligenceCandidates MeetingIntelligenceCandidate[]
+  meetingIntelligenceWorkerJobs MeetingIntelligenceWorkerJob[]
   reportObservations          ReportObservation[]
   trackedItemTradeAssignments TrackedItemTradeAssignment[]
   responsePackages            ResponsePackage[]
@@ -1204,6 +1205,7 @@ model Meeting {
   intelligenceArtifacts  MeetingIntelligenceArtifact[]
   intelligenceSegments   MeetingIntelligenceSegment[]
   intelligenceCandidates MeetingIntelligenceCandidate[]
+  intelligenceWorkerJobs MeetingIntelligenceWorkerJob[]
 
   @@index([bidId])
   @@index([bidId, meetingDate])
@@ -1325,11 +1327,69 @@ model MeetingIntelligenceArtifact {
   bid        Bid                            @relation(fields: [bidId], references: [id], onDelete: Restrict)
   segments   MeetingIntelligenceSegment[]
   candidates MeetingIntelligenceCandidate[]
+  workerJobs MeetingIntelligenceWorkerJob[]
 
   @@unique([meetingId, activeSlot])
   @@index([bidId, createdAt])
   @@index([meetingId, createdAt])
   @@index([state])
+}
+
+// Meeting Intelligence v2 — durable, application-owned private-worker queue.
+// This model is deliberately separate from BackgroundJob and from the legacy
+// Meeting.status transcription pipeline. Worker credentials are represented
+// only by a one-way lease-token hash; raw lease tokens are never persisted.
+//
+// status values:
+//   QUEUED | CLAIMED | RUNNING | SUCCEEDED | FAILED | CANCELED | STALE
+model MeetingIntelligenceWorkerJob {
+  id                      Int       @id @default(autoincrement())
+  artifactId              Int
+  meetingId               Int
+  bidId                   Int
+  idempotencyKey          String    @unique
+  attempt                 Int       @default(1)
+  maxAttempts             Int       @default(3)
+  status                  String    @default("QUEUED")
+  // Active jobs hold 1. Every terminal attempt releases this to null, so a
+  // bounded retry can be appended while preserving the complete job history.
+  activeSlot              Int?      @default(1)
+  workerId                String?
+  leaseTokenHash          String?
+  leasedAt                DateTime?
+  leaseExpiresAt          DateTime?
+  lastHeartbeatAt         DateTime?
+  progressStage           String?
+  progressPercent         Int?
+  sourceMediaReference    String
+  sourceMediaChecksum     String
+  cancellationRequestedAt DateTime?
+  errorCode               String?
+  errorMessage            String?
+  resultChecksum          String?   @unique
+  transcriptionTool      String?
+  transcriptionModel     String?
+  transcriptionVersion   String?
+  diarizationTool        String?
+  diarizationModel       String?
+  diarizationVersion     String?
+  toolVersionsJson        String    @default("{}")
+  rawArtifactStorageKey   String?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  failedAt                DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  artifact MeetingIntelligenceArtifact @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  meeting  Meeting                     @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  bid      Bid                         @relation(fields: [bidId], references: [id], onDelete: Restrict)
+
+  @@unique([artifactId, activeSlot])
+  @@index([status, leaseExpiresAt])
+  @@index([artifactId, createdAt])
+  @@index([meetingId, createdAt])
+  @@index([bidId, createdAt])
 }
 
 // original* fields are frozen processor output. current* fields are the

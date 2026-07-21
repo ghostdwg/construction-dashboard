@@ -11,6 +11,10 @@ import {
 } from "@/lib/services/meetingRegister/types";
 import { processDeterministicMeetingFixture } from "./deterministicProcessor";
 import {
+  getSourceMediaSnapshot,
+  queuedWorkerJobData,
+} from "./workerJobService";
+import {
   LOCAL_ONLY_CONFIDENTIALITY,
   LOCAL_PROCESSOR_KIND,
   LOCAL_PROCESSOR_VERSION,
@@ -47,6 +51,7 @@ export function meetingIntelligenceServiceStatus(error: string): number {
     error.includes("unavailable") ||
     error.includes("already") ||
     error.includes("must be") ||
+    error.startsWith("Only a") ||
     error.includes("not queued")
   ) {
     return 409;
@@ -77,6 +82,29 @@ export async function getMeetingIntelligence(bidId: number, meetingId: number) {
   const sourceMediaAvailable = Boolean(
     meeting.audioStorageKey || meeting.audioFileName,
   );
+  const workerJob = artifact
+    ? await prisma.meetingIntelligenceWorkerJob.findFirst({
+        where: { artifactId: artifact.id, meetingId, bidId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          status: true,
+          attempt: true,
+          maxAttempts: true,
+          workerId: true,
+          progressStage: true,
+          progressPercent: true,
+          leasedAt: true,
+          leaseExpiresAt: true,
+          lastHeartbeatAt: true,
+          errorCode: true,
+          errorMessage: true,
+          cancellationRequestedAt: true,
+          completedAt: true,
+          failedAt: true,
+        },
+      })
+    : null;
   return {
     state: artifact?.state ?? "NOT_STARTED",
     sourceMediaAvailable,
@@ -88,6 +116,7 @@ export async function getMeetingIntelligence(bidId: number, meetingId: number) {
         : "NOT_PROCESSED",
     confidentiality: LOCAL_ONLY_CONFIDENTIALITY,
     processorKind: LOCAL_PROCESSOR_KIND,
+    workerJob,
     artifact,
   };
 }
@@ -96,7 +125,12 @@ export async function queueMeetingIntelligence(
   bidId: number,
   meetingId: number,
   actor: Actor,
-): Promise<MeetingIntelligenceResult<{ artifactId: number; state: string; created: boolean }>> {
+): Promise<MeetingIntelligenceResult<{
+  artifactId: number;
+  state: string;
+  created: boolean;
+  workerJobId: number | null;
+}>> {
   const queuedBy = actorLabel(actor);
   if (!queuedBy) return { ok: false, error: "A session actor is required" };
 
@@ -117,10 +151,26 @@ export async function queueMeetingIntelligence(
     select: { id: true, state: true },
   });
   if (existing) {
+    const workerJob = await prisma.meetingIntelligenceWorkerJob.findFirst({
+      where: { artifactId: existing.id, activeSlot: 1 },
+      select: { id: true },
+    });
     return {
       ok: true,
-      value: { artifactId: existing.id, state: existing.state, created: false },
+      value: {
+        artifactId: existing.id,
+        state: existing.state,
+        created: false,
+        workerJobId: workerJob?.id ?? null,
+      },
     };
+  }
+
+  const workerSource = meeting.audioStorageKey
+    ? await getSourceMediaSnapshot(meeting.audioStorageKey)
+    : null;
+  if (meeting.audioStorageKey && !workerSource) {
+    return { ok: false, error: "Durable meeting media is unavailable from local storage" };
   }
 
   try {
@@ -139,20 +189,42 @@ export async function queueMeetingIntelligence(
         },
         select: { id: true, state: true },
       });
+      const workerJob = workerSource
+        ? await tx.meetingIntelligenceWorkerJob.create({
+            data: queuedWorkerJobData({
+              artifactId: created.id,
+              meetingId,
+              bidId,
+              sourceMediaReference: workerSource.reference,
+              sourceMediaChecksum: workerSource.checksum,
+            }),
+            select: { id: true },
+          })
+        : null;
       envelope = await writeRegisterAuditTx(tx, {
         action: "meeting_intelligence_queued",
         decision: "queued_local_only",
         subjectKind: "MeetingIntelligenceArtifact",
         subjectId: created.id,
         actor,
-        payload: { bidId, meetingId, processor: LOCAL_PROCESSOR_KIND },
+        payload: {
+          bidId,
+          meetingId,
+          processor: LOCAL_PROCESSOR_KIND,
+          workerJobId: workerJob?.id ?? null,
+        },
       });
-      return created;
+      return { ...created, workerJobId: workerJob?.id ?? null };
     });
     emitRegisterAuditPostCommit(envelope);
     return {
       ok: true,
-      value: { artifactId: artifact.id, state: artifact.state, created: true },
+      value: {
+        artifactId: artifact.id,
+        state: artifact.state,
+        created: true,
+        workerJobId: artifact.workerJobId,
+      },
     };
   } catch (error) {
     if (isUniqueConstraint(error)) {
@@ -161,9 +233,18 @@ export async function queueMeetingIntelligence(
         select: { id: true, state: true },
       });
       if (winner) {
+        const workerJob = await prisma.meetingIntelligenceWorkerJob.findFirst({
+          where: { artifactId: winner.id, activeSlot: 1 },
+          select: { id: true },
+        });
         return {
           ok: true,
-          value: { artifactId: winner.id, state: winner.state, created: false },
+          value: {
+            artifactId: winner.id,
+            state: winner.state,
+            created: false,
+            workerJobId: workerJob?.id ?? null,
+          },
         };
       }
     }
@@ -184,14 +265,30 @@ export async function processQueuedMeetingIntelligence(
   if (!text) return { ok: false, error: "Fixture transcript text is required" };
   if (text.length > 200_000) return { ok: false, error: "Fixture transcript exceeds 200000 characters" };
 
-  const claimed = await prisma.meetingIntelligenceArtifact.updateMany({
-    where: { id: artifactId, meetingId, bidId, state: "QUEUED", activeSlot: 1 },
-    data: {
-      state: "PROCESSING",
-      startedAt: new Date(),
-      errorCode: null,
-      errorMessage: null,
-    },
+  const claimed = await prisma.$transaction(async (tx) => {
+    const artifact = await tx.meetingIntelligenceArtifact.updateMany({
+      where: { id: artifactId, meetingId, bidId, state: "QUEUED", activeSlot: 1 },
+      data: {
+        state: "PROCESSING",
+        startedAt: new Date(),
+        errorCode: null,
+        errorMessage: null,
+      },
+    });
+    if (artifact.count === 1) {
+      await tx.meetingIntelligenceWorkerJob.updateMany({
+        where: { artifactId, meetingId, bidId, status: "QUEUED", activeSlot: 1 },
+        data: {
+          status: "CANCELED",
+          activeSlot: null,
+          cancellationRequestedAt: new Date(),
+          errorCode: "FIXTURE_PROCESSOR_SELECTED",
+          errorMessage: "Deterministic development processor claimed this artifact",
+          failedAt: new Date(),
+        },
+      });
+    }
+    return artifact;
   });
   if (claimed.count !== 1) {
     const artifact = await prisma.meetingIntelligenceArtifact.findFirst({
@@ -249,8 +346,14 @@ export async function processQueuedMeetingIntelligence(
           },
         });
       }
-      await tx.meetingIntelligenceArtifact.update({
-        where: { id: artifactId },
+      const completed = await tx.meetingIntelligenceArtifact.updateMany({
+        where: {
+          id: artifactId,
+          meetingId,
+          bidId,
+          state: "PROCESSING",
+          activeSlot: 1,
+        },
         data: {
           state: "READY_FOR_REVIEW",
           transcriptText: output.transcriptText,
@@ -259,6 +362,7 @@ export async function processQueuedMeetingIntelligence(
           completedAt: new Date(),
         },
       });
+      if (completed.count !== 1) throw new Error("Artifact processing was canceled");
       envelope = await writeRegisterAuditTx(tx, {
         action: "meeting_intelligence_processed",
         decision: "ready_for_review",
@@ -501,7 +605,13 @@ export async function cancelMeetingIntelligence(
   let envelope: AuditEnvelope | null = null;
   const result = await prisma.$transaction(async (tx) => {
     const claim = await tx.meetingIntelligenceArtifact.updateMany({
-      where: { id: artifactId, meetingId, bidId, state: "QUEUED", activeSlot: 1 },
+      where: {
+        id: artifactId,
+        meetingId,
+        bidId,
+        state: { in: ["QUEUED", "PROCESSING"] },
+        activeSlot: 1,
+      },
       data: {
         state: "CANCELED",
         canceledAt: new Date(),
@@ -511,6 +621,23 @@ export async function cancelMeetingIntelligence(
       },
     });
     if (claim.count !== 1) return null;
+    await tx.meetingIntelligenceWorkerJob.updateMany({
+      where: {
+        artifactId,
+        meetingId,
+        bidId,
+        status: { in: ["QUEUED", "CLAIMED", "RUNNING"] },
+        activeSlot: 1,
+      },
+      data: {
+        status: "CANCELED",
+        activeSlot: null,
+        cancellationRequestedAt: new Date(),
+        errorCode: "CANCELED_BY_OPERATOR",
+        errorMessage: "Processing was canceled by an authorized operator",
+        failedAt: new Date(),
+      },
+    });
     envelope = await writeRegisterAuditTx(tx, {
       action: "meeting_intelligence_canceled",
       decision: "canceled",
@@ -521,7 +648,7 @@ export async function cancelMeetingIntelligence(
     });
     return { artifactId, state: "CANCELED" as const };
   });
-  if (!result) return { ok: false, error: "Only a queued artifact can be canceled" };
+  if (!result) return { ok: false, error: "Only a queued or processing artifact can be canceled" };
   emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: result };
 }

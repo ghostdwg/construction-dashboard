@@ -28,6 +28,7 @@ type DurableHistoryDb = Pick<
   | "meetingIntelligenceArtifact"
   | "meetingIntelligenceSegment"
   | "meetingIntelligenceCandidate"
+  | "meetingIntelligenceWorkerJob"
 >;
 
 type TranscriptGateDb = DurableHistoryDb & Pick<typeof prisma, "meeting">;
@@ -112,6 +113,7 @@ export async function meetingHasDurableHistory(
     db.meetingIntelligenceArtifact.count({ where: { meetingId, bidId } }),
     db.meetingIntelligenceSegment.count({ where: { meetingId, bidId } }),
     db.meetingIntelligenceCandidate.count({ where: { meetingId, bidId } }),
+    db.meetingIntelligenceWorkerJob.count({ where: { meetingId, bidId } }),
   ]);
   return counts.some((count) => count > 0);
 }
@@ -282,6 +284,7 @@ export async function bidHasDurableHistory(
     db.meetingIntelligenceArtifact.count({ where: { bidId } }),
     db.meetingIntelligenceSegment.count({ where: { bidId } }),
     db.meetingIntelligenceCandidate.count({ where: { bidId } }),
+    db.meetingIntelligenceWorkerJob.count({ where: { bidId } }),
   ]);
   return counts.some((count) => count > 0);
 }
