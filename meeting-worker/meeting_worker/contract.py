@@ -9,6 +9,10 @@ import math
 from typing import Any, Mapping, Sequence
 
 
+MAX_SAFE_INTEGER = 9_007_199_254_740_991
+MAX_ARRAY_INDEX = 4_294_967_294
+
+
 def _quote(value: str) -> str:
     output = ['"']
     escapes = {'"': '\\"', "\\": "\\\\", "\b": "\\b", "\f": "\\f", "\n": "\\n", "\r": "\\r", "\t": "\\t"}
@@ -28,9 +32,11 @@ def _number(value: int | float) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):
+        if abs(value) > MAX_SAFE_INTEGER:
+            raise ValueError("integer is outside the exact JavaScript Number range")
         return str(value)
     if not math.isfinite(value):
-        return "null"
+        raise ValueError("non-finite numbers are not supported by the worker contract")
     if value == 0:
         return "0"
     raw = repr(value).lower()
@@ -48,6 +54,26 @@ def _number(value: int | float) -> str:
     return f"{coefficient}e{sign}{exponent_value}"
 
 
+def _is_array_index(key: str) -> bool:
+    if not key or not key.isascii() or not key.isdigit():
+        return False
+    if key != "0" and key.startswith("0"):
+        return False
+    if len(key) > 10:
+        return False
+    value = int(key)
+    return value <= MAX_ARRAY_INDEX and str(value) == key
+
+
+def _mapping_items(value: Mapping[str, Any]) -> list[tuple[str, Any]]:
+    items = list(value.items())
+    if any(not isinstance(key, str) for key, _item in items):
+        raise TypeError("JSON object keys must be strings")
+    indexed = sorted(((int(key), key, item) for key, item in items if _is_array_index(key)), key=lambda entry: entry[0])
+    ordinary = [(key, item) for key, item in items if not _is_array_index(key)]
+    return [(key, item) for _index, key, item in indexed] + ordinary
+
+
 def js_json_dumps(value: Any) -> str:
     """Serialize the contract's JSON-safe values like JavaScript JSON.stringify."""
     if value is None:
@@ -61,7 +87,7 @@ def js_json_dumps(value: Any) -> str:
     if isinstance(value, str):
         return _quote(value)
     if isinstance(value, Mapping):
-        return "{" + ",".join(f"{_quote(str(key))}:{js_json_dumps(item)}" for key, item in value.items()) + "}"
+        return "{" + ",".join(f"{_quote(key)}:{js_json_dumps(item)}" for key, item in _mapping_items(value)) + "}"
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return "[" + ",".join(js_json_dumps(item) for item in value) + "]"
     raise TypeError(f"Unsupported JSON value: {type(value).__name__}")

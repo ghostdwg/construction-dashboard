@@ -12,6 +12,8 @@ from .client import (
     ChecksumMismatch,
     Claim,
     LeaseEnded,
+    RetryPolicy,
+    TransferCanceled,
     WorkerApiClient,
     WorkerClientError,
 )
@@ -140,9 +142,9 @@ class WorkerService:
                 heartbeat.start()
                 heartbeat_started = True
                 self._progress(claim, heartbeat, "media_fetch", 10)
-                source_checksum = self._client.download_media(claim, media_path)
-                heartbeat.raise_if_failed()
                 cancel = CompositeEvent(self.shutdown_event, job_cancel)
+                source_checksum = self._client.download_media(claim, media_path, cancel)
+                heartbeat.raise_if_failed()
                 result = self._processor.process(
                     media_path,
                     claim.job_id,
@@ -150,6 +152,9 @@ class WorkerService:
                     lambda stage, percent: self._progress(claim, heartbeat, stage, percent),
                 )
                 self._progress(claim, heartbeat, "persist", 95)
+                if cancel.is_set():
+                    raise ProcessingCanceled("job canceled before completion")
+                heartbeat.raise_if_failed()
                 self._client.complete(claim, source_checksum, result)
                 self._logger.info("worker_job_completed", job_id=claim.job_id)
         except LeaseEnded as error:
@@ -160,7 +165,7 @@ class WorkerService:
                 "MEDIA_CHECKSUM_MISMATCH",
                 "Downloaded media failed checksum verification",
             )
-        except ProcessingCanceled:
+        except (ProcessingCanceled, TransferCanceled):
             heartbeat_failure = heartbeat.failure
             if isinstance(heartbeat_failure, LeaseEnded):
                 self._logger.info("worker_job_aborted", job_id=claim.job_id, error_code=heartbeat_failure.reason)
@@ -199,7 +204,7 @@ class WorkerService:
                 if not had_job:
                     self.shutdown_event.wait(self._poll_interval)
             except WorkerClientError as error:
-                delay = min(self._backoff_max, self._backoff_initial * (2**failures))
+                delay = RetryPolicy(1, self._backoff_initial, self._backoff_max).delay(failures)
                 failures += 1
                 self._logger.warning(
                     "worker_poll_failed",

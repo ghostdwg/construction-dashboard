@@ -8,7 +8,7 @@ The committed processor is deliberately a deterministic fixture. It does not per
 
 ## Local Only boundary
 
-Meeting media, transcripts, segments, and raw artifacts are Project-Confidential. The worker may communicate only with the configured GroundworX application origin through the committed `/api/worker/meeting-intelligence/*` routes. Plain HTTP is rejected unless the origin is loopback; non-loopback origins must use HTTPS. The client validates that media URLs remain on the configured origin and match the claimed job.
+Meeting media, transcripts, segments, and raw artifacts are Project-Confidential. The worker may communicate only with the configured GroundWorX application origin through the committed `/api/worker/meeting-intelligence/*` routes. Plain HTTP is rejected unless the origin is loopback; non-loopback origins must use HTTPS. The client validates that media URLs remain on the configured origin and match the claimed job. Authenticated operations reject every HTTP redirect, including same-origin redirects, so neither worker nor lease credentials can be copied to a redirect target.
 
 There is no cloud-transcription fallback and no third-party AI client in this package. The worker does not depend on the legacy meeting transcription pipeline, its server, its job state, or direct legacy transcript publication.
 
@@ -37,13 +37,13 @@ Heartbeat and progress conflicts with `canceled` or `lease_lost` stop local work
 | `MEETING_WORKER_TOKEN` | yes | Shared worker secret sent as `X-Meeting-Worker-Token`. Never logged. |
 | `MEETING_WORKER_ID` | yes | Stable worker identity, at most 160 characters. |
 | `MEETING_WORKER_PROCESSOR` | yes | Must be `deterministic_fixture` in this skeleton. |
-| `MEETING_WORKER_POLL_SECONDS` | no | Empty-queue poll interval; default `10`. |
-| `MEETING_WORKER_HEARTBEAT_SECONDS` | no | Heartbeat interval below the 900-second lease; default `240`. |
-| `MEETING_WORKER_REQUEST_TIMEOUT_SECONDS` | no | Per-request timeout; default `30`. |
+| `MEETING_WORKER_POLL_SECONDS` | no | Empty-queue poll interval; default `10`, range `0.01`–`3600`. |
+| `MEETING_WORKER_HEARTBEAT_SECONDS` | no | Heartbeat interval; default `240`, range `0.01`–`899` (below the 900-second lease). |
+| `MEETING_WORKER_REQUEST_TIMEOUT_SECONDS` | no | Per-request timeout; default `30`, range `0.01`–`300`. |
 | `MEETING_WORKER_REQUEST_ATTEMPTS` | no | Bounded attempts for retry-safe operations; default `3`, maximum `10`. |
-| `MEETING_WORKER_BACKOFF_INITIAL_SECONDS` | no | Initial retry/poll-error delay; default `1`. |
-| `MEETING_WORKER_BACKOFF_MAX_SECONDS` | no | Maximum backoff; default `60`. |
-| `MEETING_WORKER_MAX_MEDIA_BYTES` | no | Hard download size bound; default 2 GiB. |
+| `MEETING_WORKER_BACKOFF_INITIAL_SECONDS` | no | Initial retry/poll-error delay; default `1`, range `0.01`–`300`. |
+| `MEETING_WORKER_BACKOFF_MAX_SECONDS` | no | Maximum backoff; default `60`, range `0.01`–`300`. |
+| `MEETING_WORKER_MAX_MEDIA_BYTES` | no | Hard download size bound; default and maximum 2 GiB. |
 | `MEETING_WORKER_SCRATCH_DIR` | no | Per-job temporary directory root; default `run`. |
 | `MEETING_WORKER_LOG_LEVEL` | no | Structured log threshold; default `INFO`. |
 

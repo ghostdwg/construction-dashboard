@@ -4,9 +4,10 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event
+import time
 import unittest
 
-from meeting_worker.client import ChecksumMismatch, LeaseEnded
+from meeting_worker.client import ChecksumMismatch, LeaseEnded, TransferCanceled
 from meeting_worker.logging_utils import configure_logging
 from meeting_worker.processor import DeterministicFixtureProcessor, ProcessingCanceled
 from meeting_worker.worker import HeartbeatLifecycle, WorkerService
@@ -14,13 +15,19 @@ from meeting_worker.worker import HeartbeatLifecycle, WorkerService
 from tests.helpers import RecordingClient, RaisingProcessor, claim
 
 
-def service(client: RecordingClient, processor: object, scratch: Path, shutdown: Event | None = None) -> WorkerService:
+def service(
+    client: RecordingClient,
+    processor: object,
+    scratch: Path,
+    shutdown: Event | None = None,
+    heartbeat_interval: float = 60,
+) -> WorkerService:
     return WorkerService(
         client,  # type: ignore[arg-type]
         processor,  # type: ignore[arg-type]
         scratch,
         poll_interval_seconds=0.01,
-        heartbeat_interval_seconds=60,
+        heartbeat_interval_seconds=heartbeat_interval,
         backoff_initial_seconds=0.01,
         backoff_max_seconds=0.1,
         logger=configure_logging("INFO", ("lease-secret",), StringIO()),
@@ -53,8 +60,8 @@ class WorkerLifecycleTests(unittest.TestCase):
 
     def test_checksum_mismatch_submits_specific_failure_and_cleans_up(self) -> None:
         class MismatchClient(RecordingClient):
-            def download_media(self, current: object, destination: Path) -> str:
-                del current
+            def download_media(self, current: object, destination: Path, cancel_event: Event | None = None) -> str:
+                del current, cancel_event
                 destination.write_bytes(b"tampered")
                 raise ChecksumMismatch("mismatch")
 
@@ -115,6 +122,37 @@ class WorkerLifecycleTests(unittest.TestCase):
         self.assertTrue(job_cancel.is_set())
         with self.assertRaises(LeaseEnded):
             lifecycle.raise_if_failed()
+
+    def test_heartbeat_cancellation_interrupts_transfer_without_completion(self) -> None:
+        class SlowTransferClient(RecordingClient):
+            def heartbeat(self, current: object) -> dict[str, object]:
+                self.heartbeats.append(current)  # type: ignore[arg-type]
+                if len(self.heartbeats) >= 2:
+                    raise LeaseEnded(409, "canceled")
+                return {"ok": True}
+
+            def download_media(self, current: object, destination: Path, cancel_event: Event | None = None) -> str:
+                del current
+                destination.write_bytes(b"partial-media")
+                assert cancel_event is not None
+                while not cancel_event.is_set():
+                    time.sleep(0.001)
+                raise TransferCanceled("canceled during transfer")
+
+        with TemporaryDirectory() as temporary:
+            scratch = Path(temporary) / "scratch"
+            api = SlowTransferClient(claim())
+            worker = service(
+                api,
+                DeterministicFixtureProcessor(),
+                scratch,
+                heartbeat_interval=0.01,
+            )
+            self.assertTrue(worker.run_once())
+            self.assertGreaterEqual(len(api.heartbeats), 2)
+            self.assertEqual(api.completions, [])
+            self.assertEqual(api.failures, [])
+            self.assertEqual(list(scratch.iterdir()), [])
 
 
 if __name__ == "__main__":

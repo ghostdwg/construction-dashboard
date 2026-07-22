@@ -9,13 +9,14 @@ import math
 from pathlib import Path
 import re
 import time
+from threading import Event
 from typing import Any, Callable, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import OpenerDirector, Request, build_opener
+from urllib.request import HTTPRedirectHandler, OpenerDirector, Request, build_opener
 
 from . import __version__
-from .contract import TranscriptSegment, ToolVersions, js_json_dumps, result_checksum
+from .contract import MAX_SAFE_INTEGER, TranscriptSegment, ToolVersions, js_json_dumps, result_checksum
 
 
 TOKEN_HEADER = "X-Meeting-Worker-Token"
@@ -38,6 +39,10 @@ class ChecksumMismatch(WorkerClientError):
     """Downloaded media did not match the application checksum."""
 
 
+class TransferCanceled(WorkerClientError):
+    """Media transfer stopped because shutdown or lease cancellation was observed."""
+
+
 class ApiResponseError(WorkerClientError):
     def __init__(self, status: int, reason: str, transient: bool = False) -> None:
         self.status = status
@@ -48,6 +53,22 @@ class ApiResponseError(WorkerClientError):
 
 class LeaseEnded(ApiResponseError):
     """The server reports cancellation or loss of the current lease."""
+
+
+class RejectAuthenticatedRedirects(HTTPRedirectHandler):
+    """Fail closed instead of creating any redirected authenticated request."""
+
+    def redirect_request(
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Mapping[str, str],
+        newurl: str,
+    ) -> None:
+        del req, fp, code, msg, headers, newurl
+        return None
 
 
 def _safe_reason(value: object) -> str:
@@ -81,6 +102,13 @@ class RetryPolicy:
     maximum_seconds: float
 
     def delay(self, attempt_index: int) -> float:
+        if attempt_index < 0:
+            raise ValueError("attempt index must not be negative")
+        if self.initial_seconds >= self.maximum_seconds:
+            return self.maximum_seconds
+        saturation = math.ceil(math.log2(self.maximum_seconds / self.initial_seconds))
+        if attempt_index >= saturation:
+            return self.maximum_seconds
         return min(self.maximum_seconds, self.initial_seconds * (2**attempt_index))
 
 
@@ -104,7 +132,7 @@ class WorkerApiClient:
         self._timeout = timeout_seconds
         self._retry = retry_policy
         self._max_media_bytes = max_media_bytes
-        self._opener = opener or build_opener()
+        self._opener = opener or build_opener(RejectAuthenticatedRedirects())
         self._sleep = sleep
 
     def _url(self, path: str) -> str:
@@ -141,6 +169,8 @@ class WorkerApiClient:
 
     @staticmethod
     def _response_error(status: int, body: bytes) -> ApiResponseError:
+        if 300 <= status < 400:
+            return ApiResponseError(status, "redirect_rejected", transient=False)
         reason: object = "unknown"
         try:
             decoded = json.loads(body[:1024 * 1024].decode("utf-8"))
@@ -191,7 +221,13 @@ class WorkerApiClient:
         if body.get("jobId") is None:
             return None
         required_ints = ("jobId", "artifactId", "meetingId", "bidId")
-        if any(not isinstance(body.get(key), int) or isinstance(body.get(key), bool) or int(body[key]) <= 0 for key in required_ints):
+        if any(
+            not isinstance(body.get(key), int)
+            or isinstance(body.get(key), bool)
+            or int(body[key]) <= 0
+            or int(body[key]) > MAX_SAFE_INTEGER
+            for key in required_ints
+        ):
             raise ProtocolError("claim response contained invalid identifiers")
         media_url = body.get("mediaDownloadUrl")
         expected_media_url = f"{API_PREFIX}/{body['jobId']}/media"
@@ -227,10 +263,24 @@ class WorkerApiClient:
             retryable=True,
         )
 
-    def download_media(self, claim: Claim, destination: Path) -> str:
+    @staticmethod
+    def _raise_if_transfer_canceled(cancel_event: Event | Any | None) -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise TransferCanceled("media transfer canceled")
+
+    @staticmethod
+    def _remove_partial(destination: Path) -> None:
+        try:
+            destination.unlink()
+        except FileNotFoundError:
+            pass
+
+    def download_media(self, claim: Claim, destination: Path, cancel_event: Event | Any | None = None) -> str:
         if claim.media_download_url != f"{API_PREFIX}/{claim.job_id}/media":
             raise ProtocolError("media route no longer matches the claimed job")
         for attempt in range(self._retry.attempts):
+            self._remove_partial(destination)
+            self._raise_if_transfer_canceled(cancel_event)
             request = self._request(
                 "GET",
                 claim.media_download_url,
@@ -258,7 +308,10 @@ class WorkerApiClient:
                     total = 0
                     with destination.open("wb") as output:
                         while True:
-                            chunk = response.read(64 * 1024)
+                            self._raise_if_transfer_canceled(cancel_event)
+                            read = getattr(response, "read1", response.read)
+                            chunk = read(64 * 1024)
+                            self._raise_if_transfer_canceled(cancel_event)
                             if not chunk:
                                 break
                             total += len(chunk)
@@ -272,16 +325,25 @@ class WorkerApiClient:
                     return actual
                 finally:
                     response.close()
+            except TransferCanceled:
+                self._remove_partial(destination)
+                raise
             except HTTPError as error:
                 api_error = self._response_error(error.code, error.read(1024 * 1024 + 1))
                 if isinstance(api_error, LeaseEnded) or not api_error.transient or attempt + 1 >= self._retry.attempts:
                     raise api_error from None
             except ChecksumMismatch:
+                self._remove_partial(destination)
                 if attempt + 1 >= self._retry.attempts:
                     raise
+            except ProtocolError:
+                self._remove_partial(destination)
+                raise
             except (URLError, TimeoutError, OSError) as error:
+                self._remove_partial(destination)
                 if attempt + 1 >= self._retry.attempts:
                     raise WorkerClientError("media transport failed") from error
+            self._raise_if_transfer_canceled(cancel_event)
             self._sleep(self._retry.delay(attempt))
         raise AssertionError("unreachable retry loop")
 
@@ -303,6 +365,7 @@ class WorkerApiClient:
                     or not isinstance(value, (int, float))
                     or not math.isfinite(value)
                     or value < 0
+                    or (isinstance(value, int) and value > MAX_SAFE_INTEGER)
                 ):
                     raise ProtocolError(f"completion segment {index} {field_name} time is invalid")
             if segment.start_sec is not None and segment.end_sec is not None and segment.end_sec < segment.start_sec:

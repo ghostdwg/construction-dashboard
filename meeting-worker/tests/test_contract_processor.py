@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event
 import unittest
 
-from meeting_worker.contract import ToolVersions, TranscriptSegment, js_json_dumps, result_checksum
+from meeting_worker.contract import MAX_SAFE_INTEGER, ToolVersions, TranscriptSegment, js_json_dumps, result_checksum
 from meeting_worker.processor import DeterministicFixtureProcessor
 
 
@@ -21,6 +22,45 @@ class ContractTests(unittest.TestCase):
 
     def test_serializer_uses_javascript_number_boundaries(self) -> None:
         self.assertEqual(js_json_dumps([1.0, 1e-6, 1e-7, 1e20, -0.0]), "[1,0.000001,1e-7,100000000000000000000,0]")
+
+    def test_shared_typescript_checksum_fixtures(self) -> None:
+        fixture_path = (
+            Path(__file__).resolve().parents[2]
+            / "lib/services/meetingIntelligence/__tests__/fixtures/worker-checksum-contract.json"
+        )
+        fixtures = json.loads(fixture_path.read_text(encoding="utf-8"))
+        for fixture in fixtures:
+            with self.subTest(fixture=fixture["name"]):
+                value = fixture["input"]
+                segments = tuple(
+                    TranscriptSegment(
+                        segment["text"],
+                        segment["speakerLabel"],
+                        segment["startSec"],
+                        segment["endSec"],
+                        segment["confidence"],
+                    )
+                    for segment in value["segments"]
+                )
+                versions = value["toolVersions"]
+                tools = ToolVersions(
+                    versions["transcriptionTool"],
+                    versions["transcriptionModel"],
+                    versions["transcriptionVersion"],
+                    versions["diarizationTool"],
+                    versions["diarizationModel"],
+                    versions["diarizationVersion"],
+                )
+                raw_json = None if value["rawArtifact"] is None else js_json_dumps(value["rawArtifact"])
+                self.assertEqual(
+                    result_checksum(value["transcriptText"], segments, tools, raw_json),
+                    fixture["expectedChecksum"],
+                )
+
+    def test_unsafe_integer_and_nonfinite_values_fail_closed(self) -> None:
+        for value in (MAX_SAFE_INTEGER + 1, float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                js_json_dumps({"value": value})
 
 
 class ProcessorTests(unittest.TestCase):

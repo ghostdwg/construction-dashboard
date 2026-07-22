@@ -3,14 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 import os
 from pathlib import Path
+import re
 from typing import Mapping
 from urllib.parse import urlsplit
 
 
 class ConfigurationError(ValueError):
     """Raised when worker configuration is missing or unsafe."""
+
+
+_DECIMAL = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$")
+_INTEGER = re.compile(r"^(?:0|[1-9][0-9]*)$")
+MAX_POLL_SECONDS = 3_600.0
+MAX_REQUEST_TIMEOUT_SECONDS = 300.0
+MAX_BACKOFF_SECONDS = 300.0
+MAX_MEDIA_BYTES = 2 * 1024 * 1024 * 1024
+MIN_DELAY_SECONDS = 0.01
 
 
 def _required(environment: Mapping[str, str], name: str) -> str:
@@ -20,25 +31,38 @@ def _required(environment: Mapping[str, str], name: str) -> str:
     return value
 
 
-def _positive_float(environment: Mapping[str, str], name: str, default: float) -> float:
+def _bounded_float(
+    environment: Mapping[str, str],
+    name: str,
+    default: float,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float:
     raw = environment.get(name, str(default)).strip()
+    if not _DECIMAL.fullmatch(raw):
+        raise ConfigurationError(f"{name} must be a finite decimal number")
     try:
         value = float(raw)
-    except ValueError as error:
-        raise ConfigurationError(f"{name} must be a number") from error
-    if value <= 0:
-        raise ConfigurationError(f"{name} must be greater than zero")
+    except (ValueError, OverflowError) as error:
+        raise ConfigurationError(f"{name} must be a finite decimal number") from error
+    if not math.isfinite(value):
+        raise ConfigurationError(f"{name} must be finite")
+    if value < minimum or value > maximum:
+        raise ConfigurationError(f"{name} must be between {minimum:g} and {maximum:g}")
     return value
 
 
-def _positive_int(environment: Mapping[str, str], name: str, default: int) -> int:
+def _bounded_int(environment: Mapping[str, str], name: str, default: int, *, minimum: int, maximum: int) -> int:
     raw = environment.get(name, str(default)).strip()
+    if not _INTEGER.fullmatch(raw):
+        raise ConfigurationError(f"{name} must be a decimal integer")
     try:
         value = int(raw)
-    except ValueError as error:
-        raise ConfigurationError(f"{name} must be an integer") from error
-    if value <= 0:
-        raise ConfigurationError(f"{name} must be greater than zero")
+    except (ValueError, OverflowError) as error:
+        raise ConfigurationError(f"{name} must be a decimal integer") from error
+    if value < minimum or value > maximum:
+        raise ConfigurationError(f"{name} must be between {minimum} and {maximum}")
     return value
 
 
@@ -84,19 +108,41 @@ class WorkerConfig:
         if processor_kind != "deterministic_fixture":
             raise ConfigurationError("MEETING_WORKER_PROCESSOR must be deterministic_fixture in this skeleton")
 
-        poll_interval = _positive_float(env, "MEETING_WORKER_POLL_SECONDS", 10.0)
-        heartbeat_interval = _positive_float(env, "MEETING_WORKER_HEARTBEAT_SECONDS", 240.0)
-        if heartbeat_interval >= 900:
-            raise ConfigurationError("MEETING_WORKER_HEARTBEAT_SECONDS must be below the 900-second lease")
-        request_timeout = _positive_float(env, "MEETING_WORKER_REQUEST_TIMEOUT_SECONDS", 30.0)
-        request_attempts = _positive_int(env, "MEETING_WORKER_REQUEST_ATTEMPTS", 3)
-        if request_attempts > 10:
-            raise ConfigurationError("MEETING_WORKER_REQUEST_ATTEMPTS must not exceed 10")
-        backoff_initial = _positive_float(env, "MEETING_WORKER_BACKOFF_INITIAL_SECONDS", 1.0)
-        backoff_max = _positive_float(env, "MEETING_WORKER_BACKOFF_MAX_SECONDS", 60.0)
+        poll_interval = _bounded_float(
+            env, "MEETING_WORKER_POLL_SECONDS", 10.0, minimum=MIN_DELAY_SECONDS, maximum=MAX_POLL_SECONDS
+        )
+        heartbeat_interval = _bounded_float(
+            env, "MEETING_WORKER_HEARTBEAT_SECONDS", 240.0, minimum=MIN_DELAY_SECONDS, maximum=899.0
+        )
+        request_timeout = _bounded_float(
+            env,
+            "MEETING_WORKER_REQUEST_TIMEOUT_SECONDS",
+            30.0,
+            minimum=MIN_DELAY_SECONDS,
+            maximum=MAX_REQUEST_TIMEOUT_SECONDS,
+        )
+        request_attempts = _bounded_int(
+            env, "MEETING_WORKER_REQUEST_ATTEMPTS", 3, minimum=1, maximum=10
+        )
+        backoff_initial = _bounded_float(
+            env,
+            "MEETING_WORKER_BACKOFF_INITIAL_SECONDS",
+            1.0,
+            minimum=MIN_DELAY_SECONDS,
+            maximum=MAX_BACKOFF_SECONDS,
+        )
+        backoff_max = _bounded_float(
+            env,
+            "MEETING_WORKER_BACKOFF_MAX_SECONDS",
+            60.0,
+            minimum=MIN_DELAY_SECONDS,
+            maximum=MAX_BACKOFF_SECONDS,
+        )
         if backoff_max < backoff_initial:
             raise ConfigurationError("MEETING_WORKER_BACKOFF_MAX_SECONDS must be at least the initial backoff")
-        max_media_bytes = _positive_int(env, "MEETING_WORKER_MAX_MEDIA_BYTES", 2 * 1024 * 1024 * 1024)
+        max_media_bytes = _bounded_int(
+            env, "MEETING_WORKER_MAX_MEDIA_BYTES", MAX_MEDIA_BYTES, minimum=1, maximum=MAX_MEDIA_BYTES
+        )
 
         scratch = Path(env.get("MEETING_WORKER_SCRATCH_DIR", "run")).expanduser().resolve()
         if scratch == Path(scratch.anchor):

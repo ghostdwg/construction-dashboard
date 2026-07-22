@@ -82,8 +82,8 @@ class RecordingClient:
         self.progress_updates.append((stage, percent))
         return {"ok": True}
 
-    def download_media(self, current: Claim, destination: Path) -> str:
-        del current
+    def download_media(self, current: Claim, destination: Path, cancel_event: Event | None = None) -> str:
+        del current, cancel_event
         import hashlib
 
         destination.write_bytes(self.media)

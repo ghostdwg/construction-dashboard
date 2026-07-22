@@ -1,0 +1,100 @@
+[
+  {
+    "name": "ordinary fields and artifact",
+    "input": {
+      "transcriptText": "Hello",
+      "segments": [
+        {
+          "segmentIndex": 0,
+          "startSec": 0,
+          "endSec": 1,
+          "text": "Hello",
+          "speakerLabel": "SPEAKER_1",
+          "confidence": 1
+        }
+      ],
+      "toolVersions": {
+        "transcriptionTool": "fixture",
+        "transcriptionModel": "model",
+        "transcriptionVersion": "1",
+        "diarizationTool": null,
+        "diarizationModel": null,
+        "diarizationVersion": null
+      },
+      "rawArtifact": {
+        "realAi": false
+      }
+    },
+    "expectedChecksum": "aeda13a8c6bcf9ca5dfd75befc87d4fd254dde2aaaf7e8f23ae4ec4d37b113b2"
+  },
+  {
+    "name": "unicode and null fields",
+    "input": {
+      "transcriptText": "Crème brûlée — 東京 👷",
+      "segments": [
+        {
+          "segmentIndex": 0,
+          "startSec": null,
+          "endSec": null,
+          "text": "Résumé\nline two separator",
+          "speakerLabel": "UNKNOWN_SPEAKER",
+          "confidence": null
+        },
+        {
+          "segmentIndex": 99,
+          "startSec": 1.25,
+          "endSec": 2.5,
+          "text": "次の行",
+          "speakerLabel": "SPEAKER_7",
+          "confidence": 0.5
+        }
+      ],
+      "toolVersions": {
+        "transcriptionTool": "outil-é",
+        "transcriptionModel": "模型",
+        "transcriptionVersion": "β",
+        "diarizationTool": null,
+        "diarizationModel": null,
+        "diarizationVersion": null
+      },
+      "rawArtifact": null
+    },
+    "expectedChecksum": "522385ee0468c742883e00ea263042c48b59e05dd83c5fce29c1616322d88a7f"
+  },
+  {
+    "name": "javascript numeric keys and number formatting",
+    "input": {
+      "transcriptText": "Numeric edges",
+      "segments": [
+        {
+          "segmentIndex": 0,
+          "startSec": 1e-7,
+          "endSec": 1e20,
+          "text": "Numeric edges",
+          "speakerLabel": "SPEAKER_2",
+          "confidence": 0.85
+        }
+      ],
+      "toolVersions": {
+        "transcriptionTool": "fixture",
+        "transcriptionModel": "number-model",
+        "transcriptionVersion": "1",
+        "diarizationTool": "fixture",
+        "diarizationModel": "number-model",
+        "diarizationVersion": "1"
+      },
+      "rawArtifact": {
+        "2": "b",
+        "1": "a",
+        "01": "ordinary",
+        "4294967294": "last-index",
+        "4294967295": "ordinary-after",
+        "nested": {
+          "10": null,
+          "3": "three"
+        }
+      }
+    },
+    "expectedChecksum": "a7809171ae2e42458b093cdf595d03855e184cb2a1cc6e1f077a9980f5b1473f"
+  }
+]
