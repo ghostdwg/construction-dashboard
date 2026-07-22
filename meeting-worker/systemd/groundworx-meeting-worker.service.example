@@ -1,0 +1,26 @@
+# Example only. This file is not installed or enabled by the repository.
+# The current processor is a deterministic fixture; do not point it at a live queue.
+[Unit]
+Description=GroundworX Meeting Intelligence outbound worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=groundworx-worker
+Group=groundworx-worker
+WorkingDirectory=/opt/groundworx-meeting-worker
+EnvironmentFile=/etc/groundworx/meeting-worker.env
+Environment=PYTHONPATH=/opt/groundworx-meeting-worker
+Environment=MEETING_WORKER_SCRATCH_DIR=/var/lib/groundworx-meeting-worker/run
+ExecStart=/usr/bin/python3 -m meeting_worker run
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/groundworx-meeting-worker/run
+
+[Install]
+WantedBy=multi-user.target
