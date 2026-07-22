@@ -80,13 +80,13 @@ model Trade {
   tradeAssignments     ScopeTradeAssignment[]
   preferredSubs        PreferredSub[]
   levelingRows         LevelingRow[]
-  specSections         SpecSection[]          @relation("SpecSectionTrade")
-  matchedSpecSections  SpecSection[]          @relation("MatchedSpecSection")
-  drawingSheets        DrawingSheet[]         @relation("DrawingSheetTrade")
-  matchedDrawingSheets DrawingSheet[]         @relation("MatchedDrawingSheet")
+  specSections         SpecSection[]                @relation("SpecSectionTrade")
+  matchedSpecSections  SpecSection[]                @relation("MatchedSpecSection")
+  drawingSheets        DrawingSheet[]               @relation("DrawingSheetTrade")
+  matchedDrawingSheets DrawingSheet[]               @relation("MatchedDrawingSheet")
   trackedItems         TrackedItem[]
-  leadTrackedItems     TrackedItem[]           @relation("TrackedItemLeadTrade")
-  responseAssignments TrackedItemTradeAssignment[]
+  leadTrackedItems     TrackedItem[]                @relation("TrackedItemLeadTrade")
+  responseAssignments  TrackedItemTradeAssignment[]
 }
 
 model Bid {
@@ -134,63 +134,63 @@ model Bid {
   // Tier F F2 — Procore REST API
   procoreProjectId String?
 
-  bidTrades                 BidTrade[]
-  selections                BidInviteSelection[]
-  exportBatches             ExportBatch[]
-  scopeItems                ScopeItem[]
-  aiExportBatches           AiExportBatch[]
-  gapFindings               AiGapFinding[]
-  outreachLogs              OutreachLog[]
-  estimateUploads           EstimateUpload[]
-  levelingSession           LevelingSession?
-  generatedQuestions        GeneratedQuestion[]
-  specBooks                 SpecBook[]
-  drawingUploads            DrawingUpload[]
-  addendums                 AddendumUpload[]
-  intelligenceBrief         BidIntelligenceBrief?
-  submission                BidSubmission?
-  buyoutItems               BuyoutItem[]
-  submittalItems            SubmittalItem[]
-  submittalPackages         SubmittalPackage[]
-  distributionTemplates     SubmittalDistributionTemplate[]
-  projectContacts           ProjectContact[]
-  scheduleActivities        ScheduleActivity[]
-  schedules                 Schedule[]
-  meetings                  Meeting[]
-  meetingActionItems        MeetingActionItem[]
-  decisions                 BidDecision[]
-  procorePushes             ProcorePush[]
-  quickPushRuns             QuickPushRun[]
-  rfiItems                  RfiItem[]
-  backgroundJobs            BackgroundJob[]
-  marketLeads               MarketLead[]
-  trackedItems              TrackedItem[]
-  fieldReports              FieldReport[]
-  consultantReports         ConsultantReport[]
-  consultantReportRevisions ConsultantReportRevision[]
-  consultantObservations    ConsultantObservation[]
-  consultantDispositions    ConsultantDispositionRecord[]
-  consultantStreamExports   ConsultantStreamExport[]
-  designIntentChanges       DesignIntentChange[]
-  meetingCommitments        MeetingCommitment[]
-  transcriptSegments        MeetingTranscriptSegment[]
-  transcriptCorrections     MeetingTranscriptCorrection[]
-  registerEntries           MeetingRegisterEntry[]
-  registerEntryRevisions    MeetingRegisterEntryRevision[]
-  extractionRuns            MeetingExtractionRun[]
-  minutesRevisions          MeetingMinutesRevision[]
+  bidTrades                     BidTrade[]
+  selections                    BidInviteSelection[]
+  exportBatches                 ExportBatch[]
+  scopeItems                    ScopeItem[]
+  aiExportBatches               AiExportBatch[]
+  gapFindings                   AiGapFinding[]
+  outreachLogs                  OutreachLog[]
+  estimateUploads               EstimateUpload[]
+  levelingSession               LevelingSession?
+  generatedQuestions            GeneratedQuestion[]
+  specBooks                     SpecBook[]
+  drawingUploads                DrawingUpload[]
+  addendums                     AddendumUpload[]
+  intelligenceBrief             BidIntelligenceBrief?
+  submission                    BidSubmission?
+  buyoutItems                   BuyoutItem[]
+  submittalItems                SubmittalItem[]
+  submittalPackages             SubmittalPackage[]
+  distributionTemplates         SubmittalDistributionTemplate[]
+  projectContacts               ProjectContact[]
+  scheduleActivities            ScheduleActivity[]
+  schedules                     Schedule[]
+  meetings                      Meeting[]
+  meetingActionItems            MeetingActionItem[]
+  decisions                     BidDecision[]
+  procorePushes                 ProcorePush[]
+  quickPushRuns                 QuickPushRun[]
+  rfiItems                      RfiItem[]
+  backgroundJobs                BackgroundJob[]
+  marketLeads                   MarketLead[]
+  trackedItems                  TrackedItem[]
+  fieldReports                  FieldReport[]
+  consultantReports             ConsultantReport[]
+  consultantReportRevisions     ConsultantReportRevision[]
+  consultantObservations        ConsultantObservation[]
+  consultantDispositions        ConsultantDispositionRecord[]
+  consultantStreamExports       ConsultantStreamExport[]
+  designIntentChanges           DesignIntentChange[]
+  meetingCommitments            MeetingCommitment[]
+  transcriptSegments            MeetingTranscriptSegment[]
+  transcriptCorrections         MeetingTranscriptCorrection[]
+  registerEntries               MeetingRegisterEntry[]
+  registerEntryRevisions        MeetingRegisterEntryRevision[]
+  extractionRuns                MeetingExtractionRun[]
+  minutesRevisions              MeetingMinutesRevision[]
   meetingIntelligenceArtifacts  MeetingIntelligenceArtifact[]
   meetingIntelligenceSegments   MeetingIntelligenceSegment[]
   meetingIntelligenceCandidates MeetingIntelligenceCandidate[]
   meetingIntelligenceWorkerJobs MeetingIntelligenceWorkerJob[]
-  reportObservations          ReportObservation[]
-  trackedItemTradeAssignments TrackedItemTradeAssignment[]
-  responsePackages            ResponsePackage[]
-  responsePackageItems        ResponsePackageItem[]
-  tradeResponseRevisions      TradeResponseRevision[]
-  tradeResponseReviewDecisions TradeResponseReviewDecision[]
-  tradeResponseAttachments    TradeResponseAttachment[]
-  responseAccessTokens        ResponseAccessToken[]
+  reportObservations            ReportObservation[]
+  trackedItemTradeAssignments   TrackedItemTradeAssignment[]
+  responsePackages              ResponsePackage[]
+  responsePackageItems          ResponsePackageItem[]
+  tradeResponseRevisions        TradeResponseRevision[]
+  tradeResponseReviewDecisions  TradeResponseReviewDecision[]
+  tradeResponseAttachments      TradeResponseAttachment[]
+  responseAccessTokens          ResponseAccessToken[]
 }
 
 model BidSubmission {
@@ -310,15 +310,15 @@ model Subcontractor {
   // External system reference (Procore vendor id) — used for re-import dedup
   procoreVendorId String? @unique
 
-  contacts           Contact[]
-  subTrades          SubcontractorTrade[]
-  selections         BidInviteSelection[]
-  outreachLogs       OutreachLog[]
-  preferredForTrades PreferredSub[]
-  estimateUploads    EstimateUpload[]
-  buyoutItems        BuyoutItem[]
-  submittalItems     SubmittalItem[]
-  responsibleTrackedItems TrackedItem[]   @relation("TrackedItemResponsibleContractor")
+  contacts                Contact[]
+  subTrades               SubcontractorTrade[]
+  selections              BidInviteSelection[]
+  outreachLogs            OutreachLog[]
+  preferredForTrades      PreferredSub[]
+  estimateUploads         EstimateUpload[]
+  buyoutItems             BuyoutItem[]
+  submittalItems          SubmittalItem[]
+  responsibleTrackedItems TrackedItem[]        @relation("TrackedItemResponsibleContractor")
   responsePackages        ResponsePackage[]
 }
 
@@ -1191,17 +1191,17 @@ model Meeting {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  bid                   Bid                           @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  actionItems           MeetingActionItem[]
-  participants          MeetingParticipant[]
-  trackedItems          TrackedItem[]
-  designIntentChanges   DesignIntentChange[]
-  commitments           MeetingCommitment[]
-  transcriptSegments    MeetingTranscriptSegment[]
-  transcriptCorrections MeetingTranscriptCorrection[]
-  registerEntries       MeetingRegisterEntry[]
-  extractionRuns        MeetingExtractionRun[]
-  minutesRevisions      MeetingMinutesRevision[]
+  bid                    Bid                            @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  actionItems            MeetingActionItem[]
+  participants           MeetingParticipant[]
+  trackedItems           TrackedItem[]
+  designIntentChanges    DesignIntentChange[]
+  commitments            MeetingCommitment[]
+  transcriptSegments     MeetingTranscriptSegment[]
+  transcriptCorrections  MeetingTranscriptCorrection[]
+  registerEntries        MeetingRegisterEntry[]
+  extractionRuns         MeetingExtractionRun[]
+  minutesRevisions       MeetingMinutesRevision[]
   intelligenceArtifacts  MeetingIntelligenceArtifact[]
   intelligenceSegments   MeetingIntelligenceSegment[]
   intelligenceCandidates MeetingIntelligenceCandidate[]
@@ -1250,35 +1250,35 @@ model MeetingParticipant {
 // priority values: LOW | MEDIUM | HIGH | CRITICAL
 // status values:   OPEN | IN_PROGRESS | CLOSED | DEFERRED
 model MeetingActionItem {
-  id              Int       @id @default(autoincrement())
-  bidId           Int
-  meetingId       Int? // null for manually created tasks
-  source          String    @default("meeting") // "meeting" | "manual"
-  description     String
-  assignedToId    Int? // FK to MeetingParticipant
-  assignedToName  String? // denormalized — survives participant edits
-  dueDate         DateTime?
-  priority        String    @default("MEDIUM")
-  status          String    @default("OPEN")
-  sourceText      String? // paraphrased evidence excerpt from transcript
-  isGcTask        Boolean   @default(false) // GC team task — populates §8
-  carriedFromDate String? // ISO date of meeting where this first appeared
-  closedAt        DateTime?
-  notes           String?
+  id                                   Int       @id @default(autoincrement())
+  bidId                                Int
+  meetingId                            Int? // null for manually created tasks
+  source                               String    @default("meeting") // "meeting" | "manual"
+  description                          String
+  assignedToId                         Int? // FK to MeetingParticipant
+  assignedToName                       String? // denormalized — survives participant edits
+  dueDate                              DateTime?
+  priority                             String    @default("MEDIUM")
+  status                               String    @default("OPEN")
+  sourceText                           String? // paraphrased evidence excerpt from transcript
+  isGcTask                             Boolean   @default(false) // GC team task — populates §8
+  carriedFromDate                      String? // ISO date of meeting where this first appeared
+  closedAt                             DateTime?
+  notes                                String?
   // Meeting Intelligence v1 publication provenance and duplicate guard.
   sourceMeetingIntelligenceCandidateId Int?      @unique
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt                            DateTime  @default(now())
+  updatedAt                            DateTime  @updatedAt
 
-  bid             Bid                    @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  meeting         Meeting?               @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  assignedTo      MeetingParticipant?    @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+  bid                                Bid                           @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  meeting                            Meeting?                      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignedTo                         MeetingParticipant?           @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
   // Slice 1 OAC bridge: a promoted action item's TrackedItem (at most one —
   // TrackedItem.sourceMeetingActionItemId is unique). Promotion never edits
   // or deletes this row; it remains the source evidence.
-  trackedItem     TrackedItem?
-  commitments     MeetingCommitment[]
-  registerEntries MeetingRegisterEntry[]
+  trackedItem                        TrackedItem?
+  commitments                        MeetingCommitment[]
+  registerEntries                    MeetingRegisterEntry[]
   sourceMeetingIntelligenceCandidate MeetingIntelligenceCandidate? @relation("MeetingIntelligencePublishedAction", fields: [sourceMeetingIntelligenceCandidateId], references: [id], onDelete: SetNull)
 
   @@index([bidId])
@@ -1367,12 +1367,12 @@ model MeetingIntelligenceWorkerJob {
   errorCode               String?
   errorMessage            String?
   resultChecksum          String?   @unique
-  transcriptionTool      String?
-  transcriptionModel     String?
-  transcriptionVersion   String?
-  diarizationTool        String?
-  diarizationModel       String?
-  diarizationVersion     String?
+  transcriptionTool       String?
+  transcriptionModel      String?
+  transcriptionVersion    String?
+  diarizationTool         String?
+  diarizationModel        String?
+  diarizationVersion      String?
   toolVersionsJson        String    @default("{}")
   rawArtifactStorageKey   String?
   startedAt               DateTime?
@@ -1516,14 +1516,14 @@ model ProcorePush {
 // alters it.
 
 model QuickPushRun {
-  id           Int       @id @default(autoincrement())
-  bidId        Int
-  status       String    @default("running")
-  currentStep  String?
-  stepResults  String?
-  startedAt    DateTime  @default(now())
-  completedAt  DateTime?
-  error        String?
+  id          Int       @id @default(autoincrement())
+  bidId       Int
+  status      String    @default("running")
+  currentStep String?
+  stepResults String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  error       String?
 
   bid Bid @relation(fields: [bidId], references: [id], onDelete: Cascade)
 
@@ -4218,17 +4218,17 @@ model TrackedItem {
   status      String  @default("OPEN") // OPEN | IN_PROGRESS | READY_TO_CLOSE | CLOSED | WAIVED — fsm.ts is the single authority
   priority    String  @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL (same vocabulary as MeetingActionItem)
 
-  assigneeName     String?
-  assigneeEmail    String?
-  projectContactId Int?
-  tradeId          Int?
-  leadTradeId      Int?
-  responsibleContractorId Int?
-  gcInternalResponsibility Boolean @default(false)
-  consultantDiscipline String?
-  sourceReportObservationId Int? @unique
-  dueDate          DateTime?
-  carriedFromDate  String? // ISO date — mirrors MeetingActionItem.carriedFromDate
+  assigneeName              String?
+  assigneeEmail             String?
+  projectContactId          Int?
+  tradeId                   Int?
+  leadTradeId               Int?
+  responsibleContractorId   Int?
+  gcInternalResponsibility  Boolean   @default(false)
+  consultantDiscipline      String?
+  sourceReportObservationId Int?      @unique
+  dueDate                   DateTime?
+  carriedFromDate           String? // ISO date — mirrors MeetingActionItem.carriedFromDate
 
   // ── Embedded source citation ────────────────────────────────────────────
   // Canonical vocabulary (single source of truth: lib/services/trackedItems/sourceKinds.ts):
@@ -4271,30 +4271,30 @@ model TrackedItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bid                         Bid                     @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  projectContact              ProjectContact?         @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
-  trade                       Trade?                  @relation(fields: [tradeId], references: [id], onDelete: SetNull)
-  leadTrade                   Trade?                  @relation("TrackedItemLeadTrade", fields: [leadTradeId], references: [id], onDelete: SetNull)
+  bid                         Bid                          @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  projectContact              ProjectContact?              @relation(fields: [projectContactId], references: [id], onDelete: SetNull)
+  trade                       Trade?                       @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  leadTrade                   Trade?                       @relation("TrackedItemLeadTrade", fields: [leadTradeId], references: [id], onDelete: SetNull)
   // Physical FK remains SET NULL from the additive Build 2 migration. The
   // R2B2_responsible_contractor_retention_guard trigger owns the effective
   // history-retention restriction without rebuilding this inherited table.
-  responsibleContractor      Subcontractor?          @relation("TrackedItemResponsibleContractor", fields: [responsibleContractorId], references: [id], onDelete: SetNull)
-  sourceReportObservation    ReportObservation?      @relation("PromotedReportObservation", fields: [sourceReportObservationId], references: [id], onDelete: Restrict)
-  sourceMeeting               Meeting?                @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
-  sourceMeetingActionItem     MeetingActionItem?      @relation(fields: [sourceMeetingActionItemId], references: [id], onDelete: SetNull)
-  sourceSpecSection           SpecSection?            @relation(fields: [sourceSpecSectionId], references: [id], onDelete: SetNull)
-  sourceFieldReport           FieldReport?            @relation(fields: [sourceFieldReportId], references: [id], onDelete: SetNull)
-  sourceConsultantObservation ConsultantObservation?  @relation("TrackedItemOriginatingObservation", fields: [sourceConsultantObservationId], references: [id], onDelete: SetNull)
-  sourceMeetingRegisterEntry  MeetingRegisterEntry?   @relation("TrackedItemOriginatingRegisterEntry", fields: [sourceMeetingRegisterEntryId], references: [id], onDelete: SetNull)
-  supportingObservations      ConsultantObservation[] @relation("ObservationRegisterItem")
-  spawnedFromObservations     ConsultantObservation[] @relation("ObservationSpawnedItem")
-  linkedRegisterEntries       MeetingRegisterEntry[]  @relation("RegisterEntryOpsLink")
+  responsibleContractor       Subcontractor?               @relation("TrackedItemResponsibleContractor", fields: [responsibleContractorId], references: [id], onDelete: SetNull)
+  sourceReportObservation     ReportObservation?           @relation("PromotedReportObservation", fields: [sourceReportObservationId], references: [id], onDelete: Restrict)
+  sourceMeeting               Meeting?                     @relation(fields: [sourceMeetingId], references: [id], onDelete: SetNull)
+  sourceMeetingActionItem     MeetingActionItem?           @relation(fields: [sourceMeetingActionItemId], references: [id], onDelete: SetNull)
+  sourceSpecSection           SpecSection?                 @relation(fields: [sourceSpecSectionId], references: [id], onDelete: SetNull)
+  sourceFieldReport           FieldReport?                 @relation(fields: [sourceFieldReportId], references: [id], onDelete: SetNull)
+  sourceConsultantObservation ConsultantObservation?       @relation("TrackedItemOriginatingObservation", fields: [sourceConsultantObservationId], references: [id], onDelete: SetNull)
+  sourceMeetingRegisterEntry  MeetingRegisterEntry?        @relation("TrackedItemOriginatingRegisterEntry", fields: [sourceMeetingRegisterEntryId], references: [id], onDelete: SetNull)
+  supportingObservations      ConsultantObservation[]      @relation("ObservationRegisterItem")
+  spawnedFromObservations     ConsultantObservation[]      @relation("ObservationSpawnedItem")
+  linkedRegisterEntries       MeetingRegisterEntry[]       @relation("RegisterEntryOpsLink")
   comments                    TrackedItemComment[]
   attachments                 TrackedItemAttachment[]
   linkedDesignChanges         DesignIntentChange[]
-  reportObservations          ReportObservation[]    @relation("ReportObservationRegisterItem")
-  tradeAssignments           TrackedItemTradeAssignment[]
-  responsePackageItems       ResponsePackageItem[]
+  reportObservations          ReportObservation[]          @relation("ReportObservationRegisterItem")
+  tradeAssignments            TrackedItemTradeAssignment[]
+  responsePackageItems        ResponsePackageItem[]
 
   @@index([bidId])
   @@index([bidId, kind])
@@ -4350,7 +4350,7 @@ model FieldReport {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  bid          Bid           @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bid          Bid                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
   trackedItems TrackedItem[]
   observations ReportObservation[]
 
@@ -4391,9 +4391,9 @@ model ConsultantReport {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
-  bid          Bid                        @relation(fields: [bidId], references: [id], onDelete: Cascade)
-  revisions    ConsultantReportRevision[]
-  observations ConsultantObservation[]
+  bid                Bid                        @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  revisions          ConsultantReportRevision[]
+  observations       ConsultantObservation[]
   reportObservations ReportObservation[]
 
   @@index([bidId])
@@ -4534,7 +4534,7 @@ model TrackedItemAttachment {
 model ReportObservation {
   id                 Int       @id @default(autoincrement())
   bidId              Int
-  sourceKind         String    // field_report | consultant_report | direct_entry
+  sourceKind         String // field_report | consultant_report | direct_entry
   fieldReportId      Int?
   consultantReportId Int?
   observationText    String
@@ -4549,11 +4549,11 @@ model ReportObservation {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  bid              Bid               @relation(fields: [bidId], references: [id], onDelete: Restrict)
-  fieldReport      FieldReport?      @relation(fields: [fieldReportId], references: [id], onDelete: Restrict)
-  consultantReport ConsultantReport? @relation(fields: [consultantReportId], references: [id], onDelete: Restrict)
-  registerItem     TrackedItem?       @relation("ReportObservationRegisterItem", fields: [registerItemId], references: [id], onDelete: Restrict)
-  promotedTrackedItem TrackedItem?    @relation("PromotedReportObservation")
+  bid                 Bid               @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  fieldReport         FieldReport?      @relation(fields: [fieldReportId], references: [id], onDelete: Restrict)
+  consultantReport    ConsultantReport? @relation(fields: [consultantReportId], references: [id], onDelete: Restrict)
+  registerItem        TrackedItem?      @relation("ReportObservationRegisterItem", fields: [registerItemId], references: [id], onDelete: Restrict)
+  promotedTrackedItem TrackedItem?      @relation("PromotedReportObservation")
 
   @@index([bidId, disposition])
   @@index([fieldReportId])
@@ -4586,15 +4586,15 @@ model ResponsePackage {
   issuedAt        DateTime?
   issuedBy        String?
   responseDueDate DateTime?
-  manualChannel   String?   // EMAIL | PROCORE | OTHER; recorded alternative to portal token
+  manualChannel   String? // EMAIL | PROCORE | OTHER; recorded alternative to portal token
   voidedBy        String?
   voidedAt        DateTime?
   createdBy       String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  bid        Bid            @relation(fields: [bidId], references: [id], onDelete: Restrict)
-  contractor Subcontractor? @relation(fields: [contractorId], references: [id], onDelete: Restrict)
+  bid        Bid                   @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  contractor Subcontractor?        @relation(fields: [contractorId], references: [id], onDelete: Restrict)
   items      ResponsePackageItem[]
   tokens     ResponseAccessToken[]
 
@@ -4610,9 +4610,9 @@ model ResponsePackageItem {
   trackedItemId Int
   displayNumber String?
 
-  package     ResponsePackage       @relation(fields: [packageId], references: [id], onDelete: Restrict)
-  bid         Bid                   @relation(fields: [bidId], references: [id], onDelete: Restrict)
-  trackedItem TrackedItem           @relation(fields: [trackedItemId], references: [id], onDelete: Restrict)
+  package     ResponsePackage         @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  bid         Bid                     @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  trackedItem TrackedItem             @relation(fields: [trackedItemId], references: [id], onDelete: Restrict)
   responses   TradeResponseRevision[]
 
   @@unique([packageId, trackedItemId])
@@ -4641,9 +4641,9 @@ model TradeResponseRevision {
   gcReviewAt             DateTime?
   gcCommentary           String?
 
-  bid         Bid                 @relation(fields: [bidId], references: [id], onDelete: Restrict)
-  packageItem ResponsePackageItem @relation(fields: [packageItemId], references: [id], onDelete: Restrict)
-  attachments TradeResponseAttachment[]
+  bid             Bid                           @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  packageItem     ResponsePackageItem           @relation(fields: [packageItemId], references: [id], onDelete: Restrict)
+  attachments     TradeResponseAttachment[]
   reviewDecisions TradeResponseReviewDecision[]
 
   @@unique([packageItemId, revisionIndex])
@@ -4663,8 +4663,8 @@ model TradeResponseAttachment {
   responseRevision TradeResponseRevision @relation(fields: [responseRevisionId], references: [id], onDelete: Restrict)
   bid              Bid                   @relation(fields: [bidId], references: [id], onDelete: Restrict)
 
-  @@index([bidId, responseRevisionId])
   @@unique([responseRevisionId, storageKey])
+  @@index([bidId, responseRevisionId])
 }
 
 model ResponseAccessToken {
@@ -4699,9 +4699,9 @@ model TradeResponseReviewDecision {
   correctionOfId     Int?
   createdAt          DateTime @default(now())
 
-  bid              Bid                         @relation(fields: [bidId], references: [id], onDelete: Restrict)
-  responseRevision TradeResponseRevision       @relation(fields: [responseRevisionId], references: [id], onDelete: Restrict)
-  correctionOf     TradeResponseReviewDecision? @relation("ReviewDecisionCorrections", fields: [correctionOfId], references: [id], onDelete: Restrict)
+  bid              Bid                           @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  responseRevision TradeResponseRevision         @relation(fields: [responseRevisionId], references: [id], onDelete: Restrict)
+  correctionOf     TradeResponseReviewDecision?  @relation("ReviewDecisionCorrections", fields: [correctionOfId], references: [id], onDelete: Restrict)
   corrections      TradeResponseReviewDecision[] @relation("ReviewDecisionCorrections")
 
   @@index([bidId, responseRevisionId, createdAt])
