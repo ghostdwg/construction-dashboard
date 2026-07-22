@@ -1,7 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, Loader2, LockKeyhole, Play, Upload } from "lucide-react";
+import {
+  candidateDispositionCounts,
+  filterMeetingIntelligenceCandidates,
+  groupMeetingIntelligenceCandidates,
+  isTaskEligibleCandidateType,
+} from "@/lib/services/meetingIntelligence/reviewLedger";
 
 type Segment = {
   id: number;
@@ -10,17 +16,21 @@ type Segment = {
   originalSpeakerLabel: string;
   currentSpeakerLabel: string;
   currentText: string;
+  endSec: number | null;
 };
 
 type Candidate = {
   id: number;
+  segmentId: number | null;
   candidateType: string;
   rawText: string;
   draftText: string;
   evidenceExcerpt: string;
   speakerLabel: string;
   startSec: number | null;
+  endSec: number | null;
   confidence: number | null;
+  dueDate: string | null;
   reviewState: string;
   publishedActionItem: { id: number; description: string; status: string } | null;
 };
@@ -60,6 +70,7 @@ type IntelligenceResponse = {
     errorMessage: string | null;
   } | null;
   artifact: IntelligenceArtifact | null;
+  participants: Array<{ id: number; name: string; role: string | null; company: string | null }>;
 };
 
 function secondsLabel(seconds: number | null): string {
@@ -82,6 +93,12 @@ export default function MeetingIntelligencePanel({
   const [fixtureText, setFixtureText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stateFilter, setStateFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [actionabilityFilter, setActionabilityFilter] = useState<"all" | "task" | "context">("all");
+  const [dueFilter, setDueFilter] = useState<"all" | "missing" | "overdue" | "next7">("all");
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -105,6 +122,20 @@ export default function MeetingIntelligencePanel({
     return () => window.clearInterval(timer);
   }, [data, load]);
 
+  const candidates = useMemo(() => data?.artifact?.candidates ?? [], [data?.artifact?.candidates]);
+  const filteredCandidates = useMemo(() => filterMeetingIntelligenceCandidates(candidates, {
+    state: stateFilter,
+    type: typeFilter,
+    actionability: actionabilityFilter,
+    due: dueFilter,
+    search,
+  }), [actionabilityFilter, candidates, dueFilter, search, stateFilter, typeFilter]);
+  const candidateGroups = useMemo(() => groupMeetingIntelligenceCandidates(
+    filteredCandidates,
+    data?.artifact?.segments ?? [],
+  ), [data?.artifact?.segments, filteredCandidates]);
+  const dispositionCounts = useMemo(() => candidateDispositionCounts(candidates), [candidates]);
+
   async function post(path: string, body?: unknown) {
     setBusy(true);
     setError(null);
@@ -120,6 +151,27 @@ export default function MeetingIntelligencePanel({
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Action failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function batchReview(action: "ACCEPT" | "REJECT") {
+    if (!data?.artifact || selectedIds.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`${base}/candidates/batch`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artifactId: data.artifact.id, candidateIds: selectedIds, action }),
+      });
+      const json = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(json.error ?? "Batch review failed");
+      setSelectedIds([]);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Batch review failed");
     } finally {
       setBusy(false);
     }
@@ -275,27 +327,85 @@ export default function MeetingIntelligencePanel({
             </div>
           )}
 
-          {data.artifact && ["READY_FOR_REVIEW", "PUBLISHED"].includes(data.artifact.state) && (
-            <div className="space-y-2">
-              <div>
+          {data.artifact && ["READY_FOR_REVIEW", "REVIEWED", "PUBLISHED"].includes(data.artifact.state) && (
+            <div className="space-y-3">
+              <div className="space-y-2">
                 <h4 className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
                   Reviewable task ledger ({data.artifact.candidates.length})
                 </h4>
+                <p className="text-[11px] text-zinc-500">
+                  Processor suggestions only. A human must review wording, assignment, due date, and priority before publication.
+                </p>
+                <div className="flex flex-wrap gap-1 text-[10px] text-zinc-500">
+                  {["DRAFT", "EDITED", "ACCEPTED", "REJECTED", "PUBLISHED"].map((state) => (
+                    <span key={state} className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">
+                      {state.replaceAll("_", " ")}: {dispositionCounts[state] ?? 0}
+                    </span>
+                  ))}
+                </div>
                 {data.artifact.candidates.length === 0 && (
                   <p className="text-xs text-zinc-500">No deterministic structural candidates were found.</p>
                 )}
               </div>
-              {data.artifact.candidates.map((candidate) => (
-                <CandidateRow
-                  key={candidate.id}
-                  base={base}
-                  candidate={candidate}
-                  onChanged={async (published) => {
-                    await load();
-                    if (published) onPublished?.();
-                  }}
-                />
+              {data.artifact.candidates.length > 0 && (
+                <div className="grid gap-2 rounded border border-zinc-200 p-2 sm:grid-cols-2 lg:grid-cols-5 dark:border-zinc-700">
+                  <select aria-label="Disposition filter" value={stateFilter} onChange={(event) => setStateFilter(event.target.value)} className="rounded border border-zinc-300 bg-white p-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-800">
+                    <option value="all">All dispositions</option>
+                    {["DRAFT", "EDITED", "ACCEPTED", "REJECTED", "PUBLISHED"].map((state) => <option key={state} value={state}>{state.replaceAll("_", " ")}</option>)}
+                  </select>
+                  <select aria-label="Candidate type filter" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="rounded border border-zinc-300 bg-white p-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-800">
+                    <option value="all">All candidate types</option>
+                    {[...new Set(data.artifact.candidates.map((candidate) => candidate.candidateType))].sort().map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
+                  </select>
+                  <select aria-label="Actionability filter" value={actionabilityFilter} onChange={(event) => setActionabilityFilter(event.target.value as "all" | "task" | "context")} className="rounded border border-zinc-300 bg-white p-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-800">
+                    <option value="all">All actionability</option><option value="task">Task eligible</option><option value="context">Context only</option>
+                  </select>
+                  <select aria-label="Due date filter" value={dueFilter} onChange={(event) => setDueFilter(event.target.value as "all" | "missing" | "overdue" | "next7")} className="rounded border border-zinc-300 bg-white p-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-800">
+                    <option value="all">All due dates</option><option value="missing">Missing due date</option><option value="overdue">Overdue</option><option value="next7">Next 7 days</option>
+                  </select>
+                  <input aria-label="Search candidates" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search evidence or wording" className="rounded border border-zinc-300 bg-white p-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-800" />
+                </div>
+              )}
+              {selectedIds.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 rounded border border-violet-200 bg-violet-50 p-2 text-xs dark:border-violet-900 dark:bg-violet-950/30">
+                  <span>{selectedIds.length} selected (maximum 50)</span>
+                  <button disabled={busy} onClick={() => void batchReview("ACCEPT")} className="rounded bg-emerald-700 px-2 py-1 text-white disabled:opacity-40">Accept selected</button>
+                  <button disabled={busy} onClick={() => void batchReview("REJECT")} className="rounded border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-600">Reject selected</button>
+                  <button disabled={busy} onClick={() => setSelectedIds([])} className="px-2 py-1 text-zinc-500">Clear</button>
+                </div>
+              )}
+              {candidateGroups.map((group) => (
+                <section key={group.key} className="space-y-2 rounded border border-zinc-300 bg-zinc-50/50 p-3 dark:border-zinc-700 dark:bg-zinc-900/20">
+                  <div className="space-y-1 border-b border-zinc-200 pb-2 text-[11px] dark:border-zinc-700">
+                    <div className="flex flex-wrap gap-2 text-zinc-500">
+                      <span className="font-mono">{group.speakerLabel}</span>
+                      <span>{secondsLabel(group.startSec)}–{secondsLabel(group.endSec)}</span>
+                      {group.confidence != null && <span>{Math.round(group.confidence * 100)}% confidence</span>}
+                    </div>
+                    <p className="font-medium text-zinc-700 dark:text-zinc-300">Transcript context: {group.segment?.currentText ?? group.evidenceExcerpt}</p>
+                    <p className="text-zinc-500">Source evidence: {group.evidenceExcerpt}</p>
+                  </div>
+                  {group.candidates.map((candidate) => (
+                    <CandidateRow
+                      key={candidate.id}
+                      bidId={bidId}
+                      base={base}
+                      candidate={candidate}
+                      participants={data.participants}
+                      selected={selectedIds.includes(candidate.id)}
+                      onSelected={(selected) => setSelectedIds((current) => selected
+                        ? current.length < 50 ? [...current, candidate.id] : current
+                        : current.filter((id) => id !== candidate.id))}
+                      onChanged={async (published) => {
+                        setSelectedIds((current) => current.filter((id) => id !== candidate.id));
+                        await load();
+                        if (published) onPublished?.();
+                      }}
+                    />
+                  ))}
+                </section>
               ))}
+              {data.artifact.candidates.length > 0 && candidateGroups.length === 0 && <p className="text-xs text-zinc-500">No candidates match the current filters.</p>}
             </div>
           )}
         </>
@@ -363,17 +473,33 @@ function SegmentRow({
 }
 
 function CandidateRow({
+  bidId,
   base,
   candidate,
+  participants,
+  selected,
+  onSelected,
   onChanged,
 }: {
+  bidId: number;
   base: string;
   candidate: Candidate;
+  participants: IntelligenceResponse["participants"];
+  selected: boolean;
+  onSelected: (selected: boolean) => void;
   onChanged: (published: boolean) => Promise<void>;
 }) {
   const [text, setText] = useState(candidate.draftText);
+  const [dueDate, setDueDate] = useState(candidate.dueDate?.slice(0, 10) ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [assignmentChoice, setAssignmentChoice] = useState<"unset" | "named" | "unassigned">("unset");
+  const [assignee, setAssignee] = useState("");
+  const [priority, setPriority] = useState(candidate.candidateType === "RISK" ? "HIGH" : "MEDIUM");
+  const taskEligible = isTaskEligibleCandidateType(candidate.candidateType);
+  const editable = candidate.reviewState !== "PUBLISHED";
+  const draftDirty = text !== candidate.draftText || dueDate !== (candidate.dueDate?.slice(0, 10) ?? "");
 
   async function mutate(path: string, method: "PATCH" | "POST", body?: unknown) {
     setBusy(true);
@@ -393,69 +519,86 @@ function CandidateRow({
     await onChanged(path === "/publish");
   }
 
+  async function publish() {
+    await mutate("/publish", "POST", {
+      confirmed: true,
+      assignmentConfirmed: assignmentChoice !== "unset",
+      assignedToName: assignmentChoice === "named" ? assignee : null,
+      priority,
+    });
+  }
+
   return (
-    <article className="space-y-2 rounded border border-zinc-200 p-3 text-xs dark:border-zinc-700">
+    <article className="space-y-2 rounded border border-zinc-200 bg-white p-3 text-xs dark:border-zinc-700 dark:bg-zinc-900">
       <div className="flex flex-wrap items-center gap-2">
+        {editable && (
+          <input type="checkbox" checked={selected} onChange={(event) => onSelected(event.target.checked)} aria-label={`Select candidate ${candidate.id}`} />
+        )}
         <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
           {candidate.candidateType.replaceAll("_", " ")}
         </span>
         <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
           {candidate.reviewState.replaceAll("_", " ")}
         </span>
-        <span className="text-[10px] text-zinc-400">
-          {candidate.speakerLabel} · {secondsLabel(candidate.startSec)}
-          {candidate.confidence != null ? ` · ${Math.round(candidate.confidence * 100)}%` : ""}
-        </span>
+        {!taskEligible && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">Context only</span>}
       </div>
-      <textarea
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        disabled={candidate.reviewState === "PUBLISHED"}
-        rows={2}
-        className="w-full rounded border border-zinc-300 bg-white p-2 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 disabled:opacity-70"
-      />
-      <p className="text-[11px] text-zinc-500">Evidence: {candidate.evidenceExcerpt}</p>
+      <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Task description</label>
+      <textarea value={text} onChange={(event) => setText(event.target.value)} disabled={!editable} rows={2} className="w-full rounded border border-zinc-300 bg-white p-2 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 disabled:opacity-70" />
+      <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Due date</label>
+      <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} disabled={!editable} className="w-full rounded border border-zinc-300 bg-white p-2 sm:w-48 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 disabled:opacity-70" />
       <div className="flex flex-wrap gap-1.5">
-        {candidate.reviewState !== "PUBLISHED" && (
+        {editable && (
           <>
-            <button
-              onClick={() => void mutate("", "PATCH", { action: "EDIT", editedText: text })}
-              disabled={busy || !text.trim() || text === candidate.draftText}
-              className="rounded border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-600"
-            >
-              Save edit
+            <button onClick={() => void mutate("", "PATCH", { action: "EDIT", editedText: text, dueDate: dueDate || null })} disabled={busy || !text.trim() || (text === candidate.draftText && dueDate === (candidate.dueDate?.slice(0, 10) ?? ""))} className="rounded border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-600">
+              Save description and due date
             </button>
-            <button
-              onClick={() => void mutate("", "PATCH", { action: "ACCEPT" })}
-              disabled={busy}
-              className="rounded bg-emerald-700 px-2 py-1 text-white disabled:opacity-40"
-            >
-              Accept
-            </button>
-            <button
-              onClick={() => void mutate("", "PATCH", { action: "REJECT" })}
-              disabled={busy}
-              className="rounded border border-zinc-300 px-2 py-1 text-zinc-600 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-300"
-            >
-              Reject
-            </button>
+            <button title={draftDirty ? "Save description and due date before accepting" : undefined} onClick={() => void mutate("", "PATCH", { action: "ACCEPT" })} disabled={busy || draftDirty} className="rounded bg-emerald-700 px-2 py-1 text-white disabled:opacity-40">Accept</button>
+            <button onClick={() => void mutate("", "PATCH", { action: "REJECT" })} disabled={busy} className="rounded border border-zinc-300 px-2 py-1 text-zinc-600 disabled:opacity-40 dark:border-zinc-600 dark:text-zinc-300">Reject</button>
           </>
         )}
-        {candidate.reviewState === "ACCEPTED" && (
-          <button
-            onClick={() => void mutate("/publish", "POST")}
-            disabled={busy}
-            className="flex items-center gap-1 rounded bg-zinc-900 px-2 py-1 text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
-          >
-            <Check className="h-3 w-3" /> Publish to Action Items
+        {candidate.reviewState === "ACCEPTED" && taskEligible && !showPreview && (
+          <button onClick={() => setShowPreview(true)} disabled={busy} className="flex items-center gap-1 rounded bg-zinc-900 px-2 py-1 text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900">
+            <Check className="h-3 w-3" /> Review final task preview
           </button>
         )}
-        {candidate.reviewState === "PUBLISHED" && (
-          <span className="text-emerald-700 dark:text-emerald-300">
-            Published{candidate.publishedActionItem ? ` as Action Item #${candidate.publishedActionItem.id}` : ""}
-          </span>
-        )}
+        {candidate.reviewState === "ACCEPTED" && !taskEligible && <span className="text-amber-700 dark:text-amber-300">Retained as transcript context; this type cannot publish independently.</span>}
+        {candidate.reviewState === "PUBLISHED" && (candidate.publishedActionItem ? (
+          <a href={`/bids/${bidId}?tab=tasks`} className="font-medium text-emerald-700 underline dark:text-emerald-300">Open published Action Item #{candidate.publishedActionItem.id}</a>
+        ) : <span className="text-emerald-700 dark:text-emerald-300">Published to Action Items</span>)}
       </div>
+      {showPreview && candidate.reviewState === "ACCEPTED" && taskEligible && (
+        <div className="space-y-3 rounded border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/20">
+          <div>
+            <p className="font-semibold text-zinc-800 dark:text-zinc-200">Final task preview</p>
+            <p className="mt-1 text-zinc-700 dark:text-zinc-300">{candidate.draftText}</p>
+            <p className="mt-1 text-[11px] text-zinc-500">Due {candidate.dueDate ? new Date(candidate.dueDate).toLocaleDateString() : "date not set"}. Evidence remains linked and immutable.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Assignment confirmation</label>
+              <select value={assignmentChoice} onChange={(event) => setAssignmentChoice(event.target.value as "unset" | "named" | "unassigned")} className="w-full rounded border border-zinc-300 bg-white p-2 dark:border-zinc-600 dark:bg-zinc-800">
+                <option value="unset">Choose assignment disposition…</option><option value="named">Named assignee</option><option value="unassigned">Explicitly unassigned</option>
+              </select>
+              {assignmentChoice === "named" && (
+                <>
+                  <input list={`participant-${candidate.id}`} value={assignee} onChange={(event) => setAssignee(event.target.value)} placeholder="Confirm a person’s name" className="w-full rounded border border-zinc-300 bg-white p-2 dark:border-zinc-600 dark:bg-zinc-800" />
+                  <datalist id={`participant-${candidate.id}`}>{participants.map((participant) => <option key={participant.id} value={participant.name}>{[participant.role, participant.company].filter(Boolean).join(" · ")}</option>)}</datalist>
+                </>
+              )}
+              <p className="text-[10px] text-zinc-500">{candidate.speakerLabel} is transcript evidence, not a verified person.</p>
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Priority</label>
+              <select value={priority} onChange={(event) => setPriority(event.target.value)} className="mt-1 w-full rounded border border-zinc-300 bg-white p-2 dark:border-zinc-600 dark:bg-zinc-800">{["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((value) => <option key={value} value={value}>{value}</option>)}</select>
+            </div>
+          </div>
+          <p className="text-[11px] text-zinc-700 dark:text-zinc-300">Publishing is a human-confirmed action. Review the task fields above before continuing.</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => void publish()} disabled={busy || assignmentChoice === "unset" || (assignmentChoice === "named" && !assignee.trim())} className="rounded bg-emerald-700 px-3 py-1.5 text-white disabled:opacity-40">Confirm and publish to Action Items</button>
+            <button onClick={() => setShowPreview(false)} disabled={busy} className="rounded border border-zinc-300 px-3 py-1.5 dark:border-zinc-600">Back</button>
+          </div>
+        </div>
+      )}
       {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
     </article>
   );

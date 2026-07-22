@@ -27,7 +27,7 @@ const PRIORITY: Record<string, { color: string; bg: string; border: string }> = 
 const STATUS: Record<string, { color: string; bg: string; border: string; label: string }> = {
   OPEN:        { color: "var(--text-soft)",  bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.1)",  label: "OPEN" },
   IN_PROGRESS: { color: "#b8ceff",           bg: "rgba(126,167,255,0.1)",  border: "rgba(126,167,255,0.2)", label: "IN PROG" },
-  COMPLETED:   { color: "var(--signal-soft)", bg: "var(--signal-dim)",     border: "rgba(45,123,255,0.22)",  label: "DONE" },
+  CLOSED:      { color: "var(--signal-soft)", bg: "var(--signal-dim)",     border: "rgba(45,123,255,0.22)",  label: "CLOSED" },
   DEFERRED:    { color: "var(--text-dim)",   bg: "rgba(255,255,255,0.03)", border: "rgba(255,255,255,0.08)", label: "DEFER" },
 };
 
@@ -51,6 +51,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"open" | "all" | "closed">("open");
   const [showNew, setShowNew] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // New task draft
   const [desc, setDesc] = useState("");
@@ -61,12 +62,19 @@ export default function TasksTab({ bidId }: { bidId: number }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const statusParam = filter === "all" ? "" : `?status=${filter}`;
-    const sep = statusParam ? "&" : "?";
-    const res = await fetch(`/api/tasks${statusParam}${sep}bidId=${bidId}`, { cache: "no-store" });
-    const data = await res.json();
-    setTasks(Array.isArray(data) ? data : data.tasks ?? []);
-    setLoading(false);
+    setError(null);
+    try {
+      const statusParam = filter === "all" ? "" : `?status=${filter}`;
+      const sep = statusParam ? "&" : "?";
+      const res = await fetch(`/api/tasks${statusParam}${sep}bidId=${bidId}`, { cache: "no-store" });
+      const data = await res.json() as { error?: string; tasks?: Task[] } | Task[];
+      if (!res.ok) throw new Error(!Array.isArray(data) && data.error ? data.error : "Unable to load action items");
+      setTasks(Array.isArray(data) ? data : data.tasks ?? []);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load action items");
+    } finally {
+      setLoading(false);
+    }
   }, [bidId, filter]);
 
   useEffect(() => {
@@ -77,44 +85,56 @@ export default function TasksTab({ bidId }: { bidId: number }) {
   async function createTask() {
     if (!desc.trim()) return;
     setSaving(true);
-    await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bidId,
-        description: desc.trim(),
-        assignedToName: assignee.trim() || null,
-        dueDate: dueDate || null,
-        priority,
-        source: "manual",
-        isGcTask: true,
-      }),
-    });
-    setDesc(""); setAssignee(""); setDueDate(""); setPriority("MEDIUM");
-    setSaving(false);
-    setShowNew(false);
-    load();
+    setError(null);
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bidId, description: desc.trim(), assignedToName: assignee.trim() || null, dueDate: dueDate || null, priority, source: "manual", isGcTask: true }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Unable to create action item");
+      setDesc(""); setAssignee(""); setDueDate(""); setPriority("MEDIUM");
+      setShowNew(false);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to create action item");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function toggleStatus(t: Task) {
-    const next = t.status === "COMPLETED" ? "OPEN" : "COMPLETED";
-    await fetch(`/api/tasks/${t.id}`, {
+    const next = t.status === "CLOSED" ? "OPEN" : "CLOSED";
+    setError(null);
+    const response = await fetch(`/api/tasks/${t.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: next }),
     });
-    load();
+    const result = await response.json() as { error?: string };
+    if (!response.ok) {
+      setError(result.error ?? "Unable to update action item");
+      return;
+    }
+    await load();
   }
 
   async function deleteTask(t: Task) {
     if (!confirm(`Delete action item "${t.description}"?`)) return;
-    await fetch(`/api/tasks/${t.id}`, { method: "DELETE" });
-    load();
+    setError(null);
+    const response = await fetch(`/api/tasks/${t.id}`, { method: "DELETE" });
+    const result = await response.json() as { error?: string };
+    if (!response.ok) {
+      setError(result.error ?? "Unable to delete action item");
+      return;
+    }
+    await load();
   }
 
   return (
     <div className="flex flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-[20px] font-[700] tracking-[-0.03em]" style={{ color: "var(--text)" }}>Action Items</h2>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--text-soft)" }}>
@@ -147,13 +167,15 @@ export default function TasksTab({ bidId }: { bidId: number }) {
         </div>
       </div>
 
+      {error && <p role="alert" className="rounded border border-red-500/30 px-3 py-2 text-xs" style={{ color: "var(--red)", background: "var(--red-dim)" }}>{error}</p>}
+
       {showNew && (
         <div className="border border-[var(--line)] rounded-[var(--radius)] p-4 flex flex-col gap-2.5"
           style={{ background: "rgba(45,123,255,0.03)" }}>
           <input value={desc} onChange={(e) => setDesc(e.target.value)}
             placeholder="What needs to be done?"
             className={inputCls} style={inputStyle} autoFocus />
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid gap-2 sm:grid-cols-3">
             <input value={assignee} onChange={(e) => setAssignee(e.target.value)}
               placeholder="Assignee" className={inputCls} style={inputStyle} />
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
@@ -186,9 +208,9 @@ export default function TasksTab({ bidId }: { bidId: number }) {
           No {filter !== "all" ? filter : ""} action items for this project.
         </div>
       ) : (
-        <div className="border border-[var(--line)] rounded-[var(--radius)] overflow-hidden"
+        <div className="overflow-x-auto border border-[var(--line)] rounded-[var(--radius)]"
           style={{ background: "linear-gradient(180deg,rgba(17,21,28,0.96),rgba(12,15,21,0.98))" }}>
-          <table className="w-full border-collapse">
+          <table className="min-w-[760px] w-full border-collapse">
             <thead>
               <tr>
                 {["", "Action Item", "Assigned", "Priority", "Due", "Status", ""].map((h, i) => (
@@ -204,7 +226,7 @@ export default function TasksTab({ bidId }: { bidId: number }) {
                 const pri = PRIORITY[t.priority] ?? PRIORITY.MEDIUM;
                 const st  = STATUS[t.status]    ?? STATUS.OPEN;
                 const due = fmtDue(t.dueDate);
-                const isDone = t.status === "COMPLETED";
+                const isDone = t.status === "CLOSED";
                 return (
                   <tr key={t.id} className="gwx-tr border-b border-[var(--line)] last:border-b-0">
                     <td className="px-3 py-3 w-[36px]">

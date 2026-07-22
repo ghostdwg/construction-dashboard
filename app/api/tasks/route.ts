@@ -11,11 +11,23 @@
 //   Body: { bidId, description, assignedToName?, dueDate?, priority?, notes? }
 
 import { prisma } from "@/lib/prisma";
+import { bidScopeFilter, requireBidAccess, requireUser } from "@/lib/auth-helpers";
+import {
+  emitRegisterAuditPostCommit,
+  writeRegisterAuditTx,
+} from "@/lib/services/meetingRegister/txAudit";
 
 const VALID_STATUSES = new Set(["OPEN", "IN_PROGRESS", "CLOSED", "DEFERRED"]);
 const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 
 export async function GET(request: Request) {
+  let user;
+  try {
+    user = await requireUser();
+  } catch (thrown) {
+    if (thrown instanceof Response) return thrown;
+    throw thrown;
+  }
   const { searchParams } = new URL(request.url);
   const statusParam  = searchParams.get("status");
   const priorityParam = searchParams.get("priority");
@@ -26,7 +38,7 @@ export async function GET(request: Request) {
   const now = new Date();
 
   // Build where clause
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { bid: bidScopeFilter(user) };
 
   if (statusParam && statusParam !== "all") {
     if (!VALID_STATUSES.has(statusParam.toUpperCase()))
@@ -43,7 +55,10 @@ export async function GET(request: Request) {
 
   if (bidIdParam) {
     const bid = parseInt(bidIdParam, 10);
-    if (!isNaN(bid)) where.bidId = bid;
+    if (!Number.isInteger(bid) || bid <= 0) {
+      return Response.json({ error: "Invalid bidId" }, { status: 400 });
+    }
+    where.bidId = bid;
   }
 
   if (sourceParam !== "all") {
@@ -110,6 +125,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  try {
+    await requireUser();
+  } catch (thrown) {
+    if (thrown instanceof Response) return thrown;
+    throw thrown;
+  }
   const body = await request.json().catch(() => null) as {
     bidId?: number;
     description?: string;
@@ -122,24 +143,41 @@ export async function POST(request: Request) {
   if (!body?.bidId || !body.description?.trim())
     return Response.json({ error: "bidId and description are required" }, { status: 400 });
 
-  const bid = await prisma.bid.findUnique({ where: { id: body.bidId }, select: { id: true } });
-  if (!bid) return Response.json({ error: "Bid not found" }, { status: 404 });
+  const access = await requireBidAccess(body.bidId);
+  if (!access.ok) return access.response;
 
   const priority = body.priority?.toUpperCase();
 
-  const item = await prisma.meetingActionItem.create({
-    data: {
-      bidId:         body.bidId,
-      meetingId:     null,
-      source:        "manual",
-      description:   body.description.trim(),
-      assignedToName: body.assignedToName?.trim() ?? null,
-      dueDate:       body.dueDate ? new Date(body.dueDate) : null,
-      priority:      VALID_PRIORITIES.has(priority ?? "") ? priority! : "MEDIUM",
-      status:        "OPEN",
-      notes:         body.notes?.trim() ?? null,
-    },
+  const dueDate = body.dueDate ? new Date(body.dueDate) : null;
+  if (dueDate && Number.isNaN(dueDate.getTime())) {
+    return Response.json({ error: "Invalid dueDate" }, { status: 400 });
+  }
+  let envelope = null;
+  const item = await prisma.$transaction(async (tx) => {
+    const created = await tx.meetingActionItem.create({
+      data: {
+        bidId: body.bidId!,
+        meetingId: null,
+        source: "manual",
+        description: body.description!.trim(),
+        assignedToName: body.assignedToName?.trim() ?? null,
+        dueDate,
+        priority: VALID_PRIORITIES.has(priority ?? "") ? priority! : "MEDIUM",
+        status: "OPEN",
+        notes: body.notes?.trim() ?? null,
+      },
+    });
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "meeting_action_item_created",
+      decision: "manual_task_created",
+      subjectKind: "MeetingActionItem",
+      subjectId: created.id,
+      actor: { id: access.user.id },
+      payload: { bidId: body.bidId, source: "manual" },
+    });
+    return created;
   });
+  emitRegisterAuditPostCommit(envelope);
 
   return Response.json({ ok: true, id: item.id }, { status: 201 });
 }

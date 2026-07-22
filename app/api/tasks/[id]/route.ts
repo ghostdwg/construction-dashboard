@@ -3,11 +3,17 @@
 //   Automatically sets or clears closedAt when the status changes.
 //
 // DELETE /api/tasks/[id]
-//   Deletes task. Works on any task (meeting-sourced or manual).
+//   Deletes non-Meeting-Intelligence tasks. Published intelligence evidence
+//   is retained and must be closed or deferred instead.
 
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess, requireUser } from "@/lib/auth-helpers";
+import {
+  emitRegisterAuditPostCommit,
+  writeRegisterAuditTx,
+} from "@/lib/services/meetingRegister/txAudit";
 
 const VALID_STATUSES = new Set(["OPEN", "IN_PROGRESS", "CLOSED", "DEFERRED"]);
 const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
@@ -64,6 +70,12 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
+    await requireUser();
+  } catch (thrown) {
+    if (thrown instanceof Response) return thrown;
+    throw thrown;
+  }
   const { id } = await params;
   const taskId = parseInt(id, 10);
   if (isNaN(taskId)) {
@@ -72,11 +84,22 @@ export async function PATCH(
 
   const existing = await prisma.meetingActionItem.findUnique({
     where: { id: taskId },
-    select: { id: true, status: true, closedAt: true },
+    select: {
+      id: true,
+      bidId: true,
+      status: true,
+      closedAt: true,
+      assignedToName: true,
+      dueDate: true,
+      priority: true,
+      notes: true,
+    },
   });
   if (!existing) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
+  const access = await requireBidAccess(existing.bidId);
+  if (!access.ok) return access.response;
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== "object") {
@@ -155,11 +178,41 @@ export async function PATCH(
     return Response.json({ error: "No valid fields to update" }, { status: 400 });
   }
 
-  const item = await prisma.meetingActionItem.update({
-    where: { id: taskId },
-    data,
-    include: taskInclude,
+  let envelope = null;
+  const item = await prisma.$transaction(async (tx) => {
+    const updated = await tx.meetingActionItem.update({
+      where: { id: taskId },
+      data,
+      include: taskInclude,
+    });
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "meeting_action_item_updated",
+      decision: "task_fields_updated",
+      subjectKind: "MeetingActionItem",
+      subjectId: taskId,
+      actor: { id: access.user.id },
+      payload: {
+        bidId: existing.bidId,
+        fields: Object.keys(data),
+        before: {
+          assignedToName: existing.assignedToName,
+          dueDate: existing.dueDate?.toISOString() ?? null,
+          priority: existing.priority,
+          notesPresent: Boolean(existing.notes),
+          status: existing.status,
+        },
+        after: {
+          assignedToName: updated.assignedToName,
+          dueDate: updated.dueDate?.toISOString() ?? null,
+          priority: updated.priority,
+          notesPresent: Boolean(updated.notes),
+          status: updated.status,
+        },
+      },
+    });
+    return updated;
   });
+  emitRegisterAuditPostCommit(envelope);
 
   return Response.json({ ok: true, item: shapeTaskItem(item) });
 }
@@ -168,6 +221,12 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
+    await requireUser();
+  } catch (thrown) {
+    if (thrown instanceof Response) return thrown;
+    throw thrown;
+  }
   const { id } = await params;
   const taskId = parseInt(id, 10);
   if (isNaN(taskId)) {
@@ -176,12 +235,32 @@ export async function DELETE(
 
   const existing = await prisma.meetingActionItem.findUnique({
     where: { id: taskId },
-    select: { id: true },
+    select: { id: true, bidId: true, sourceMeetingIntelligenceCandidateId: true },
   });
   if (!existing) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
+  const access = await requireBidAccess(existing.bidId);
+  if (!access.ok) return access.response;
+  if (existing.sourceMeetingIntelligenceCandidateId != null) {
+    return Response.json(
+      { error: "Meeting Intelligence tasks retain publication evidence and cannot be deleted; use CLOSED or DEFERRED" },
+      { status: 409 },
+    );
+  }
 
-  await prisma.meetingActionItem.delete({ where: { id: taskId } });
+  let envelope = null;
+  await prisma.$transaction(async (tx) => {
+    await tx.meetingActionItem.delete({ where: { id: taskId } });
+    envelope = await writeRegisterAuditTx(tx, {
+      action: "meeting_action_item_deleted",
+      decision: "non_intelligence_task_deleted",
+      subjectKind: "MeetingActionItem",
+      subjectId: taskId,
+      actor: { id: access.user.id },
+      payload: { bidId: existing.bidId },
+    });
+  });
+  emitRegisterAuditPostCommit(envelope);
   return Response.json({ ok: true });
 }
