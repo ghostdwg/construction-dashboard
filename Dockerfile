@@ -42,6 +42,19 @@ ENV NEXTAUTH_URL="https://neuroglitch.ai"
 
 RUN npm run build
 
+# Bundle the governed staging fixture CLI into a single runtime artifact. The
+# standalone Next.js image intentionally omits source TypeScript and dev-only
+# tsx tooling, so the operator CLI is compiled separately and invoked with
+# plain Node inside the app container.
+RUN npx esbuild scripts/meeting-intelligence-staging-fixture.ts \
+  --bundle \
+  --platform=node \
+  --format=esm \
+  --target=node20 \
+  --outfile=/app/meeting-intelligence-staging-fixture.mjs \
+  --external:@prisma/client \
+  --external:@prisma/adapter-libsql
+
 # Stage 3: Production runtime
 FROM node:20-alpine AS runner
 RUN apk add --no-cache openssl curl
@@ -61,6 +74,10 @@ LABEL org.opencontainers.image.revision="${IMAGE_REVISION}" \
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Runtime mirror of the immutable OCI revision label. The staging-only
+# fixture CLI compares this exact full SHA with the operator-supplied expected
+# revision before it imports Prisma or opens a database connection.
+ENV APP_IMAGE_REVISION="${IMAGE_REVISION}"
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
@@ -84,6 +101,7 @@ COPY --from=builder /app/node_modules/@prisma/adapter-libsql ./node_modules/@pri
 # pattern as the other trace-gap packages above.
 COPY --from=builder /app/node_modules/pdfjs-dist ./node_modules/pdfjs-dist
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/meeting-intelligence-staging-fixture.mjs ./scripts/meeting-intelligence-staging-fixture.mjs
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
