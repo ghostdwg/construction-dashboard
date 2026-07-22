@@ -105,6 +105,7 @@ describe("POST /api/bids/[id]/meetings/[meetingId]/source-mapping", () => {
   beforeEach(() => {
     resetDb();
     vi.clearAllMocks();
+    vi.stubEnv("LEGACY_TRANSCRIPTION_ENABLED", "true");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ transcriptionJobId: "job-1", source: "HYBRID" }), { status: 200 }))
@@ -112,7 +113,36 @@ describe("POST /api/bids/[id]/meetings/[meetingId]/source-mapping", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+  });
+
+  test("missing legacy gate returns a disabled state before request parsing, data changes, storage reads, or Sidecar work", async () => {
+    delete process.env.LEGACY_TRANSCRIPTION_ENABLED;
+    db.meeting = {
+      id: 9,
+      bidId: 1,
+      status: "AWAITING_SOURCE_MAP",
+      speakerMapping: null,
+      audioFileName: "recording.wav",
+      audioStorageKey: "uploads/meetings/9/recording.wav",
+      vttContent: "WEBVTT",
+    };
+    const request = makeRequest();
+    const jsonSpy = vi.spyOn(request, "json");
+
+    const { POST } = await import("../route");
+    const res = await POST(request, routeParams);
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({
+      code: "LEGACY_TRANSCRIPTION_DISABLED",
+      state: "disabled",
+    });
+    expect(jsonSpy).not.toHaveBeenCalled();
+    expect(db.updates).toEqual([]);
+    expect(readMeetingStorageBufferMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   test("resolves the new column via readMeetingStorageBuffer when audioStorageKey is present — never falls back to fs.readFile", async () => {

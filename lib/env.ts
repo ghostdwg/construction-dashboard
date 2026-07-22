@@ -44,6 +44,8 @@ const schema = z.object({
   AUTH_SECRET:         z.string().min(32),
   ANTHROPIC_API_KEY:   z.string().startsWith('sk-ant-'),
   SIDECAR_API_KEY:     z.string().default(''),
+  LEGACY_TRANSCRIPTION_ENABLED: z.enum(['true', 'false']).default('false'),
+  LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED: z.enum(['true', 'false']).default('false'),
   NEXTAUTH_URL:        z.string().url().default('http://localhost:3000'),
   ALLOW_PROD_DB:       z.string().default(''),
 }).superRefine((env, ctx) => {
@@ -54,6 +56,19 @@ const schema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['SIDECAR_API_KEY'],
       message: 'SIDECAR_API_KEY is required outside local development',
+    })
+  }
+
+  if (
+    env.LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED === 'true' &&
+    env.LEGACY_TRANSCRIPTION_ENABLED !== 'true'
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED'],
+      message:
+        'LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED=true requires ' +
+        'LEGACY_TRANSCRIPTION_ENABLED=true',
     })
   }
 

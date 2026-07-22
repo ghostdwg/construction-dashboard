@@ -21,6 +21,10 @@ import {
   failJob,
   findJobByExternalId,
 } from "@/lib/services/jobs/backgroundJobService";
+import {
+  isLegacyTranscriptionEnabled,
+  legacyTranscriptionDisabledResponse,
+} from "@/lib/services/meetings/legacyTranscriptionPolicy";
 
 const SIDECAR_URL = process.env.SIDECAR_URL ?? "http://127.0.0.1:8001";
 
@@ -162,6 +166,10 @@ export async function GET(
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
 
+  if (!isLegacyTranscriptionEnabled()) {
+    return legacyTranscriptionDisabledResponse();
+  }
+
   let headers: Record<string, string>;
   try {
     headers = sidecarHeaders();
@@ -287,9 +295,8 @@ export async function GET(
     );
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Sidecar error" }));
       return Response.json(
-        { error: (err as { detail?: string }).detail },
+        { error: "Transcription service unavailable" },
         { status: 502 }
       );
     }
@@ -313,9 +320,12 @@ export async function GET(
       if (!failed.value.won) return authoritativeStatus(bidId, mId);
       await finishTrackedJob(realJobId, bidId, {
         status: "failed",
-        error: data.error ?? "Transcription error",
+        error: "Transcription service reported failure",
       });
-      return Response.json({ status: "FAILED", error: data.error });
+      return Response.json({
+        status: "FAILED",
+        error: "Transcription service reported failure",
+      });
     }
 
     if (!isHybrid) {
@@ -443,7 +453,7 @@ export async function GET(
       "code" in err &&
       err.code === "BACKGROUND_JOB_RECONCILIATION_REQUIRED"
     ) {
-      console.error("[meeting-status] durable BackgroundJob reconciliation required", err);
+      console.error("[meeting-status] durable BackgroundJob reconciliation required");
       return Response.json(
         {
           error: "Transcription result committed, but durable job reconciliation is required",
@@ -453,6 +463,9 @@ export async function GET(
         { status: 503 }
       );
     }
-    return Response.json({ error: String(err) }, { status: 502 });
+    return Response.json(
+      { error: "Transcription status processing failed" },
+      { status: 502 },
+    );
   }
 }

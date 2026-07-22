@@ -18,6 +18,10 @@ from typing import Optional
 import httpx
 
 from services import ai_gateway
+from services.legacy_transcription_policy import (
+    external_transcription_enabled,
+    legacy_transcription_enabled,
+)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +50,17 @@ def _whisperx_headers() -> dict[str, str]:
     raise RuntimeError("WHISPERX_API_KEY is required outside local/test mode")
 
 _analysis_rules: Optional[str] = None
+
+
+def _require_legacy_transcription_permission() -> None:
+    if not legacy_transcription_enabled():
+        raise ValueError("Legacy transcription processing is disabled")
+
+
+def _require_external_transcription_permission() -> None:
+    _require_legacy_transcription_permission()
+    if not external_transcription_enabled():
+        raise ValueError("External transcription processing is disabled")
 
 
 def _load_analysis_rules() -> str:
@@ -102,6 +117,7 @@ async def upload_audio_to_assemblyai(audio_bytes: bytes) -> str:
     Upload raw audio bytes to AssemblyAI's CDN.
     Returns the upload_url to pass to submit_assemblyai_job().
     """
+    _require_external_transcription_permission()
     if not ASSEMBLYAI_API_KEY:
         raise ValueError("ASSEMBLYAI_API_KEY not configured in sidecar/.env")
 
@@ -122,6 +138,7 @@ async def submit_assemblyai_job(upload_url: str) -> str:
     Submit a transcription job with speaker diarization enabled.
     Returns the AssemblyAI transcript_id for subsequent status polling.
     """
+    _require_external_transcription_permission()
     if not ASSEMBLYAI_API_KEY:
         raise ValueError("ASSEMBLYAI_API_KEY not configured in sidecar/.env")
 
@@ -157,6 +174,7 @@ async def poll_assemblyai_status(transcript_id: str) -> dict:
         "durationSeconds": int, "participants": list }
       { "status": "error", "error": str }
     """
+    _require_external_transcription_permission()
     if not ASSEMBLYAI_API_KEY:
         raise ValueError("ASSEMBLYAI_API_KEY not configured in sidecar/.env")
 
@@ -224,6 +242,7 @@ async def submit_whisperx_job(
     Worker contract: POST /transcribe with multipart field 'audio', returns
     {"jobId": "..."}.
     """
+    _require_legacy_transcription_permission()
     if not WHISPERX_URL:
         raise ValueError("WHISPERX_URL not configured")
 
@@ -250,6 +269,7 @@ async def poll_whisperx_status(job_id: str) -> dict:
     contain the flat transcript/participant payload expected by Next.js.
     A 404 means the worker restarted and lost its in-memory job record.
     """
+    _require_legacy_transcription_permission()
     if not WHISPERX_URL:
         return {"status": "error", "error": "WHISPERX_URL not configured"}
 

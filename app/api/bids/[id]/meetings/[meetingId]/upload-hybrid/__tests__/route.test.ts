@@ -112,10 +112,12 @@ describe("POST /api/bids/[id]/meetings/[meetingId]/upload-hybrid", () => {
   beforeEach(() => {
     resetDb();
     vi.clearAllMocks();
+    vi.stubEnv("LEGACY_TRANSCRIPTION_ENABLED", "true");
     db.meeting = { id: 9, bidId: 1, status: "PENDING", audioFileName: null, audioStorageKey: null };
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 

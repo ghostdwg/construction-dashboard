@@ -27,6 +27,10 @@ import {
   emitRegisterAuditPostCommit,
   writeRegisterAuditTx,
 } from "@/lib/services/meetingRegister/txAudit";
+import {
+  isLegacyTranscriptionEnabled,
+  legacyTranscriptionDisabledResponse,
+} from "@/lib/services/meetings/legacyTranscriptionPolicy";
 
 export async function POST(
   request: Request,
@@ -40,6 +44,10 @@ export async function POST(
 
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
+
+  if (!isLegacyTranscriptionEnabled()) {
+    return legacyTranscriptionDisabledResponse();
+  }
 
   // Reject frozen meetings before multipart parsing or BlobStore activity.
   const preflight = await meetingTranscriptMutationGate(prisma, mId, bidId);
