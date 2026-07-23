@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { bidScopeFilter, getUser } from "@/lib/auth-helpers";
 import QuickPushButton from "./QuickPushButton";
 import ProjectContextBar from "./ProjectContextBar";
 import TradesTab from "./TradesTab";
@@ -30,6 +31,9 @@ import OperationsRegisterTab from "./OperationsRegisterTab";
 import WarrantiesTab from "./WarrantiesTab";
 import TrainingTab from "./TrainingTab";
 import InspectionsTab from "./InspectionsTab";
+import SpecSectionsTab from "./SpecSectionsTab";
+import SpecRequirementsTab from "./SpecRequirementsTab";
+import SpecVersionsTab from "./SpecVersionsTab";
 import CloseoutTab from "./CloseoutTab";
 import JobHistoryPanel from "./JobHistoryPanel";
 import MeetingActionsPanel from "./MeetingActionsPanel";
@@ -99,8 +103,11 @@ export default async function BidDetailPage({
 
   if (isNaN(bidId)) notFound();
 
-  const bid = await prisma.bid.findUnique({
-    where: { id: bidId },
+  const user = await getUser();
+  if (!user) redirect(`/login?callbackUrl=${encodeURIComponent(`/bids/${bidId}`)}`);
+
+  const bid = await prisma.bid.findFirst({
+    where: { id: bidId, ...bidScopeFilter(user) },
     include: {
       bidTrades: { include: { trade: true }, orderBy: { id: "asc" } },
       selections: {
@@ -535,6 +542,21 @@ export default async function BidDetailPage({
           {tab === "inspections" && (
             <TabErrorBoundary tabName="Inspections">
               <InspectionsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "spec-sections" && (
+            <TabErrorBoundary tabName="Spec Sections">
+              <SpecSectionsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "spec-requirements" && (
+            <TabErrorBoundary tabName="Spec Requirements">
+              <SpecRequirementsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "spec-addenda" && (
+            <TabErrorBoundary tabName="Spec Addenda and Versions">
+              <SpecVersionsTab bidId={bid.id} />
             </TabErrorBoundary>
           )}
           {tab === "closeout" && (

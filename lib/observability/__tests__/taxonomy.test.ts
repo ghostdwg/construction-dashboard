@@ -68,16 +68,17 @@ describe("severity ranking", () => {
 });
 
 describe("category + severity completeness", () => {
-  test("25 categories registered", () => {
+  test("26 categories registered", () => {
     // Bumped from 21 for P2-A0's "ai_prompt_scan", from 22 for OPS1's
     // "register_action", from 23 for OPS3 Phase 1A's "consultant_report"
     // (consultant report/observation/formal-response mutations), then from
     // 24 for "pursuit_promotion" (Market Intelligence → Pursuit promotion —
-    // taxonomy.ts).
-    expect(AUDIT_CATEGORIES.length).toBe(25);
+    // taxonomy.ts), then 26 for Card 1A's "spec_requirement".
+    expect(AUDIT_CATEGORIES.length).toBe(26);
     expect(AUDIT_CATEGORIES).toContain("register_action");
     expect(AUDIT_CATEGORIES).toContain("consultant_report");
     expect(AUDIT_CATEGORIES).toContain("pursuit_promotion");
+    expect(AUDIT_CATEGORIES).toContain("spec_requirement");
   });
 
   test("6 severities registered", () => {

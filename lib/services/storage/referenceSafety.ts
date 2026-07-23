@@ -9,6 +9,10 @@ import {
   deleteAddendumStoragePath,
 } from "@/lib/services/addendums/storagePath";
 import {
+  classifyStoragePath,
+  deleteStoragePath,
+} from "@/lib/services/specbook/storagePath";
+import {
   classifyMeetingStoragePath,
   deleteMeetingStoragePath,
 } from "@/lib/services/meetings/storagePath";
@@ -105,6 +109,48 @@ export async function deleteAddendumStorageIfUnreferenced(
     return false;
   }
   await deleteAddendumStoragePath(ref, bidId);
+  return true;
+}
+
+export async function deleteSpecStorageIfUnreferenced(
+  ref: string,
+  bidId: number,
+): Promise<boolean> {
+  const target = storageIdentity(ref, classifyStoragePath(ref, bidId));
+  if (!target) return false;
+  const [books, sections, evidence] = await Promise.all([
+    prisma.specBook.findMany({ select: { bidId: true, filePath: true } }),
+    prisma.specSection.findMany({
+      where: { pdfPath: { not: null } },
+      select: { pdfPath: true, specBook: { select: { bidId: true } } },
+    }),
+    prisma.specSectionEvidenceRevision.findMany({
+      where: { pdfPath: { not: null } },
+      select: { bidId: true, pdfPath: true },
+    }),
+  ]);
+  const references = [
+    ...books.map((row) => ({ bidId: row.bidId, ref: row.filePath })),
+    ...sections
+      .filter((row): row is typeof row & { pdfPath: string } => row.pdfPath !== null)
+      .map((row) => ({ bidId: row.specBook.bidId, ref: row.pdfPath })),
+    ...evidence
+      .filter((row): row is typeof row & { pdfPath: string } => row.pdfPath !== null)
+      .map((row) => ({ bidId: row.bidId, ref: row.pdfPath })),
+  ];
+  if (
+    references.some((row) =>
+      protectsTarget(
+        row.ref,
+        storageIdentity(row.ref, classifyStoragePath(row.ref, row.bidId)),
+        ref,
+        target,
+      ),
+    )
+  ) {
+    return false;
+  }
+  await deleteStoragePath(ref, bidId);
   return true;
 }
 

@@ -1,11 +1,21 @@
 import path from "path";
+import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getBlobStore } from "@/lib/storage/blobStore";
+import { requireBidAccess } from "@/lib/auth-helpers";
+import {
+  getBlobStore,
+  safeBlobFileName,
+  type PutResult,
+} from "@/lib/storage/blobStore";
 import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
 import { triggerBriefRefresh } from "@/lib/services/jobs/briefRefreshAutomation";
 import { documentAutomationStatus } from "@/lib/services/settings/documentAutomation";
 import { env } from "@/lib/env";
+import { specRevisionStorageKey } from "@/lib/services/specbook/storagePath";
+import { deleteSpecStorageIfUnreferenced } from "@/lib/services/storage/referenceSafety";
+import { appendSectionEvidenceTx } from "@/lib/services/specEvidence/evidence";
 // isAdminAuthorized (lib/auth.ts) is imported dynamically below, only inside
 // the storage-smoke gate branch — this route is on the hot path for every
 // spec book upload, and lib/auth.ts pulls in the full next-auth module graph.
@@ -35,9 +45,7 @@ import { env } from "@/lib/env";
 // calls during a credential rotation.
 //
 //   a. Authenticated ADMIN session (reuses lib/auth.ts's isAdminAuthorized(),
-//      the same helper every /api/settings/* admin route already uses — this
-//      route itself has no other auth check; see proxy.ts, which only
-//      enforces admin-only for /settings pages, not API routes).
+//      in addition to the route's parent-Bid access guard).
 //   b. The caller sent the non-secret intent marker header below. Non-secret
 //      because it grants no authority by itself — it is intent, not
 //      authorization. The other three conditions are what make this safe.
@@ -181,19 +189,19 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   // ── Storage-only smoke gate — see module doc above for the full 4-condition
-  // contract. Checked FIRST, before any read/write below, because any request
+  // contract. Checked immediately after parent-Bid authorization and before
+  // any route-local read/write below, because any request
   // carrying the marker header is an EXPLICIT storage-smoke attempt and must
   // NEVER be allowed to silently fall through into normal (real-provider-
   // calling) automation just because one of the other three conditions isn't
   // met — that silent fallthrough is exactly the gap this gate closes. A
-  // reject here happens before prisma.bid.findUnique, before BlobStore.put,
-  // and before prisma.specBook.create, so none of the reject branches below
-  // can ever leave a DB row or blob behind.
-  //
-  // Cheapest, non-auth checks first, so the default (no marker header)
-  // request path — the overwhelming majority of traffic — pays for nothing
-  // beyond a single header read and short-circuits immediately.
+  // reject here happens before the route's bid/trade queries, BlobStore.put,
+  // and prisma.specBook.create, so none of the reject branches below can
+  // ever leave a DB row or blob behind.
   const storageSmokeRequested = request.headers.get(STORAGE_SMOKE_HEADER) === "1";
   let suppressAutomationForStorageSmoke = false;
 
@@ -250,26 +258,107 @@ export async function POST(
     return Response.json({ error: "Only PDF files are accepted" }, { status: 400 });
   }
 
-  // Persist the original PDF through BlobStore — one canonical key per bid,
-  // overwritten on re-upload (there is only ever one active spec book/bid).
+  // Every upload receives a collision-safe immutable key. A corrected or even
+  // byte-identical re-upload appends a source revision; it never overwrites
+  // the bytes cited by an earlier effective manifest.
   const buffer = Buffer.from(await file.arrayBuffer());
-  const storageKey = `plan-room/jobs/${bidId}/spec/original.pdf`;
-  await getBlobStore().put(storageKey, buffer);
+  const immutableId = randomUUID();
+  const storageKey = specRevisionStorageKey(
+    bidId,
+    immutableId,
+    safeBlobFileName(file.name),
+  );
+  const store = getBlobStore();
+  let stored: PutResult;
+  try {
+    stored = await store.put(storageKey, buffer, { contentType: "application/pdf" });
+  } catch (err) {
+    console.error("[specbook/upload] blob write failed:", err);
+    return Response.json({ error: "Storage write failed — file not saved" }, { status: 500 });
+  }
 
-  // Delete any existing spec book for this bid (sections cascade via onDelete: Cascade)
-  await prisma.specBook.deleteMany({ where: { bidId } });
-
-  // Create SpecBook record as processing
-  const specBook = await prisma.specBook.create({
-    data: { bidId, fileName: file.name, filePath: storageKey, status: "processing" },
-  });
+  let specBook;
+  try {
+    let committed = null;
+    for (let attempt = 0; attempt < 3 && !committed; attempt += 1) {
+      try {
+        committed = await prisma.$transaction(async (tx) => {
+          const [active, latest] = await Promise.all([
+            tx.specBook.findFirst({
+              where: { bidId, activeSlot: 1 },
+              select: { id: true, revisionIndex: true },
+            }),
+            tx.specBook.findFirst({
+              where: { bidId },
+              orderBy: [{ revisionIndex: "desc" }, { uploadedAt: "desc" }, { id: "desc" }],
+              select: { id: true, revisionIndex: true },
+            }),
+          ]);
+          const prior = active ?? latest;
+          const revisionIndex = (latest?.revisionIndex ?? 0) + 1;
+          if (prior) {
+            await tx.specBook.update({
+              where: { id: prior.id },
+              data: {
+                revisionIndex: prior.revisionIndex ?? 0,
+                effectiveState: "SUPERSEDED",
+                activeSlot: null,
+              },
+            });
+          }
+          return tx.specBook.create({
+            data: {
+              bidId,
+              fileName: file.name,
+              filePath: storageKey,
+              status: "processing",
+              revisionIndex,
+              effectiveState: "EFFECTIVE",
+              effectiveAt: new Date(),
+              effectiveBy: access.user.id,
+              supersedesSpecBookId: prior?.id ?? null,
+              sha256: stored.sha256,
+              byteSize: stored.size,
+              mimeType: stored.contentType ?? "application/pdf",
+              immutableId,
+              activeSlot: 1,
+            },
+          });
+        });
+      } catch (error) {
+        const conflict =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          (error as { code?: unknown }).code === "P2002";
+        if (!conflict || attempt === 2) throw error;
+      }
+    }
+    if (!committed) throw new Error("Spec revision allocation failed");
+    specBook = committed;
+  } catch (err) {
+    await deleteSpecStorageIfUnreferenced(storageKey, bidId).catch(() => undefined);
+    console.error("[specbook/upload] database revision append failed:", err);
+    return Response.json(
+      { error: "Spec revision could not be recorded — upload rolled back" },
+      { status: 500 },
+    );
+  }
 
   // Extract text and parse sections
   try {
     // Try sidecar first (PyMuPDF4LLM — handles large files, better table extraction)
     const sidecarResult = await parsePdfViaSidecar(buffer, file.name);
 
-    let sections: Array<{ csiNumber: string; csiTitle: string; rawText: string; aiExtractions?: string }>;
+    let sections: Array<{
+      csiNumber: string;
+      csiTitle: string;
+      rawText: string;
+      aiExtractions?: string;
+      pageStart?: number | null;
+      pageEnd?: number | null;
+      pageCount?: number | null;
+    }>;
 
     if (sidecarResult && sidecarResult.sections.length > 0) {
       console.log(`[specbook/upload] sidecar parsed ${sidecarResult.sections.length} sections`);
@@ -277,6 +366,9 @@ export async function POST(
         csiNumber: s.section_number || s.csi || "",
         csiTitle: s.title,
         rawText: s.raw_text,
+        pageStart: s.page_start,
+        pageEnd: s.page_end,
+        pageCount: s.page_count,
       }));
     } else {
       // Fallback: pdfjs-dist (in-process, may struggle with large files)
@@ -284,27 +376,41 @@ export async function POST(
       sections = await parsePdfFallback(buffer);
     }
 
-    // Create all sections in one batch using three-state matching
+    // Store both the compatibility SpecSection projection and its immutable
+    // evidence revision/paragraphs in one transaction.
     if (sections.length > 0) {
-      await prisma.specSection.createMany({
-        data: sections.map((s) => {
+      await prisma.$transaction(async (tx) => {
+        for (const s of sections) {
           const { tradeId, matchedTradeId } = matchSectionThreeState(
             s.csiNumber,
             allTrades,
             bidTradeIds
           );
-          return {
-            specBookId: specBook.id,
-            csiNumber: s.csiNumber,
-            csiTitle: s.csiTitle,
+          const section = await tx.specSection.create({
+            data: {
+              specBookId: specBook.id,
+              csiNumber: s.csiNumber,
+              csiTitle: s.csiTitle,
+              rawText: s.rawText,
+              source: "specbook",
+              tradeId,
+              matchedTradeId,
+              covered: tradeId !== null,
+              aiExtractions: s.aiExtractions ?? null,
+              pageStart: s.pageStart ?? null,
+              pageEnd: s.pageEnd ?? null,
+              pageCount: s.pageCount ?? null,
+            },
+          });
+          await appendSectionEvidenceTx(tx as unknown as Prisma.TransactionClient, {
+            bidId,
+            specSectionId: section.id,
             rawText: s.rawText,
-            source: "specbook",
-            tradeId,
-            matchedTradeId,
-            covered: tradeId !== null,
-            aiExtractions: s.aiExtractions ?? null,
-          };
-        }),
+            pageStart: s.pageStart ?? null,
+            pageEnd: s.pageEnd ?? null,
+            pageCount: s.pageCount ?? null,
+          });
+        }
       });
     }
 
@@ -353,14 +459,39 @@ export async function POST(
     const message = err instanceof Error ? err.message : String(err);
     console.error("[POST /api/bids/:id/specbook/upload] parse error:", err);
 
-    // Mark as error — may fail if a concurrent upload already deleted this record
+    // Retain the failed immutable attempt, but do not leave it occupying the
+    // active source slot. Restore the prior source only when this revision is
+    // still active; a newer concurrent upload always wins.
     try {
-      await prisma.specBook.update({
-        where: { id: specBook.id },
-        data: { status: "error" },
+      await prisma.$transaction(async (tx) => {
+        const released = await tx.specBook.updateMany({
+          where: { id: specBook.id, activeSlot: 1 },
+          data: {
+            status: "error",
+            effectiveState: "VOID",
+            activeSlot: null,
+          },
+        });
+        if (released.count === 0) {
+          await tx.specBook.update({
+            where: { id: specBook.id },
+            data: { status: "error" },
+          });
+          return;
+        }
+        if (specBook.supersedesSpecBookId !== null) {
+          await tx.specBook.update({
+            where: { id: specBook.supersedesSpecBookId },
+            data: {
+              effectiveState: "EFFECTIVE",
+              activeSlot: 1,
+            },
+          });
+        }
       });
     } catch {
-      // Record already gone (concurrent upload replaced it) — ignore
+      // A newer revision can win this race. Evidence retention is still safe;
+      // leave recovery to the next explicit revision/backfill operation.
     }
 
     return Response.json({ error: message }, { status: 422 });

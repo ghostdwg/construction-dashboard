@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { autoPopulateBidSubs } from "@/lib/services/autoPopulateBidSubs";
 import { Prisma } from "@prisma/client";
 
@@ -17,6 +18,17 @@ export async function PATCH(
 
   if (isNaN(bidId) || isNaN(secId)) {
     return Response.json({ error: "Invalid id" }, { status: 400 });
+  }
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
+  const existingSection = await prisma.specSection.findFirst({
+    where: { id: secId, specBook: { bidId } },
+    select: { id: true },
+  });
+  if (!existingSection) {
+    return Response.json({ error: "Section not found" }, { status: 404 });
   }
 
   const body = await request.json();

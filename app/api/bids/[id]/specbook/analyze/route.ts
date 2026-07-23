@@ -2,6 +2,8 @@ import {
   triggerSpecAnalysis,
   TriggerError,
 } from "@/lib/services/jobs/specAnalysisAutomation";
+import { requireBidAccess } from "@/lib/auth-helpers";
+import { prisma } from "@/lib/prisma";
 
 // POST /api/bids/[id]/specbook/analyze
 // Submits already-split sections (from /specbook/split) to the sidecar for
@@ -18,6 +20,9 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const body = (await request.json().catch(() => ({}))) as { tier?: number };
   const tier = [1, 2, 3].includes(body.tier ?? 0) ? body.tier! : 2;
@@ -61,9 +66,18 @@ export async function GET(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   const url = new URL(request.url);
   const jobId = url.searchParams.get("jobId");
   if (!jobId) return Response.json({ error: "jobId required" }, { status: 400 });
+
+  const job = await prisma.backgroundJob.findFirst({
+    where: { externalJobId: jobId, bidId, jobType: "spec_analysis" },
+    select: { id: true },
+  });
+  if (!job) return Response.json({ error: "Job not found" }, { status: 404 });
 
   try {
     const headers: Record<string, string> = {};

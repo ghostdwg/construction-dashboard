@@ -10,6 +10,8 @@ const REPAIR_MIGRATION = "20260718030000_r2b2_trade_response_reviewer_repairs";
 const BASE_RETENTION_MIGRATION = "20260718024444_r2_release_blocker_retention";
 const MEETING_INTELLIGENCE_MIGRATION = "20260721010000_meeting_intelligence_v1_foundation";
 const MEETING_INTELLIGENCE_WORKER_MIGRATION = "20260721020000_meeting_intelligence_v2_local_worker";
+const SPEC_SOURCE_REVISIONS_MIGRATION = "20260723010000_spec_source_revisions";
+const SPEC_EVIDENCE_FOUNDATION_MIGRATION = "20260723020000_spec_evidence_foundation";
 const LEGACY_REVIEWED_AT = "2026-07-17T18:30:00.000Z";
 const LEGACY_COMMENTARY = "Pre-repair detailed reviewer commentary";
 const LEGACY_REVIEWER = "legacy-gc-reviewer";
@@ -34,10 +36,7 @@ async function applyPreIntegrationMigrations(databaseUrl: string): Promise<void>
     .filter(
       (entry) =>
         entry.isDirectory() &&
-        entry.name !== BASE_RETENTION_MIGRATION &&
-        entry.name !== REPAIR_MIGRATION &&
-        entry.name !== MEETING_INTELLIGENCE_MIGRATION &&
-        entry.name !== MEETING_INTELLIGENCE_WORKER_MIGRATION
+        entry.name < BASE_RETENTION_MIGRATION
     )
     .map((entry) => entry.name)
     .sort();
@@ -45,7 +44,7 @@ async function applyPreIntegrationMigrations(databaseUrl: string): Promise<void>
   // accepted forward migrations in their integrated order. This proves the
   // base-retention table rebuild does not erase trade review evidence before
   // the trade repair backfills it.
-  expect(migrations).toHaveLength(99);
+  expect(migrations.at(-1)).toBe("20260718010000_r2b2_trade_response_packages");
   expect(migrations).toContain("20260718010000_r2b2_trade_response_packages");
   const client = createClient({ url: databaseUrl });
   try {
@@ -121,16 +120,30 @@ afterAll(async () => {
   if (testDir) await rm(testDir, { recursive: true, force: true });
 });
 
-describe.sequential("R2 Build 2 integrated 99-to-103 migration", () => {
+describe.sequential("R2 Build 2 integrated 99-to-105 migration", () => {
   test("backfills legacy review evidence and links the next correction", async () => {
     const applied = await db.$queryRawUnsafe<Array<{ migration_name: string }>>(
       'SELECT "migration_name" FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL ORDER BY "migration_name"'
     );
-    expect(applied).toHaveLength(103);
-    expect(applied.at(-1)?.migration_name).toBe(MEETING_INTELLIGENCE_WORKER_MIGRATION);
-    expect(applied.at(-2)?.migration_name).toBe(MEETING_INTELLIGENCE_MIGRATION);
-    expect(applied.at(-3)?.migration_name).toBe(REPAIR_MIGRATION);
-    expect(applied.at(-4)?.migration_name).toBe(BASE_RETENTION_MIGRATION);
+    // Index-relative tail verification: the base-retention (99) and trade repair
+    // (100) migrations keep their fixed positions, and the Meeting Intelligence
+    // (101, 102) and Spec evidence (103, 104) tracks append in order after them.
+    // Zero-based indices; the integrated tail spans migrations 101-105.
+    expect(applied.length).toBeGreaterThanOrEqual(105);
+    const names = applied.map((row) => String(row.migration_name));
+    expect(names.indexOf(BASE_RETENTION_MIGRATION)).toBe(99);
+    expect(names.indexOf(REPAIR_MIGRATION)).toBe(100);
+    expect(names.indexOf(MEETING_INTELLIGENCE_MIGRATION)).toBe(101);
+    expect(names.indexOf(MEETING_INTELLIGENCE_WORKER_MIGRATION)).toBe(102);
+    expect(names.indexOf(SPEC_SOURCE_REVISIONS_MIGRATION)).toBe(103);
+    expect(names.indexOf(SPEC_EVIDENCE_FOUNDATION_MIGRATION)).toBe(104);
+    expect(names.slice(-5)).toEqual([
+      REPAIR_MIGRATION,
+      MEETING_INTELLIGENCE_MIGRATION,
+      MEETING_INTELLIGENCE_WORKER_MIGRATION,
+      SPEC_SOURCE_REVISIONS_MIGRATION,
+      SPEC_EVIDENCE_FOUNDATION_MIGRATION,
+    ]);
 
     const before = await db.tradeResponseReviewDecision.findMany({ orderBy: { id: "asc" } });
     expect(before).toHaveLength(1);

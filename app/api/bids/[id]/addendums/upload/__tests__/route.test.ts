@@ -20,10 +20,14 @@ type AddendumRow = {
   storageKey: string | null;
   status: string;
   extractedText?: string;
+  revisionIndex?: number | null;
+  effectiveState?: string | null;
+  activeSlot?: number | null;
 };
 
 const db = {
   bidExists: true,
+  authStatus: 200,
   rows: new Map<number, AddendumRow>(),
   counter: 0,
   briefUpdateManyArgs: null as unknown,
@@ -32,6 +36,7 @@ const db = {
 
 function resetDb() {
   db.bidExists = true;
+  db.authStatus = 200;
   db.rows.clear();
   db.counter = 0;
   db.briefUpdateManyArgs = null;
@@ -45,6 +50,15 @@ vi.mock("@/lib/prisma", () => {
       findUnique: vi.fn(async () => (db.bidExists ? { id: 1 } : null)),
     },
     addendumUpload: {
+      findFirst: vi.fn(async ({ where }: { where: { bidId: number; addendumNumber: number; activeSlot?: number } }) => {
+        const rows = [...db.rows.values()].filter(
+          (row) =>
+            row.bidId === where.bidId &&
+            row.addendumNumber === where.addendumNumber &&
+            (where.activeSlot === undefined || row.activeSlot === where.activeSlot),
+        );
+        return rows.at(-1) ?? null;
+      }),
       findMany: vi.fn(async () =>
         Array.from(db.rows.values()).map(({ bidId, storageKey }) => ({ bidId, storageKey })),
       ),
@@ -90,11 +104,17 @@ vi.mock("@/lib/prisma", () => {
 });
 
 vi.mock("@/lib/auth-helpers", () => ({
-  requireBidAccess: vi.fn(async () =>
-    db.bidExists
+  requireBidAccess: vi.fn(async () => {
+    if (db.authStatus === 401) {
+      return { ok: false, response: Response.json({ error: "Authentication required" }, { status: 401 }) };
+    }
+    if (db.authStatus === 403) {
+      return { ok: false, response: Response.json({ error: "Forbidden" }, { status: 403 }) };
+    }
+    return db.bidExists
       ? { ok: true, user: { id: "u1", role: "admin" } }
-      : { ok: false, response: Response.json({ error: "Not found" }, { status: 404 }) },
-  ),
+      : { ok: false, response: Response.json({ error: "Not found" }, { status: 404 }) };
+  }),
 }));
 
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
@@ -149,6 +169,20 @@ describe("POST /api/bids/[id]/addendums/upload", () => {
     vi.unstubAllGlobals();
   });
 
+  test("anonymous upload is rejected before form parsing, PDF parsing, or BlobStore write", async () => {
+    db.authStatus = 401;
+    const request = uploadRequest(1);
+    const formDataSpy = vi.spyOn(request, "formData");
+
+    const { POST } = await import("../route");
+    const res = await POST(request, routeParams);
+
+    expect(res.status).toBe(401);
+    expect(formDataSpy).not.toHaveBeenCalled();
+    expect(blobPutMock).not.toHaveBeenCalled();
+    expect(db.rows.size).toBe(0);
+  });
+
   test("persists through BlobStore under the production-matching relative key, storing ONLY that relative key in storageKey", async () => {
     const { POST } = await import("../route");
     const res = await POST(uploadRequest(1, "Addendum #2.pdf"), routeParams);
@@ -172,7 +206,7 @@ describe("POST /api/bids/[id]/addendums/upload", () => {
     expect(db.briefUpdateManyArgs).toEqual({ where: { bidId: 1 }, data: { isStale: true } });
   });
 
-  test("same-number upload replaces atomically with a collision-safe key", async () => {
+  test("same-number upload appends atomically with a collision-safe key", async () => {
     const { POST } = await import("../route");
     const first = await POST(uploadRequest(2, "same.pdf"), routeParams);
     const firstId = (await first.json()).id as number;
@@ -183,8 +217,10 @@ describe("POST /api/bids/[id]/addendums/upload", () => {
 
     expect(second.status).toBe(201);
     expect(secondKey).not.toBe(firstKey);
-    expect(db.rows.has(firstId)).toBe(false);
-    expect(blobData.has(firstKey)).toBe(false);
+    expect(db.rows.has(firstId)).toBe(true);
+    expect(db.rows.get(firstId)?.effectiveState).toBe("SUPERSEDED");
+    expect(db.rows.get(firstId)?.activeSlot).toBeNull();
+    expect(blobData.has(firstKey)).toBe(true);
   });
 
   test("database failure preserves the prior record and cleans the new orphan", async () => {

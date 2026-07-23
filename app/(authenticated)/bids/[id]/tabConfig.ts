@@ -4,6 +4,7 @@ export type TabKey =
   | "questions" | "leveling" | "activity"
   | "handoff" | "submittals" | "schedule" | "meetings" | "tasks" | "briefing" | "procore"
   | "warranties" | "training" | "inspections" | "closeout"
+  | "spec-sections" | "spec-requirements" | "spec-addenda"
   | "operations";
 
 export const PURSUIT_KEYS = new Set<TabKey>([
@@ -33,6 +34,7 @@ export const CLOSEOUT_KEYS = new Set<TabKey>([
 // from the execution surfaces above.
 export const REFERENCE_KEYS = new Set<TabKey>([
   "warranties", "training", "inspections",
+  "spec-sections", "spec-requirements", "spec-addenda",
 ]);
 
 export const PURSUIT_SUBTABS: { key: TabKey; label: string }[] = [
@@ -66,6 +68,9 @@ export const CLOSEOUT_SUBTABS: { key: TabKey; label: string }[] = [
 ];
 
 export const REFERENCE_SUBTABS: { key: TabKey; label: string }[] = [
+  { key: "spec-sections",     label: "SECTIONS"            },
+  { key: "spec-requirements", label: "REQUIREMENTS"        },
+  { key: "spec-addenda",      label: "ADDENDA / VERSIONS"  },
   { key: "warranties",  label: "WARRANTIES"  },
   { key: "training",    label: "TRAINING"    },
   { key: "inspections", label: "INSPECTIONS" },

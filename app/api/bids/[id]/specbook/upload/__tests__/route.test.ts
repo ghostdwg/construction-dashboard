@@ -11,10 +11,30 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+const compensationMock = vi.hoisted(() => vi.fn(async () => true));
+
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({
+    ok: true,
+    user: { id: "u1", role: "admin" },
+  })),
+}));
+
 // ── Prisma mock — enough surface for the upload route's happy + error paths ──
 
-type SpecBookRow = { id: number; bidId: number; fileName: string; filePath: string; status: string };
+type SpecBookRow = {
+  id: number;
+  bidId: number;
+  fileName: string;
+  filePath: string;
+  status: string;
+  revisionIndex?: number | null;
+  effectiveState?: string | null;
+  activeSlot?: number | null;
+  supersedesSpecBookId?: number | null;
+};
 type SpecSectionRow = {
+  id: number;
   specBookId: number;
   csiNumber: string;
   csiTitle: string;
@@ -30,19 +50,23 @@ const db = {
   bidTrades: [{ tradeId: 10 }] as Array<{ tradeId: number }>,
   specBooks: new Map<number, SpecBookRow>(),
   specBookCounter: 0,
+  sectionCounter: 0,
   sections: [] as SpecSectionRow[],
+  transactionFailure: false,
 };
 
 function resetDb() {
   db.bidExists = true;
   db.specBooks.clear();
   db.specBookCounter = 0;
+  db.sectionCounter = 0;
   db.sections = [];
+  db.transactionFailure = false;
   blobData.clear();
 }
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const client = {
     // Q03.2b: the route consults the persisted Admin automation setting;
     // no row = default OFF, which is what these storage-mechanics tests want
     // (automation side effects are separately covered in storageSmoke.test.ts).
@@ -57,7 +81,10 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(async () => db.bidTrades),
     },
     specBook: {
-      deleteMany: vi.fn(async () => ({ count: 0 })),
+      findFirst: vi.fn(async ({ where }: { where: { activeSlot?: number } }) => {
+        const rows = [...db.specBooks.values()];
+        return rows.find((row) => where.activeSlot === undefined || row.activeSlot === where.activeSlot) ?? null;
+      }),
       create: vi.fn(async ({ data }: { data: Omit<SpecBookRow, "id"> }) => {
         db.specBookCounter += 1;
         const row: SpecBookRow = { id: db.specBookCounter, ...data };
@@ -70,24 +97,59 @@ vi.mock("@/lib/prisma", () => ({
         Object.assign(row, data);
         return { ...row, _count: { sections: db.sections.filter((s) => s.specBookId === where.id).length } };
       }),
+      updateMany: vi.fn(async ({
+        where,
+        data,
+      }: {
+        where: { id: number; activeSlot?: number };
+        data: Partial<SpecBookRow>;
+      }) => {
+        const row = db.specBooks.get(where.id);
+        if (!row || (where.activeSlot !== undefined && row.activeSlot !== where.activeSlot)) {
+          return { count: 0 };
+        }
+        Object.assign(row, data);
+        return { count: 1 };
+      }),
     },
     specSection: {
-      createMany: vi.fn(async ({ data }: { data: SpecSectionRow[] }) => {
-        db.sections.push(...data);
-        return { count: data.length };
+      create: vi.fn(async ({ data }: { data: Omit<SpecSectionRow, "id"> }) => {
+        db.sectionCounter += 1;
+        const row = { id: db.sectionCounter, ...data };
+        db.sections.push(row);
+        return row;
       }),
       count: vi.fn(async ({ where }: { where: { specBookId: number; covered: boolean } }) =>
         db.sections.filter((s) => s.specBookId === where.specBookId && s.covered === where.covered).length
       ),
     },
-  },
-}));
+    specSectionEvidenceRevision: {
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: 1, revisionIndex: 1, textSha256: "section-sha" })),
+      findUniqueOrThrow: vi.fn(async () => ({ id: 1, revisionIndex: 1, textSha256: "section-sha" })),
+    },
+    specParagraph: { createMany: vi.fn(async () => ({ count: 1 })) },
+  };
+  return {
+    prisma: {
+      ...client,
+      $transaction: vi.fn(async (callback: (tx: typeof client) => unknown) => {
+        if (db.transactionFailure) throw new Error("synthetic transaction failure");
+        return callback(client);
+      }),
+    },
+  };
+});
 
 // ── AI/provider side-effect mocks — must never fire on a failed parse ───────
 
 const generateBidIntelligenceMock = vi.fn(async () => ({ findingCount: 0, coverage: 0 }));
 vi.mock("@/app/api/bids/[id]/intelligence/generate/route", () => ({
   generateBidIntelligence: generateBidIntelligenceMock,
+}));
+
+vi.mock("@/lib/services/storage/referenceSafety", () => ({
+  deleteSpecStorageIfUnreferenced: compensationMock,
 }));
 
 const triggerBriefRefreshMock = vi.fn(async () => undefined);
@@ -131,6 +193,8 @@ vi.mock("@/lib/storage/blobStore", () => ({
     stat: vi.fn(async () => null),
   }),
   localPathForKey: vi.fn((key: string) => `/storage/${key}`),
+  safeBlobFileName: (fileName: string) =>
+    fileName.replace(/[^A-Za-z0-9._() -]/g, "_"),
 }));
 
 // ── Minimal synthetic single-page PDF, built with byte-exact xref offsets ───
@@ -224,10 +288,69 @@ describe("POST /api/bids/[id]/specbook/upload", () => {
 
     // Persisted through BlobStore under the canonical, safe relative key —
     // never a raw /app/uploads filesystem write.
-    expect(blobPutMock).toHaveBeenCalledWith("plan-room/jobs/1/spec/original.pdf", expect.any(Buffer));
-    expect(db.specBooks.get(1)?.filePath).toBe("plan-room/jobs/1/spec/original.pdf");
+    expect(blobPutMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^plan-room\/jobs\/1\/spec\/[0-9a-f-]{36}\/specbook\.pdf$/),
+      expect.any(Buffer),
+      { contentType: "application/pdf" },
+    );
+    expect(db.specBooks.get(1)?.filePath).toMatch(
+      /^plan-room\/jobs\/1\/spec\/[0-9a-f-]{36}\/specbook\.pdf$/,
+    );
     expect(fsMkdirMock).not.toHaveBeenCalled();
     expect(fsWriteFileMock).not.toHaveBeenCalled();
+  });
+
+  test("same-file re-upload appends a new source revision and retains both immutable keys", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          sections: [
+            {
+              section_number: "03 30 00",
+              title: "CAST-IN-PLACE CONCRETE",
+              raw_text: "retained evidence",
+              page_start: 1,
+              page_end: 1,
+              page_count: 1,
+              table_count: 0,
+            },
+          ],
+        }),
+      ),
+    );
+    const { POST } = await import("../route");
+    const pdf = buildMinimalPdf("same");
+    expect((await POST(uploadRequest(pdf), routeParams)).status).toBe(201);
+    expect((await POST(uploadRequest(pdf), routeParams)).status).toBe(201);
+
+    const revisions = [...db.specBooks.values()];
+    expect(revisions).toHaveLength(2);
+    expect(revisions.map((row) => row.revisionIndex)).toEqual([1, 2]);
+    expect(revisions[0]).toMatchObject({
+      effectiveState: "SUPERSEDED",
+      activeSlot: null,
+    });
+    expect(revisions[1]).toMatchObject({
+      effectiveState: "EFFECTIVE",
+      activeSlot: 1,
+    });
+    expect(revisions[0].filePath).not.toBe(revisions[1].filePath);
+    expect(blobData.has(revisions[0].filePath)).toBe(true);
+    expect(blobData.has(revisions[1].filePath)).toBe(true);
+  });
+
+  test("compensates only the just-written immutable blob when metadata commit fails", async () => {
+    db.transactionFailure = true;
+    const { POST } = await import("../route");
+    const response = await POST(uploadRequest(buildMinimalPdf("failure")), routeParams);
+
+    expect(response.status).toBe(500);
+    expect(compensationMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^plan-room\/jobs\/1\/spec\/[0-9a-f-]{36}\/specbook\.pdf$/),
+      1,
+    );
+    expect(db.specBooks.size).toBe(0);
   });
 
   // ── C. Fallback behavior (success) ─────────────────────────────────────────
@@ -253,7 +376,11 @@ describe("POST /api/bids/[id]/specbook/upload", () => {
 
     // Still persisted through BlobStore, not the filesystem, even on the
     // fallback-parse path.
-    expect(blobPutMock).toHaveBeenCalledWith("plan-room/jobs/1/spec/original.pdf", expect.any(Buffer));
+    expect(blobPutMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^plan-room\/jobs\/1\/spec\/[0-9a-f-]{36}\/specbook\.pdf$/),
+      expect.any(Buffer),
+      { contentType: "application/pdf" },
+    );
     expect(fsMkdirMock).not.toHaveBeenCalled();
     expect(fsWriteFileMock).not.toHaveBeenCalled();
   });
@@ -280,6 +407,10 @@ describe("POST /api/bids/[id]/specbook/upload", () => {
     expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
 
     const specBook = db.specBooks.get(db.specBookCounter);
-    expect(specBook?.status).toBe("error");
+    expect(specBook).toMatchObject({
+      status: "error",
+      effectiveState: "VOID",
+      activeSlot: null,
+    });
   });
 });

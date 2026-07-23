@@ -1,7 +1,14 @@
+import { randomUUID } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { localPathForKey } from "@/lib/storage/blobStore";
+import { requireBidAccess } from "@/lib/auth-helpers";
+import { getBlobStore, localPathForKey } from "@/lib/storage/blobStore";
 import { lookupCanonicalTitles } from "@/lib/services/csi/canonicalTitle";
-import { resolveLocalPath } from "@/lib/services/specbook/storagePath";
+import {
+  resolveLocalPath,
+  specSectionStoragePrefix,
+} from "@/lib/services/specbook/storagePath";
+import { appendSectionEvidenceTx } from "@/lib/services/specEvidence/evidence";
 
 // POST /api/bids/[id]/specbook/split
 //
@@ -23,9 +30,25 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
-  const specBook = await prisma.specBook.findFirst({
-    where: { bidId, status: "ready" },
-    orderBy: { uploadedAt: "desc" },
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
+  let specBook = await prisma.specBook.findFirst({
+    where: { bidId, status: "ready", activeSlot: 1 },
+    orderBy: [{ revisionIndex: "desc" }, { uploadedAt: "desc" }],
+  });
+
+  // Rows created before source versioning have no active-slot marker. They
+  // remain splittable until the explicit bid-scoped backfill assigns revision
+  // zero and publishes the first effective set.
+  specBook ??= await prisma.specBook.findFirst({
+    where: {
+      bidId,
+      status: "ready",
+      revisionIndex: null,
+      activeSlot: null,
+    },
+    orderBy: [{ uploadedAt: "desc" }, { id: "desc" }],
   });
 
   if (!specBook) {
@@ -46,7 +69,11 @@ export async function POST(
   // mount — both containers mount the same durable root at the same
   // absolute path, so what the sidecar writes here is already at its final
   // BlobStore-relative location; no extra copy through BlobStore.put needed.
-  const sectionsKeyPrefix = `plan-room/jobs/${bidId}/spec/sections`;
+  const sectionsKeyPrefix = specSectionStoragePrefix(
+    bidId,
+    specBook.immutableId ?? `specbook-${specBook.id}`,
+    randomUUID(),
+  );
   const outputDir = localPathForKey(sectionsKeyPrefix);
 
   // Call sidecar split endpoint
@@ -112,39 +139,82 @@ export async function POST(
       data.sections.map((s) => ({ csiNumber: s.csi, docTitle: s.title }))
     );
 
-    // Delete all existing sections (they're regex-parsed junk) and replace
-    // with the properly-split ones
-    await prisma.specSection.deleteMany({
+    const existingSections = await prisma.specSection.findMany({
       where: { specBookId: specBook.id },
+      orderBy: { id: "asc" },
     });
+    const availableByCsi = new Map<string, typeof existingSections>();
+    for (const section of existingSections) {
+      const rows = availableByCsi.get(section.csiNumber) ?? [];
+      rows.push(section);
+      availableByCsi.set(section.csiNumber, rows);
+    }
 
-    // Create new sections with pdfPath + page ranges + canonical titles
-    const created = await prisma.specSection.createMany({
-      data: data.sections.map((s) => {
+    // SpecSection remains the compatibility projection. Every split appends
+    // immutable section evidence and paragraph rows; prior source bytes and
+    // evidence are never deleted or overwritten.
+    let createdCount = 0;
+    await prisma.$transaction(async (tx) => {
+      for (const s of data.sections) {
         const match = matchTrade(s.csi);
-        return {
-          specBookId: specBook.id,
-          csiNumber: s.csi,
-          csiTitle: s.title,
-          csiCanonicalTitle: canonicalMap.get(s.csi.trim()) ?? null,
-          rawText: s.text.slice(0, 10000),
-          source: "split_pdf",
-          tradeId: match.tradeId,
-          matchedTradeId: match.matchedTradeId,
-          covered: match.tradeId !== null,
-          // Relative BlobStore key — never the sidecar's absolute pdf_path.
-          pdfPath: `${sectionsKeyPrefix}/${s.filename}`,
-          pdfFileName: s.filename,
+        const pdfPath = `${sectionsKeyPrefix}/${s.filename}`;
+        const text = s.text.slice(0, 10000);
+        const prior = availableByCsi.get(s.csi)?.shift();
+        const section = prior
+          ? await tx.specSection.update({
+              where: { id: prior.id },
+              data: {
+                csiTitle: s.title,
+                csiCanonicalTitle: canonicalMap.get(s.csi.trim()) ?? null,
+                rawText: text,
+                source: "split_pdf",
+                tradeId: match.tradeId,
+                matchedTradeId: match.matchedTradeId,
+                covered: match.tradeId !== null,
+                pdfPath,
+                pdfFileName: s.filename,
+                pageStart: s.page_start,
+                pageEnd: s.page_end,
+                pageCount: s.page_count,
+              },
+            })
+          : await tx.specSection.create({
+              data: {
+                specBookId: specBook.id,
+                csiNumber: s.csi,
+                csiTitle: s.title,
+                csiCanonicalTitle: canonicalMap.get(s.csi.trim()) ?? null,
+                rawText: text,
+                source: "split_pdf",
+                tradeId: match.tradeId,
+                matchedTradeId: match.matchedTradeId,
+                covered: match.tradeId !== null,
+                pdfPath,
+                pdfFileName: s.filename,
+                pageStart: s.page_start,
+                pageEnd: s.page_end,
+                pageCount: s.page_count,
+              },
+            });
+        if (!prior) createdCount += 1;
+        const stat = await getBlobStore().stat(pdfPath);
+        await appendSectionEvidenceTx(tx as unknown as Prisma.TransactionClient, {
+          bidId,
+          specSectionId: section.id,
+          rawText: text,
+          pdfPath,
+          pdfSha256: stat?.sha256 ?? null,
+          pdfByteSize: stat?.size ?? null,
           pageStart: s.page_start,
           pageEnd: s.page_end,
           pageCount: s.page_count,
-        };
-      }),
+        });
+      }
     });
 
     return Response.json({
       success: true,
-      sectionsCreated: created.count,
+      sectionsCreated: createdCount,
       sectionCount: data.section_count,
       canonicalMatches: canonicalMap.size,
     });

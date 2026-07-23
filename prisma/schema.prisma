@@ -134,63 +134,70 @@ model Bid {
   // Tier F F2 — Procore REST API
   procoreProjectId String?
 
-  bidTrades                     BidTrade[]
-  selections                    BidInviteSelection[]
-  exportBatches                 ExportBatch[]
-  scopeItems                    ScopeItem[]
-  aiExportBatches               AiExportBatch[]
-  gapFindings                   AiGapFinding[]
-  outreachLogs                  OutreachLog[]
-  estimateUploads               EstimateUpload[]
-  levelingSession               LevelingSession?
-  generatedQuestions            GeneratedQuestion[]
-  specBooks                     SpecBook[]
-  drawingUploads                DrawingUpload[]
-  addendums                     AddendumUpload[]
-  intelligenceBrief             BidIntelligenceBrief?
-  submission                    BidSubmission?
-  buyoutItems                   BuyoutItem[]
-  submittalItems                SubmittalItem[]
-  submittalPackages             SubmittalPackage[]
-  distributionTemplates         SubmittalDistributionTemplate[]
-  projectContacts               ProjectContact[]
-  scheduleActivities            ScheduleActivity[]
-  schedules                     Schedule[]
-  meetings                      Meeting[]
-  meetingActionItems            MeetingActionItem[]
-  decisions                     BidDecision[]
-  procorePushes                 ProcorePush[]
-  quickPushRuns                 QuickPushRun[]
-  rfiItems                      RfiItem[]
-  backgroundJobs                BackgroundJob[]
-  marketLeads                   MarketLead[]
-  trackedItems                  TrackedItem[]
-  fieldReports                  FieldReport[]
-  consultantReports             ConsultantReport[]
-  consultantReportRevisions     ConsultantReportRevision[]
-  consultantObservations        ConsultantObservation[]
-  consultantDispositions        ConsultantDispositionRecord[]
-  consultantStreamExports       ConsultantStreamExport[]
-  designIntentChanges           DesignIntentChange[]
-  meetingCommitments            MeetingCommitment[]
-  transcriptSegments            MeetingTranscriptSegment[]
-  transcriptCorrections         MeetingTranscriptCorrection[]
-  registerEntries               MeetingRegisterEntry[]
-  registerEntryRevisions        MeetingRegisterEntryRevision[]
-  extractionRuns                MeetingExtractionRun[]
-  minutesRevisions              MeetingMinutesRevision[]
-  meetingIntelligenceArtifacts  MeetingIntelligenceArtifact[]
-  meetingIntelligenceSegments   MeetingIntelligenceSegment[]
-  meetingIntelligenceCandidates MeetingIntelligenceCandidate[]
-  meetingIntelligenceWorkerJobs MeetingIntelligenceWorkerJob[]
-  reportObservations            ReportObservation[]
-  trackedItemTradeAssignments   TrackedItemTradeAssignment[]
-  responsePackages              ResponsePackage[]
-  responsePackageItems          ResponsePackageItem[]
-  tradeResponseRevisions        TradeResponseRevision[]
-  tradeResponseReviewDecisions  TradeResponseReviewDecision[]
-  tradeResponseAttachments      TradeResponseAttachment[]
-  responseAccessTokens          ResponseAccessToken[]
+  bidTrades                          BidTrade[]
+  selections                         BidInviteSelection[]
+  exportBatches                      ExportBatch[]
+  scopeItems                         ScopeItem[]
+  aiExportBatches                    AiExportBatch[]
+  gapFindings                        AiGapFinding[]
+  outreachLogs                       OutreachLog[]
+  estimateUploads                    EstimateUpload[]
+  levelingSession                    LevelingSession?
+  generatedQuestions                 GeneratedQuestion[]
+  specBooks                          SpecBook[]
+  specificationEffectiveSets         SpecificationEffectiveSet[]
+  specSectionEvidenceRevisions       SpecSectionEvidenceRevision[]
+  specParagraphs                     SpecParagraph[]
+  specCitations                      SpecCitation[]
+  specRequirementCandidates          SpecRequirementCandidate[]
+  specRequirementDecisions           SpecRequirementDecision[]
+  drawingUploads                     DrawingUpload[]
+  addendums                          AddendumUpload[]
+  intelligenceBrief                  BidIntelligenceBrief?
+  submission                         BidSubmission?
+  buyoutItems                        BuyoutItem[]
+  submittalItems                     SubmittalItem[]
+  submittalPackages                  SubmittalPackage[]
+  distributionTemplates              SubmittalDistributionTemplate[]
+  projectContacts                    ProjectContact[]
+  scheduleActivities                 ScheduleActivity[]
+  schedules                          Schedule[]
+  meetings                           Meeting[]
+  meetingActionItems                 MeetingActionItem[]
+  decisions                          BidDecision[]
+  procorePushes                      ProcorePush[]
+  quickPushRuns                      QuickPushRun[]
+  rfiItems                           RfiItem[]
+  backgroundJobs                     BackgroundJob[]
+  marketLeads                        MarketLead[]
+  trackedItems                       TrackedItem[]
+  fieldReports                       FieldReport[]
+  consultantReports                  ConsultantReport[]
+  consultantReportRevisions          ConsultantReportRevision[]
+  consultantObservations             ConsultantObservation[]
+  consultantDispositions             ConsultantDispositionRecord[]
+  consultantStreamExports            ConsultantStreamExport[]
+  designIntentChanges                DesignIntentChange[]
+  meetingCommitments                 MeetingCommitment[]
+  transcriptSegments                 MeetingTranscriptSegment[]
+  transcriptCorrections              MeetingTranscriptCorrection[]
+  registerEntries                    MeetingRegisterEntry[]
+  registerEntryRevisions             MeetingRegisterEntryRevision[]
+  extractionRuns                     MeetingExtractionRun[]
+  minutesRevisions                   MeetingMinutesRevision[]
+  meetingIntelligenceArtifacts       MeetingIntelligenceArtifact[]
+  meetingIntelligenceSegments        MeetingIntelligenceSegment[]
+  meetingIntelligenceCandidates      MeetingIntelligenceCandidate[]
+  meetingIntelligenceWorkerJobs      MeetingIntelligenceWorkerJob[]
+  reportObservations                 ReportObservation[]
+  trackedItemTradeAssignments        TrackedItemTradeAssignment[]
+  responsePackages                   ResponsePackage[]
+  responsePackageItems               ResponsePackageItem[]
+  tradeResponseRevisions             TradeResponseRevision[]
+  tradeResponseReviewDecisions       TradeResponseReviewDecision[]
+  tradeResponseAttachments           TradeResponseAttachment[]
+  responseAccessTokens               ResponseAccessToken[]
+  specificationEffectiveSetAddendums SpecificationEffectiveSetAddendum[]
 }
 
 model BidSubmission {
@@ -610,15 +617,35 @@ model LevelingRow {
 }
 
 model SpecBook {
-  id         Int      @id @default(autoincrement())
-  bidId      Int
-  fileName   String
-  filePath   String
-  uploadedAt DateTime @default(now())
-  status     String   @default("processing")
+  id                   Int       @id @default(autoincrement())
+  bidId                Int
+  fileName             String
+  filePath             String
+  uploadedAt           DateTime  @default(now())
+  status               String    @default("processing")
+  revisionIndex        Int?
+  issueLabel           String?
+  issueDate            DateTime?
+  effectiveState       String? // DRAFT | EFFECTIVE | SUPERSEDED | VOID
+  effectiveAt          DateTime?
+  effectiveBy          String?
+  supersedesSpecBookId Int?
+  sha256               String?
+  byteSize             Int?
+  mimeType             String?
+  immutableId          String?
+  activeSlot           Int?
 
-  bid      Bid           @relation(fields: [bidId], references: [id])
-  sections SpecSection[]
+  bid                   Bid                         @relation(fields: [bidId], references: [id])
+  sections              SpecSection[]
+  supersedesSpecBook    SpecBook?                   @relation("SpecBookSupersession", fields: [supersedesSpecBookId], references: [id], onDelete: SetNull)
+  supersededBySpecBooks SpecBook[]                  @relation("SpecBookSupersession")
+  effectiveSets         SpecificationEffectiveSet[]
+
+  @@unique([bidId, revisionIndex])
+  @@unique([bidId, activeSlot])
+  @@index([bidId, effectiveState])
+  @@index([supersedesSpecBookId])
 }
 
 model SpecSection {
@@ -646,11 +673,14 @@ model SpecSection {
   pageEnd     Int? // 1-indexed end page
   pageCount   Int?
 
-  specBook       SpecBook        @relation(fields: [specBookId], references: [id], onDelete: Cascade)
-  trade          Trade?          @relation("SpecSectionTrade", fields: [tradeId], references: [id])
-  matchedTrade   Trade?          @relation("MatchedSpecSection", fields: [matchedTradeId], references: [id])
-  submittalItems SubmittalItem[]
-  trackedItems   TrackedItem[]
+  specBook          SpecBook                      @relation(fields: [specBookId], references: [id], onDelete: Cascade)
+  trade             Trade?                        @relation("SpecSectionTrade", fields: [tradeId], references: [id])
+  matchedTrade      Trade?                        @relation("MatchedSpecSection", fields: [matchedTradeId], references: [id])
+  submittalItems    SubmittalItem[]
+  trackedItems      TrackedItem[]
+  evidenceRevisions SpecSectionEvidenceRevision[]
+
+  @@index([specBookId, csiNumber])
 }
 
 // Drawing uploads support two modes:
@@ -683,25 +713,229 @@ model DrawingUpload {
 }
 
 model AddendumUpload {
-  id               Int       @id @default(autoincrement())
-  bidId            Int
-  addendumNumber   Int
-  addendumDate     DateTime?
-  fileName         String
-  uploadedAt       DateTime  @default(now())
-  status           String    @default("processing")
-  extractedText    String?
-  deltaJson        String?
-  deltaGeneratedAt DateTime?
-  summary          String?
+  id                   Int       @id @default(autoincrement())
+  bidId                Int
+  addendumNumber       Int
+  addendumDate         DateTime?
+  fileName             String
+  uploadedAt           DateTime  @default(now())
+  status               String    @default("processing")
+  extractedText        String?
+  deltaJson            String?
+  deltaGeneratedAt     DateTime?
+  summary              String?
   // Relative BlobStore key for the durably-stored original PDF (added by the
   // artifact-durability work). Nullable — historic rows written before this
   // column existed have no on-disk reference at all (see
   // lib/services/addendums/storagePath.ts's module doc) and are left null,
   // never guessed at.
-  storageKey       String?
+  storageKey           String?
+  revisionIndex        Int?
+  effectiveState       String? // EFFECTIVE | SUPERSEDED | VOID
+  supersedesAddendumId Int?
+  sha256               String?
+  byteSize             Int?
+  mimeType             String?
+  immutableId          String?
+  activeSlot           Int?
 
-  bid Bid @relation(fields: [bidId], references: [id])
+  bid                 Bid                                 @relation(fields: [bidId], references: [id])
+  supersedesAddendum  AddendumUpload?                     @relation("AddendumSupersession", fields: [supersedesAddendumId], references: [id], onDelete: SetNull)
+  supersededByAddenda AddendumUpload[]                    @relation("AddendumSupersession")
+  effectiveSetEntries SpecificationEffectiveSetAddendum[]
+
+  @@unique([bidId, addendumNumber, revisionIndex])
+  @@unique([bidId, addendumNumber, activeSlot])
+  @@index([bidId, effectiveState])
+  @@index([supersedesAddendumId])
+}
+
+// The exact, human-published contract source: one immutable base revision plus
+// an explicitly ordered set of addendum revisions. "Latest upload" never
+// changes contractual effect.
+model SpecificationEffectiveSet {
+  id             Int       @id @default(autoincrement())
+  bidId          Int
+  versionNumber  Int
+  baseSpecBookId Int
+  status         String    @default("DRAFT") // DRAFT | PUBLISHED | SUPERSEDED
+  publishedBy    String?
+  publishedAt    DateTime?
+  supersedesId   Int?
+  manifestJson   String
+  manifestSha256 String
+  activeSlot     Int?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  bid          Bid                                 @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  baseSpecBook SpecBook                            @relation(fields: [baseSpecBookId], references: [id], onDelete: Restrict)
+  addenda      SpecificationEffectiveSetAddendum[]
+  supersedes   SpecificationEffectiveSet?          @relation("EffectiveSetSupersession", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy SpecificationEffectiveSet[]         @relation("EffectiveSetSupersession")
+  citations    SpecCitation[]
+  candidates   SpecRequirementCandidate[]
+
+  @@unique([bidId, versionNumber])
+  @@unique([bidId, activeSlot])
+  @@index([bidId, status])
+  @@index([baseSpecBookId])
+  @@index([supersedesId])
+}
+
+model SpecificationEffectiveSetAddendum {
+  id               Int @id @default(autoincrement())
+  bidId            Int
+  effectiveSetId   Int
+  addendumUploadId Int
+  ordinal          Int
+
+  bid            Bid                       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  effectiveSet   SpecificationEffectiveSet @relation(fields: [effectiveSetId], references: [id], onDelete: Cascade)
+  addendumUpload AddendumUpload            @relation(fields: [addendumUploadId], references: [id], onDelete: Restrict)
+
+  @@unique([effectiveSetId, addendumUploadId])
+  @@unique([effectiveSetId, ordinal])
+  @@index([bidId, effectiveSetId])
+  @@index([bidId, addendumUploadId])
+}
+
+// Immutable snapshots of section evidence. SpecSection remains the legacy
+// compatibility projection; citations resolve through these retained rows.
+model SpecSectionEvidenceRevision {
+  id                   Int      @id @default(autoincrement())
+  bidId                Int
+  specSectionId        Int
+  revisionIndex        Int
+  supersedesRevisionId Int?
+  rawText              String
+  textSha256           String
+  pdfPath              String?
+  pdfSha256            String?
+  pdfByteSize          Int?
+  pageStart            Int?
+  pageEnd              Int?
+  pageCount            Int?
+  createdAt            DateTime @default(now())
+
+  bid                   Bid                           @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  specSection           SpecSection                   @relation(fields: [specSectionId], references: [id], onDelete: Cascade)
+  supersedesRevision    SpecSectionEvidenceRevision?  @relation("SectionEvidenceSupersession", fields: [supersedesRevisionId], references: [id], onDelete: SetNull)
+  supersededByRevisions SpecSectionEvidenceRevision[] @relation("SectionEvidenceSupersession")
+  paragraphs            SpecParagraph[]
+  citations             SpecCitation[]
+
+  @@unique([specSectionId, revisionIndex])
+  @@index([bidId, specSectionId])
+  @@index([supersedesRevisionId])
+  @@index([textSha256])
+}
+
+model SpecParagraph {
+  id                        Int      @id @default(autoincrement())
+  bidId                     Int
+  sectionEvidenceRevisionId Int
+  ordinal                   Int
+  paragraphLabel            String
+  text                      String
+  pageNumber                Int?
+  pageEnd                   Int?
+  charStart                 Int
+  charEnd                   Int
+  textSha256                String
+  createdAt                 DateTime @default(now())
+
+  bid                     Bid                         @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  sectionEvidenceRevision SpecSectionEvidenceRevision @relation(fields: [sectionEvidenceRevisionId], references: [id], onDelete: Cascade)
+  citations               SpecCitation[]
+
+  @@unique([sectionEvidenceRevisionId, ordinal])
+  @@index([bidId, paragraphLabel])
+  @@index([sectionEvidenceRevisionId, pageNumber])
+  @@index([textSha256])
+}
+
+// Durable paragraph-level citation object. The excerpt and hash are frozen;
+// resolution may report unavailable source bytes but never silently relink.
+model SpecCitation {
+  id                        Int      @id @default(autoincrement())
+  bidId                     Int
+  effectiveSetId            Int
+  sectionEvidenceRevisionId Int
+  specParagraphId           Int?
+  sourceLocator             String
+  evidenceExcerpt           String
+  textSha256                String
+  extractionMethod          String   @default("manual")
+  extractorVersion          String?
+  confidence                Float?
+  citationVerified          Boolean  @default(false)
+  createdAt                 DateTime @default(now())
+
+  bid                     Bid                         @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  effectiveSet            SpecificationEffectiveSet   @relation(fields: [effectiveSetId], references: [id], onDelete: Restrict)
+  sectionEvidenceRevision SpecSectionEvidenceRevision @relation(fields: [sectionEvidenceRevisionId], references: [id], onDelete: Restrict)
+  specParagraph           SpecParagraph?              @relation(fields: [specParagraphId], references: [id], onDelete: Restrict)
+  candidates              SpecRequirementCandidate[]
+
+  @@index([bidId, effectiveSetId])
+  @@index([bidId, sectionEvidenceRevisionId])
+  @@index([specParagraphId])
+}
+
+model SpecRequirementCandidate {
+  id                    Int      @id @default(autoincrement())
+  bidId                 Int
+  effectiveSetId        Int
+  citationId            Int
+  candidateGroupId      String
+  revisionIndex         Int
+  supersedesCandidateId Int?
+  requirementType       String // SUBMITTAL | RFI | CLOSEOUT | WARRANTY | TRAINING | TESTING | INSPECTION | ACTION_ITEM | OTHER
+  draftTitle            String
+  draftText             String
+  evidenceExcerpt       String
+  sourceLocator         String
+  extractionMethod      String   @default("manual")
+  extractorVersion      String?
+  confidence            Float?
+  reviewState           String   @default("DRAFT") // DRAFT | ACCEPTED | REJECTED | RETURNED | VOID
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  bid                    Bid                        @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  effectiveSet           SpecificationEffectiveSet  @relation(fields: [effectiveSetId], references: [id], onDelete: Restrict)
+  citation               SpecCitation               @relation(fields: [citationId], references: [id], onDelete: Restrict)
+  supersedesCandidate    SpecRequirementCandidate?  @relation("CandidateSupersession", fields: [supersedesCandidateId], references: [id], onDelete: SetNull)
+  supersededByCandidates SpecRequirementCandidate[] @relation("CandidateSupersession")
+  decisions              SpecRequirementDecision[]
+
+  @@unique([candidateGroupId, revisionIndex])
+  @@index([bidId, reviewState])
+  @@index([bidId, effectiveSetId])
+  @@index([citationId])
+  @@index([supersedesCandidateId])
+}
+
+// Append-only human decision history. reviewState on the candidate is only a
+// transactionally maintained projection of this record stream.
+model SpecRequirementDecision {
+  id             Int      @id @default(autoincrement())
+  candidateId    Int
+  bidId          Int
+  decision       String // ACCEPT | REJECT | RETURN_FOR_EDIT | VOID
+  reason         String?
+  decidedBy      String
+  decidedAt      DateTime @default(now())
+  correctionOfId Int?
+
+  candidate    SpecRequirementCandidate  @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+  bid          Bid                       @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  correctionOf SpecRequirementDecision?  @relation("DecisionCorrection", fields: [correctionOfId], references: [id], onDelete: SetNull)
+  corrections  SpecRequirementDecision[] @relation("DecisionCorrection")
+
+  @@index([bidId, candidateId])
+  @@index([correctionOfId])
 }
 
 model BidIntelligenceBrief {

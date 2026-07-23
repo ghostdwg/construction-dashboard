@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { checkFileAvailability } from "@/lib/services/specbook/fileAvailability";
 
 function tryParseJson(raw: string | null): unknown {
@@ -18,6 +19,9 @@ export async function GET(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const specBook = await prisma.specBook.findFirst({
     where: { bidId },

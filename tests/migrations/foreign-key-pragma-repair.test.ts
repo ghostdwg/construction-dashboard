@@ -23,6 +23,8 @@ const MIGRATION_100 = "20260718024444_r2_release_blocker_retention";
 const MIGRATION_99 = "20260718010000_r2b2_trade_response_packages";
 const MIGRATION_102 = "20260721010000_meeting_intelligence_v1_foundation";
 const MIGRATION_103 = "20260721020000_meeting_intelligence_v2_local_worker";
+const MIGRATION_104 = "20260723010000_spec_source_revisions";
+const MIGRATION_105 = "20260723020000_spec_evidence_foundation";
 
 let db: TmpDb;
 
@@ -36,17 +38,24 @@ afterEach(() => {
 });
 
 describe("migration inventory", () => {
-  test("migration 103 is the last migration and preserves the prior sequence", () => {
+  test("migration 101 keeps its exact name and sequence as the additive 102-105 tail appends", () => {
     const all = listMigrations();
-    expect(all[all.length - 1]).toBe(MIGRATION_103);
-    expect(all[all.length - 2]).toBe(MIGRATION_102);
-    expect(all[all.length - 3]).toBe(MIGRATION_101);
-    expect(all[all.length - 4]).toBe(MIGRATION_100);
-    expect(all[all.length - 5]).toBe(MIGRATION_99);
+    // Index-relative: migration 101 is a fixed anchor; the Meeting Intelligence
+    // (102, 103) and Spec evidence (104, 105) tracks append after it without
+    // disturbing the prior sequence. Verifies the complete 101-105 tail.
+    const index101 = all.indexOf(MIGRATION_101);
+    expect(index101).toBe(100);
+    expect(all[index101 - 1]).toBe(MIGRATION_100);
+    expect(all[index101 - 2]).toBe(MIGRATION_99);
+    expect(all[index101 + 1]).toBe(MIGRATION_102);
+    expect(all[index101 + 2]).toBe(MIGRATION_103);
+    expect(all[index101 + 3]).toBe(MIGRATION_104);
+    expect(all[index101 + 4]).toBe(MIGRATION_105);
+    expect(all[all.length - 1]).toBe(MIGRATION_105);
   });
 });
 
-describe("fresh replay through 103", () => {
+describe("fresh replay through the integrated tail", () => {
   test("applies the full chain to an empty database", async () => {
     const all = listMigrations();
     const applied = await applyPendingMigrations(db.client, all);
@@ -90,7 +99,8 @@ describe("fresh replay through 103", () => {
 describe("populated upgrade through migration 101", () => {
   test("a populated pre-101 database upgrades through 101 successfully, data and relationships survive", async () => {
     const all = listMigrations();
-    const preMigration101 = all.slice(0, all.indexOf(MIGRATION_101)); // migrations 1..100
+    const index101 = all.indexOf(MIGRATION_101);
+    const preMigration101 = all.slice(0, index101); // migrations 1..100
     expect(preMigration101[preMigration101.length - 1]).toBe(MIGRATION_100);
 
     await applyPendingMigrations(db.client, preMigration101);

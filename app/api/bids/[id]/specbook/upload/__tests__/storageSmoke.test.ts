@@ -33,6 +33,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   isAdminAuthorized: vi.fn(),
+  requireBidAccess: vi.fn(),
   appEnv: { APP_ENV: "local" as string },
   // Q03.2b: the persisted Admin "Document AI Enrichment" setting — null =
   // no AppSetting row (DB default OFF); a string = the row's stored value.
@@ -41,11 +42,15 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ isAdminAuthorized: h.isAdminAuthorized }));
 vi.mock("@/lib/env", () => ({ env: h.appEnv }));
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: h.requireBidAccess,
+}));
 
 // ── Prisma mock — same shape as the sibling route.test.ts ───────────────────
 
-type SpecBookRow = { id: number; bidId: number; fileName: string; filePath: string; status: string };
+type SpecBookRow = { id: number; bidId: number; fileName: string; filePath: string; status: string; revisionIndex?: number | null; activeSlot?: number | null };
 type SpecSectionRow = {
+  id: number;
   specBookId: number;
   csiNumber: string;
   csiTitle: string;
@@ -61,6 +66,7 @@ const db = {
   bidTrades: [{ tradeId: 10 }] as Array<{ tradeId: number }>,
   specBooks: new Map<number, SpecBookRow>(),
   specBookCounter: 0,
+  sectionCounter: 0,
   sections: [] as SpecSectionRow[],
 };
 
@@ -68,6 +74,7 @@ function resetDb() {
   db.bidExists = true;
   db.specBooks.clear();
   db.specBookCounter = 0;
+  db.sectionCounter = 0;
   db.sections = [];
   blobData.clear();
 }
@@ -80,8 +87,8 @@ function resetDb() {
 const aiUsageLogCreateMock = vi.fn(async () => ({ id: "fake" }));
 const backgroundJobCreateMock = vi.fn(async () => ({ id: "fake" }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const client = {
     appSetting: {
       findUnique: vi.fn(async () => {
         if (h.adminAutomation.value === "__reject__") {
@@ -102,7 +109,10 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(async () => db.bidTrades),
     },
     specBook: {
-      deleteMany: vi.fn(async () => ({ count: 0 })),
+      findFirst: vi.fn(async ({ where }: { where: { activeSlot?: number } }) => {
+        const rows = [...db.specBooks.values()];
+        return rows.find((row) => where.activeSlot === undefined || row.activeSlot === where.activeSlot) ?? null;
+      }),
       create: vi.fn(async ({ data }: { data: Omit<SpecBookRow, "id"> }) => {
         db.specBookCounter += 1;
         const row: SpecBookRow = { id: db.specBookCounter, ...data };
@@ -117,9 +127,11 @@ vi.mock("@/lib/prisma", () => ({
       }),
     },
     specSection: {
-      createMany: vi.fn(async ({ data }: { data: SpecSectionRow[] }) => {
-        db.sections.push(...data);
-        return { count: data.length };
+      create: vi.fn(async ({ data }: { data: Omit<SpecSectionRow, "id"> }) => {
+        db.sectionCounter += 1;
+        const row = { id: db.sectionCounter, ...data };
+        db.sections.push(row);
+        return row;
       }),
       count: vi.fn(async ({ where }: { where: { specBookId: number; covered: boolean } }) =>
         db.sections.filter((s) => s.specBookId === where.specBookId && s.covered === where.covered).length
@@ -129,8 +141,20 @@ vi.mock("@/lib/prisma", () => ({
     // assert these specific write paths were never reached transitively.
     aiUsageLog: { create: aiUsageLogCreateMock },
     backgroundJob: { create: backgroundJobCreateMock },
-  },
-}));
+    specSectionEvidenceRevision: {
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: 1, revisionIndex: 1, textSha256: "section-sha" })),
+      findUniqueOrThrow: vi.fn(async () => ({ id: 1, revisionIndex: 1, textSha256: "section-sha" })),
+    },
+    specParagraph: { createMany: vi.fn(async () => ({ count: 1 })) },
+  };
+  return {
+    prisma: {
+      ...client,
+      $transaction: vi.fn(async (callback: (tx: typeof client) => unknown) => callback(client)),
+    },
+  };
+});
 
 // ── AI/provider side-effect mocks — the exact fire-and-forget calls this
 // feature must be able to suppress ─────────────────────────────────────────
@@ -167,6 +191,8 @@ vi.mock("@/lib/storage/blobStore", () => ({
     stat: vi.fn(async () => null),
   }),
   localPathForKey: vi.fn((key: string) => `/storage/${key}`),
+  safeBlobFileName: (fileName: string) =>
+    fileName.replace(/[^A-Za-z0-9._() -]/g, "_"),
 }));
 
 // ── Minimal synthetic PDF (byte-exact xref offsets), matching the sibling
@@ -243,6 +269,10 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
   beforeEach(() => {
     resetDb();
     vi.clearAllMocks();
+    h.requireBidAccess.mockResolvedValue({
+      ok: true,
+      user: { id: "u1", role: "admin" },
+    });
     h.appEnv.APP_ENV = "local";
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
     h.adminAutomation.value = null; delete process.env.DOCUMENT_AUTOMATION_ENABLED; delete process.env.DOCUMENT_AUTOMATION_HARD_DISABLED;
@@ -265,6 +295,27 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
   // flag), DOCUMENT_AUTOMATION_ENABLED is set to "true" here so the test keeps
   // validating exactly what it always validated. The genuine new default-off
   // case is covered by "1b" below.
+  test("0. parent authorization rejects anonymous upload before form parsing, storage, parsing, or jobs", async () => {
+    h.requireBidAccess.mockResolvedValue({
+      ok: false,
+      response: Response.json({ error: "Authentication required" }, { status: 401 }),
+    });
+    const request = uploadRequest(buildMinimalPdf("x"));
+    const formDataSpy = vi.spyOn(request, "formData");
+
+    const { POST } = await import("../route");
+    const res = await POST(request, routeParams);
+
+    expect(res.status).toBe(401);
+    expect(formDataSpy).not.toHaveBeenCalled();
+    expect(blobPutMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    expect(backgroundJobCreateMock).not.toHaveBeenCalled();
+    expect(h.isAdminAuthorized).not.toHaveBeenCalled();
+  });
+
   test("1. normal upload (no marker, no opt-in, non-staging), master automation flag ON — still fires automation exactly as today", async () => {
     h.appEnv.APP_ENV = "local";
     // STORAGE_SMOKE_MODE_ENABLED left unset (default OFF)
@@ -302,7 +353,11 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
     // Normal upload persistence still happens — only the two automation
     // calls are gated.
-    expect(blobPutMock).toHaveBeenCalledWith("plan-room/jobs/1/spec/original.pdf", expect.any(Buffer));
+    expect(blobPutMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^plan-room\/jobs\/1\/spec\/[0-9a-f-]{36}\/specbook\.pdf$/),
+      expect.any(Buffer),
+      { contentType: "application/pdf" },
+    );
     expect(json.status).toBe("ready");
   });
 
@@ -507,7 +562,11 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
     // Normal upload persistence + sidecar parse/split still happened exactly
     // as a non-suppressed run would — suppression only touches the two
     // automation calls, nothing else about the upload flow.
-    expect(blobPutMock).toHaveBeenCalledWith("plan-room/jobs/1/spec/original.pdf", expect.any(Buffer));
+    expect(blobPutMock).toHaveBeenCalledWith(
+      expect.stringMatching(/^plan-room\/jobs\/1\/spec\/[0-9a-f-]{36}\/specbook\.pdf$/),
+      expect.any(Buffer),
+      { contentType: "application/pdf" },
+    );
     expect(db.sections).toHaveLength(1);
     expect(db.sections[0].rawText).toBe("from sidecar");
     expect(json.coveredCount).toBe(1);
