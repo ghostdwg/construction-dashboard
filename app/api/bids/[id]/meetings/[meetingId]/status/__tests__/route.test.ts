@@ -112,6 +112,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("APP_ENV", "local");
   vi.stubEnv("SIDECAR_API_KEY", "");
+  vi.stubEnv("LEGACY_TRANSCRIPTION_ENABLED", "true");
   state.denied = false;
   state.prismaCalls = 0;
   state.jobLookupFailure = false;
@@ -206,6 +207,23 @@ describe("authorization and service authentication", () => {
     expect(mocks.findJobByExternalId).not.toHaveBeenCalled();
   });
 
+  it("does not poll or rewrite state when legacy processing is disabled", async () => {
+    delete process.env.LEGACY_TRANSCRIPTION_ENABLED;
+    const before = structuredClone(state.meeting);
+
+    const result = await GET(new Request("http://local/status"), routeParams);
+
+    expect(result.status).toBe(503);
+    expect(await result.json()).toMatchObject({
+      code: "LEGACY_TRANSCRIPTION_DISABLED",
+      state: "disabled",
+    });
+    expect(state.prismaCalls).toBe(0);
+    expect(state.meeting).toEqual(before);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mocks.findJobByExternalId).not.toHaveBeenCalled();
+  });
+
   it("propagates the configured Sidecar key to status polling", async () => {
     vi.stubEnv("APP_ENV", "production");
     vi.stubEnv("SIDECAR_API_KEY", "synthetic-sidecar-key");
@@ -283,12 +301,12 @@ describe("meeting and BackgroundJob terminal state", () => {
 
     expect(await result.json()).toEqual({
       status: "FAILED",
-      error: "WhisperX worker restarted — job lost",
+      error: "Transcription service reported failure",
     });
     expect(state.meeting?.status).toBe("FAILED");
     expect(mocks.failJob).toHaveBeenCalledWith(
       "bg-1",
-      "WhisperX worker restarted — job lost"
+      "Transcription service reported failure"
     );
   });
 

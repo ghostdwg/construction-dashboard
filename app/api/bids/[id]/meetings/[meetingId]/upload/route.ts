@@ -37,6 +37,10 @@ import {
   failJob,
   startJob,
 } from "@/lib/services/jobs/backgroundJobService";
+import {
+  isLegacyTranscriptionEnabled,
+  legacyTranscriptionDisabledResponse,
+} from "@/lib/services/meetings/legacyTranscriptionPolicy";
 
 const SIDECAR_URL = process.env.SIDECAR_URL || "http://127.0.0.1:8001";
 
@@ -81,10 +85,9 @@ async function reconcileFailedJob(
       ? failJob(jobId, message, externalJobId)
       : failJob(jobId, message));
     return null;
-  } catch (error) {
+  } catch {
     console.error(
-      `[meeting-upload] BackgroundJob ${jobId} requires reconciliation:`,
-      error instanceof Error ? error.message : error,
+      `[meeting-upload] BackgroundJob ${jobId} requires reconciliation`,
     );
     return Response.json(
       {
@@ -168,6 +171,10 @@ export async function POST(
 
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
+
+  if (!isLegacyTranscriptionEnabled()) {
+    return legacyTranscriptionDisabledResponse();
+  }
 
   let headers: Record<string, string>;
   try {
@@ -469,10 +476,13 @@ export async function POST(
       if (!failed.ok) return transcriptConflictResponse(failed.reason);
       const reconciliation = await reconcileFailedJob(
         backgroundJobId,
-        detail || "Sidecar error",
+        "Transcription service unavailable",
       );
       if (reconciliation) return reconciliation;
-      return Response.json({ error: err.detail ?? "Sidecar error" }, { status: 502 });
+      return Response.json(
+        { error: "Transcription service unavailable" },
+        { status: 502 },
+      );
     }
 
     const data = (await res.json()) as {
@@ -545,6 +555,6 @@ export async function POST(
       "Sidecar request failed",
     );
     if (reconciliation) return reconciliation;
-    return Response.json({ error: String(err) }, { status: 502 });
+    return Response.json({ error: "Sidecar request failed" }, { status: 502 });
   }
 }

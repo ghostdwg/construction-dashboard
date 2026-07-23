@@ -84,6 +84,9 @@ const blobPutMock = vi.fn(async (key: string, data: Buffer) => {
   blobData.set(key, data);
   return { size: data.length, sha256: "fake-sha", storedAt: "2026-01-01T00:00:00.000Z" };
 });
+const providerFetchMock = vi.fn(() => {
+  throw new Error("provider request forbidden during hybrid upload");
+});
 vi.mock("@/lib/storage/blobStore", () => ({
   getBlobStore: () => ({
     put: blobPutMock,
@@ -112,20 +115,24 @@ describe("POST /api/bids/[id]/meetings/[meetingId]/upload-hybrid", () => {
   beforeEach(() => {
     resetDb();
     vi.clearAllMocks();
+    vi.stubEnv("LEGACY_TRANSCRIPTION_ENABLED", "false");
+    vi.stubGlobal("fetch", providerFetchMock);
     db.meeting = { id: 9, bidId: 1, status: "PENDING", audioFileName: null, audioStorageKey: null };
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
-  test("persists the audio through BlobStore under the production-matching relative key, storing ONLY that relative key in audioStorageKey", async () => {
+  test("stores audio in BlobStore with legacy transcription disabled and makes no provider request", async () => {
     const { POST } = await import("../route");
     const res = await POST(uploadRequest("WEBVTT\n\n<v Alice>hello", "Meeting Recording #1.wav"), routeParams);
     const json = await res.json();
 
     expect(res.status).toBe(200);
     expect(json.ok).toBe(true);
+    expect(providerFetchMock).not.toHaveBeenCalled();
     expect(blobPutMock).toHaveBeenCalledWith(
       expect.stringMatching(/^plan-room\/jobs\/1\/meetings\/9\/[0-9a-f-]{36}\/Meeting Recording _1\.wav$/),
       expect.any(Buffer),

@@ -6,7 +6,7 @@
 //
 // Flow:
 //   1. Store VTT text in meeting.vttContent
-//   2. Send audio to sidecar → GPU worker (WhisperX async job)
+//   2. Store audio in BlobStore for a later, separately gated processing step
 
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";

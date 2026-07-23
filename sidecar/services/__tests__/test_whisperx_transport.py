@@ -77,6 +77,7 @@ def install_client(monkeypatch, fake):
 
 
 def configure_worker(monkeypatch, key="synthetic-worker-key", app_env="production"):
+    monkeypatch.setenv("LEGACY_TRANSCRIPTION_ENABLED", "true")
     monkeypatch.setattr(
         meeting_intelligence, "WHISPERX_URL", "http://synthetic-worker:8002"
     )

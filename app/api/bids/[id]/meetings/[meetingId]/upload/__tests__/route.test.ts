@@ -211,6 +211,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("APP_ENV", "local");
   vi.stubEnv("SIDECAR_API_KEY", "");
+  vi.stubEnv("LEGACY_TRANSCRIPTION_ENABLED", "true");
   state.denied = false;
   state.prismaCalls = 0;
   state.blobs.clear();
@@ -357,6 +358,41 @@ describe("authorization and service-auth ordering", () => {
     expect(mocks.blobPut).not.toHaveBeenCalled();
     expect(mocks.createJob).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the legacy gate is missing without parsing, mutation, storage, or Sidecar work", async () => {
+    delete process.env.LEGACY_TRANSCRIPTION_ENABLED;
+    const syntheticSecret = "synthetic-secret-must-not-appear";
+    vi.stubEnv("SIDECAR_API_KEY", syntheticSecret);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const request = uploadRequest();
+    const formDataSpy = vi.spyOn(request, "formData");
+    const before = structuredClone(state.meeting);
+
+    const response = await POST(request, routeParams);
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(payload).toEqual({
+      ok: false,
+      code: "LEGACY_TRANSCRIPTION_DISABLED",
+      state: "disabled",
+      message: "Legacy transcription processing is disabled.",
+    });
+    expect(formDataSpy).not.toHaveBeenCalled();
+    expect(state.prismaCalls).toBe(0);
+    expect(state.meeting).toEqual(before);
+    expect(mocks.blobPut).not.toHaveBeenCalled();
+    expect(mocks.createJob).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(
+      JSON.stringify(payload) +
+        [logSpy, warnSpy, errorSpy]
+          .flatMap((spy) => spy.mock.calls.flat())
+          .join(" "),
+    ).not.toContain(syntheticSecret);
   });
 
   it("sends the configured Sidecar key", async () => {
@@ -821,11 +857,10 @@ describe("duplicate guards and BackgroundJob consistency", () => {
     expect(await response.json()).toMatchObject({
       reconciliationRequired: true,
       backgroundJobId: "bg-1",
-      error: "synthetic provider failure",
+      error: "Transcription service unavailable",
     });
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("BackgroundJob bg-1 requires reconciliation"),
-      expect.any(String),
     );
   });
 

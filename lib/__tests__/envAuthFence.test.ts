@@ -8,6 +8,8 @@ const validEnv = {
   AUTH_SECRET: "0123456789abcdef0123456789abcdef",
   ANTHROPIC_API_KEY: "sk-ant-synthetic-test-key",
   SIDECAR_API_KEY: "",
+  LEGACY_TRANSCRIPTION_ENABLED: "false",
+  LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED: "false",
   NEXTAUTH_URL: "http://localhost:3000",
   ALLOW_PROD_DB: "",
 } as const;
@@ -56,5 +58,51 @@ describe("AUTH_DISABLED deployment fence", () => {
       SIDECAR_API_KEY: "synthetic",
     });
     expect(loaded.env.APP_ENV).toBe("staging");
+  });
+});
+
+describe("legacy transcription deployment fence", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("defaults both permissions off when they are absent", async () => {
+    const envWithoutLegacyFlags = { ...validEnv } as Record<string, string>;
+    delete envWithoutLegacyFlags.LEGACY_TRANSCRIPTION_ENABLED;
+    delete envWithoutLegacyFlags.LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED;
+    vi.resetModules();
+    for (const [key, value] of Object.entries(envWithoutLegacyFlags)) {
+      vi.stubEnv(key, value);
+    }
+    delete process.env.LEGACY_TRANSCRIPTION_ENABLED;
+    delete process.env.LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED;
+
+    const loaded = await import("../env");
+
+    expect(loaded.env.LEGACY_TRANSCRIPTION_ENABLED).toBe("false");
+    expect(loaded.env.LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED).toBe("false");
+  });
+
+  it("rejects malformed permission values at startup", async () => {
+    await expect(
+      loadEnv({ LEGACY_TRANSCRIPTION_ENABLED: "TRUE" }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects external permission without the legacy gate", async () => {
+    await expect(
+      loadEnv({
+        LEGACY_TRANSCRIPTION_ENABLED: "false",
+        LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED: "true",
+      }),
+    ).rejects.toThrow(
+      "LEGACY_TRANSCRIPTION_EXTERNAL_ENABLED=true requires LEGACY_TRANSCRIPTION_ENABLED=true",
+    );
   });
 });

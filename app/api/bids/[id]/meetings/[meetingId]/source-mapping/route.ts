@@ -12,6 +12,10 @@ import {
   emitRegisterAuditPostCommit,
   writeRegisterAuditTx,
 } from "@/lib/services/meetingRegister/txAudit";
+import {
+  isLegacyTranscriptionEnabled,
+  legacyTranscriptionDisabledResponse,
+} from "@/lib/services/meetings/legacyTranscriptionPolicy";
 
 const SIDECAR_URL = process.env.SIDECAR_URL ?? "http://127.0.0.1:8001";
 const SIDECAR_API_KEY = process.env.SIDECAR_API_KEY ?? "";
@@ -34,6 +38,10 @@ export async function POST(
 
   const access = await requireBidAccess(bidId);
   if (!access.ok) return access.response;
+
+  if (!isLegacyTranscriptionEnabled()) {
+    return legacyTranscriptionDisabledResponse();
+  }
 
   // Source mapping re-arms transcription. Freeze before JSON parsing, audio
   // reads, or provider work when accountable transcript history exists.

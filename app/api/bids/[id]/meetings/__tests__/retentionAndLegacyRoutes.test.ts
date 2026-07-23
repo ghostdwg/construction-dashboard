@@ -196,6 +196,7 @@ const request = (body: unknown) =>
   });
 
 function resetFixture() {
+  vi.stubEnv("LEGACY_TRANSCRIPTION_ENABLED", "true");
   state.auditFail = false;
   state.emitted = [];
   state.tables = {
@@ -237,7 +238,10 @@ function resetFixture() {
 }
 
 beforeEach(resetFixture);
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("durable-history delete gates", () => {
   it("returns 409 and preserves byte-identical state for Meeting delete", async () => {
