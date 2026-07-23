@@ -77,15 +77,43 @@ function cloneAudit(row: AuditRow): AuditRow {
 
 function makeHarness() {
   const state = {
-    bids: [] as BidRow[],
-    meetings: [] as MeetingRow[],
+    bids: [
+      {
+        id: 100,
+        projectName: FIXTURE_BID_NAME,
+        location: FIXTURE_LOCATION,
+        description: "Created by an operator through the application.",
+        scope: FIXTURE_CLASSIFICATION,
+        status: "awarded",
+        workflowType: "PROJECT",
+      },
+    ] as BidRow[],
+    meetings: [
+      {
+        id: 200,
+        bidId: 100,
+        title: FIXTURE_MEETING_TITLE,
+        meetingDate: new Date("2026-07-23T12:00:00.000Z"),
+        meetingType: "GENERAL",
+        location: FIXTURE_LOCATION,
+        status: "PENDING",
+        audioStorageKey: null,
+        audioFileName: null,
+        processingMode: "AUTO",
+        uploadedAt: null,
+      },
+    ] as MeetingRow[],
     audits: [] as AuditRow[],
     blobs: new Map<string, Buffer>(),
-    nextBidId: 100,
-    nextMeetingId: 200,
     nextAuditId: 1,
     failAuditCreate: false,
-    failMeetingUpdate: false,
+    forceConditionalMiss: false,
+    history: {
+      artifacts: 0,
+      segments: 0,
+      candidates: 0,
+      workerJobs: 0,
+    },
   };
 
   const blobPut = vi.fn(async (key: string, data: Buffer, options?: { contentType?: string }) => {
@@ -116,53 +144,53 @@ function makeHarness() {
 
   const tx = {
     bid: {
-      findMany: vi.fn(async (args: { where: { projectName: string }; take: number }) =>
-        state.bids
-          .filter((row) => row.projectName === args.where.projectName)
-          .slice(0, args.take)
-          .map(cloneBid),
-      ),
-      create: vi.fn(async (args: { data: Omit<BidRow, "id"> }) => {
-        const row: BidRow = { id: state.nextBidId++, ...args.data };
-        state.bids.push(row);
-        return cloneBid(row);
+      findUnique: vi.fn(async (args: { where: { id: number } }) => {
+        const row = state.bids.find((candidate) => candidate.id === args.where.id);
+        return row ? cloneBid(row) : null;
       }),
     },
     meeting: {
-      findMany: vi.fn(
-        async (args: { where: { bidId: number; title: string }; take: number }) =>
-          state.meetings
-            .filter(
-              (row) => row.bidId === args.where.bidId && row.title === args.where.title,
-            )
-            .slice(0, args.take)
-            .map(cloneMeeting),
-      ),
-      create: vi.fn(
+      findUnique: vi.fn(async (args: { where: { id: number } }) => {
+        const row = state.meetings.find((candidate) => candidate.id === args.where.id);
+        return row ? cloneMeeting(row) : null;
+      }),
+      findFirst: vi.fn(
         async (args: {
-          data: Omit<MeetingRow, "id" | "audioStorageKey" | "audioFileName" | "uploadedAt">;
+          where: { audioStorageKey: string; id?: { not: number } };
         }) => {
-          const row: MeetingRow = {
-            id: state.nextMeetingId++,
-            audioStorageKey: null,
-            audioFileName: null,
-            uploadedAt: null,
-            ...args.data,
-          };
-          state.meetings.push(row);
-          return cloneMeeting(row);
+          const row = state.meetings.find(
+            (candidate) =>
+              candidate.audioStorageKey === args.where.audioStorageKey &&
+              candidate.id !== args.where.id?.not,
+          );
+          return row ? { id: row.id } : null;
         },
       ),
-      update: vi.fn(
+      updateMany: vi.fn(
         async (args: {
-          where: { id: number };
+          where: {
+            id: number;
+            bidId: number;
+            status: string;
+            audioStorageKey: null;
+            audioFileName: null;
+            uploadedAt: null;
+          };
           data: Pick<MeetingRow, "audioStorageKey" | "audioFileName" | "uploadedAt">;
         }) => {
-          if (state.failMeetingUpdate) throw new Error("synthetic update failure with /secret/path");
-          const row = state.meetings.find((candidate) => candidate.id === args.where.id);
-          if (!row) throw new Error("missing meeting");
+          if (state.forceConditionalMiss) return { count: 0 };
+          const row = state.meetings.find(
+            (candidate) =>
+              candidate.id === args.where.id &&
+              candidate.bidId === args.where.bidId &&
+              candidate.status === args.where.status &&
+              candidate.audioStorageKey === null &&
+              candidate.audioFileName === null &&
+              candidate.uploadedAt === null,
+          );
+          if (!row) return { count: 0 };
           Object.assign(row, args.data);
-          return cloneMeeting(row);
+          return { count: 1 };
         },
       ),
     },
@@ -193,6 +221,18 @@ function makeHarness() {
         return cloneAudit(row);
       }),
     },
+    meetingIntelligenceArtifact: {
+      count: vi.fn(async () => state.history.artifacts),
+    },
+    meetingIntelligenceSegment: {
+      count: vi.fn(async () => state.history.segments),
+    },
+    meetingIntelligenceCandidate: {
+      count: vi.fn(async () => state.history.candidates),
+    },
+    meetingIntelligenceWorkerJob: {
+      count: vi.fn(async () => state.history.workerJobs),
+    },
   };
 
   const transaction = vi.fn(async <T>(fn: (client: typeof tx) => Promise<T>) => {
@@ -200,8 +240,6 @@ function makeHarness() {
       bids: state.bids.map(cloneBid),
       meetings: state.meetings.map(cloneMeeting),
       audits: state.audits.map(cloneAudit),
-      nextBidId: state.nextBidId,
-      nextMeetingId: state.nextMeetingId,
       nextAuditId: state.nextAuditId,
     };
     try {
@@ -210,8 +248,6 @@ function makeHarness() {
       state.bids = snapshot.bids;
       state.meetings = snapshot.meetings;
       state.audits = snapshot.audits;
-      state.nextBidId = snapshot.nextBidId;
-      state.nextMeetingId = snapshot.nextMeetingId;
       state.nextAuditId = snapshot.nextAuditId;
       throw caught;
     }
@@ -267,6 +303,10 @@ function applyArgs(manifest: string): string[] {
   return [
     "--seed",
     "--apply",
+    "--bid-id",
+    "100",
+    "--meeting-id",
+    "200",
     "--expected-revision",
     REVISION,
     "--manifest",
@@ -382,12 +422,14 @@ describe("preflight safety gates", () => {
 
   test("requires the exact confirmation phrase", async () => {
     const harness = makeHarness();
-    const args = applyArgs(await manifestPath());
+    const manifest = await manifestPath();
+    const args = applyArgs(manifest);
     args[args.length - 1] = `${FIXTURE_CONFIRMATION_PHRASE} `;
     expect(
       await runMain(args, { env: stagingEnv(), dependencies: harness.dependencies }),
     ).toBe(1);
     expect(harness.transaction).not.toHaveBeenCalled();
+    await expect(fs.stat(manifest)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   test("rejects a revision mismatch and untraceable runtime revision", async () => {
@@ -401,6 +443,77 @@ describe("preflight safety gates", () => {
       ).toBe(1);
       expect(harness.transaction).not.toHaveBeenCalled();
     }
+  });
+
+  test("rejects a malformed operator revision before manifest or dependency use", async () => {
+    const harness = makeHarness();
+    const manifest = await manifestPath();
+    const args = applyArgs(manifest);
+    args[args.indexOf("--expected-revision") + 1] = REVISION.toUpperCase();
+    expect(
+      await runMain(args, { env: stagingEnv(), dependencies: harness.dependencies }),
+    ).toBe(1);
+    expect(harness.transaction).not.toHaveBeenCalled();
+    await expect(fs.stat(manifest)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("requires exact positive Bid and Meeting ids before dependency use", async () => {
+    for (const flag of ["--bid-id", "--meeting-id"]) {
+      const missingHarness = makeHarness();
+      const missingArgs = applyArgs(await manifestPath());
+      missingArgs.splice(missingArgs.indexOf(flag), 2);
+      expect(
+        await runMain(missingArgs, {
+          env: stagingEnv(),
+          dependencies: missingHarness.dependencies,
+        }),
+      ).toBe(1);
+      expect(missingHarness.transaction).not.toHaveBeenCalled();
+
+      for (const value of ["0", "-1", "1.5", "abc", "9007199254740992"]) {
+        const harness = makeHarness();
+        const args = applyArgs(await manifestPath());
+        args[args.indexOf(flag) + 1] = value;
+        expect(
+          await runMain(args, { env: stagingEnv(), dependencies: harness.dependencies }),
+        ).toBe(1);
+        expect(harness.transaction).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  test("denies any ALLOW_PROD_DB presence before dependency use", async () => {
+    for (const value of ["", "0", "1", "false"]) {
+      const harness = makeHarness();
+      expect(
+        await runMain(applyArgs(await manifestPath()), {
+          env: stagingEnv({ ALLOW_PROD_DB: value }),
+          dependencies: harness.dependencies,
+        }),
+      ).toBe(1);
+      expect(harness.transaction).not.toHaveBeenCalled();
+      expect(harness.blobStat).not.toHaveBeenCalled();
+    }
+  });
+
+  test("positively classifies only staging Turso hosts without credentials or mixed markers", () => {
+    expect(classifyDatabaseTarget("libsql://groundworx-staging-fixture.turso.io")).toBe(
+      "staging",
+    );
+    expect(
+      classifyDatabaseTarget("https://groundworx-staging-fixture.turso.io/database"),
+    ).toBe("staging");
+    expect(
+      classifyDatabaseTarget("libsql://groundworx-staging-fixture.turso.io.evil.example"),
+    ).toBe("ambiguous");
+    expect(
+      classifyDatabaseTarget("libsql://user:secret@groundworx-staging-fixture.turso.io"),
+    ).toBe("ambiguous");
+    expect(
+      classifyDatabaseTarget(
+        "libsql://groundworx-staging-fixture.turso.io/db?target=groundworx%2Dprod",
+      ),
+    ).toBe("ambiguous");
   });
 
   test("rejects every operator-provided media path before dependencies are used", async () => {
@@ -486,8 +599,8 @@ describe("synthetic media and provider exclusion", () => {
   });
 });
 
-describe("fixture creation, identity, audit, and idempotency", () => {
-  test("writes one WAV through BlobStore and creates only the pre-queue fixture records", async () => {
+describe("fixture attachment, identity, audit, and idempotency", () => {
+  test("attaches one WAV to only the exact pre-created fixture Meeting", async () => {
     const harness = makeHarness();
     expect(
       await runMain(applyArgs(await manifestPath()), {
@@ -515,6 +628,27 @@ describe("fixture creation, identity, audit, and idempotency", () => {
       audioStorageKey: key,
       audioFileName: FIXTURE_MEDIA_FILE_NAME,
     });
+    expect(harness.tx.bid.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 100 } }),
+    );
+    expect(harness.tx.meeting.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 200 } }),
+    );
+    expect(harness.tx.meeting.updateMany).toHaveBeenCalledTimes(1);
+    const update = harness.tx.meeting.updateMany.mock.calls[0][0];
+    expect(update.where).toEqual({
+      id: 200,
+      bidId: 100,
+      status: "PENDING",
+      audioStorageKey: null,
+      audioFileName: null,
+      uploadedAt: null,
+    });
+    expect(Object.keys(update.data).sort()).toEqual([
+      "audioFileName",
+      "audioStorageKey",
+      "uploadedAt",
+    ]);
   });
 
   test("uses stable unmistakable fixture identity and exact permanent classification", async () => {
@@ -578,25 +712,16 @@ describe("fixture creation, identity, audit, and idempotency", () => {
       }),
     ).toBe(0);
     expect(harness.blobPut).toHaveBeenCalledTimes(1);
-    expect(harness.tx.bid.create).toHaveBeenCalledTimes(1);
-    expect(harness.tx.meeting.create).toHaveBeenCalledTimes(1);
+    expect(harness.tx.meeting.updateMany).toHaveBeenCalledTimes(1);
     expect(harness.tx.auditEvent.create).toHaveBeenCalledTimes(1);
     expect(harness.state.bids).toHaveLength(1);
     expect(harness.state.meetings).toHaveLength(1);
     expect(harness.state.audits).toHaveLength(1);
   });
 
-  test("refuses to overwrite or repurpose a non-fixture record with the canonical label", async () => {
+  test("refuses a wrong Bid label for the exact requested id", async () => {
     const harness = makeHarness();
-    harness.state.bids.push({
-      id: 77,
-      projectName: FIXTURE_BID_NAME,
-      location: "Customer location",
-      description: "Customer record",
-      scope: "real work",
-      status: "draft",
-      workflowType: "PROJECT",
-    });
+    harness.state.bids[0].projectName = "Customer record";
     expect(
       await runMain(applyArgs(await manifestPath()), {
         env: stagingEnv(),
@@ -604,8 +729,114 @@ describe("fixture creation, identity, audit, and idempotency", () => {
       }),
     ).toBe(1);
     expect(harness.blobPut).not.toHaveBeenCalled();
-    expect(harness.tx.bid.create).not.toHaveBeenCalled();
+    expect(harness.tx.meeting.updateMany).not.toHaveBeenCalled();
     expect(harness.state.bids).toHaveLength(1);
+  });
+
+  test("refuses a cross-Bid Meeting before BlobStore mutation", async () => {
+    const harness = makeHarness();
+    harness.state.meetings[0].bidId = 999;
+    expect(
+      await runMain(applyArgs(await manifestPath()), {
+        env: stagingEnv(),
+        dependencies: harness.dependencies,
+      }),
+    ).toBe(1);
+    expect(harness.tx.meeting.updateMany).not.toHaveBeenCalled();
+    expect(harness.blobPut).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["title", "Customer meeting"],
+    ["location", "Customer location"],
+    ["status", "AWAITING_SOURCE_MAP"],
+  ] as const)("refuses a Meeting with mismatched %s", async (field, value) => {
+    const harness = makeHarness();
+    harness.state.meetings[0][field] = value;
+    expect(
+      await runMain(applyArgs(await manifestPath()), {
+        env: stagingEnv(),
+        dependencies: harness.dependencies,
+      }),
+    ).toBe(1);
+    expect(harness.tx.meeting.updateMany).not.toHaveBeenCalled();
+    expect(harness.blobPut).not.toHaveBeenCalled();
+  });
+
+  test("refuses partial or foreign pre-existing media state", async () => {
+    for (const mutation of [
+      (meeting: MeetingRow) => {
+        meeting.audioStorageKey = "plan-room/customer.wav";
+      },
+      (meeting: MeetingRow) => {
+        meeting.audioFileName = "customer.wav";
+      },
+      (meeting: MeetingRow) => {
+        meeting.uploadedAt = new Date("2026-07-23T13:00:00.000Z");
+      },
+    ]) {
+      const harness = makeHarness();
+      mutation(harness.state.meetings[0]);
+      expect(
+        await runMain(applyArgs(await manifestPath()), {
+          env: stagingEnv(),
+          dependencies: harness.dependencies,
+        }),
+      ).toBe(1);
+      expect(harness.tx.meeting.updateMany).not.toHaveBeenCalled();
+      expect(harness.blobPut).not.toHaveBeenCalled();
+    }
+  });
+
+  test.each(["artifacts", "segments", "candidates", "workerJobs"] as const)(
+    "refuses pre-existing Meeting Intelligence %s history",
+    async (historyKind) => {
+      const harness = makeHarness();
+      harness.state.history[historyKind] = 1;
+      expect(
+        await runMain(applyArgs(await manifestPath()), {
+          env: stagingEnv(),
+          dependencies: harness.dependencies,
+        }),
+      ).toBe(1);
+      expect(harness.tx.meeting.updateMany).not.toHaveBeenCalled();
+      expect(harness.blobPut).not.toHaveBeenCalled();
+      expect(harness.tx.auditEvent.create).not.toHaveBeenCalled();
+    },
+  );
+
+  test("refuses an idempotent-looking rerun after durable MI history exists", async () => {
+    const harness = makeHarness();
+    expect(
+      await runMain(applyArgs(await manifestPath("first.json")), {
+        env: stagingEnv(),
+        dependencies: harness.dependencies,
+      }),
+    ).toBe(0);
+    harness.state.history.artifacts = 1;
+    expect(
+      await runMain(applyArgs(await manifestPath("second.json")), {
+        env: stagingEnv(),
+        dependencies: harness.dependencies,
+      }),
+    ).toBe(1);
+    expect(harness.blobPut).toHaveBeenCalledTimes(1);
+    expect(harness.tx.auditEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  test("a lost conditional claim refuses without writing a blob or audit", async () => {
+    const harness = makeHarness();
+    harness.state.forceConditionalMiss = true;
+    expect(
+      await runMain(applyArgs(await manifestPath()), {
+        env: stagingEnv(),
+        dependencies: harness.dependencies,
+      }),
+    ).toBe(1);
+    expect(harness.tx.meeting.updateMany).toHaveBeenCalledTimes(1);
+    expect(harness.blobPut).not.toHaveBeenCalled();
+    expect(harness.tx.auditEvent.create).not.toHaveBeenCalled();
+    expect(harness.state.meetings[0].audioStorageKey).toBeNull();
   });
 
   test("refuses a media or audit collision instead of treating it as idempotent", async () => {
@@ -657,10 +888,11 @@ describe("manifest and failure handling", () => {
     );
   });
 
-  test("Docker runtime carries the bundled CLI and mirrors the immutable OCI revision", async () => {
+  test("Docker runtime carries the CLI without duplicating the approved revision promotion", async () => {
     const dockerfile = await fs.readFile(path.resolve("Dockerfile"), "utf8");
     expect(dockerfile).toContain("org.opencontainers.image.revision=\"${IMAGE_REVISION}\"");
-    expect(dockerfile).toContain("ENV APP_IMAGE_REVISION=\"${IMAGE_REVISION}\"");
+    expect(dockerfile.match(/^ARG IMAGE_REVISION$/gm)).toHaveLength(1);
+    expect(dockerfile.match(/^ENV APP_IMAGE_REVISION=/gm) ?? []).toHaveLength(0);
     expect(dockerfile).toContain("meeting-intelligence-staging-fixture.mjs");
     expect(dockerfile).toContain("--external:@prisma/client");
     expect(dockerfile).toContain("--external:@prisma/adapter-libsql");
@@ -677,6 +909,10 @@ describe("manifest and failure handling", () => {
       }),
     ).toBe(1);
     expect(await fs.readFile(manifest, "utf8")).toBe(`different-${SECRET}`);
+    expect(harness.tx.meeting.updateMany).not.toHaveBeenCalled();
+    expect(harness.blobPut).not.toHaveBeenCalled();
+    expect(harness.tx.auditEvent.create).not.toHaveBeenCalled();
+    expect(harness.state.meetings[0].audioStorageKey).toBeNull();
   });
 
   test("transaction failure rolls back rows and deletes only the newly allocated unreferenced blob", async () => {
@@ -689,8 +925,11 @@ describe("manifest and failure handling", () => {
         dependencies: harness.dependencies,
       }),
     ).toBe(2);
-    expect(harness.state.bids).toHaveLength(0);
-    expect(harness.state.meetings).toHaveLength(0);
+    expect(harness.state.bids).toHaveLength(1);
+    expect(harness.state.meetings).toHaveLength(1);
+    expect(harness.state.meetings[0].audioStorageKey).toBeNull();
+    expect(harness.state.meetings[0].audioFileName).toBeNull();
+    expect(harness.state.meetings[0].uploadedAt).toBeNull();
     expect(harness.state.audits).toHaveLength(0);
     expect(harness.blobDelete).toHaveBeenCalledTimes(1);
     expect(harness.state.blobs.size).toBe(0);
@@ -716,5 +955,27 @@ describe("manifest and failure handling", () => {
     expect(harness.blobPut).not.toHaveBeenCalled();
     expect(harness.blobDelete).not.toHaveBeenCalled();
     expect(harness.state.blobs.get(expectedKey)?.toString()).toBe("preexisting-non-fixture");
+  });
+
+  test("compensation never deletes a blob referenced by another Meeting", async () => {
+    const harness = makeHarness();
+    const expectedKey =
+      `plan-room/jobs/100/meetings/200/${FIXTURE_VERSION}/${FIXTURE_MEDIA_FILE_NAME}`;
+    harness.state.meetings.push({
+      ...cloneMeeting(harness.state.meetings[0]),
+      id: 201,
+      audioStorageKey: expectedKey,
+    });
+    harness.state.failAuditCreate = true;
+    expect(
+      await runMain(applyArgs(await manifestPath()), {
+        env: stagingEnv(),
+        dependencies: harness.dependencies,
+      }),
+    ).toBe(2);
+    expect(harness.blobPut).toHaveBeenCalledTimes(1);
+    expect(harness.blobDelete).not.toHaveBeenCalled();
+    expect(harness.state.blobs.get(expectedKey)).toEqual(buildSyntheticWav());
+    expect(harness.state.meetings[0].audioStorageKey).toBeNull();
   });
 });

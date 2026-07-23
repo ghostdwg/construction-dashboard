@@ -74,10 +74,6 @@ LABEL org.opencontainers.image.revision="${IMAGE_REVISION}" \
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-# Runtime mirror of the immutable OCI revision label. The staging-only
-# fixture CLI compares this exact full SHA with the operator-supplied expected
-# revision before it imports Prisma or opens a database connection.
-ENV APP_IMAGE_REVISION="${IMAGE_REVISION}"
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
