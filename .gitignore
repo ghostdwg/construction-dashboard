@@ -60,6 +60,10 @@ next-env.d.ts
 /sidecar/__pycache__/
 /sidecar/**/__pycache__/
 
+# standalone Meeting Intelligence worker
+/meeting-worker/**/__pycache__/
+/meeting-worker/run/
+
 # Claude Code: shared config (settings.json, rules/, skills/, agents/, hooks/)
 # is committed; local-only state stays ignored.
 .claude/settings.local.json

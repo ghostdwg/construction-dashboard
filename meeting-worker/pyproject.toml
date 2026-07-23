@@ -1,0 +1,6 @@
+[project]
+name = "groundworx-meeting-worker"
+version = "0.1.0"
+description = "Outbound-only client skeleton for the durable Meeting Intelligence worker queue"
+requires-python = ">=3.11"
+dependencies = []
