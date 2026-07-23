@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { deleteStoragePath } from "@/lib/services/specbook/storagePath";
 
 // DELETE /api/bids/[id]/specbook/[uploadId]
@@ -14,6 +15,9 @@ export async function DELETE(
   const specBookId = parseInt(uploadId, 10);
   if (isNaN(bidId) || isNaN(specBookId))
     return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const specBook = await prisma.specBook.findFirst({
     where: { id: specBookId, bidId },

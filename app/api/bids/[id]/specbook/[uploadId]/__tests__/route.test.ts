@@ -14,6 +14,12 @@ import os from "os";
 import path from "path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 
+const h = vi.hoisted(() => ({ requireBidAccess: vi.fn() }));
+
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: h.requireBidAccess,
+}));
+
 let storageRoot: string;
 
 beforeAll(() => {
@@ -70,6 +76,10 @@ const routeParams = (bidId: number, uploadId: number) => ({
 describe("DELETE /api/bids/[id]/specbook/[uploadId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    h.requireBidAccess.mockResolvedValue({
+      ok: true,
+      user: { id: "u1", role: "admin" },
+    });
     db.specBook = null;
     db.deletedSpecBookId = null;
     db.submittalUpdateManyArgs = null;
@@ -77,6 +87,28 @@ describe("DELETE /api/bids/[id]/specbook/[uploadId]", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  test("unauthorized delete is rejected before child lookup, mutation, or blob cleanup", async () => {
+    h.requireBidAccess.mockResolvedValue({
+      ok: false,
+      response: Response.json({ error: "Forbidden" }, { status: 403 }),
+    });
+    const { prisma } = await import("@/lib/prisma");
+    const { getBlobStore } = await import("@/lib/storage/blobStore");
+    const deleteSpy = vi.spyOn(getBlobStore(), "delete");
+
+    const { DELETE } = await import("../route");
+    const res = await DELETE(
+      new Request("http://localhost/x", { method: "DELETE" }),
+      routeParams(11, 11),
+    );
+
+    expect(res.status).toBe(403);
+    expect(prisma.specBook.findFirst).not.toHaveBeenCalled();
+    expect(prisma.specBook.delete).not.toHaveBeenCalled();
+    expect(deleteSpy).not.toHaveBeenCalled();
+    deleteSpy.mockRestore();
   });
 
   test("deletes exactly the known BlobStore keys for this spec book — original + sections", async () => {

@@ -33,6 +33,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   isAdminAuthorized: vi.fn(),
+  requireBidAccess: vi.fn(),
   appEnv: { APP_ENV: "local" as string },
   // Q03.2b: the persisted Admin "Document AI Enrichment" setting — null =
   // no AppSetting row (DB default OFF); a string = the row's stored value.
@@ -41,6 +42,9 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ isAdminAuthorized: h.isAdminAuthorized }));
 vi.mock("@/lib/env", () => ({ env: h.appEnv }));
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: h.requireBidAccess,
+}));
 
 // ── Prisma mock — same shape as the sibling route.test.ts ───────────────────
 
@@ -243,6 +247,10 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
   beforeEach(() => {
     resetDb();
     vi.clearAllMocks();
+    h.requireBidAccess.mockResolvedValue({
+      ok: true,
+      user: { id: "u1", role: "admin" },
+    });
     h.appEnv.APP_ENV = "local";
     delete process.env.STORAGE_SMOKE_MODE_ENABLED;
     h.adminAutomation.value = null; delete process.env.DOCUMENT_AUTOMATION_ENABLED; delete process.env.DOCUMENT_AUTOMATION_HARD_DISABLED;
@@ -265,6 +273,27 @@ describe("POST /api/bids/[id]/specbook/upload — storage-only smoke suppression
   // flag), DOCUMENT_AUTOMATION_ENABLED is set to "true" here so the test keeps
   // validating exactly what it always validated. The genuine new default-off
   // case is covered by "1b" below.
+  test("0. parent authorization rejects anonymous upload before form parsing, storage, parsing, or jobs", async () => {
+    h.requireBidAccess.mockResolvedValue({
+      ok: false,
+      response: Response.json({ error: "Authentication required" }, { status: 401 }),
+    });
+    const request = uploadRequest(buildMinimalPdf("x"));
+    const formDataSpy = vi.spyOn(request, "formData");
+
+    const { POST } = await import("../route");
+    const res = await POST(request, routeParams);
+
+    expect(res.status).toBe(401);
+    expect(formDataSpy).not.toHaveBeenCalled();
+    expect(blobPutMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(generateBidIntelligenceMock).not.toHaveBeenCalled();
+    expect(triggerBriefRefreshMock).not.toHaveBeenCalled();
+    expect(backgroundJobCreateMock).not.toHaveBeenCalled();
+    expect(h.isAdminAuthorized).not.toHaveBeenCalled();
+  });
+
   test("1. normal upload (no marker, no opt-in, non-staging), master automation flag ON — still fires automation exactly as today", async () => {
     h.appEnv.APP_ENV = "local";
     // STORAGE_SMOKE_MODE_ENABLED left unset (default OFF)

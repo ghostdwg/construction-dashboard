@@ -15,6 +15,7 @@
 //   frequency, timing, who, acceptanceCriteria, severity, tradeId, tradeName
 
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,9 @@ export async function GET(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId))
     return Response.json({ error: "Invalid bid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   // Find the most recent analyzed spec book
   const specBook = await prisma.specBook.findFirst({

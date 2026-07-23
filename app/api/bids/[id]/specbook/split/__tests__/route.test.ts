@@ -12,6 +12,13 @@
 import path from "path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({
+    ok: true,
+    user: { id: "u1", role: "admin" },
+  })),
+}));
+
 type SpecBookRow = { id: number; bidId: number; filePath: string; status: string };
 
 const db = {

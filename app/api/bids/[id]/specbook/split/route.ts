@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { localPathForKey } from "@/lib/storage/blobStore";
 import { lookupCanonicalTitles } from "@/lib/services/csi/canonicalTitle";
 import { resolveLocalPath } from "@/lib/services/specbook/storagePath";
@@ -22,6 +23,9 @@ export async function POST(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const specBook = await prisma.specBook.findFirst({
     where: { bidId, status: "ready" },

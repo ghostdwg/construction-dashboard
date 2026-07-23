@@ -11,6 +11,13 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: vi.fn(async () => ({
+    ok: true,
+    user: { id: "u1", role: "admin" },
+  })),
+}));
+
 // ── Prisma mock — enough surface for the upload route's happy + error paths ──
 
 type SpecBookRow = { id: number; bidId: number; fileName: string; filePath: string; status: string };

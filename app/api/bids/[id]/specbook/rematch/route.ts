@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { matchSectionThreeState } from "@/lib/documents/specParser";
 
 // POST /api/bids/[id]/specbook/rematch
@@ -11,6 +12,9 @@ export async function POST(
   const { id } = await params;
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
+
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
 
   const specBook = await prisma.specBook.findFirst({
     where: { bidId },

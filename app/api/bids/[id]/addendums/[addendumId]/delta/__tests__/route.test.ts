@@ -8,7 +8,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // semantics exactly.
 
 const h = vi.hoisted(() => ({
-  addendumFindUnique: vi.fn(),
+  requireBidAccess: vi.fn(),
+  addendumFindFirst: vi.fn(),
   briefFindUnique: vi.fn(),
   addendumFindMany: vi.fn(),
   bidFindUnique: vi.fn(),
@@ -25,7 +26,7 @@ const h = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     addendumUpload: {
-      findUnique: h.addendumFindUnique,
+      findFirst: h.addendumFindFirst,
       findMany: h.addendumFindMany,
       update: h.addendumUpdate,
     },
@@ -37,7 +38,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 vi.mock("@/lib/auth-helpers", () => ({
-  requireBidAccess: vi.fn(async () => ({ ok: true, user: { id: "u1", role: "admin" } })),
+  requireBidAccess: h.requireBidAccess,
 }));
 vi.mock("@/lib/services/ai/gateway", () => ({ createMessage: h.createMessage }));
 vi.mock("@/lib/services/ai/assembleAddendumDeltaPrompt", () => ({
@@ -85,7 +86,8 @@ describe("addendum-delta route — gateway migration fidelity (P1B-3A)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.ADDENDUM_STUB_MODE; // force LIVE mode
-    h.addendumFindUnique.mockResolvedValue({
+    h.requireBidAccess.mockResolvedValue({ ok: true, user: { id: "u1", role: "admin" } });
+    h.addendumFindFirst.mockResolvedValue({
       id: 2, bidId: 1, addendumNumber: 5, extractedText: "addendum text", status: "ready",
     });
     h.briefFindUnique.mockResolvedValue({
@@ -100,6 +102,34 @@ describe("addendum-delta route — gateway migration fidelity (P1B-3A)", () => {
     h.addendumUpdate.mockResolvedValue({});
     h.briefUpdate.mockResolvedValue({});
     h.createMessage.mockResolvedValue(gatewayReturns(VALID_DELTA));
+  });
+
+  it("rejects anonymous delta analysis before child queries or provider work", async () => {
+    h.requireBidAccess.mockResolvedValue({
+      ok: false,
+      response: Response.json({ error: "Authentication required" }, { status: 401 }),
+    });
+
+    const res = await callPost();
+
+    expect(res.status).toBe(401);
+    expect(h.addendumFindFirst).not.toHaveBeenCalled();
+    expect(h.createMessage).not.toHaveBeenCalled();
+    expect(h.logAiUsage).not.toHaveBeenCalled();
+  });
+
+  it("conceals cross-bid addendum identifiers before provider work", async () => {
+    h.addendumFindFirst.mockResolvedValue(null);
+
+    const res = await callPost();
+
+    expect(res.status).toBe(404);
+    expect(h.addendumFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 2, bidId: 1 },
+    }));
+    expect(h.createMessage).not.toHaveBeenCalled();
+    expect(h.logAiUsage).not.toHaveBeenCalled();
+    expect(h.addendumUpdate).not.toHaveBeenCalled();
   });
 
   // 1 — exact request forwarding

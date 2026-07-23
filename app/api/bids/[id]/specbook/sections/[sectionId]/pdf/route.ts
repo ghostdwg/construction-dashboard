@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { readStoragePathBuffer } from "@/lib/services/specbook/storagePath";
 
 // GET /api/bids/[id]/specbook/sections/[sectionId]/pdf
@@ -17,12 +18,14 @@ export async function GET(
     return Response.json({ error: "Invalid id" }, { status: 400 });
   }
 
-  const section = await prisma.specSection.findUnique({
-    where: { id: secId },
-    include: { specBook: { select: { bidId: true } } },
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
+  const section = await prisma.specSection.findFirst({
+    where: { id: secId, specBook: { bidId } },
   });
 
-  if (!section || section.specBook.bidId !== bidId) {
+  if (!section) {
     return Response.json({ error: "Section not found" }, { status: 404 });
   }
 

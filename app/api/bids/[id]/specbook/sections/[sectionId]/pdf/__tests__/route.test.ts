@@ -16,6 +16,12 @@ import os from "os";
 import path from "path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 
+const h = vi.hoisted(() => ({ requireBidAccess: vi.fn() }));
+
+vi.mock("@/lib/auth-helpers", () => ({
+  requireBidAccess: h.requireBidAccess,
+}));
+
 let storageRoot: string;
 
 beforeAll(() => {
@@ -40,7 +46,11 @@ const db = { section: null as SectionRow | null };
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     specSection: {
-      findUnique: vi.fn(async () => db.section),
+      findFirst: vi.fn(async ({ where }: { where: { id: number; specBook: { bidId: number } } }) =>
+        db.section?.id === where.id && db.section.specBook.bidId === where.specBook.bidId
+          ? db.section
+          : null,
+      ),
     },
   },
 }));
@@ -58,11 +68,33 @@ const routeParams = (bidId: number, sectionId: number) => ({
 describe("GET /api/bids/[id]/specbook/sections/[sectionId]/pdf", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    h.requireBidAccess.mockResolvedValue({
+      ok: true,
+      user: { id: "u1", role: "admin" },
+    });
     db.section = null;
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  test("anonymous read is rejected before child lookup or BlobStore access", async () => {
+    h.requireBidAccess.mockResolvedValue({
+      ok: false,
+      response: Response.json({ error: "Authentication required" }, { status: 401 }),
+    });
+    const { prisma } = await import("@/lib/prisma");
+    const { getBlobStore } = await import("@/lib/storage/blobStore");
+    const getSpy = vi.spyOn(getBlobStore(), "get");
+
+    const { GET } = await import("../route");
+    const res = await GET(new Request("http://localhost/x"), routeParams(9, 5));
+
+    expect(res.status).toBe(401);
+    expect(prisma.specSection.findFirst).not.toHaveBeenCalled();
+    expect(getSpy).not.toHaveBeenCalled();
+    getSpy.mockRestore();
   });
 
   test("serves BlobStore content for a new-format relative key", async () => {

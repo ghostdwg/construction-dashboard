@@ -1,5 +1,6 @@
 import path from "path";
 import { prisma } from "@/lib/prisma";
+import { requireBidAccess } from "@/lib/auth-helpers";
 import { getBlobStore } from "@/lib/storage/blobStore";
 import { parseSpecSections, matchSectionThreeState } from "@/lib/documents/specParser";
 import { generateBidIntelligence } from "@/app/api/bids/[id]/intelligence/generate/route";
@@ -35,9 +36,7 @@ import { env } from "@/lib/env";
 // calls during a credential rotation.
 //
 //   a. Authenticated ADMIN session (reuses lib/auth.ts's isAdminAuthorized(),
-//      the same helper every /api/settings/* admin route already uses — this
-//      route itself has no other auth check; see proxy.ts, which only
-//      enforces admin-only for /settings pages, not API routes).
+//      in addition to the route's parent-Bid access guard).
 //   b. The caller sent the non-secret intent marker header below. Non-secret
 //      because it grants no authority by itself — it is intent, not
 //      authorization. The other three conditions are what make this safe.
@@ -181,19 +180,19 @@ export async function POST(
   const bidId = parseInt(id, 10);
   if (isNaN(bidId)) return Response.json({ error: "Invalid id" }, { status: 400 });
 
+  const access = await requireBidAccess(bidId);
+  if (!access.ok) return access.response;
+
   // ── Storage-only smoke gate — see module doc above for the full 4-condition
-  // contract. Checked FIRST, before any read/write below, because any request
+  // contract. Checked immediately after parent-Bid authorization and before
+  // any route-local read/write below, because any request
   // carrying the marker header is an EXPLICIT storage-smoke attempt and must
   // NEVER be allowed to silently fall through into normal (real-provider-
   // calling) automation just because one of the other three conditions isn't
   // met — that silent fallthrough is exactly the gap this gate closes. A
-  // reject here happens before prisma.bid.findUnique, before BlobStore.put,
-  // and before prisma.specBook.create, so none of the reject branches below
-  // can ever leave a DB row or blob behind.
-  //
-  // Cheapest, non-auth checks first, so the default (no marker header)
-  // request path — the overwhelming majority of traffic — pays for nothing
-  // beyond a single header read and short-circuits immediately.
+  // reject here happens before the route's bid/trade queries, BlobStore.put,
+  // and prisma.specBook.create, so none of the reject branches below can
+  // ever leave a DB row or blob behind.
   const storageSmokeRequested = request.headers.get(STORAGE_SMOKE_HEADER) === "1";
   let suppressAutomationForStorageSmoke = false;
 

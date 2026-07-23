@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { bidScopeFilter, getUser } from "@/lib/auth-helpers";
 import QuickPushButton from "./QuickPushButton";
 import ProjectContextBar from "./ProjectContextBar";
 import TradesTab from "./TradesTab";
@@ -99,8 +100,11 @@ export default async function BidDetailPage({
 
   if (isNaN(bidId)) notFound();
 
-  const bid = await prisma.bid.findUnique({
-    where: { id: bidId },
+  const user = await getUser();
+  if (!user) redirect(`/login?callbackUrl=${encodeURIComponent(`/bids/${bidId}`)}`);
+
+  const bid = await prisma.bid.findFirst({
+    where: { id: bidId, ...bidScopeFilter(user) },
     include: {
       bidTrades: { include: { trade: true }, orderBy: { id: "asc" } },
       selections: {

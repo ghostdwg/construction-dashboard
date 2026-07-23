@@ -132,17 +132,16 @@ export async function POST(
   if (!access.ok) return access.response;
 
   // 1 — Load addendum, verify it belongs to this bid
-  const addendum = await prisma.addendumUpload.findUnique({
-    where: { id: aId },
+  const addendum = await prisma.addendumUpload.findFirst({
+    where: { id: aId, bidId },
     select: {
       id: true,
-      bidId: true,
       addendumNumber: true,
       extractedText: true,
       status: true,
     },
   });
-  if (!addendum || addendum.bidId !== bidId) {
+  if (!addendum) {
     return Response.json({ error: "Addendum not found" }, { status: 404 });
   }
   if (addendum.status !== "ready") {

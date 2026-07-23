@@ -24,6 +24,7 @@ type AddendumRow = {
 
 const db = {
   bidExists: true,
+  authStatus: 200,
   rows: new Map<number, AddendumRow>(),
   counter: 0,
   briefUpdateManyArgs: null as unknown,
@@ -32,6 +33,7 @@ const db = {
 
 function resetDb() {
   db.bidExists = true;
+  db.authStatus = 200;
   db.rows.clear();
   db.counter = 0;
   db.briefUpdateManyArgs = null;
@@ -90,11 +92,17 @@ vi.mock("@/lib/prisma", () => {
 });
 
 vi.mock("@/lib/auth-helpers", () => ({
-  requireBidAccess: vi.fn(async () =>
-    db.bidExists
+  requireBidAccess: vi.fn(async () => {
+    if (db.authStatus === 401) {
+      return { ok: false, response: Response.json({ error: "Authentication required" }, { status: 401 }) };
+    }
+    if (db.authStatus === 403) {
+      return { ok: false, response: Response.json({ error: "Forbidden" }, { status: 403 }) };
+    }
+    return db.bidExists
       ? { ok: true, user: { id: "u1", role: "admin" } }
-      : { ok: false, response: Response.json({ error: "Not found" }, { status: 404 }) },
-  ),
+      : { ok: false, response: Response.json({ error: "Not found" }, { status: 404 }) };
+  }),
 }));
 
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
@@ -147,6 +155,20 @@ describe("POST /api/bids/[id]/addendums/upload", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  test("anonymous upload is rejected before form parsing, PDF parsing, or BlobStore write", async () => {
+    db.authStatus = 401;
+    const request = uploadRequest(1);
+    const formDataSpy = vi.spyOn(request, "formData");
+
+    const { POST } = await import("../route");
+    const res = await POST(request, routeParams);
+
+    expect(res.status).toBe(401);
+    expect(formDataSpy).not.toHaveBeenCalled();
+    expect(blobPutMock).not.toHaveBeenCalled();
+    expect(db.rows.size).toBe(0);
   });
 
   test("persists through BlobStore under the production-matching relative key, storing ONLY that relative key in storageKey", async () => {
