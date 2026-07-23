@@ -32,7 +32,8 @@ export type RegisterAuditArgs = {
     | "MeetingIntelligenceArtifact"
     | "MeetingIntelligenceCandidate"
     | "MeetingIntelligenceSegment"
-    | "MeetingIntelligenceWorkerJob";
+    | "MeetingIntelligenceWorkerJob"
+    | "MeetingActionItem";
   subjectId: number;
   actor: Actor | null;
   actorKind?: ActorKind;

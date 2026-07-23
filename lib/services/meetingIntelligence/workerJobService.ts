@@ -513,7 +513,7 @@ export async function completeMeetingIntelligenceJob(
           activeSlot: 1,
         },
         data: {
-          state: "READY_FOR_REVIEW",
+          state: extraction.candidates.length === 0 ? "REVIEWED" : "READY_FOR_REVIEW",
           sourceKind: LOCAL_WORKER_PROCESSOR_KIND,
           sourceMetadataJson: JSON.stringify({
             processor: LOCAL_WORKER_PROCESSOR_KIND,
@@ -531,12 +531,13 @@ export async function completeMeetingIntelligenceJob(
           completedAt: now,
           errorCode: null,
           errorMessage: null,
+          ...(extraction.candidates.length === 0 ? { activeSlot: null } : {}),
         },
       });
       if (artifact.count !== 1) throw new Error("Artifact state changed during completion");
       envelope = await writeRegisterAuditTx(tx, {
         action: "meeting_intelligence_worker_completed",
-        decision: "ready_for_review",
+        decision: extraction.candidates.length === 0 ? "reviewed_no_candidates" : "ready_for_review",
         subjectKind: "MeetingIntelligenceWorkerJob",
         subjectId: jobId,
         actor: { id: existing.workerId, name: existing.workerId },

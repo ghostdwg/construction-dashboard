@@ -1,11 +1,12 @@
 import {
   meetingIntelligenceServiceStatus,
   publishMeetingIntelligenceCandidate,
+  type CandidatePublishInput,
 } from "@/lib/services/meetingIntelligence/service";
 import { meetingRouteContext } from "@/lib/services/meetingRegister/routeHelpers";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; meetingId: string; candidateId: string }> },
 ) {
   const { id, meetingId, candidateId } = await params;
@@ -15,10 +16,17 @@ export async function POST(
   if (!Number.isInteger(parsedCandidateId) || parsedCandidateId <= 0) {
     return Response.json({ error: "Invalid candidateId" }, { status: 400 });
   }
+  let body: CandidatePublishInput;
+  try {
+    body = (await request.json()) as CandidatePublishInput;
+  } catch {
+    body = {};
+  }
   const result = await publishMeetingIntelligenceCandidate(
     ctx.bidId,
     ctx.meetingId,
     parsedCandidateId,
+    body,
     ctx.actor,
   );
   if (!result.ok) {

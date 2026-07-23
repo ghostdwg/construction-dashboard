@@ -18,14 +18,19 @@ import {
   LOCAL_ONLY_CONFIDENTIALITY,
   LOCAL_PROCESSOR_KIND,
   LOCAL_PROCESSOR_VERSION,
-  UNKNOWN_SPEAKER,
   isCorrectableSpeakerLabel,
   normalizeSpeakerLabel,
   type MeetingIntelligenceResult,
 } from "./types";
+import {
+  TASK_ELIGIBLE_CANDIDATE_TYPES,
+  isTaskEligibleCandidateType,
+} from "./reviewLedger";
 
 const ACTIVE_STATES = ["QUEUED", "PROCESSING", "READY_FOR_REVIEW"];
 const EDITABLE_REVIEW_STATES = ["DRAFT", "ACCEPTED", "REJECTED", "EDITED"];
+const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+export const MEETING_INTELLIGENCE_BATCH_MAX = 50;
 
 function isUniqueConstraint(error: unknown): boolean {
   return Boolean(
@@ -82,6 +87,11 @@ export async function getMeetingIntelligence(bidId: number, meetingId: number) {
   const sourceMediaAvailable = Boolean(
     meeting.audioStorageKey || meeting.audioFileName,
   );
+  const participants = await prisma.meetingParticipant.findMany({
+    where: { meetingId, isActive: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    select: { id: true, name: true, role: true, company: true },
+  });
   const workerJob = artifact
     ? await prisma.meetingIntelligenceWorkerJob.findFirst({
         where: { artifactId: artifact.id, meetingId, bidId },
@@ -116,6 +126,7 @@ export async function getMeetingIntelligence(bidId: number, meetingId: number) {
         : "NOT_PROCESSED",
     confidentiality: LOCAL_ONLY_CONFIDENTIALITY,
     processorKind: LOCAL_PROCESSOR_KIND,
+    participants,
     workerJob,
     artifact,
   };
@@ -355,17 +366,18 @@ export async function processQueuedMeetingIntelligence(
           activeSlot: 1,
         },
         data: {
-          state: "READY_FOR_REVIEW",
+          state: output.candidates.length === 0 ? "REVIEWED" : "READY_FOR_REVIEW",
           transcriptText: output.transcriptText,
           transcriptConfidence: output.transcriptConfidence,
           sourceMetadataJson: output.sourceMetadataJson,
           completedAt: new Date(),
+          ...(output.candidates.length === 0 ? { activeSlot: null } : {}),
         },
       });
       if (completed.count !== 1) throw new Error("Artifact processing was canceled");
       envelope = await writeRegisterAuditTx(tx, {
         action: "meeting_intelligence_processed",
-        decision: "ready_for_review",
+        decision: output.candidates.length === 0 ? "reviewed_no_candidates" : "ready_for_review",
         subjectKind: "MeetingIntelligenceArtifact",
         subjectId: artifactId,
         actor,
@@ -404,7 +416,47 @@ export async function processQueuedMeetingIntelligence(
 
 export type CandidateReviewInput =
   | { action: "ACCEPT" | "REJECT" }
-  | { action: "EDIT"; editedText?: string };
+  | { action: "EDIT"; editedText?: string; dueDate?: string | null };
+
+function parseDueDate(value: string | null | undefined): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const parsed = new Date(`${value}T12:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value
+    ? undefined
+    : parsed;
+}
+
+async function finalizeArtifactReview(
+  tx: typeof prisma,
+  artifactId: number,
+): Promise<void> {
+  const remaining = await tx.meetingIntelligenceCandidate.count({
+    where: {
+      artifactId,
+      OR: [
+        { reviewState: { in: ["DRAFT", "EDITED"] } },
+        {
+          reviewState: "ACCEPTED",
+          candidateType: { in: [...TASK_ELIGIBLE_CANDIDATE_TYPES] },
+        },
+      ],
+    },
+  });
+  if (remaining !== 0) return;
+  const published = await tx.meetingIntelligenceCandidate.count({
+    where: { artifactId, reviewState: "PUBLISHED" },
+  });
+  await tx.meetingIntelligenceArtifact.updateMany({
+    where: { id: artifactId, activeSlot: 1 },
+    data: {
+      state: published > 0 ? "PUBLISHED" : "REVIEWED",
+      activeSlot: null,
+      ...(published > 0 ? { publishedAt: new Date() } : {}),
+    },
+  });
+}
 
 export async function reviewMeetingIntelligenceCandidate(
   bidId: number,
@@ -432,6 +484,10 @@ export async function reviewMeetingIntelligenceCandidate(
   if (input.action === "EDIT" && !editedText) {
     return { ok: false, error: "editedText is required" };
   }
+  const dueDate = input.action === "EDIT" ? parseDueDate(input.dueDate) : undefined;
+  if (input.action === "EDIT" && input.dueDate !== undefined && dueDate === undefined) {
+    return { ok: false, error: "dueDate must be YYYY-MM-DD or null" };
+  }
 
   let envelope: AuditEnvelope | null = null;
   const updated = await prisma.$transaction(async (tx) => {
@@ -445,6 +501,7 @@ export async function reviewMeetingIntelligenceCandidate(
       data: {
         reviewState,
         ...(editedText ? { draftText: editedText } : {}),
+        ...(dueDate !== undefined ? { dueDate } : {}),
         reviewedBy,
         reviewedAt: new Date(),
       },
@@ -463,18 +520,115 @@ export async function reviewMeetingIntelligenceCandidate(
         candidateType: candidate.candidateType,
         from: candidate.reviewState,
         to: reviewState,
+        fields: {
+          descriptionChanged: Boolean(editedText && editedText !== candidate.draftText),
+          dueDateFrom: candidate.dueDate?.toISOString?.() ?? null,
+          dueDateTo: dueDate === undefined ? candidate.dueDate?.toISOString?.() ?? null : dueDate?.toISOString() ?? null,
+        },
       },
     });
+    await finalizeArtifactReview(tx as typeof prisma, candidate.artifactId);
     return { candidateId, reviewState };
   });
   emitRegisterAuditPostCommit(envelope);
   return { ok: true, value: updated };
 }
 
+export type CandidateBatchReviewInput = {
+  action: "ACCEPT" | "REJECT";
+  candidateIds: number[];
+};
+
+export async function batchReviewMeetingIntelligenceCandidates(
+  bidId: number,
+  meetingId: number,
+  artifactId: number,
+  input: CandidateBatchReviewInput,
+  actor: Actor,
+): Promise<MeetingIntelligenceResult<{ artifactId: number; reviewState: string; candidateIds: number[] }>> {
+  const reviewedBy = actorLabel(actor);
+  if (!reviewedBy) return { ok: false, error: "A session actor is required" };
+  if (!input || !["ACCEPT", "REJECT"].includes(input.action)) {
+    return { ok: false, error: "Batch action must be ACCEPT or REJECT" };
+  }
+  if (!Array.isArray(input.candidateIds) || input.candidateIds.length === 0) {
+    return { ok: false, error: "candidateIds is required" };
+  }
+  if (input.candidateIds.length > MEETING_INTELLIGENCE_BATCH_MAX) {
+    return { ok: false, error: `Batch review is limited to ${MEETING_INTELLIGENCE_BATCH_MAX} candidates` };
+  }
+  const candidateIds = [...new Set(input.candidateIds)];
+  if (candidateIds.length !== input.candidateIds.length ||
+      candidateIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+    return { ok: false, error: "candidateIds must contain unique positive integers" };
+  }
+  const candidates = await prisma.meetingIntelligenceCandidate.findMany({
+    where: { id: { in: candidateIds } },
+    orderBy: { id: "asc" },
+  });
+  if (candidates.length !== candidateIds.length || candidates.some((candidate) =>
+    candidate.bidId !== bidId || candidate.meetingId !== meetingId || candidate.artifactId !== artifactId
+  )) {
+    return { ok: false, error: "All candidates must belong to the same bid, meeting, and artifact" };
+  }
+  if (candidates.some((candidate) => !EDITABLE_REVIEW_STATES.includes(candidate.reviewState))) {
+    return { ok: false, error: "Published candidates cannot be changed" };
+  }
+
+  const reviewState = input.action === "ACCEPT" ? "ACCEPTED" : "REJECTED";
+  const envelopes: AuditEnvelope[] = [];
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const candidate of candidates) {
+        const claimed = await tx.meetingIntelligenceCandidate.updateMany({
+          where: {
+            id: candidate.id,
+            bidId,
+            meetingId,
+            artifactId,
+            reviewState: candidate.reviewState,
+          },
+          data: { reviewState, reviewedBy, reviewedAt: new Date() },
+        });
+        if (claimed.count !== 1) throw new Error("Candidate changed concurrently");
+        envelopes.push(await writeRegisterAuditTx(tx, {
+          action: "meeting_intelligence_candidate_reviewed",
+          decision: reviewState.toLowerCase(),
+          subjectKind: "MeetingIntelligenceCandidate",
+          subjectId: candidate.id,
+          actor,
+          payload: { bidId, meetingId, artifactId, candidateType: candidate.candidateType, from: candidate.reviewState, to: reviewState, batch: true },
+        }));
+      }
+      envelopes.push(await writeRegisterAuditTx(tx, {
+        action: "meeting_intelligence_candidates_batch_reviewed",
+        decision: reviewState.toLowerCase(),
+        subjectKind: "MeetingIntelligenceArtifact",
+        subjectId: artifactId,
+        actor,
+        payload: { bidId, meetingId, artifactId, candidateIds, count: candidateIds.length },
+      }));
+      await finalizeArtifactReview(tx as typeof prisma, artifactId);
+    });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Batch review failed" };
+  }
+  for (const envelope of envelopes) emitRegisterAuditPostCommit(envelope);
+  return { ok: true, value: { artifactId, reviewState, candidateIds } };
+}
+
+export type CandidatePublishInput = {
+  confirmed?: boolean;
+  assignmentConfirmed?: boolean;
+  assignedToName?: string | null;
+  priority?: string;
+};
+
 export async function publishMeetingIntelligenceCandidate(
   bidId: number,
   meetingId: number,
   candidateId: number,
+  input: CandidatePublishInput,
   actor: Actor,
 ): Promise<MeetingIntelligenceResult<{ candidateId: number; actionItemId: number; alreadyPublished: boolean }>> {
   const publishedBy = actorLabel(actor);
@@ -504,6 +658,23 @@ export async function publishMeetingIntelligenceCandidate(
   if (candidate.reviewState !== "ACCEPTED") {
     return { ok: false, error: "Candidate must be accepted before publishing" };
   }
+  if (!isTaskEligibleCandidateType(candidate.candidateType)) {
+    return { ok: false, error: "Context-only candidates cannot be published as tasks" };
+  }
+  if (!input?.confirmed) {
+    return { ok: false, error: "Human confirmation is required before publishing" };
+  }
+  if (!input.assignmentConfirmed) {
+    return { ok: false, error: "Confirm a named assignee or explicit Unassigned choice" };
+  }
+  if (input.assignedToName !== null && input.assignedToName !== undefined && typeof input.assignedToName !== "string") {
+    return { ok: false, error: "assignedToName must be a string or null" };
+  }
+  const assignedToName = input.assignedToName?.trim().slice(0, 300) || null;
+  const priority = input.priority?.toUpperCase();
+  if (!priority || !VALID_PRIORITIES.has(priority)) {
+    return { ok: false, error: "A valid priority is required before publishing" };
+  }
 
   try {
     let envelope: AuditEnvelope | null = null;
@@ -514,10 +685,9 @@ export async function publishMeetingIntelligenceCandidate(
           meetingId,
           source: "meeting",
           description: candidate.draftText,
-          assignedToName:
-            candidate.speakerLabel === UNKNOWN_SPEAKER ? null : candidate.speakerLabel,
+          assignedToName,
           dueDate: candidate.dueDate,
-          priority: candidate.candidateType === "RISK" ? "HIGH" : "MEDIUM",
+          priority,
           status: "OPEN",
           sourceText: candidate.evidenceExcerpt,
           notes: `Local-only Meeting Intelligence candidate #${candidate.id}; artifact #${candidate.artifactId}; segment #${candidate.segmentId ?? "unknown"}`,
@@ -535,22 +705,7 @@ export async function publishMeetingIntelligenceCandidate(
       });
       if (claim.count !== 1) throw new Error("Candidate changed concurrently");
 
-      const remaining = await tx.meetingIntelligenceCandidate.count({
-        where: {
-          artifactId: candidate.artifactId,
-          reviewState: { in: ["DRAFT", "ACCEPTED", "EDITED"] },
-        },
-      });
-      if (remaining === 0) {
-        await tx.meetingIntelligenceArtifact.update({
-          where: { id: candidate.artifactId },
-          data: {
-            state: "PUBLISHED",
-            publishedAt: new Date(),
-            activeSlot: null,
-          },
-        });
-      }
+      await finalizeArtifactReview(tx as typeof prisma, candidate.artifactId);
       envelope = await writeRegisterAuditTx(tx, {
         action: "meeting_intelligence_candidate_published",
         decision: "published_to_action_items",
@@ -563,6 +718,9 @@ export async function publishMeetingIntelligenceCandidate(
           artifactId: candidate.artifactId,
           candidateType: candidate.candidateType,
           actionItemId: actionItem.id,
+          assignmentDisposition: assignedToName ? "NAMED" : "UNASSIGNED",
+          priority,
+          dueDate: candidate.dueDate?.toISOString?.() ?? null,
         },
       });
       return {

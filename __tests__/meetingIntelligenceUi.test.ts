@@ -28,10 +28,25 @@ describe("Meeting Intelligence local-worker UI boundary", () => {
     expect(panel).toContain("Transcript artifact");
     expect(panel).toContain("Processing failed");
     expect(panel).toContain("Reviewable task ledger");
-    expect(panel).toContain("Publish to Action Items");
+    expect(panel).toContain("publish to Action Items");
     expect(panel).toContain("Waiting for a private local worker");
     expect(panel).toContain("Stage:");
     expect(panel).toContain("Cancel processing");
     expect(panel).toContain("Retry on private worker");
+  });
+
+  it("renders grouped evidence, responsive filters, batch review, and mandatory publication confirmation", () => {
+    expect(panel).toContain("Transcript context:");
+    expect(panel).toContain("Source evidence:");
+    expect(panel).toContain("Disposition filter");
+    expect(panel).toContain("Candidate type filter");
+    expect(panel).toContain("sm:grid-cols-2 lg:grid-cols-5");
+    expect(panel).toContain("Accept selected");
+    expect(panel).toContain("maximum 50");
+    expect(panel).toContain("Final task preview");
+    expect(panel).toContain("Confirm and publish to Action Items");
+    expect(panel).toContain("Explicitly unassigned");
+    expect(panel).toContain("is transcript evidence, not a verified person");
+    expect(panel).toContain("Open published Action Item #");
   });
 });
