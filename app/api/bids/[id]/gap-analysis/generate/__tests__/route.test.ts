@@ -36,7 +36,7 @@ vi.mock("@/lib/services/ai/aiUsageLog", () => ({
 }));
 vi.mock("@/lib/services/settings/appSettingsService", () => ({ getSetting: h.getSetting }));
 
-import { runGapAnalysis } from "../route";
+import { runGapAnalysis } from "../runGapAnalysis";
 
 const VALID = '[{"severity":"CRITICAL","title":"T1","description":"d","foundIn":"SPEC_BOOK"}]';
 
