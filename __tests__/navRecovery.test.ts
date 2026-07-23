@@ -142,4 +142,13 @@ describe("Dockerfile immutable image traceability", () => {
     expect(dockerfile).toMatch(/org\.opencontainers\.image\.created="\$\{IMAGE_CREATED\}"/);
     expect(dockerfile).toMatch(/org\.opencontainers\.image\.source="\$\{IMAGE_SOURCE\}"/);
   });
+
+  it("exposes the OCI revision source to CLI processes in the runner stage", () => {
+    const runnerStage = dockerfile.slice(dockerfile.indexOf("FROM node:20-alpine AS runner"));
+
+    expect(runnerStage).toMatch(/^ARG IMAGE_REVISION$/m);
+    expect(runnerStage).toMatch(/^ENV APP_IMAGE_REVISION="\$\{IMAGE_REVISION\}"$/m);
+    expect(dockerfile.match(/^ARG IMAGE_REVISION$/gm)).toHaveLength(1);
+    expect(dockerfile).not.toMatch(/^ARG APP_IMAGE_REVISION$/m);
+  });
 });
