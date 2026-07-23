@@ -42,7 +42,8 @@
     "storage:inventory": "tsx scripts/storage-inventory-backfill.ts",
     "storage:inventory:reverse": "tsx scripts/storage-inventory-backfill.ts --reverse",
     "storage:verify-convergence": "tsx scripts/verify-storage-convergence.ts",
-    "worker:meeting-stub": "tsx scripts/meeting-intelligence-stub-worker.ts"
+    "worker:meeting-stub": "tsx scripts/meeting-intelligence-stub-worker.ts",
+    "seed:meeting-intelligence-staging-fixture": "node --import=tsx scripts/meeting-intelligence-staging-fixture.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
