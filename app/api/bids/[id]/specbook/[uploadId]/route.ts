@@ -3,7 +3,8 @@ import { requireBidAccess } from "@/lib/auth-helpers";
 import { deleteStoragePath } from "@/lib/services/specbook/storagePath";
 
 // DELETE /api/bids/[id]/specbook/[uploadId]
-// Removes a spec book, its sections, and the files on disk.
+// Historic pre-versioning rows retain their legacy delete behavior. Versioned
+// source revisions are immutable and are voided in place with bytes retained.
 // Nulls out specSectionId on any SubmittalItems linked to this book's sections
 // (Prisma SetNull default; handled explicitly for safety).
 export async function DELETE(
@@ -29,6 +30,18 @@ export async function DELETE(
   });
   if (!specBook)
     return Response.json({ error: "Spec book not found" }, { status: 404 });
+
+  if (typeof specBook.revisionIndex === "number") {
+    await prisma.specBook.update({
+      where: { id: specBookId },
+      data: {
+        effectiveState: "VOID",
+        activeSlot: null,
+        status: "void",
+      },
+    });
+    return new Response(null, { status: 204 });
+  }
 
   // Disconnect any submittals linked to sections in this book
   const sectionIds = specBook.sections.map((s) => s.id);

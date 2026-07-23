@@ -19,7 +19,7 @@ vi.mock("@/lib/auth-helpers", () => ({
   })),
 }));
 
-type SpecBookRow = { id: number; bidId: number; filePath: string; status: string };
+type SpecBookRow = { id: number; bidId: number; filePath: string; status: string; immutableId?: string | null };
 
 const db = {
   specBook: null as SpecBookRow | null,
@@ -35,8 +35,8 @@ function resetDb() {
   db.deleteManyCalls = 0;
 }
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const client = {
     specBook: {
       findFirst: vi.fn(async () => db.specBook),
     },
@@ -47,17 +47,28 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(async () => db.bidTrades),
     },
     specSection: {
-      deleteMany: vi.fn(async () => {
-        db.deleteManyCalls += 1;
-        return { count: 0 };
+      findMany: vi.fn(async () => []),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        const row = { id: db.createdSections.length + 1, ...data };
+        db.createdSections.push(row);
+        return row;
       }),
-      createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
-        db.createdSections.push(...data);
-        return { count: data.length };
-      }),
+      update: vi.fn(),
     },
-  },
-}));
+    specSectionEvidenceRevision: {
+      findFirst: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: 1, revisionIndex: 1, textSha256: "section-sha" })),
+      findUniqueOrThrow: vi.fn(async () => ({ id: 1, revisionIndex: 1, textSha256: "section-sha" })),
+    },
+    specParagraph: { createMany: vi.fn(async () => ({ count: 1 })) },
+  };
+  return {
+    prisma: {
+      ...client,
+      $transaction: vi.fn(async (callback: (tx: typeof client) => unknown) => callback(client)),
+    },
+  };
+});
 
 vi.mock("@/lib/services/csi/canonicalTitle", () => ({
   lookupCanonicalTitles: vi.fn(async () => new Map<string, string>()),
@@ -66,7 +77,7 @@ vi.mock("@/lib/services/csi/canonicalTitle", () => ({
 const blobExistsMock = vi.fn(async (_key: string) => true);
 const localPathForKeyMock = vi.fn((key: string) => `/storage/${key}`);
 vi.mock("@/lib/storage/blobStore", () => ({
-  getBlobStore: () => ({ exists: blobExistsMock }),
+  getBlobStore: () => ({ exists: blobExistsMock, stat: vi.fn(async () => null) }),
   localPathForKey: localPathForKeyMock,
 }));
 
@@ -131,15 +142,17 @@ describe("POST /api/bids/[id]/specbook/split", () => {
     expect(json.success).toBe(true);
 
     expect(capturedBody.pdf_path).toBe("/storage/plan-room/jobs/7/spec/original.pdf");
-    expect(capturedBody.output_dir).toBe("/storage/plan-room/jobs/7/spec/sections");
+    expect(capturedBody.output_dir).toMatch(
+      /^\/storage\/plan-room\/jobs\/7\/spec\/specbook-7\/sections\/[0-9a-f-]{36}$/,
+    );
     expect(capturedBody.pdf_path).not.toMatch(/\/app\/uploads/);
     expect(capturedBody.output_dir).not.toMatch(/\/app\/uploads/);
 
     // Section artifact recorded as a relative BlobStore key — never the
     // sidecar's own absolute pdf_path.
     expect(db.createdSections).toHaveLength(1);
-    expect(db.createdSections[0].pdfPath).toBe(
-      "plan-room/jobs/7/spec/sections/03_30_00_cast_in_place_concrete.pdf"
+    expect(db.createdSections[0].pdfPath).toMatch(
+      /^plan-room\/jobs\/7\/spec\/specbook-7\/sections\/[0-9a-f-]{36}\/03_30_00_cast_in_place_concrete\.pdf$/,
     );
     expect(db.createdSections[0].pdfPath).not.toMatch(/^\//);
   });
@@ -166,7 +179,9 @@ describe("POST /api/bids/[id]/specbook/split", () => {
     expect(res.status).toBe(200);
     expect(fsAccessMock).toHaveBeenCalledWith(legacyPath);
     expect(capturedBody.pdf_path).toBe(legacyPath);
-    expect(capturedBody.output_dir).toBe("/storage/plan-room/jobs/7/spec/sections");
+    expect(capturedBody.output_dir).toMatch(
+      /^\/storage\/plan-room\/jobs\/7\/spec\/specbook-7\/sections\/[0-9a-f-]{36}$/,
+    );
     // BlobStore.exists must not be consulted for a legacy path.
     expect(blobExistsMock).not.toHaveBeenCalled();
   });

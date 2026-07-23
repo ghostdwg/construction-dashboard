@@ -32,6 +32,44 @@ function createPrisma() {
   return new PrismaClient({ adapter }).$extends({
     query: {
       consultantDispositionRecord: appendOnly(APPEND_ONLY_MESSAGE),
+      auditEvent: appendOnly(
+        "AuditEvent is append-only: accountability history is never rewritten"
+      ),
+      specSectionEvidenceRevision: appendOnly(
+        "SpecSectionEvidenceRevision is immutable: append a new evidence revision"
+      ),
+      specParagraph: appendOnly(
+        "SpecParagraph is immutable: rebuild into a new section evidence revision"
+      ),
+      specCitation: appendOnly(
+        "SpecCitation is immutable: create a corrected citation object"
+      ),
+      specRequirementDecision: appendOnly(
+        "SpecRequirementDecision is append-only: corrections append a linked decision"
+      ),
+      specRequirementCandidate: {
+        async update({ args, query }) {
+          const keys = Object.keys(args.data as Record<string, unknown>);
+          if (keys.some((key) => key !== "reviewState" && key !== "updatedAt")) {
+            throw new Error(
+              "SpecRequirementCandidate evidence is immutable: edits append a new candidate revision"
+            );
+          }
+          return query(args);
+        },
+        updateMany: () => {
+          throw new Error("SpecRequirementCandidate evidence is immutable");
+        },
+        upsert: () => {
+          throw new Error("SpecRequirementCandidate revisions are append-only");
+        },
+        delete: () => {
+          throw new Error("SpecRequirementCandidate evidence is retained");
+        },
+        deleteMany: () => {
+          throw new Error("SpecRequirementCandidate evidence is retained");
+        },
+      },
       meetingTranscriptCorrection: appendOnly(
         "MeetingTranscriptCorrection is append-only: a wrong correction is corrected by appending another correction"
       ),

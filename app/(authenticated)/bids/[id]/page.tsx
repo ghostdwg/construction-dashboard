@@ -31,6 +31,9 @@ import OperationsRegisterTab from "./OperationsRegisterTab";
 import WarrantiesTab from "./WarrantiesTab";
 import TrainingTab from "./TrainingTab";
 import InspectionsTab from "./InspectionsTab";
+import SpecSectionsTab from "./SpecSectionsTab";
+import SpecRequirementsTab from "./SpecRequirementsTab";
+import SpecVersionsTab from "./SpecVersionsTab";
 import CloseoutTab from "./CloseoutTab";
 import JobHistoryPanel from "./JobHistoryPanel";
 import MeetingActionsPanel from "./MeetingActionsPanel";
@@ -539,6 +542,21 @@ export default async function BidDetailPage({
           {tab === "inspections" && (
             <TabErrorBoundary tabName="Inspections">
               <InspectionsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "spec-sections" && (
+            <TabErrorBoundary tabName="Spec Sections">
+              <SpecSectionsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "spec-requirements" && (
+            <TabErrorBoundary tabName="Spec Requirements">
+              <SpecRequirementsTab bidId={bid.id} />
+            </TabErrorBoundary>
+          )}
+          {tab === "spec-addenda" && (
+            <TabErrorBoundary tabName="Spec Addenda and Versions">
+              <SpecVersionsTab bidId={bid.id} />
             </TabErrorBoundary>
           )}
           {tab === "closeout" && (

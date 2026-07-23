@@ -104,11 +104,9 @@ export async function GET(
 // fire.
 
 // DELETE /api/bids/[id]/addendums/[addendumId]
-// Deletes the addendum record, marks brief stale, fires regeneration, and
-// best-effort cleans up the durable blob if this row has a storageKey.
-// Historic rows (written before the storageKey column existed) have no
-// on-disk reference at all — a null storageKey is a safe no-op, never a
-// guessed path.
+// Versioned revisions are voided with source bytes retained. Historic
+// pre-versioning rows preserve the legacy hard-delete and reference-safe
+// cleanup path. A null storageKey is a safe no-op, never a guessed path.
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string; addendumId: string }> }
@@ -155,20 +153,27 @@ export async function DELETE(
 
   const record = await prisma.addendumUpload.findFirst({
     where: { id: aId, bidId },
-    select: { id: true, storageKey: true },
+    select: { id: true, storageKey: true, revisionIndex: true },
   });
   if (!record) {
     return Response.json({ error: "Addendum not found" }, { status: 404 });
   }
 
-  await prisma.addendumUpload.delete({ where: { id: aId } });
-
-  // Clean up the durable blob (best-effort — a missing/invalid/null key is
-  // a no-op, never an error that blocks the delete).
-  if (record.storageKey) {
-    await deleteAddendumStorageIfUnreferenced(record.storageKey, bidId).catch((err) => {
-      console.error("[addendums/delete] unreferenced blob cleanup failed:", err);
+  if (typeof record.revisionIndex === "number") {
+    await prisma.addendumUpload.update({
+      where: { id: aId },
+      data: { effectiveState: "VOID", activeSlot: null, status: "void" },
     });
+  } else {
+    await prisma.addendumUpload.delete({ where: { id: aId } });
+
+    // Legacy, uncited rows retain the compatibility cleanup path. Versioned
+    // revisions above never delete their immutable source bytes.
+    if (record.storageKey) {
+      await deleteAddendumStorageIfUnreferenced(record.storageKey, bidId).catch((err) => {
+        console.error("[addendums/delete] unreferenced blob cleanup failed:", err);
+      });
+    }
   }
 
   // Mark brief stale and regenerate

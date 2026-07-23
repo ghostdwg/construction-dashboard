@@ -34,11 +34,12 @@ afterEach(() => {
 });
 
 describe("migration inventory", () => {
-  test("migration 101 is the last migration and matches the expected name", () => {
+  test("migration 101 keeps its exact name and sequence as later additive migrations append", () => {
     const all = listMigrations();
-    expect(all[all.length - 1]).toBe(MIGRATION_101);
-    expect(all[all.length - 2]).toBe(MIGRATION_100);
-    expect(all[all.length - 3]).toBe(MIGRATION_99);
+    const index101 = all.indexOf(MIGRATION_101);
+    expect(index101).toBe(100);
+    expect(all[index101 - 1]).toBe(MIGRATION_100);
+    expect(all[index101 - 2]).toBe(MIGRATION_99);
   });
 });
 
@@ -50,7 +51,7 @@ describe("fresh replay through 101", () => {
     const rows = await db.client.execute("SELECT COUNT(*) as n FROM _prisma_migrations");
     expect(Number(rows.rows[0].n)).toBe(all.length);
     expect(await readForeignKeysState(db.client)).toBe(1);
-  });
+  }, 15_000);
 
   test("never depends on DATABASE_URL or APP_ENV (no tier fence, no network)", async () => {
     const savedUrl = process.env.DATABASE_URL;
@@ -71,7 +72,8 @@ describe("fresh replay through 101", () => {
 describe("populated upgrade through migration 101", () => {
   test("a populated pre-101 database upgrades through 101 successfully, data and relationships survive", async () => {
     const all = listMigrations();
-    const preMigration101 = all.slice(0, all.length - 1); // migrations 1..100
+    const index101 = all.indexOf(MIGRATION_101);
+    const preMigration101 = all.slice(0, index101); // migrations 1..100
     expect(preMigration101[preMigration101.length - 1]).toBe(MIGRATION_100);
 
     await applyPendingMigrations(db.client, preMigration101);

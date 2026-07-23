@@ -2,7 +2,11 @@ import path from "path";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { requireBidAccess } from "@/lib/auth-helpers";
-import { getBlobStore, safeBlobFileName } from "@/lib/storage/blobStore";
+import {
+  getBlobStore,
+  safeBlobFileName,
+  type PutResult,
+} from "@/lib/storage/blobStore";
 import { addendumStorageKey } from "@/lib/services/addendums/storagePath";
 import { deleteAddendumStorageIfUnreferenced } from "@/lib/services/storage/referenceSafety";
 
@@ -77,68 +81,95 @@ export async function POST(
     return Response.json({ error: message }, { status: 422 });
   }
 
+  const immutableId = randomUUID();
   const storageKey = addendumStorageKey(
     bidId,
-    randomUUID(),
+    immutableId,
     safeBlobFileName(file.name),
   );
   const store = getBlobStore();
+  let stored: PutResult;
   try {
-    await store.put(storageKey, buffer, { contentType: "application/pdf" });
+    stored = await store.put(storageKey, buffer, { contentType: "application/pdf" });
   } catch (err) {
     console.error("[addendums/upload] blob write failed:", err);
     return Response.json({ error: "Storage write failed — file not saved" }, { status: 500 });
   }
 
-  let committed: { id: number; superseded: Array<{ storageKey: string | null }> };
+  let committed: { id: number; revisionIndex: number | null };
   try {
-    committed = await prisma.$transaction(async (tx) => {
-      const superseded = await tx.addendumUpload.findMany({
-        where: { bidId, addendumNumber },
-        select: { storageKey: true },
-      });
-      const created = await tx.addendumUpload.create({
-        data: {
-          bidId,
-          addendumNumber,
-          addendumDate,
-          fileName: file.name,
-          storageKey,
-          status: "ready",
-          extractedText: extractedText.trim(),
-        },
-      });
-      await tx.addendumUpload.deleteMany({
-        where: { bidId, addendumNumber, id: { not: created.id } },
-      });
-      await tx.bidIntelligenceBrief.updateMany({
-        where: { bidId },
-        data: { isStale: true },
-      });
-      return { id: created.id, superseded };
-    });
+    let created: typeof committed | null = null;
+    for (let attempt = 0; attempt < 3 && !created; attempt += 1) {
+      try {
+        created = await prisma.$transaction(async (tx) => {
+          const [active, latest] = await Promise.all([
+            tx.addendumUpload.findFirst({
+              where: { bidId, addendumNumber, activeSlot: 1 },
+              select: { id: true, revisionIndex: true },
+            }),
+            tx.addendumUpload.findFirst({
+              where: { bidId, addendumNumber },
+              orderBy: [{ revisionIndex: "desc" }, { uploadedAt: "desc" }, { id: "desc" }],
+              select: { id: true, revisionIndex: true },
+            }),
+          ]);
+          const prior = active ?? latest;
+          const revisionIndex = (latest?.revisionIndex ?? 0) + 1;
+          if (prior) {
+            await tx.addendumUpload.update({
+              where: { id: prior.id },
+              data: {
+                revisionIndex: prior.revisionIndex ?? 0,
+                effectiveState: "SUPERSEDED",
+                activeSlot: null,
+              },
+            });
+          }
+          const appended = await tx.addendumUpload.create({
+            data: {
+              bidId,
+              addendumNumber,
+              addendumDate,
+              fileName: file.name,
+              storageKey,
+              status: "ready",
+              extractedText: extractedText.trim(),
+              revisionIndex,
+              effectiveState: "EFFECTIVE",
+              supersedesAddendumId: prior?.id ?? null,
+              sha256: stored.sha256,
+              byteSize: stored.size,
+              mimeType: stored.contentType ?? "application/pdf",
+              immutableId,
+              activeSlot: 1,
+            },
+            select: { id: true, revisionIndex: true },
+          });
+          await tx.bidIntelligenceBrief.updateMany({
+            where: { bidId },
+            data: { isStale: true },
+          });
+          return appended;
+        });
+      } catch (error) {
+        const conflict =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          (error as { code?: unknown }).code === "P2002";
+        if (!conflict || attempt === 2) throw error;
+      }
+    }
+    if (!created) throw new Error("Addendum revision allocation failed");
+    committed = created;
   } catch (err) {
     await deleteAddendumStorageIfUnreferenced(storageKey, bidId).catch(() => undefined);
-    console.error("[addendums/upload] database replacement failed:", err);
+    console.error("[addendums/upload] database revision append failed:", err);
     return Response.json(
       { error: "Addendum could not be recorded — upload rolled back" },
       { status: 500 },
     );
   }
-
-  await Promise.all(
-    Array.from(
-      new Set(
-        committed.superseded
-          .map((row) => row.storageKey)
-          .filter((value): value is string => value !== null),
-      ),
-    ).map((oldRef) =>
-      deleteAddendumStorageIfUnreferenced(oldRef, bidId).catch((err) =>
-        console.error("[addendums/upload] superseded blob cleanup failed:", err),
-      ),
-    ),
-  );
 
   return Response.json(
     {
@@ -146,6 +177,9 @@ export async function POST(
       addendumNumber,
       fileName: file.name,
       status: "ready",
+      revisionIndex: committed.revisionIndex,
+      sha256: stored.sha256,
+      byteSize: stored.size,
     },
     { status: 201 },
   );

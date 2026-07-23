@@ -32,8 +32,7 @@ async function applyPreIntegrationMigrations(databaseUrl: string): Promise<void>
     .filter(
       (entry) =>
         entry.isDirectory() &&
-        entry.name !== BASE_RETENTION_MIGRATION &&
-        entry.name !== REPAIR_MIGRATION
+        entry.name < BASE_RETENTION_MIGRATION
     )
     .map((entry) => entry.name)
     .sort();
@@ -41,7 +40,7 @@ async function applyPreIntegrationMigrations(databaseUrl: string): Promise<void>
   // accepted forward migrations in their integrated order. This proves the
   // base-retention table rebuild does not erase trade review evidence before
   // the trade repair backfills it.
-  expect(migrations).toHaveLength(99);
+  expect(migrations.at(-1)).toBe("20260718010000_r2b2_trade_response_packages");
   expect(migrations).toContain("20260718010000_r2b2_trade_response_packages");
   const client = createClient({ url: databaseUrl });
   try {
@@ -122,9 +121,10 @@ describe.sequential("R2 Build 2 integrated 99-to-101 migration", () => {
     const applied = await db.$queryRawUnsafe<Array<{ migration_name: string }>>(
       'SELECT "migration_name" FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL ORDER BY "migration_name"'
     );
-    expect(applied).toHaveLength(101);
-    expect(applied.at(-1)?.migration_name).toBe(REPAIR_MIGRATION);
-    expect(applied.at(-2)?.migration_name).toBe(BASE_RETENTION_MIGRATION);
+    expect(applied.length).toBeGreaterThanOrEqual(101);
+    const names = applied.map((row) => String(row.migration_name));
+    expect(names.indexOf(BASE_RETENTION_MIGRATION)).toBe(99);
+    expect(names.indexOf(REPAIR_MIGRATION)).toBe(100);
 
     const before = await db.tradeResponseReviewDecision.findMany({ orderBy: { id: "asc" } });
     expect(before).toHaveLength(1);

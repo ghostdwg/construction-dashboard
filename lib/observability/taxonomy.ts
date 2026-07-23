@@ -55,6 +55,7 @@ export const AUDIT_CATEGORIES = [
   "register_action",          // OPS1 tracked-item register: status transitions, close/waive, attachment upload, OAC promotion (human-only actions)
   "consultant_report",        // OPS3 Phase 1A — consultant report/revision/observation lifecycle + formal-response edits (human-only actions)
   "pursuit_promotion",        // MI→Pursuit — operator promotes a MarketLead/Project into a draft Bid (human-only, irreversible link)
+  "spec_requirement",         // Closeout Card 1A — effective Spec manifests and append-only candidate review decisions
 ] as const;
 export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 
@@ -177,6 +178,7 @@ export const DB_PERSISTED_CATEGORIES = new Set<AuditCategory>([
   "register_action",           // OPS1 — operator-consequential register mutations persist forever
   "consultant_report",         // OPS3 Phase 1A — every consultant-report mutation is operator-driven; persists forever
   "pursuit_promotion",         // MI→Pursuit — the lifecycle link between wings; must be reconstructable forever
+  "spec_requirement",          // Spec effective-set publication and human decisions are accountability records
 ]);
 
 export function shouldPersistToDb(category: AuditCategory): boolean {

@@ -279,3 +279,30 @@ export async function deleteStoragePath(ref: string, bidId: number): Promise<voi
   }
   await getBlobStore().delete(classified.canonicalKey);
 }
+
+function assertImmutableSpecId(immutableId: string): void {
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(immutableId)) {
+    throw new Error("immutable spec revision id is invalid");
+  }
+}
+
+/** Collision-safe key for every newly uploaded Spec source revision. */
+export function specRevisionStorageKey(
+  bidId: number,
+  immutableId: string,
+  safeFileName: string,
+): string {
+  assertImmutableSpecId(immutableId);
+  return `plan-room/jobs/${bidId}/spec/${immutableId}/${safeFileName}`;
+}
+
+/** Immutable directory used by the splitter for one source revision only. */
+export function specSectionStoragePrefix(
+  bidId: number,
+  immutableId: string,
+  evidenceRunId: string,
+): string {
+  assertImmutableSpecId(immutableId);
+  assertImmutableSpecId(evidenceRunId);
+  return `plan-room/jobs/${bidId}/spec/${immutableId}/sections/${evidenceRunId}`;
+}

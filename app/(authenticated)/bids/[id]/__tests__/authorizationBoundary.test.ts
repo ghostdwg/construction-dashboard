@@ -18,4 +18,19 @@ describe("Bid detail server-loader authorization", () => {
     expect(pageSource).toContain("where: { id: bidId, ...bidScopeFilter(user) }");
     expect(pageSource).toContain("if (!bid) notFound()");
   });
+
+  test("renders the versioned Reference workspace only behind the bid authorization boundary", () => {
+    const authorizedBidIndex = pageSource.indexOf("if (!bid) notFound()");
+    const sectionsIndex = pageSource.indexOf("<SpecSectionsTab");
+    const requirementsIndex = pageSource.indexOf("<SpecRequirementsTab");
+    const versionsIndex = pageSource.indexOf("<SpecVersionsTab");
+
+    expect(authorizedBidIndex).toBeGreaterThan(-1);
+    expect(sectionsIndex).toBeGreaterThan(authorizedBidIndex);
+    expect(requirementsIndex).toBeGreaterThan(authorizedBidIndex);
+    expect(versionsIndex).toBeGreaterThan(authorizedBidIndex);
+    expect(pageSource).toContain('tab === "spec-sections"');
+    expect(pageSource).toContain('tab === "spec-requirements"');
+    expect(pageSource).toContain('tab === "spec-addenda"');
+  });
 });

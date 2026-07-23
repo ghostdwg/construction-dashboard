@@ -20,6 +20,9 @@ type AddendumRow = {
   storageKey: string | null;
   status: string;
   extractedText?: string;
+  revisionIndex?: number | null;
+  effectiveState?: string | null;
+  activeSlot?: number | null;
 };
 
 const db = {
@@ -47,6 +50,15 @@ vi.mock("@/lib/prisma", () => {
       findUnique: vi.fn(async () => (db.bidExists ? { id: 1 } : null)),
     },
     addendumUpload: {
+      findFirst: vi.fn(async ({ where }: { where: { bidId: number; addendumNumber: number; activeSlot?: number } }) => {
+        const rows = [...db.rows.values()].filter(
+          (row) =>
+            row.bidId === where.bidId &&
+            row.addendumNumber === where.addendumNumber &&
+            (where.activeSlot === undefined || row.activeSlot === where.activeSlot),
+        );
+        return rows.at(-1) ?? null;
+      }),
       findMany: vi.fn(async () =>
         Array.from(db.rows.values()).map(({ bidId, storageKey }) => ({ bidId, storageKey })),
       ),
@@ -194,7 +206,7 @@ describe("POST /api/bids/[id]/addendums/upload", () => {
     expect(db.briefUpdateManyArgs).toEqual({ where: { bidId: 1 }, data: { isStale: true } });
   });
 
-  test("same-number upload replaces atomically with a collision-safe key", async () => {
+  test("same-number upload appends atomically with a collision-safe key", async () => {
     const { POST } = await import("../route");
     const first = await POST(uploadRequest(2, "same.pdf"), routeParams);
     const firstId = (await first.json()).id as number;
@@ -205,8 +217,10 @@ describe("POST /api/bids/[id]/addendums/upload", () => {
 
     expect(second.status).toBe(201);
     expect(secondKey).not.toBe(firstKey);
-    expect(db.rows.has(firstId)).toBe(false);
-    expect(blobData.has(firstKey)).toBe(false);
+    expect(db.rows.has(firstId)).toBe(true);
+    expect(db.rows.get(firstId)?.effectiveState).toBe("SUPERSEDED");
+    expect(db.rows.get(firstId)?.activeSlot).toBeNull();
+    expect(blobData.has(firstKey)).toBe(true);
   });
 
   test("database failure preserves the prior record and cleans the new orphan", async () => {
