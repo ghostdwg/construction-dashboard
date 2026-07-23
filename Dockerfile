@@ -50,14 +50,15 @@ WORKDIR /app
 # Immutable traceability. The operator's build command must pass these
 # --build-arg values (git short SHA, ISO 8601 build time, repo URL) — the
 # current live image has none of the three, which is why its provenance is
-# unknown. Left unset they render as empty LABEL values rather than failing
-# the build, so the build command itself is the enforcement point.
+# unknown. Left unset they render as empty provenance values rather than
+# failing the build, so the build command itself is the enforcement point.
 ARG IMAGE_REVISION
 ARG IMAGE_CREATED
 ARG IMAGE_SOURCE
 LABEL org.opencontainers.image.revision="${IMAGE_REVISION}" \
       org.opencontainers.image.created="${IMAGE_CREATED}" \
       org.opencontainers.image.source="${IMAGE_SOURCE}"
+ENV APP_IMAGE_REVISION="${IMAGE_REVISION}"
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

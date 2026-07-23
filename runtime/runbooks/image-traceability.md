@@ -27,16 +27,19 @@ groundworx-app:<short-sha>-<card>
 ## 2. OCI provenance labels
 
 The `runner` stage of `Dockerfile` accepts three build args and stamps them
-as standard OCI labels:
+as standard OCI labels. The same `IMAGE_REVISION` value is also available to
+processes inside the container as `APP_IMAGE_REVISION`; there is no separate
+runtime revision build argument.
 
-| Build arg        | Label                               | Value                                  |
-| ---------------- | ----------------------------------- | -------------------------------------- |
-| `IMAGE_REVISION` | `org.opencontainers.image.revision` | full Git SHA of the built commit       |
-| `IMAGE_CREATED`  | `org.opencontainers.image.created`  | ISO 8601 UTC build timestamp           |
-| `IMAGE_SOURCE`   | `org.opencontainers.image.source`   | repository URL                         |
+| Build arg        | Label                               | Runtime variable       | Value                            |
+| ---------------- | ----------------------------------- | ---------------------- | -------------------------------- |
+| `IMAGE_REVISION` | `org.opencontainers.image.revision` | `APP_IMAGE_REVISION`   | full Git SHA of the built commit |
+| `IMAGE_CREATED`  | `org.opencontainers.image.created`  | —                      | ISO 8601 UTC build timestamp     |
+| `IMAGE_SOURCE`   | `org.opencontainers.image.source`   | —                      | repository URL                   |
 
 Unset args produce empty labels rather than failing the build — **the build
-command is the enforcement point**; always use the canonical form below.
+command is the enforcement point**; always use the canonical form below. An
+empty or `unknown` revision is untraceable and must not pass an operator gate.
 
 ## 3. Canonical build command (operator)
 
@@ -60,8 +63,18 @@ docker build \
 docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <image>
 docker inspect --format '{{json .Config.Labels}}' <image>
 docker images --digests groundworx-app
+docker exec <container> printenv APP_IMAGE_REVISION
 ```
 
-An image with an empty `revision` label predates this runbook and must be
-treated as **untraceable**: do not reason about its behavior from current
-source; replace it with a traceable build at the next approved deploy gate.
+Confirm that the runtime value is present, is not `unknown`, and exactly
+matches the OCI label:
+
+```bash
+IMAGE_REVISION=$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' <container>)
+docker exec <container> sh -c 'test -n "$APP_IMAGE_REVISION" && test "$APP_IMAGE_REVISION" != unknown'
+test "$(docker exec <container> printenv APP_IMAGE_REVISION)" = "$IMAGE_REVISION"
+```
+
+An image with an empty or `unknown` revision value must be treated as
+**untraceable**: do not reason about its behavior from current source; replace
+it with a traceable build at the next approved deploy gate.
