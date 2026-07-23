@@ -892,7 +892,11 @@ describe("manifest and failure handling", () => {
     const dockerfile = await fs.readFile(path.resolve("Dockerfile"), "utf8");
     expect(dockerfile).toContain("org.opencontainers.image.revision=\"${IMAGE_REVISION}\"");
     expect(dockerfile.match(/^ARG IMAGE_REVISION$/gm)).toHaveLength(1);
-    expect(dockerfile.match(/^ENV APP_IMAGE_REVISION=/gm) ?? []).toHaveLength(0);
+    // Integration reconciliation: the runtime-image-revision track contributes
+    // exactly one APP_IMAGE_REVISION runtime env, deriving from IMAGE_REVISION.
+    // "Without duplicating" now means exactly one promotion, not zero.
+    expect(dockerfile.match(/^ENV APP_IMAGE_REVISION=/gm) ?? []).toHaveLength(1);
+    expect(dockerfile.match(/^ENV APP_IMAGE_REVISION="\$\{IMAGE_REVISION\}"$/gm) ?? []).toHaveLength(1);
     expect(dockerfile).toContain("meeting-intelligence-staging-fixture.mjs");
     expect(dockerfile).toContain("--external:@prisma/client");
     expect(dockerfile).toContain("--external:@prisma/adapter-libsql");
